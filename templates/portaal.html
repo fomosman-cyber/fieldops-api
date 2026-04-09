@@ -716,6 +716,15 @@
     .toast.success { background: rgba(0,230,118,0.15); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
     .toast.error { background: rgba(255,82,82,0.15); color: var(--red); border: 1px solid rgba(255,82,82,0.3); }
 
+    /* ───── LOADING SPINNER ───── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-spinner { display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;color:var(--text-muted); }
+    .loading-spinner::before { content:'';width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:12px; }
+    .error-state { display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;color:var(--red);text-align:center; }
+    .error-state h3 { margin:12px 0 8px;font-size:16px; }
+    .error-state p { font-size:13px;color:var(--text-muted);max-width:400px; }
+    .error-state button { margin-top:16px; }
+
     /* ───── FOOTER ───── */
     .main-footer {
       margin-top: auto;
@@ -1158,8 +1167,9 @@
 
       <div id="meldingenEmpty" class="empty-state">
         <div class="empty-icon">&#128276;</div>
-        <h3>Geen meldingen</h3>
-        <p>Er zijn nog geen meldingen. Meldingen verschijnen hier zodra ze vanuit het veld worden ingediend.</p>
+        <h3>Nog geen meldingen</h3>
+        <p>Registreer je eerste melding vanuit het veld. Voeg foto's, GPS-locatie en schadecategorie toe.</p>
+        <button class="btn-primary" onclick="openMeldingModal()">+ Eerste melding aanmaken</button>
       </div>
       <div id="meldingenList" style="display:none;">
         <div class="card" style="overflow-x:auto;">
@@ -1734,8 +1744,9 @@
 
     // ── Load Users ──
     function loadUsers() {
+      var tbody = document.getElementById('usersBody');
+      tbody.innerHTML = '<tr><td colspan="5"><div class="loading-spinner">Gebruikers laden...</div></td></tr>';
       api('GET', '/api/users/').then(function(users) {
-        var tbody = document.getElementById('usersBody');
         if (!users || users.length === 0) {
           tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color: var(--text-dim);">Geen gebruikers gevonden</td></tr>';
           return;
@@ -1888,6 +1899,15 @@
     }
 
     // ── Toast ──
+    function showLoading(containerId, msg) {
+      var el = document.getElementById(containerId);
+      if (el) el.innerHTML = '<div class="loading-spinner">'+(msg||'Laden...')+'</div>';
+    }
+    function showError(containerId, msg, retryFn) {
+      var el = document.getElementById(containerId);
+      if (el) el.innerHTML = '<div class="error-state"><h3>Fout bij laden</h3><p>'+(msg||'Er is iets misgegaan.')+'</p>'+(retryFn?'<button class="btn-secondary" onclick="'+retryFn+'()">Opnieuw proberen</button>':'')+'</div>';
+    }
+
     function showToast(msg, type) {
       var t = document.getElementById('toast');
       t.textContent = msg;
@@ -1967,12 +1987,15 @@
     var allProjects = [];
 
     function loadProjects() {
+      var empty = document.getElementById('projectenEmpty');
+      var list = document.getElementById('projectenList');
+      var cards = document.getElementById('projectCards');
+      empty.style.display = 'none';
+      list.style.display = 'block';
+      cards.innerHTML = '<div class="loading-spinner">Projecten laden...</div>';
       api('GET', '/api/projects/').then(function(projects) {
         allProjects = projects || [];
         updateProjectFilter();
-        var empty = document.getElementById('projectenEmpty');
-        var list = document.getElementById('projectenList');
-        var cards = document.getElementById('projectCards');
         if (allProjects.length === 0) {
           empty.style.display = 'flex';
           list.style.display = 'none';
@@ -2006,6 +2029,7 @@
         document.getElementById('statProjects').textContent = allProjects.filter(function(p){return p.status==='active';}).length;
       }).catch(function(err) {
         console.error('Projecten laden mislukt:', err);
+        cards.innerHTML = '<div class="error-state"><h3>Laden mislukt</h3><p>'+err.message+'</p><button class="btn-secondary" onclick="loadProjects()">Opnieuw proberen</button></div>';
       });
     }
 
@@ -2702,10 +2726,13 @@
     var allMeldingen = [];
 
     function loadMeldingen() {
+      var empty = document.getElementById('meldingenEmpty');
+      var list = document.getElementById('meldingenList');
+      empty.style.display = 'none';
+      list.style.display = 'block';
+      document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="6"><div class="loading-spinner">Meldingen laden...</div></td></tr>';
       api('GET', '/api/meldingen/').then(function(meldingen) {
         allMeldingen = meldingen || [];
-        var empty = document.getElementById('meldingenEmpty');
-        var list = document.getElementById('meldingenList');
         var tbody = document.getElementById('meldingenBody');
         if (allMeldingen.length === 0) {
           empty.style.display = 'flex';
@@ -2736,6 +2763,7 @@
         document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
       }).catch(function(err) {
         console.error('Meldingen laden mislukt:', err);
+        document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="6"><div class="error-state"><h3>Laden mislukt</h3><p>'+err.message+'</p><button class="btn-secondary" onclick="loadMeldingen()">Opnieuw proberen</button></div></td></tr>';
       });
     }
 
