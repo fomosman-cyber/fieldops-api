@@ -154,6 +154,8 @@ class MeldingCreate(BaseModel):
     priority: Optional[str] = "normaal"
     lat: Optional[float] = None
     lng: Optional[float] = None
+    photo_url: Optional[str] = None
+    photo_after_url: Optional[str] = None
     project_id: Optional[str] = None
 
 
@@ -167,6 +169,7 @@ class MeldingResponse(BaseModel):
     lat: Optional[float]
     lng: Optional[float]
     photo_url: Optional[str] = None
+    photo_after_url: Optional[str] = None
     project_id: Optional[str]
     created_by: str
     created_at: datetime
@@ -181,6 +184,8 @@ class MeldingUpdate(BaseModel):
     category: Optional[str] = None
     priority: Optional[str] = None
     status: Optional[str] = None
+    photo_url: Optional[str] = None
+    photo_after_url: Optional[str] = None
 
 
 # Shopify Webhook

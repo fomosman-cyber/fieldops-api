@@ -1435,6 +1435,73 @@
     </div>
   </div>
 
+  <!-- ═══════ MELDING DETAIL MODAL ═══════ -->
+  <div class="modal-overlay" id="meldingDetailModal">
+    <div class="modal" style="max-width:600px;">
+      <button class="modal-close" onclick="closeMeldingDetail()">&times;</button>
+      <h2 id="detailTitle">Melding</h2>
+      <p class="subtitle" id="detailMeta"></p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;">
+        <div class="form-group">
+          <label>Status</label>
+          <select id="detailStatus" onchange="saveMeldingStatus()">
+            <option value="open">Open</option>
+            <option value="in_behandeling">In behandeling</option>
+            <option value="gereed_uitvoering">Gereed uitvoering</option>
+            <option value="in_uitvoering">In uitvoering</option>
+            <option value="opgelost">Opgelost</option>
+            <option value="afgerond">Afgerond</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Prioriteit</label>
+          <select id="detailPriority" onchange="saveMeldingPriority()">
+            <option value="laag">Laag</option>
+            <option value="normaal">Normaal</option>
+            <option value="hoog">Hoog</option>
+            <option value="kritiek">Kritiek</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Omschrijving</label>
+        <p id="detailDesc" style="color:var(--text-muted);font-size:13px;min-height:20px;">-</p>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;">
+        <div class="form-group">
+          <label>Categorie</label>
+          <p id="detailCategory" style="color:var(--text-muted);font-size:13px;">-</p>
+        </div>
+        <div class="form-group">
+          <label>Project</label>
+          <p id="detailProject" style="color:var(--text-muted);font-size:13px;">-</p>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;">
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">Foto voor</label>
+          <div id="detailPhotoBefore" style="width:100%;height:160px;border:2px dashed var(--border);border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--card-bg-hover);overflow:hidden;cursor:pointer;position:relative;" onclick="document.getElementById('photoBeforeInput').click()">
+            <span style="color:var(--text-dim);font-size:13px;" id="photoBeforeLabel">Klik om foto te uploaden</span>
+            <img id="photoBeforeImg" style="width:100%;height:100%;object-fit:cover;display:none;position:absolute;inset:0;">
+          </div>
+          <input type="file" id="photoBeforeInput" accept="image/*" style="display:none;" onchange="previewPhoto(this,'photoBeforeImg','photoBeforeLabel')">
+        </div>
+        <div>
+          <label style="display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">Foto na</label>
+          <div id="detailPhotoAfter" style="width:100%;height:160px;border:2px dashed var(--border);border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--card-bg-hover);overflow:hidden;cursor:pointer;position:relative;" onclick="document.getElementById('photoAfterInput').click()">
+            <span style="color:var(--text-dim);font-size:13px;" id="photoAfterLabel">Klik om foto te uploaden</span>
+            <img id="photoAfterImg" style="width:100%;height:100%;object-fit:cover;display:none;position:absolute;inset:0;">
+          </div>
+          <input type="file" id="photoAfterInput" accept="image/*" style="display:none;" onchange="previewPhoto(this,'photoAfterImg','photoAfterLabel')">
+        </div>
+      </div>
+      <div class="form-actions" style="margin-top:16px;">
+        <button class="btn-secondary" onclick="closeMeldingDetail()">Sluiten</button>
+        <button class="btn-primary" onclick="deleteMeldingFromDetail()" style="background:var(--red);">Verwijderen</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════ TOAST ═══════ -->
   <div class="toast" id="toast"></div>
 
@@ -2575,7 +2642,7 @@
         empty.style.display = 'none';
         list.style.display = 'block';
         var prioColors = { kritiek:'red', hoog:'orange', normaal:'blue', laag:'' };
-        var statusLabels = { open:'Open', in_behandeling:'In behandeling', afgerond:'Afgerond' };
+        var statusLabels = { open:'Open', in_behandeling:'In behandeling', gereed_uitvoering:'Gereed uitvoering', in_uitvoering:'In uitvoering', opgelost:'Opgelost', afgerond:'Afgerond' };
         tbody.innerHTML = allMeldingen.map(function(m) {
           var date = new Date(m.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short' });
           var projectName = '-';
@@ -2583,7 +2650,7 @@
             var proj = allProjects.find(function(p){return p.id===m.project_id;});
             if (proj) projectName = proj.name;
           }
-          return '<tr>' +
+          return '<tr onclick="openMeldingDetail(\''+m.id+'\')" style="cursor:pointer;">' +
             '<td><strong>'+m.title+'</strong></td>' +
             '<td>'+(m.category||'-')+'</td>' +
             '<td><span class="status-badge '+(prioColors[m.priority]||'')+'">'+(m.priority||'normaal')+'</span></td>' +
@@ -2648,6 +2715,100 @@
     }
     function closeMeldingModal() {
       document.getElementById('meldingModal').classList.remove('active');
+    }
+
+    // ── Melding Detail ──
+    var currentDetailMeldingId = null;
+
+    function openMeldingDetail(id) {
+      currentDetailMeldingId = id;
+      var m = allMeldingen.find(function(x){return x.id===id;});
+      if (!m) { showToast('Melding niet gevonden','error'); return; }
+      document.getElementById('detailTitle').textContent = m.title;
+      var date = new Date(m.created_at).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
+      document.getElementById('detailMeta').textContent = (m.creator_name||'Onbekend') + ' · ' + date;
+      document.getElementById('detailStatus').value = m.status || 'open';
+      document.getElementById('detailPriority').value = m.priority || 'normaal';
+      document.getElementById('detailDesc').textContent = m.description || '-';
+      document.getElementById('detailCategory').textContent = m.category || '-';
+      var projName = '-';
+      if (m.project_id) {
+        var pr = allProjects.find(function(p){return p.id===m.project_id;});
+        if (pr) projName = pr.name;
+      }
+      document.getElementById('detailProject').textContent = projName;
+      // Photo before
+      var imgBefore = document.getElementById('photoBeforeImg');
+      var lblBefore = document.getElementById('photoBeforeLabel');
+      if (m.photo_url) {
+        imgBefore.src = m.photo_url; imgBefore.style.display = 'block'; lblBefore.style.display = 'none';
+      } else {
+        imgBefore.style.display = 'none'; imgBefore.src = ''; lblBefore.style.display = 'block';
+      }
+      // Photo after
+      var imgAfter = document.getElementById('photoAfterImg');
+      var lblAfter = document.getElementById('photoAfterLabel');
+      if (m.photo_after_url) {
+        imgAfter.src = m.photo_after_url; imgAfter.style.display = 'block'; lblAfter.style.display = 'none';
+      } else {
+        imgAfter.style.display = 'none'; imgAfter.src = ''; lblAfter.style.display = 'block';
+      }
+      document.getElementById('meldingDetailModal').classList.add('active');
+    }
+
+    function closeMeldingDetail() {
+      document.getElementById('meldingDetailModal').classList.remove('active');
+      currentDetailMeldingId = null;
+    }
+
+    function saveMeldingStatus() {
+      if (!currentDetailMeldingId) return;
+      var status = document.getElementById('detailStatus').value;
+      api('PUT', '/api/meldingen/' + currentDetailMeldingId, { status: status }).then(function() {
+        showToast('Status bijgewerkt');
+        loadMeldingen();
+      }).catch(function(err) { showToast('Fout bij opslaan: ' + err.message, 'error'); });
+    }
+
+    function saveMeldingPriority() {
+      if (!currentDetailMeldingId) return;
+      var priority = document.getElementById('detailPriority').value;
+      api('PUT', '/api/meldingen/' + currentDetailMeldingId, { priority: priority }).then(function() {
+        showToast('Prioriteit bijgewerkt');
+        loadMeldingen();
+      }).catch(function(err) { showToast('Fout bij opslaan: ' + err.message, 'error'); });
+    }
+
+    function previewPhoto(input, imgId, labelId) {
+      if (!input.files || !input.files[0]) return;
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = document.getElementById(imgId);
+        var lbl = document.getElementById(labelId);
+        img.src = e.target.result;
+        img.style.display = 'block';
+        lbl.style.display = 'none';
+        // Upload photo als base64 naar API
+        if (!currentDetailMeldingId) return;
+        var field = (imgId === 'photoBeforeImg') ? 'photo_url' : 'photo_after_url';
+        var payload = {};
+        payload[field] = e.target.result;
+        api('PUT', '/api/meldingen/' + currentDetailMeldingId, payload).then(function() {
+          showToast('Foto opgeslagen');
+          loadMeldingen();
+        }).catch(function(err) { showToast('Foto upload mislukt: ' + err.message, 'error'); });
+      };
+      reader.readAsDataURL(input.files[0]);
+    }
+
+    function deleteMeldingFromDetail() {
+      if (!currentDetailMeldingId) return;
+      if (!confirm('Weet je zeker dat je deze melding wilt verwijderen?')) return;
+      api('DELETE', '/api/meldingen/' + currentDetailMeldingId).then(function() {
+        showToast('Melding verwijderd');
+        closeMeldingDetail();
+        loadMeldingen();
+      }).catch(function(err) { showToast('Verwijderen mislukt: ' + err.message, 'error'); });
     }
 
     function createMelding(e) {

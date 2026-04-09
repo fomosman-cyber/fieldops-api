@@ -115,6 +115,7 @@ class Melding(Base):
     lat = Column(Float, nullable=True)
     lng = Column(Float, nullable=True)
     photo_url = Column(String(500), nullable=True)
+    photo_after_url = Column(String(500), nullable=True)
     project_id = Column(String, ForeignKey("projects.id"), nullable=True)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
     created_by = Column(String, ForeignKey("users.id"), nullable=False)
