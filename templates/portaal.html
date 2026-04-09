@@ -8,6 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -600,9 +601,10 @@
       .modal-overlay { align-items: flex-end; padding: 0; }
       .modal {
         max-width: 100% !important;
-        max-height: 92vh !important;
+        max-height: 80vh !important;
         border-radius: 20px 20px 0 0;
         padding: 20px 16px 24px;
+        padding-top: 48px;
         margin: 0;
         width: 100%;
       }
@@ -614,13 +616,64 @@
       .modal .form-group select { padding: 11px 14px; font-size: 14px; }
       .modal .form-actions { margin-top: 16px; flex-wrap: wrap; }
       .modal .form-actions button { font-size: 13px; padding: 10px 16px; }
-      .modal-close { top: 10px; right: 10px; font-size: 20px; padding: 8px 12px; }
+      .modal-close {
+        position: sticky;
+        top: 0; right: 0;
+        float: right;
+        margin: -40px 0 8px 0;
+        font-size: 22px;
+        padding: 8px 14px;
+        background: rgba(0,0,0,0.08);
+        z-index: 20;
+      }
+      /* Hide lang switcher in topbar on mobile */
+      #langSwitcher { display: none !important; }
     }
     @media (max-width: 480px) {
-      .modal { padding: 16px 12px 20px; max-height: 95vh !important; }
+      .modal { padding: 16px 12px 20px; padding-top: 48px; max-height: 85vh !important; }
       .modal h2 { font-size: 18px; }
       .modal .form-actions { flex-direction: column; }
       .modal .form-actions button { width: 100%; justify-content: center; }
+    }
+
+    /* ───── SIDEBAR LANGUAGE SWITCHER (mobile) ───── */
+    .sidebar-lang {
+      display: none;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+    }
+    .sidebar-lang select {
+      width: 100%;
+      padding: 10px 14px;
+      background: rgba(0,0,0,0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      cursor: pointer;
+      outline: none;
+    }
+    @media (max-width: 768px) {
+      .sidebar-lang { display: block; }
+    }
+
+    /* ───── MOBILE TOPBAR DEMO BUTTON ───── */
+    .mobile-demo-btn {
+      display: none;
+      background: var(--gradient);
+      color: #fff;
+      border: none;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 14px;
+      border-radius: 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    @media (max-width: 768px) {
+      .mobile-demo-btn { display: inline-flex; align-items: center; gap: 4px; }
     }
 
     .form-group { margin-bottom: 20px; }
@@ -837,6 +890,10 @@
     .animate-in:nth-child(2) { animation-delay: 0.1s; }
     .animate-in:nth-child(3) { animation-delay: 0.15s; }
     .animate-in:nth-child(4) { animation-delay: 0.2s; }
+
+    /* ───── GEOCODER SEARCH ───── */
+    .leaflet-control-geocoder { border-radius: 12px !important; box-shadow: 0 2px 12px rgba(0,0,0,.12) !important; border: 1px solid var(--border) !important; }
+    .leaflet-control-geocoder input { font-family: 'DM Sans', sans-serif !important; font-size: 14px !important; padding: 8px 12px !important; }
   </style>
 </head>
 <body>
@@ -858,6 +915,7 @@
       </nav>
     </div>
     <div class="topbar-right">
+      <button class="mobile-demo-btn" onclick="openMeldingModal()">+ Melding</button>
       <select id="langSwitcher" onchange="switchLanguage(this.value)" style="background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px;font-family:inherit;color:var(--text);cursor:pointer;outline:none;">
         <option value="nl">🇳🇱 NL</option>
         <option value="en">🇬🇧 EN</option>
@@ -915,9 +973,18 @@
         </a>
       </nav>
     </div>
+    <div class="sidebar-lang">
+      <select id="sidebarLangSwitcher" onchange="switchLanguage(this.value)">
+        <option value="nl">🇳🇱 Nederlands</option>
+        <option value="en">🇬🇧 English</option>
+        <option value="de">🇩🇪 Deutsch</option>
+        <option value="fr">🇫🇷 Français</option>
+        <option value="tr">🇹🇷 Türkçe</option>
+      </select>
+    </div>
     <div class="sidebar-footer" id="sidebarFooter">
       <p>FieldOps</p>
-      <strong>Laden...</strong>
+      <strong id="sidebarLoadingText">Laden...</strong>
     </div>
   </aside>
 
@@ -934,7 +1001,7 @@
         <div style="display:flex;align-items:center;gap:16px;">
           <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--green);">
             <span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;animation:pulse 2s infinite;"></span>
-            Realtime &middot; Laatst bijgewerkt: <span id="lastUpdated">zojuist</span>
+            <span id="realtimeLabel">Realtime &middot; Laatst bijgewerkt:</span> <span id="lastUpdated">zojuist</span>
           </div>
           <button class="btn-primary" onclick="openMeldingModal()">+ Nieuwe melding</button>
         </div>
@@ -1118,7 +1185,7 @@
               <button class="btn-primary" onclick="openMeldingForProject()" style="font-size:12px;padding:6px 12px;">+ Melding</button>
             </div>
             <div id="projectDetailMeldingen" style="max-height:200px;overflow-y:auto;">
-              <p style="color:var(--text-dim);font-size:14px;">Geen meldingen in dit project.</p>
+              <p id="projDetailNoMeldingen" style="color:var(--text-dim);font-size:14px;">Geen meldingen in dit project.</p>
             </div>
           </div>
         </div>
@@ -1287,10 +1354,11 @@
               <th>Rol</th>
               <th>Status</th>
               <th>Laatste login</th>
+              <th>Acties</th>
             </tr>
           </thead>
           <tbody id="usersBody">
-            <tr><td colspan="5" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
+            <tr><td colspan="6" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
           </tbody>
         </table>
       </div>
@@ -1507,8 +1575,8 @@
           </form>
         </div>
         <!-- Right: mini map for boundary -->
-        <div style="flex:1;min-width:320px;min-height:400px;position:relative;">
-          <div id="projectMap" style="width:100%;height:100%;min-height:400px;background:#1a1a2e;"></div>
+        <div style="flex:1;min-width:320px;min-height:450px;position:relative;">
+          <div id="projectMap" style="width:100%;height:100%;min-height:450px;background:#1a1a2e;"></div>
         </div>
       </div>
     </div>
@@ -1552,9 +1620,9 @@
         <div class="form-group">
           <label>Locatie (klik op kaart of gebruik GPS)</label>
           <div style="display:flex;gap:8px;">
-            <input type="text" id="meldingLat" placeholder="Lat" style="flex:1;" readonly>
-            <input type="text" id="meldingLng" placeholder="Lng" style="flex:1;" readonly>
-            <button type="button" class="btn-secondary" onclick="getMeldingLocation()" style="white-space:nowrap;">GPS</button>
+            <input type="text" id="meldingLat" placeholder="Lat" style="flex:1;">
+            <input type="text" id="meldingLng" placeholder="Lng" style="flex:1;">
+            <button type="button" class="btn-secondary" onclick="getMeldingLocation()" style="white-space:nowrap;">📍 GPS</button>
           </div>
         </div>
         <div class="form-actions">
@@ -1606,6 +1674,15 @@
           <p id="detailProject" style="color:var(--text-muted);font-size:13px;">-</p>
         </div>
       </div>
+      <div class="form-group" style="margin:16px 0;">
+        <label>Locatie (GPS)</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="text" id="detailLat" placeholder="Lat" style="flex:1;">
+          <input type="text" id="detailLng" placeholder="Lng" style="flex:1;">
+          <button type="button" class="btn-secondary" onclick="getDetailMeldingLocation()" style="white-space:nowrap;">📍 GPS bijwerken</button>
+        </div>
+        <p id="detailLocationLink" style="font-size:11px;color:var(--accent);margin-top:4px;"></p>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0;">
         <div>
           <label style="display:block;font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">Foto voor</label>
@@ -1637,6 +1714,7 @@
   <!-- ═══════ LEAFLET JS ═══════ -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
   <!-- ═══════ jsPDF voor rapportage ═══════ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
@@ -1678,7 +1756,8 @@
         uitnodigingen: 'Uitnodigingen', naam: 'Naam', email: 'E-mail', rol: 'Rol',
         status: 'Status', laatste_login: 'Laatste login', actief: 'Actief', inactief: 'Inactief',
         geen_gebruikers: 'Geen gebruikers gevonden', laden: 'Laden...',
-        gebruikers_laden: 'Gebruikers laden...', nooit: 'Nooit',
+        gebruikers_laden: 'Gebruikers laden...', nooit: 'Nooit', acties: 'Acties',
+        deactiveer: 'Deactiveren', bevestig_deactiveer: 'Weet je zeker dat je {name} wilt deactiveren?', gebruiker_gedeactiveerd: '{name} is gedeactiveerd.',
         min_geleden: 'min geleden', uur_geleden: 'uur geleden', gisteren: 'Gisteren',
         dagen_geleden: 'dagen geleden',
         // Invite modal
@@ -1756,6 +1835,120 @@
         contractor_opt: 'Aannemer — Meldingen afronden & status wijzigen',
         manager_opt: 'Projectleider — Projecten beheren, rapportages & teamoverzicht',
         admin_opt: 'Beheerder — Volledige toegang, gebruikers & instellingen',
+        // Page subtitles
+        projecten_subtitle: 'Beheer je projecten en werkgebieden.',
+        meldingen_subtitle: 'Bekijk en beheer alle meldingen uit het veld.',
+        kaart_subtitle: 'Bekijk projecten en meldingen op de kaart.',
+        gebruikers_subtitle: 'Beheer de gebruikers van je organisatie.',
+        instellingen_subtitle: 'Organisatie instellingen en account informatie.',
+        admin_subtitle: 'Alle bedrijven en gebruikers op het platform.',
+        // Dashboard chart descriptions
+        nieuw_vs_opgelost: 'Nieuw vs opgelost per maand',
+        alle_actieve_meldingen: 'Alle actieve meldingen',
+        totaaloverzicht_projecten: 'Totaaloverzicht alle projecten',
+        open_meldingen_chart: 'Open meldingen',
+        gem_oplostijd: 'Gem. oplostijd',
+        dagen: 'dagen',
+        alle_meldingen_link: 'Alle meldingen',
+        geen_recente_activiteit: 'Geen recente activiteit',
+        // Period selector
+        periode: 'Periode:',
+        alles: 'Alles',
+        maand_kiezen: 'Maand kiezen...',
+        tm: 't/m',
+        // Footer
+        alle_rechten: 'Alle rechten voorbehouden.',
+        // Project detail
+        terug: 'Terug',
+        projectgegevens: 'Projectgegevens',
+        bewerken: 'Bewerken',
+        projectgebied: 'Projectgebied',
+        grenzen_aanpassen: 'Grenzen aanpassen',
+        geen_omschrijving: 'Geen omschrijving',
+        geen_meldingen_project: 'Geen meldingen in dit project.',
+        // Project empty state
+        geen_projecten_desc: 'Je hebt nog geen projecten aangemaakt. Maak een nieuw project aan om te beginnen met registreren.',
+        // Meldingen empty state
+        geen_meldingen_desc: 'Registreer je eerste melding vanuit het veld. Voeg foto\'s, GPS-locatie en schadecategorie toe.',
+        // Rapportage panel
+        rapportage_genereren: 'Rapportage genereren',
+        exporteer_csv: 'Exporteer CSV',
+        exporteer_pdf: 'Exporteer PDF',
+        totaal: 'Totaal',
+        // Rapportage messages
+        selecteer_meldingen_filters: 'Selecteer meldingen of gebruik de filters',
+        csv_gedownload: 'CSV gedownload met',
+        pdf_gedownload: 'PDF rapport gedownload met',
+        // Invite table headers
+        verstuurd_op: 'Verstuurd op',
+        verloopt: 'Verloopt',
+        // Kaart legend
+        legenda: 'Legenda',
+        // Project modal
+        placeholder_projectnaam: 'bijv. N50 Kampen',
+        placeholder_omschrijving: 'Korte beschrijving van het project',
+        placeholder_gemeente: 'bijv. Amsterdam, Rotterdam',
+        // Melding modal
+        placeholder_titel: 'bijv. Scheur in wegdek',
+        placeholder_beschrijving: 'Beschrijf de melding',
+        // Project actions
+        project_opgeslagen: 'Project opgeslagen!',
+        project_aangemaakt: 'Project aangemaakt!',
+        bezig: 'Bezig...',
+        // Melding actions
+        melding_aangemaakt: 'Melding aangemaakt!',
+        melding_niet_gevonden: 'Melding niet gevonden',
+        onbekend: 'Onbekend',
+        // GPS
+        gps_niet_beschikbaar: 'GPS niet beschikbaar',
+        locatie_vastgelegd: 'Locatie vastgelegd',
+        kan_locatie_niet_ophalen: 'Kan locatie niet ophalen',
+        mijn_locatie: 'Mijn locatie',
+        gps_nauwkeurigheid: 'GPS nauwkeurigheid',
+        // Map layers
+        satelliet_labels: 'Satelliet + labels',
+        satelliet_puur: 'Satelliet (puur)',
+        // Project boundary dynamic
+        gebied_afgebakend: 'Projectgebied afgebakend!',
+        gebied_verwijderd: 'Projectgebied verwijderd. Teken opnieuw.',
+        gearchiveerd: 'Gearchiveerd',
+        // Map prompt
+        sla_gebied_op: 'Sla projectgebied op voor welk project?',
+        typ_nummer: 'Typ het nummer:',
+        maak_eerst_project: 'Maak eerst een project aan om een gebied op te slaan.',
+        gebied_opgeslagen: 'Projectgebied opgeslagen voor',
+        // Months full
+        januari:'Januari',februari:'Februari',maart:'Maart',april:'April',mei_full:'Mei',juni:'Juni',
+        juli:'Juli',augustus:'Augustus',september:'September',oktober:'Oktober',november:'November',december:'December',
+        // Rapportage/PDF labels
+        meldingen_overzicht: 'Meldingen overzicht',
+        gegenereerd: 'Gegenereerd',
+        totaal_meldingen_label: 'Totaal meldingen:',
+        top_categorieen: 'Top categorieën',
+        geen_categorie: 'Geen categorie',
+        zonder_titel: 'Zonder titel',
+        aangemaakt_label: 'Aangemaakt:',
+        door: 'Door:',
+        gps_locatie: 'GPS LOCATIE',
+        coordinaten: 'Coordinaten:',
+        geen_locatie: 'Geen locatie opgegeven',
+        fotos: "FOTO'S",
+        foto_voor_schade: 'Foto voor schade: Beschikbaar in portaal',
+        foto_na_herstel: 'Foto na herstel: Beschikbaar in portaal',
+        geen_fotos: 'Geen fotos beschikbaar',
+        melding_id: 'Melding ID:',
+        pagina: 'Pagina',
+        van_pagina: 'van',
+        pdf_mislukt: 'PDF generatie mislukt:',
+        // Role descriptions
+        viewer_desc: 'Heeft alleen leesrechten. Kan projectvoortgang en meldingen bekijken, maar niets aanmaken of wijzigen. Ideaal voor klanten en opdrachtgevers die inzicht willen in de status.',
+        inspector_desc: 'Kan meldingen aanmaken met foto\'s, GPS en categorieën. Kan geen statussen wijzigen of meldingen afronden. Geschikt voor inspecteurs en schouwmeesters.',
+        technician_desc: 'Kan meldingen aanmaken en eigen meldingen bewerken. Veldregistratie met GPS, foto\'s en schadecategorieën. Voor medewerkers op de bouwplaats.',
+        contractor_desc: 'Kan meldingen afronden en statussen wijzigen (In behandeling → Opgelost). Kan geen nieuwe meldingen aanmaken. Voor uitvoerende aannemers.',
+        manager_desc: 'Kan projecten aanmaken en beheren, meldingen toewijzen, rapportages bekijken en teamleden overzien. Volledige operationele controle.',
+        admin_desc: 'Volledige toegang tot het platform. Gebruikers beheren, uitnodigen en verwijderen. Organisatie-instellingen en facturatie. Alleen voor platformbeheerders.',
+        projectgebied_label: 'Projectgebied',
+        project_modal_subtitle: 'Vul de gegevens in en teken het projectgebied op de kaart.',
       },
       en: {
         dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
@@ -1781,7 +1974,8 @@
         uitnodigingen: 'Invitations', naam: 'Name', email: 'Email', rol: 'Role',
         status: 'Status', laatste_login: 'Last login', actief: 'Active', inactief: 'Inactive',
         geen_gebruikers: 'No users found', laden: 'Loading...',
-        gebruikers_laden: 'Loading users...', nooit: 'Never',
+        gebruikers_laden: 'Loading users...', nooit: 'Never', acties: 'Actions',
+        deactiveer: 'Deactivate', bevestig_deactiveer: 'Are you sure you want to deactivate {name}?', gebruiker_gedeactiveerd: '{name} has been deactivated.',
         min_geleden: 'min ago', uur_geleden: 'hours ago', gisteren: 'Yesterday',
         dagen_geleden: 'days ago',
         stuur_uitnodiging: 'Send an invitation to a new team member.',
@@ -1843,6 +2037,98 @@
         contractor_opt: 'Contractor — Complete reports & change status',
         manager_opt: 'Project manager — Manage projects, reports & team overview',
         admin_opt: 'Administrator — Full access, users & settings',
+        projecten_subtitle: 'Manage your projects and work areas.',
+        meldingen_subtitle: 'View and manage all field reports.',
+        kaart_subtitle: 'View projects and reports on the map.',
+        gebruikers_subtitle: 'Manage the users in your organization.',
+        instellingen_subtitle: 'Organization settings and account information.',
+        admin_subtitle: 'All companies and users on the platform.',
+        nieuw_vs_opgelost: 'New vs resolved per month',
+        alle_actieve_meldingen: 'All active reports',
+        totaaloverzicht_projecten: 'Overview across all projects',
+        open_meldingen_chart: 'Open reports',
+        gem_oplostijd: 'Avg. resolution time',
+        dagen: 'days',
+        alle_meldingen_link: 'All reports',
+        geen_recente_activiteit: 'No recent activity',
+        periode: 'Period:',
+        alles: 'All',
+        maand_kiezen: 'Select month...',
+        tm: 'to',
+        alle_rechten: 'All rights reserved.',
+        terug: 'Back',
+        projectgegevens: 'Project details',
+        bewerken: 'Edit',
+        projectgebied: 'Project area',
+        grenzen_aanpassen: 'Adjust boundaries',
+        geen_omschrijving: 'No description',
+        geen_meldingen_project: 'No reports in this project.',
+        geen_projecten_desc: 'You have not created any projects yet. Create a new project to start registering.',
+        geen_meldingen_desc: 'Register your first report from the field. Add photos, GPS location and damage category.',
+        rapportage_genereren: 'Generate report',
+        exporteer_csv: 'Export CSV',
+        exporteer_pdf: 'Export PDF',
+        totaal: 'Total',
+        selecteer_meldingen_filters: 'Select reports or use the filters',
+        csv_gedownload: 'CSV downloaded with',
+        pdf_gedownload: 'PDF report downloaded with',
+        verstuurd_op: 'Sent on',
+        verloopt: 'Expires',
+        legenda: 'Legend',
+        placeholder_projectnaam: 'e.g. N50 Kampen',
+        placeholder_omschrijving: 'Brief description of the project',
+        placeholder_gemeente: 'e.g. Amsterdam, Rotterdam',
+        placeholder_titel: 'e.g. Crack in road surface',
+        placeholder_beschrijving: 'Describe the report',
+        project_opgeslagen: 'Project saved!',
+        project_aangemaakt: 'Project created!',
+        bezig: 'Working...',
+        melding_aangemaakt: 'Report created!',
+        melding_niet_gevonden: 'Report not found',
+        onbekend: 'Unknown',
+        gps_niet_beschikbaar: 'GPS not available',
+        locatie_vastgelegd: 'Location recorded',
+        kan_locatie_niet_ophalen: 'Cannot retrieve location',
+        mijn_locatie: 'My location',
+        gps_nauwkeurigheid: 'GPS accuracy',
+        satelliet_labels: 'Satellite + labels',
+        satelliet_puur: 'Satellite (pure)',
+        gebied_afgebakend: 'Project area defined!',
+        gebied_verwijderd: 'Project area removed. Draw again.',
+        gearchiveerd: 'Archived',
+        sla_gebied_op: 'Save project area for which project?',
+        typ_nummer: 'Enter the number:',
+        maak_eerst_project: 'Create a project first to save an area.',
+        gebied_opgeslagen: 'Project area saved for',
+        januari:'January',februari:'February',maart:'March',april:'April',mei_full:'May',juni:'June',
+        juli:'July',augustus:'August',september:'September',oktober:'October',november:'November',december:'December',
+        meldingen_overzicht: 'Reports overview',
+        gegenereerd: 'Generated',
+        totaal_meldingen_label: 'Total reports:',
+        top_categorieen: 'Top categories',
+        geen_categorie: 'No category',
+        zonder_titel: 'Untitled',
+        aangemaakt_label: 'Created:',
+        door: 'By:',
+        gps_locatie: 'GPS LOCATION',
+        coordinaten: 'Coordinates:',
+        geen_locatie: 'No location provided',
+        fotos: 'PHOTOS',
+        foto_voor_schade: 'Photo before damage: Available in portal',
+        foto_na_herstel: 'Photo after repair: Available in portal',
+        geen_fotos: 'No photos available',
+        melding_id: 'Report ID:',
+        pagina: 'Page',
+        van_pagina: 'of',
+        pdf_mislukt: 'PDF generation failed:',
+        viewer_desc: 'View-only access. Can view project progress and reports, but cannot create or edit anything. Ideal for clients who want insight into the status.',
+        inspector_desc: 'Can create reports with photos, GPS and categories. Cannot change statuses or complete reports. Suitable for inspectors and surveyors.',
+        technician_desc: 'Can create and edit own reports. Field registration with GPS, photos and damage categories. For on-site workers.',
+        contractor_desc: 'Can complete reports and change statuses (In progress to Resolved). Cannot create new reports. For contractors.',
+        manager_desc: 'Can create and manage projects, assign reports, view reporting and oversee team members. Full operational control.',
+        admin_desc: 'Full platform access. Manage, invite and remove users. Organization settings and billing. For platform administrators only.',
+        projectgebied_label: 'Project area',
+        project_modal_subtitle: 'Fill in the details and draw the project area on the map.',
       },
       de: {
         dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
@@ -1868,7 +2154,8 @@
         uitnodigingen: 'Einladungen', naam: 'Name', email: 'E-Mail', rol: 'Rolle',
         status: 'Status', laatste_login: 'Letzter Login', actief: 'Aktiv', inactief: 'Inaktiv',
         geen_gebruikers: 'Keine Benutzer gefunden', laden: 'Laden...',
-        gebruikers_laden: 'Benutzer laden...', nooit: 'Nie',
+        gebruikers_laden: 'Benutzer laden...', nooit: 'Nie', acties: 'Aktionen',
+        deactiveer: 'Deaktivieren', bevestig_deactiveer: 'Sind Sie sicher, dass Sie {name} deaktivieren möchten?', gebruiker_gedeactiveerd: '{name} wurde deaktiviert.',
         min_geleden: 'Min. her', uur_geleden: 'Std. her', gisteren: 'Gestern',
         dagen_geleden: 'Tage her',
         stuur_uitnodiging: 'Senden Sie eine Einladung an ein neues Teammitglied.',
@@ -1930,6 +2217,98 @@
         contractor_opt: 'Auftragnehmer — Meldungen abschließen & Status ändern',
         manager_opt: 'Projektleiter — Projekte verwalten, Berichte & Teamübersicht',
         admin_opt: 'Administrator — Vollzugriff, Benutzer & Einstellungen',
+        projecten_subtitle: 'Verwalten Sie Ihre Projekte und Arbeitsbereiche.',
+        meldingen_subtitle: 'Alle Meldungen aus dem Feld anzeigen und verwalten.',
+        kaart_subtitle: 'Projekte und Meldungen auf der Karte anzeigen.',
+        gebruikers_subtitle: 'Benutzer Ihrer Organisation verwalten.',
+        instellingen_subtitle: 'Organisationseinstellungen und Kontoinformationen.',
+        admin_subtitle: 'Alle Unternehmen und Benutzer auf der Plattform.',
+        nieuw_vs_opgelost: 'Neu vs gelöst pro Monat',
+        alle_actieve_meldingen: 'Alle aktiven Meldungen',
+        totaaloverzicht_projecten: 'Gesamtübersicht aller Projekte',
+        open_meldingen_chart: 'Offene Meldungen',
+        gem_oplostijd: 'Durchschn. Lösungszeit',
+        dagen: 'Tage',
+        alle_meldingen_link: 'Alle Meldungen',
+        geen_recente_activiteit: 'Keine aktuelle Aktivität',
+        periode: 'Zeitraum:',
+        alles: 'Alle',
+        maand_kiezen: 'Monat wählen...',
+        tm: 'bis',
+        alle_rechten: 'Alle Rechte vorbehalten.',
+        terug: 'Zurück',
+        projectgegevens: 'Projektdaten',
+        bewerken: 'Bearbeiten',
+        projectgebied: 'Projektgebiet',
+        grenzen_aanpassen: 'Grenzen anpassen',
+        geen_omschrijving: 'Keine Beschreibung',
+        geen_meldingen_project: 'Keine Meldungen in diesem Projekt.',
+        geen_projecten_desc: 'Sie haben noch keine Projekte erstellt. Erstellen Sie ein neues Projekt, um mit der Registrierung zu beginnen.',
+        geen_meldingen_desc: 'Registrieren Sie Ihre erste Meldung aus dem Feld. Fügen Sie Fotos, GPS-Standort und Schadenskategorie hinzu.',
+        rapportage_genereren: 'Bericht erstellen',
+        exporteer_csv: 'CSV exportieren',
+        exporteer_pdf: 'PDF exportieren',
+        totaal: 'Gesamt',
+        selecteer_meldingen_filters: 'Meldungen auswählen oder Filter verwenden',
+        csv_gedownload: 'CSV heruntergeladen mit',
+        pdf_gedownload: 'PDF-Bericht heruntergeladen mit',
+        verstuurd_op: 'Gesendet am',
+        verloopt: 'Läuft ab',
+        legenda: 'Legende',
+        placeholder_projectnaam: 'z.B. A1 Berlin',
+        placeholder_omschrijving: 'Kurze Beschreibung des Projekts',
+        placeholder_gemeente: 'z.B. Berlin, München',
+        placeholder_titel: 'z.B. Riss in der Fahrbahn',
+        placeholder_beschrijving: 'Beschreiben Sie die Meldung',
+        project_opgeslagen: 'Projekt gespeichert!',
+        project_aangemaakt: 'Projekt erstellt!',
+        bezig: 'Wird verarbeitet...',
+        melding_aangemaakt: 'Meldung erstellt!',
+        melding_niet_gevonden: 'Meldung nicht gefunden',
+        onbekend: 'Unbekannt',
+        gps_niet_beschikbaar: 'GPS nicht verfügbar',
+        locatie_vastgelegd: 'Standort erfasst',
+        kan_locatie_niet_ophalen: 'Standort kann nicht abgerufen werden',
+        mijn_locatie: 'Mein Standort',
+        gps_nauwkeurigheid: 'GPS-Genauigkeit',
+        satelliet_labels: 'Satellit + Beschriftung',
+        satelliet_puur: 'Satellit (pur)',
+        gebied_afgebakend: 'Projektgebiet festgelegt!',
+        gebied_verwijderd: 'Projektgebiet entfernt. Erneut zeichnen.',
+        gearchiveerd: 'Archiviert',
+        sla_gebied_op: 'Projektgebiet speichern für welches Projekt?',
+        typ_nummer: 'Nummer eingeben:',
+        maak_eerst_project: 'Erstellen Sie zuerst ein Projekt, um ein Gebiet zu speichern.',
+        gebied_opgeslagen: 'Projektgebiet gespeichert für',
+        januari:'Januar',februari:'Februar',maart:'März',april:'April',mei_full:'Mai',juni:'Juni',
+        juli:'Juli',augustus:'August',september:'September',oktober:'Oktober',november:'November',december:'Dezember',
+        meldingen_overzicht: 'Meldungsübersicht',
+        gegenereerd: 'Erstellt am',
+        totaal_meldingen_label: 'Gesamt Meldungen:',
+        top_categorieen: 'Top Kategorien',
+        geen_categorie: 'Keine Kategorie',
+        zonder_titel: 'Ohne Titel',
+        aangemaakt_label: 'Erstellt:',
+        door: 'Von:',
+        gps_locatie: 'GPS-STANDORT',
+        coordinaten: 'Koordinaten:',
+        geen_locatie: 'Kein Standort angegeben',
+        fotos: 'FOTOS',
+        foto_voor_schade: 'Foto vor Schaden: Im Portal verfügbar',
+        foto_na_herstel: 'Foto nach Reparatur: Im Portal verfügbar',
+        geen_fotos: 'Keine Fotos verfügbar',
+        melding_id: 'Meldungs-ID:',
+        pagina: 'Seite',
+        van_pagina: 'von',
+        pdf_mislukt: 'PDF-Erstellung fehlgeschlagen:',
+        viewer_desc: 'Nur Leserechte. Kann Projektfortschritt und Meldungen einsehen, aber nichts erstellen oder bearbeiten. Ideal für Auftraggeber.',
+        inspector_desc: 'Kann Meldungen mit Fotos, GPS und Kategorien erstellen. Kann keine Status ändern oder Meldungen abschließen. Für Inspektoren geeignet.',
+        technician_desc: 'Kann Meldungen erstellen und eigene bearbeiten. Feldregistrierung mit GPS, Fotos und Schadenskategorien. Für Mitarbeiter vor Ort.',
+        contractor_desc: 'Kann Meldungen abschließen und Status ändern (In Bearbeitung → Gelöst). Kann keine neuen Meldungen erstellen. Für Auftragnehmer.',
+        manager_desc: 'Kann Projekte erstellen und verwalten, Meldungen zuweisen, Berichte einsehen und Team überwachen. Volle operative Kontrolle.',
+        admin_desc: 'Vollzugriff auf die Plattform. Benutzer verwalten, einladen und entfernen. Organisationseinstellungen und Abrechnung. Nur für Plattformadministratoren.',
+        projectgebied_label: 'Projektgebiet',
+        project_modal_subtitle: 'Füllen Sie die Daten aus und zeichnen Sie das Projektgebiet auf der Karte.',
       },
       fr: {
         dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
@@ -1955,7 +2334,8 @@
         uitnodigingen: 'Invitations', naam: 'Nom', email: 'E-mail', rol: 'Rôle',
         status: 'Statut', laatste_login: 'Dernière connexion', actief: 'Actif', inactief: 'Inactif',
         geen_gebruikers: 'Aucun utilisateur trouvé', laden: 'Chargement...',
-        gebruikers_laden: 'Chargement des utilisateurs...', nooit: 'Jamais',
+        gebruikers_laden: 'Chargement des utilisateurs...', nooit: 'Jamais', acties: 'Actions',
+        deactiveer: 'Désactiver', bevestig_deactiveer: 'Êtes-vous sûr de vouloir désactiver {name} ?', gebruiker_gedeactiveerd: '{name} a été désactivé(e).',
         min_geleden: 'min', uur_geleden: 'h', gisteren: 'Hier',
         dagen_geleden: 'jours',
         stuur_uitnodiging: 'Envoyez une invitation à un nouveau membre.',
@@ -2017,6 +2397,98 @@
         contractor_opt: 'Entrepreneur — Terminer les signalements & changer le statut',
         manager_opt: 'Chef de projet — Gérer les projets, rapports & vue d\'équipe',
         admin_opt: 'Administrateur — Accès complet, utilisateurs & paramètres',
+        projecten_subtitle: 'Gérez vos projets et zones de travail.',
+        meldingen_subtitle: 'Consultez et gérez tous les signalements du terrain.',
+        kaart_subtitle: 'Visualisez les projets et signalements sur la carte.',
+        gebruikers_subtitle: 'Gérez les utilisateurs de votre organisation.',
+        instellingen_subtitle: 'Paramètres de l\'organisation et informations du compte.',
+        admin_subtitle: 'Toutes les entreprises et utilisateurs sur la plateforme.',
+        nieuw_vs_opgelost: 'Nouveaux vs résolus par mois',
+        alle_actieve_meldingen: 'Tous les signalements actifs',
+        totaaloverzicht_projecten: 'Vue d\'ensemble de tous les projets',
+        open_meldingen_chart: 'Signalements ouverts',
+        gem_oplostijd: 'Temps de résolution moy.',
+        dagen: 'jours',
+        alle_meldingen_link: 'Tous les signalements',
+        geen_recente_activiteit: 'Aucune activité récente',
+        periode: 'Période :',
+        alles: 'Tout',
+        maand_kiezen: 'Choisir un mois...',
+        tm: 'au',
+        alle_rechten: 'Tous droits réservés.',
+        terug: 'Retour',
+        projectgegevens: 'Détails du projet',
+        bewerken: 'Modifier',
+        projectgebied: 'Zone du projet',
+        grenzen_aanpassen: 'Ajuster les limites',
+        geen_omschrijving: 'Pas de description',
+        geen_meldingen_project: 'Aucun signalement dans ce projet.',
+        geen_projecten_desc: 'Vous n\'avez pas encore créé de projets. Créez un nouveau projet pour commencer l\'enregistrement.',
+        geen_meldingen_desc: 'Enregistrez votre premier signalement du terrain. Ajoutez des photos, la localisation GPS et la catégorie de dommage.',
+        rapportage_genereren: 'Générer un rapport',
+        exporteer_csv: 'Exporter CSV',
+        exporteer_pdf: 'Exporter PDF',
+        totaal: 'Total',
+        selecteer_meldingen_filters: 'Sélectionnez des signalements ou utilisez les filtres',
+        csv_gedownload: 'CSV téléchargé avec',
+        pdf_gedownload: 'Rapport PDF téléchargé avec',
+        verstuurd_op: 'Envoyé le',
+        verloopt: 'Expire',
+        legenda: 'Légende',
+        placeholder_projectnaam: 'ex. A1 Paris',
+        placeholder_omschrijving: 'Brève description du projet',
+        placeholder_gemeente: 'ex. Paris, Lyon',
+        placeholder_titel: 'ex. Fissure dans la chaussée',
+        placeholder_beschrijving: 'Décrivez le signalement',
+        project_opgeslagen: 'Projet enregistré !',
+        project_aangemaakt: 'Projet créé !',
+        bezig: 'En cours...',
+        melding_aangemaakt: 'Signalement créé !',
+        melding_niet_gevonden: 'Signalement introuvable',
+        onbekend: 'Inconnu',
+        gps_niet_beschikbaar: 'GPS non disponible',
+        locatie_vastgelegd: 'Localisation enregistrée',
+        kan_locatie_niet_ophalen: 'Impossible de récupérer la localisation',
+        mijn_locatie: 'Ma position',
+        gps_nauwkeurigheid: 'Précision GPS',
+        satelliet_labels: 'Satellite + étiquettes',
+        satelliet_puur: 'Satellite (pur)',
+        gebied_afgebakend: 'Zone du projet définie !',
+        gebied_verwijderd: 'Zone du projet supprimée. Redessinez.',
+        gearchiveerd: 'Archivé',
+        sla_gebied_op: 'Enregistrer la zone pour quel projet ?',
+        typ_nummer: 'Entrez le numéro :',
+        maak_eerst_project: 'Créez d\'abord un projet pour enregistrer une zone.',
+        gebied_opgeslagen: 'Zone du projet enregistrée pour',
+        januari:'Janvier',februari:'Février',maart:'Mars',april:'Avril',mei_full:'Mai',juni:'Juin',
+        juli:'Juillet',augustus:'Août',september:'Septembre',oktober:'Octobre',november:'Novembre',december:'Décembre',
+        meldingen_overzicht: 'Aperçu des signalements',
+        gegenereerd: 'Généré le',
+        totaal_meldingen_label: 'Total signalements :',
+        top_categorieen: 'Top catégories',
+        geen_categorie: 'Pas de catégorie',
+        zonder_titel: 'Sans titre',
+        aangemaakt_label: 'Créé le :',
+        door: 'Par :',
+        gps_locatie: 'LOCALISATION GPS',
+        coordinaten: 'Coordonnées :',
+        geen_locatie: 'Aucune localisation fournie',
+        fotos: 'PHOTOS',
+        foto_voor_schade: 'Photo avant dommage : Disponible dans le portail',
+        foto_na_herstel: 'Photo après réparation : Disponible dans le portail',
+        geen_fotos: 'Aucune photo disponible',
+        melding_id: 'ID du signalement :',
+        pagina: 'Page',
+        van_pagina: 'de',
+        pdf_mislukt: 'Échec de la génération PDF :',
+        viewer_desc: 'Accès en lecture seule. Peut consulter l\'avancement des projets et les signalements, mais ne peut rien créer ni modifier. Idéal pour les clients.',
+        inspector_desc: 'Peut créer des signalements avec photos, GPS et catégories. Ne peut pas modifier les statuts ni clôturer les signalements. Pour les inspecteurs.',
+        technician_desc: 'Peut créer et modifier ses propres signalements. Enregistrement terrain avec GPS, photos et catégories de dommages. Pour le personnel sur site.',
+        contractor_desc: 'Peut clôturer les signalements et modifier les statuts (En cours → Résolu). Ne peut pas créer de nouveaux signalements. Pour les entrepreneurs.',
+        manager_desc: 'Peut créer et gérer des projets, assigner des signalements, consulter les rapports et superviser l\'équipe. Contrôle opérationnel complet.',
+        admin_desc: 'Accès complet à la plateforme. Gérer, inviter et supprimer des utilisateurs. Paramètres d\'organisation et facturation. Réservé aux administrateurs.',
+        projectgebied_label: 'Zone du projet',
+        project_modal_subtitle: 'Remplissez les détails et dessinez la zone du projet sur la carte.',
       },
       tr: {
         dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
@@ -2042,7 +2514,8 @@
         uitnodigingen: 'Davetiyeler', naam: 'Ad', email: 'E-posta', rol: 'Rol',
         status: 'Durum', laatste_login: 'Son giriş', actief: 'Aktif', inactief: 'Pasif',
         geen_gebruikers: 'Kullanıcı bulunamadı', laden: 'Yükleniyor...',
-        gebruikers_laden: 'Kullanıcılar yükleniyor...', nooit: 'Hiç',
+        gebruikers_laden: 'Kullanıcılar yükleniyor...', nooit: 'Hiç', acties: 'Eylemler',
+        deactiveer: 'Devre dışı bırak', bevestig_deactiveer: '{name} kullanıcısını devre dışı bırakmak istediğinizden emin misiniz?', gebruiker_gedeactiveerd: '{name} devre dışı bırakıldı.',
         min_geleden: 'dk önce', uur_geleden: 'saat önce', gisteren: 'Dün',
         dagen_geleden: 'gün önce',
         stuur_uitnodiging: 'Yeni bir ekip üyesine davetiye gönderin.',
@@ -2104,6 +2577,98 @@
         contractor_opt: 'Müteahhit — Bildirim tamamlama ve durum değiştirme',
         manager_opt: 'Proje yöneticisi — Proje, rapor ve ekip yönetimi',
         admin_opt: 'Yönetici — Tam erişim, kullanıcılar ve ayarlar',
+        projecten_subtitle: 'Projelerinizi ve çalışma alanlarınızı yönetin.',
+        meldingen_subtitle: 'Sahadan gelen tüm bildirimleri görüntüleyin ve yönetin.',
+        kaart_subtitle: 'Projeleri ve bildirimleri haritada görüntüleyin.',
+        gebruikers_subtitle: 'Organizasyonunuzdaki kullanıcıları yönetin.',
+        instellingen_subtitle: 'Organizasyon ayarları ve hesap bilgileri.',
+        admin_subtitle: 'Platformdaki tüm şirketler ve kullanıcılar.',
+        nieuw_vs_opgelost: 'Yeni ve çözülen - aylık',
+        alle_actieve_meldingen: 'Tüm aktif bildirimler',
+        totaaloverzicht_projecten: 'Tüm projelerin genel görünümü',
+        open_meldingen_chart: 'Açık bildirimler',
+        gem_oplostijd: 'Ort. çözüm süresi',
+        dagen: 'gün',
+        alle_meldingen_link: 'Tüm bildirimler',
+        geen_recente_activiteit: 'Son aktivite yok',
+        periode: 'Dönem:',
+        alles: 'Tümü',
+        maand_kiezen: 'Ay seçin...',
+        tm: 'ile',
+        alle_rechten: 'Tüm hakları saklıdır.',
+        terug: 'Geri',
+        projectgegevens: 'Proje bilgileri',
+        bewerken: 'Düzenle',
+        projectgebied: 'Proje alanı',
+        grenzen_aanpassen: 'Sınırları düzenle',
+        geen_omschrijving: 'Açıklama yok',
+        geen_meldingen_project: 'Bu projede bildirim yok.',
+        geen_projecten_desc: 'Henüz proje oluşturmadınız. Kayıt işlemine başlamak için yeni bir proje oluşturun.',
+        geen_meldingen_desc: 'Sahadan ilk bildiriminizi kaydedin. Fotoğraf, GPS konumu ve hasar kategorisi ekleyin.',
+        rapportage_genereren: 'Rapor oluştur',
+        exporteer_csv: 'CSV dışa aktar',
+        exporteer_pdf: 'PDF dışa aktar',
+        totaal: 'Toplam',
+        selecteer_meldingen_filters: 'Bildirim seçin veya filtreleri kullanın',
+        csv_gedownload: 'CSV indirildi,',
+        pdf_gedownload: 'PDF rapor indirildi,',
+        verstuurd_op: 'Gönderilme tarihi',
+        verloopt: 'Son kullanma',
+        legenda: 'Gösterge',
+        placeholder_projectnaam: 'örn. E5 İstanbul',
+        placeholder_omschrijving: 'Projenin kısa açıklaması',
+        placeholder_gemeente: 'örn. İstanbul, Ankara',
+        placeholder_titel: 'örn. Yol yüzeyinde çatlak',
+        placeholder_beschrijving: 'Bildirimi açıklayın',
+        project_opgeslagen: 'Proje kaydedildi!',
+        project_aangemaakt: 'Proje oluşturuldu!',
+        bezig: 'İşleniyor...',
+        melding_aangemaakt: 'Bildirim oluşturuldu!',
+        melding_niet_gevonden: 'Bildirim bulunamadı',
+        onbekend: 'Bilinmiyor',
+        gps_niet_beschikbaar: 'GPS kullanılamıyor',
+        locatie_vastgelegd: 'Konum kaydedildi',
+        kan_locatie_niet_ophalen: 'Konum alınamıyor',
+        mijn_locatie: 'Konumum',
+        gps_nauwkeurigheid: 'GPS doğruluğu',
+        satelliet_labels: 'Uydu + etiketler',
+        satelliet_puur: 'Uydu (sade)',
+        gebied_afgebakend: 'Proje alanı belirlendi!',
+        gebied_verwijderd: 'Proje alanı silindi. Tekrar çizin.',
+        gearchiveerd: 'Arşivlendi',
+        sla_gebied_op: 'Proje alanını hangi proje için kaydedin?',
+        typ_nummer: 'Numarayı girin:',
+        maak_eerst_project: 'Bir alan kaydetmek için önce bir proje oluşturun.',
+        gebied_opgeslagen: 'Proje alanı kaydedildi:',
+        januari:'Ocak',februari:'Şubat',maart:'Mart',april:'Nisan',mei_full:'Mayıs',juni:'Haziran',
+        juli:'Temmuz',augustus:'Ağustos',september:'Eylül',oktober:'Ekim',november:'Kasım',december:'Aralık',
+        meldingen_overzicht: 'Bildirim genel bakışı',
+        gegenereerd: 'Oluşturulma tarihi',
+        totaal_meldingen_label: 'Toplam bildirimler:',
+        top_categorieen: 'En çok kategoriler',
+        geen_categorie: 'Kategori yok',
+        zonder_titel: 'Başlıksız',
+        aangemaakt_label: 'Oluşturulma:',
+        door: 'Tarafından:',
+        gps_locatie: 'GPS KONUMU',
+        coordinaten: 'Koordinatlar:',
+        geen_locatie: 'Konum belirtilmedi',
+        fotos: 'FOTOĞRAFLAR',
+        foto_voor_schade: 'Hasar öncesi fotoğraf: Portalda mevcut',
+        foto_na_herstel: 'Onarım sonrası fotoğraf: Portalda mevcut',
+        geen_fotos: 'Fotoğraf yok',
+        melding_id: 'Bildirim ID:',
+        pagina: 'Sayfa',
+        van_pagina: '/',
+        pdf_mislukt: 'PDF oluşturma başarısız:',
+        viewer_desc: 'Sadece okuma erişimi. Proje ilerlemesini ve bildirimleri görüntüleyebilir, ancak oluşturamaz veya düzenleyemez. Müşteriler için ideal.',
+        inspector_desc: 'Fotoğraf, GPS ve kategorilerle bildirim oluşturabilir. Durum değiştiremez veya bildirimleri kapatamaz. Denetçiler için uygundur.',
+        technician_desc: 'Bildirim oluşturabilir ve kendi bildirimlerini düzenleyebilir. GPS, fotoğraf ve hasar kategorileriyle saha kaydı. Saha çalışanları için.',
+        contractor_desc: 'Bildirimleri tamamlayabilir ve durumları değiştirebilir (İşleniyor → Çözüldü). Yeni bildirim oluşturamaz. Müteahhitler için.',
+        manager_desc: 'Proje oluşturabilir ve yönetebilir, bildirim atayabilir, raporları görüntüleyebilir ve ekibi denetleyebilir. Tam operasyonel kontrol.',
+        admin_desc: 'Platforma tam erişim. Kullanıcı yönetimi, davet ve silme. Organizasyon ayarları ve faturalandırma. Sadece platform yöneticileri için.',
+        projectgebied_label: 'Proje alanı',
+        project_modal_subtitle: 'Bilgileri doldurun ve proje alanını haritada çizin.',
       }
     };
 
@@ -2116,6 +2681,11 @@
       currentLang = lang;
       localStorage.setItem('fieldops_lang', lang);
       document.documentElement.lang = lang === 'nl' ? 'nl' : lang === 'de' ? 'de' : lang === 'fr' ? 'fr' : lang === 'tr' ? 'tr' : 'en';
+      // Sync both lang switchers
+      var topSwitcher = document.getElementById('langSwitcher');
+      var sideSwitcher = document.getElementById('sidebarLangSwitcher');
+      if (topSwitcher) topSwitcher.value = lang;
+      if (sideSwitcher) sideSwitcher.value = lang;
       translatePage();
     }
 
@@ -2160,11 +2730,20 @@
       var logoutBtn = document.querySelector('.btn-logout');
       if (logoutBtn) logoutBtn.textContent = t('uitloggen');
 
+      // Sidebar loading text
+      var sideLoad = document.getElementById('sidebarLoadingText');
+      if (sideLoad && sideLoad.textContent.match(/laden/i)) sideLoad.textContent = t('laden');
+
       // ── Dashboard ──
       var dashSub = document.querySelector('#page-dashboard .page-header p');
       if (dashSub) dashSub.textContent = t('overzicht_subtitle');
       var newMeldBtn = document.querySelector('#page-dashboard .btn-primary');
       if (newMeldBtn) newMeldBtn.textContent = t('nieuwe_melding');
+      // Realtime label
+      var rtLabel = document.getElementById('realtimeLabel');
+      if (rtLabel) rtLabel.textContent = t('realtime') + ' \u00B7 ' + t('laatst_bijgewerkt') + ':';
+      var lastUpd = document.getElementById('lastUpdated');
+      if (lastUpd) lastUpd.textContent = t('zojuist');
 
       // Stat labels
       var statLabels = document.querySelectorAll('#page-dashboard .dash-stat-grid .stat-label');
@@ -2174,36 +2753,185 @@
       // Dashboard card headers
       document.querySelectorAll('#page-dashboard .card-header h3').forEach(function(el) {
         var txt = el.textContent.trim();
-        if (txt.match(/prioriteit/i)) el.textContent = t('prioriteit_verdeling');
-        else if (txt.match(/categori/i)) el.textContent = t('categorie_top');
-        else if (txt.match(/status/i)) el.textContent = t('status_verdeling');
+        if (txt.match(/prioriteit|priority|priorität|priorité|öncelik/i)) el.textContent = t('prioriteit_verdeling');
+        else if (txt.match(/categori|kategori|catégori/i)) el.textContent = t('categorie_top');
+        else if (txt.match(/status|durum/i)) el.textContent = t('status_verdeling');
         else if (txt.match(/trend/i)) el.textContent = t('meldingen_trend');
-        else if (txt.match(/project/i)) el.textContent = t('actieve_projecten');
-        else if (txt.match(/activiteit/i) || txt.match(/activity/i)) el.textContent = t('recente_activiteit');
+        else if (txt.match(/project|proje/i)) el.textContent = t('actieve_projecten');
+        else if (txt.match(/activiteit|activity|aktivit|activité/i)) el.textContent = t('recente_activiteit');
       });
+
+      // Dashboard chart sub-descriptions
+      document.querySelectorAll('#page-dashboard .card-header p').forEach(function(el) {
+        var txt = el.textContent.trim();
+        if (txt.match(/nieuw vs|new vs|neu vs|nouveaux vs|yeni ve/i)) el.textContent = t('nieuw_vs_opgelost');
+        else if (txt.match(/actieve meldingen|active report|aktiven meld|signalements actifs|aktif bildirim/i)) el.textContent = t('alle_actieve_meldingen');
+        else if (txt.match(/totaaloverzicht|overview across|gesamtübersicht|vue d'ensemble|genel görünümü/i)) el.textContent = t('totaaloverzicht_projecten');
+        else if (txt.match(/open meldingen|open report|offene meld|signalements ouvert|açık bildirim/i)) el.textContent = t('open_meldingen_chart');
+      });
+
+      // Dashboard chart legends (Nieuw / Opgelost)
+      document.querySelectorAll('#page-dashboard .card-header span').forEach(function(el) {
+        var txt = el.textContent.trim();
+        if (txt.match(/^nieuw$|^new$|^neu$|^nouveau$|^yeni$/i)) el.textContent = ' ' + t('nieuw_chart');
+        else if (txt.match(/^opgelost$|^resolved$|^gelöst$|^résolu$|^çözüldü$/i)) el.textContent = ' ' + t('opgelost_chart');
+      });
+
+      // Dashboard "Alle meldingen" link
+      var alleMeldingenLink = document.querySelector('#page-dashboard .card-header a[onclick*="meldingen"]');
+      if (alleMeldingenLink) alleMeldingenLink.innerHTML = t('alle_meldingen_link') + ' &rarr;';
+
+      // Dashboard empty activity
+      var activityEmpty = document.querySelector('#recentActivity .activity-empty p');
+      if (activityEmpty) activityEmpty.textContent = t('geen_recente_activiteit');
+
+      // Dashboard "Gem. oplostijd" and "Vandaag opgelost" labels
+      document.querySelectorAll('#page-dashboard span').forEach(function(el) {
+        var txt = el.textContent.trim();
+        if (txt.match(/^gem\. oplostijd|^avg\. resolution|^durchschn\. lösungszeit|^temps de résolution|^ort\. çözüm/i)) el.textContent = t('gem_oplostijd');
+        else if (txt.match(/^vandaag opgelost|^resolved today|^heute gelöst|^résolu aujourd|^bugün çözülen/i)) el.textContent = t('vandaag_opgelost');
+      });
+
+      // Period selector label
+      document.querySelectorAll('#page-dashboard span').forEach(function(el) {
+        if (el.textContent.trim().match(/^periode:|^period:|^zeitraum:|^période|^dönem:/i)) el.textContent = t('periode');
+      });
+
+      // Period "Alles" button
+      document.querySelectorAll('.period-btn').forEach(function(btn) {
+        if (btn.getAttribute('data-months') === '0') btn.textContent = t('alles');
+      });
+
+      // "t/m" label between date inputs
+      document.querySelectorAll('#page-dashboard span').forEach(function(el) {
+        if (el.textContent.trim().match(/^t\/m$|^to$|^bis$|^au$|^ile$/)) el.textContent = t('tm');
+      });
+
+      // Month selector placeholder
+      var dashMonthSel = document.getElementById('dashMonthSelect');
+      if (dashMonthSel && dashMonthSel.options[0]) dashMonthSel.options[0].textContent = t('maand_kiezen');
 
       // ── Projecten page ──
       var projHeader = document.querySelector('#page-projecten .page-header h1');
       if (projHeader) projHeader.textContent = t('projecten');
+      var projSub = document.querySelector('#page-projecten .page-header p');
+      if (projSub) projSub.textContent = t('projecten_subtitle');
       var projNewBtn = document.querySelector('#page-projecten .page-header .btn-primary');
       if (projNewBtn) projNewBtn.textContent = t('nieuw_project');
+      var projNoMeld = document.getElementById('projDetailNoMeldingen');
+      if (projNoMeld) projNoMeld.textContent = t('geen_meldingen_project');
+
+      // Projecten empty state
+      var projEmptyH3 = document.querySelector('#projectenEmpty h3');
+      if (projEmptyH3) projEmptyH3.textContent = t('geen_projecten');
+      var projEmptyP = document.querySelector('#projectenEmpty p');
+      if (projEmptyP) projEmptyP.textContent = t('geen_projecten_desc');
+      var projEmptyBtn = document.querySelector('#projectenEmpty .btn-primary');
+      if (projEmptyBtn) projEmptyBtn.textContent = t('eerste_project');
+
+      // Project detail
+      var projDetailBackBtn = document.querySelector('#projectDetail .btn-secondary[onclick*="closeProjectDetail"]');
+      if (projDetailBackBtn) projDetailBackBtn.innerHTML = '&#8592; ' + t('terug');
+      document.querySelectorAll('#projectDetail .card-header h3').forEach(function(el) {
+        var txt = el.textContent.trim();
+        if (txt.match(/projectgegevens|project details|projektdaten|détails du|proje bilgi/i)) el.textContent = t('projectgegevens');
+        else if (txt.match(/^meldingen$|^reports$|^meldungen$|^signalements$|^bildirimler$/i)) el.textContent = t('meldingen');
+        else if (txt.match(/projectgebied|project area|projektgebiet|zone du|proje alanı/i)) el.textContent = t('projectgebied');
+      });
+      var editProjBtn = document.querySelector('#projectDetail .btn-secondary[onclick*="editCurrentProject"]');
+      if (editProjBtn) editProjBtn.textContent = t('bewerken');
+      var editBoundaryBtn = document.getElementById('editBoundaryBtn');
+      if (editBoundaryBtn) editBoundaryBtn.textContent = t('grenzen_aanpassen');
+      var meldingInProjBtn = document.querySelector('#projectDetail .card-header .btn-primary[onclick*="openMeldingForProject"]');
+      if (meldingInProjBtn) meldingInProjBtn.textContent = '+ ' + t('meldingen');
+
+      // Project detail labels
+      document.querySelectorAll('#projectDetail label').forEach(function(lbl) {
+        var txt = lbl.textContent.trim();
+        if (txt.match(/^omschrijving|^description|^beschreibung|^açıklama$/i)) lbl.textContent = t('omschrijving');
+        else if (txt.match(/^gemeente|^municipality|^gemeinde|^commune|^belediye$/i)) lbl.textContent = t('gemeente');
+        else if (txt.match(/^aangemaakt|^created|^erstellt|^créé|^oluşturulma$/i)) lbl.textContent = t('aangemaakt');
+      });
 
       // ── Meldingen page ──
       var meldHeader = document.querySelector('#page-meldingen .page-header h1');
       if (meldHeader) meldHeader.textContent = t('meldingen');
+      var meldSub = document.querySelector('#page-meldingen .page-header p');
+      if (meldSub) meldSub.textContent = t('meldingen_subtitle');
       var meldNewBtn = document.querySelector('#page-meldingen .page-header .btn-primary');
       if (meldNewBtn) meldNewBtn.textContent = t('nieuwe_melding');
+      var rapBtn = document.querySelector('#page-meldingen .page-header .btn-secondary');
+      if (rapBtn) rapBtn.textContent = t('rapportage');
+
+      // Meldingen empty state
+      var meldEmptyH3 = document.querySelector('#meldingenEmpty h3');
+      if (meldEmptyH3) meldEmptyH3.textContent = t('geen_meldingen');
+      var meldEmptyP = document.querySelector('#meldingenEmpty p');
+      if (meldEmptyP) meldEmptyP.textContent = t('geen_meldingen_desc');
+      var meldEmptyBtn = document.querySelector('#meldingenEmpty .btn-primary');
+      if (meldEmptyBtn) meldEmptyBtn.textContent = t('eerste_melding');
 
       // Table headers for meldingen
       var meldThs = document.querySelectorAll('#page-meldingen .data-table th');
       var meldThKeys = [null, t('titel'), t('categorie'), t('prioriteit'), t('status'), t('project'), t('datum')];
       meldThs.forEach(function(th, i) { if (meldThKeys[i]) th.textContent = meldThKeys[i]; });
 
+      // ── Rapportage Panel ──
+      document.querySelectorAll('#rapportagePanel h3').forEach(function(el) {
+        if (el.textContent.match(/rapportage|reporting|bericht|rapport|raporlama|genereren|generate|erstellen|générer|oluştur/i)) el.textContent = t('rapportage_genereren');
+      });
+      document.querySelectorAll('#rapportagePanel .form-group label').forEach(function(lbl) {
+        var txt = lbl.textContent.trim();
+        if (txt.match(/^project|^projet|^projekt|^proje$/i)) lbl.textContent = t('project');
+        else if (txt.match(/^status|^statut|^durum$/i)) lbl.textContent = t('status');
+        else if (txt.match(/^van$|^from$|^von$|^de$|^başlangıç$/i)) lbl.textContent = t('van_datum');
+        else if (txt.match(/^tot$|^to$|^bis$|^à$|^bitiş$/i)) lbl.textContent = t('tot_datum');
+        else if (txt.match(/^prioriteit|^priority|^priorität|^priorité|^öncelik$/i)) lbl.textContent = t('prioriteit');
+        else if (txt.match(/^categori|^kategori|^catégori$/i)) lbl.textContent = t('categorie');
+      });
+      var rapProject = document.getElementById('rapProject');
+      if (rapProject && rapProject.options[0]) rapProject.options[0].textContent = t('alle_projecten');
+      var rapStatus = document.getElementById('rapStatus');
+      if (rapStatus) {
+        if (rapStatus.options[0]) rapStatus.options[0].textContent = t('alle_statussen');
+        if (rapStatus.options[1]) rapStatus.options[1].textContent = t('open');
+        if (rapStatus.options[2]) rapStatus.options[2].textContent = t('in_behandeling_status');
+        if (rapStatus.options[3]) rapStatus.options[3].textContent = t('gereed_uitvoering');
+        if (rapStatus.options[4]) rapStatus.options[4].textContent = t('in_uitvoering');
+        if (rapStatus.options[5]) rapStatus.options[5].textContent = t('opgelost_status');
+        if (rapStatus.options[6]) rapStatus.options[6].textContent = t('afgerond');
+      }
+      var rapPrioriteit = document.getElementById('rapPrioriteit');
+      if (rapPrioriteit) {
+        if (rapPrioriteit.options[0]) rapPrioriteit.options[0].textContent = t('alle_prioriteiten');
+        if (rapPrioriteit.options[1]) rapPrioriteit.options[1].textContent = t('kritiek');
+        if (rapPrioriteit.options[2]) rapPrioriteit.options[2].textContent = t('hoog');
+        if (rapPrioriteit.options[3]) rapPrioriteit.options[3].textContent = t('normaal');
+        if (rapPrioriteit.options[4]) rapPrioriteit.options[4].textContent = t('laag');
+      }
+      var rapCategorie = document.getElementById('rapCategorie');
+      if (rapCategorie && rapCategorie.options[0]) rapCategorie.options[0].textContent = t('alle_categorieen');
+      document.querySelectorAll('#rapSamenvatting div[style*="font-size:11px"]').forEach(function(el) {
+        var txt = el.textContent.trim();
+        if (txt.match(/^totaal$|^total$|^gesamt$|^toplam$/i)) el.textContent = t('totaal');
+        else if (txt.match(/^open$|^ouvert$|^offen$|^açık$/i)) el.textContent = t('open');
+        else if (txt.match(/^afgerond$|^completed$|^abgeschlossen$|^terminé$|^tamamlandı$/i)) el.textContent = t('afgerond');
+        else if (txt.match(/^kritiek$|^critical$|^kritisch$|^critique$|^kritik$/i)) el.textContent = t('kritiek');
+      });
+      document.querySelectorAll('#rapportagePanel button.btn-primary').forEach(function(btn) {
+        if (btn.getAttribute('onclick') && btn.getAttribute('onclick').indexOf('csv') > -1) btn.textContent = t('exporteer_csv');
+        else if (btn.getAttribute('onclick') && btn.getAttribute('onclick').indexOf('pdf') > -1) btn.textContent = t('exporteer_pdf');
+      });
+      var rapPreviewBtn = document.querySelector('#rapportagePanel button.btn-secondary[onclick*="previewRapportage"]');
+      if (rapPreviewBtn) rapPreviewBtn.textContent = t('voorbeeld');
+
       // ── Gebruikers page ──
       var userHeader = document.querySelector('#page-gebruikers .page-header h1');
       if (userHeader) userHeader.textContent = t('gebruikers');
+      var userSub = document.querySelector('#page-gebruikers .page-header p');
+      if (userSub) userSub.textContent = t('gebruikers_subtitle');
       var inviteBtn = document.querySelector('#page-gebruikers .page-header .btn-primary');
-      if (inviteBtn) inviteBtn.textContent = t('gebruiker_uitnodigen');
+      if (inviteBtn) inviteBtn.textContent = '+ ' + t('gebruiker_uitnodigen');
 
       // User tabs
       var tabUsers = document.getElementById('tabUsers');
@@ -2213,20 +2941,76 @@
 
       // User table headers
       var userThs = document.querySelectorAll('#usersTabContent .data-table th');
-      var userThKeys = [t('naam'), t('email'), t('rol'), t('status'), t('laatste_login')];
+      var userThKeys = [t('naam'), t('email'), t('rol'), t('status'), t('laatste_login'), t('acties')];
       userThs.forEach(function(th, i) { if (userThKeys[i]) th.textContent = userThKeys[i]; });
+
+      // Invitations table headers
+      var invThs = document.querySelectorAll('#invitesTabContent .data-table th');
+      var invThKeys = [t('email'), t('rol'), t('status'), t('verstuurd_op'), t('verloopt')];
+      invThs.forEach(function(th, i) { if (invThKeys[i]) th.textContent = invThKeys[i]; });
 
       // ── Kaart page ──
       var kaartHeader = document.querySelector('#page-kaart .page-header h1');
       if (kaartHeader) kaartHeader.textContent = t('kaart');
+      var kaartSub = document.querySelector('#page-kaart .page-header p');
+      if (kaartSub) kaartSub.textContent = t('kaart_subtitle');
+      var kaartProjFilter = document.getElementById('kaartProjectFilter');
+      if (kaartProjFilter && kaartProjFilter.options[0]) kaartProjFilter.options[0].textContent = t('alle_projecten');
+      var kaartMeldBtn = document.querySelector('#page-kaart .btn-primary');
+      if (kaartMeldBtn) kaartMeldBtn.textContent = '+ ' + t('meldingen');
+
+      // Kaart legend
+      document.querySelectorAll('#page-kaart div[style*="font-weight"]').forEach(function(el) {
+        var txt = el.textContent.trim();
+        if (txt.match(/^legenda$|^legend$|^legende$|^légende$|^gösterge$/i)) el.textContent = t('legenda');
+      });
+      document.querySelectorAll('#page-kaart span[style*="text-muted"]').forEach(function(el) {
+        var txt = el.textContent.trim();
+        if (txt.match(/^kritiek$|^critical$|^kritisch$|^critique$|^kritik$/i)) el.textContent = t('kritiek');
+        else if (txt.match(/^hoog$|^high$|^hoch$|^élevé$|^yüksek$/i)) el.textContent = t('hoog');
+        else if (txt.match(/^normaal$|^normal$/i)) el.textContent = t('normaal');
+        else if (txt.match(/^laag$|^low$|^niedrig$|^faible$|^düşük$/i)) el.textContent = t('laag');
+        else if (txt.match(/^projectgebied|^project area|^projektgebiet|^zone du|^proje alanı/i)) el.textContent = t('projectgebied_label');
+      });
 
       // ── Instellingen page ──
       var settHeader = document.querySelector('#page-instellingen .page-header h1');
       if (settHeader) settHeader.textContent = t('instellingen');
+      var settSub = document.querySelector('#page-instellingen .page-header p');
+      if (settSub) settSub.textContent = t('instellingen_subtitle');
+      var settCardH3 = document.querySelector('#page-instellingen .card-header h3');
+      if (settCardH3) settCardH3.textContent = t('organisatie');
+      document.querySelectorAll('#page-instellingen label').forEach(function(lbl) {
+        var txt = lbl.textContent.trim();
+        if (txt.match(/^naam$|^name$|^ad$/i)) lbl.textContent = t('naam');
+        else if (txt.match(/^abonnement$|^subscription$|^abonelik$/i)) lbl.textContent = t('abonnement');
+        else if (txt.match(/^status$|^statut$|^durum$/i)) lbl.textContent = t('status');
+        else if (txt.match(/^gebruikers$|^users$|^benutzer$|^utilisateurs$|^kullanıcılar$/i)) lbl.textContent = t('gebruikers');
+      });
 
       // ── Admin page ──
       var adminHeader = document.querySelector('#page-admin .page-header h1');
       if (adminHeader) adminHeader.textContent = t('admin_overzicht');
+      var adminSub = document.querySelector('#page-admin .page-header p');
+      if (adminSub) adminSub.textContent = t('admin_subtitle');
+      document.querySelectorAll('#page-admin .stat-label').forEach(function(el) {
+        var txt = el.textContent.trim();
+        if (txt.match(/^organisaties|^organizations|^organisationen|^organisations|^organizasyonlar/i)) el.textContent = t('organisaties');
+        else if (txt.match(/totaal gebruikers|total users|gesamt benutzer|total utilisateurs|toplam kullanıcılar/i)) el.textContent = t('totaal_gebruikers');
+        else if (txt.match(/demo aanvragen|demo requests|demo anfragen|demandes de|demo talepleri/i)) el.textContent = t('demo_aanvragen');
+      });
+      document.querySelectorAll('#page-admin .card-header h3').forEach(function(el) {
+        var txt = el.textContent.trim();
+        if (txt.match(/^organisaties$|^organizations$|^organisationen$|^organisations$|^organizasyonlar$/i)) el.textContent = t('organisaties');
+        else if (txt.match(/alle gebruikers|all users|alle benutzer|tous les utilisateurs|tüm kullanıcılar/i)) el.textContent = t('totaal_gebruikers');
+        else if (txt.match(/demo aanvragen|demo requests|demo anfragen|demandes de|demo talepleri/i)) el.textContent = t('demo_aanvragen');
+      });
+      var adminOrgTable = document.getElementById('adminOrgsBody');
+      if (adminOrgTable) { var t1 = adminOrgTable.closest('table'); if (t1) { var ths = t1.querySelectorAll('th'); [t('naam'),t('plan'),t('status'),t('gebruikers'),t('aangemaakt')].forEach(function(v,i){if(ths[i])ths[i].textContent=v;}); } }
+      var adminUsersTable = document.getElementById('adminUsersBody');
+      if (adminUsersTable) { var t2 = adminUsersTable.closest('table'); if (t2) { var ths = t2.querySelectorAll('th'); [t('naam'),t('email'),t('organisatie'),t('rol'),t('actief')].forEach(function(v,i){if(ths[i])ths[i].textContent=v;}); } }
+      var adminDemosTable = document.getElementById('adminDemosBody');
+      if (adminDemosTable) { var t3 = adminDemosTable.closest('table'); if (t3) { var ths = t3.querySelectorAll('th'); [t('naam'),t('bedrijf'),t('email'),t('plan'),t('verwerkt'),t('datum')].forEach(function(v,i){if(ths[i])ths[i].textContent=v;}); } }
 
       // ── Invite Modal ──
       var invModalH2 = document.querySelector('#inviteModal h2');
@@ -2237,6 +3021,8 @@
       if (invEmailLabel) invEmailLabel.textContent = t('emailadres');
       var invSubmit = document.querySelector('#inviteModal .btn-primary');
       if (invSubmit) invSubmit.textContent = t('uitnodiging_versturen');
+      var invEmailInput = document.getElementById('inviteEmail');
+      if (invEmailInput) invEmailInput.placeholder = t('emailadres');
 
       // Invite role options
       var invRole = document.getElementById('inviteRole');
@@ -2253,6 +3039,8 @@
       // ── Project Modal ──
       var projModalTitle = document.getElementById('projectModalTitle');
       if (projModalTitle && !currentEditProjectId) projModalTitle.textContent = t('nieuw_project');
+      var projModalSub = document.querySelector('#projectModal p.subtitle');
+      if (projModalSub) projModalSub.textContent = t('project_modal_subtitle');
       var projSubmit = document.getElementById('projectSubmitBtn');
       if (projSubmit && !currentEditProjectId) projSubmit.textContent = t('project_aanmaken');
 
@@ -2260,6 +3048,22 @@
       var projLabels = document.querySelectorAll('#projectModal .form-group label');
       var projLabelKeys = [t('projectnaam'), t('omschrijving'), t('gemeente'), t('kleur_kaart'), t('meldingcategorieen')];
       projLabels.forEach(function(lbl, i) { if (projLabelKeys[i]) lbl.textContent = projLabelKeys[i]; });
+
+      // Project form placeholders
+      var projNameInput = document.getElementById('projectName');
+      if (projNameInput) projNameInput.placeholder = t('placeholder_projectnaam');
+      var projDescInput = document.getElementById('projectDesc');
+      if (projDescInput) projDescInput.placeholder = t('placeholder_omschrijving');
+      var projGemInput = document.getElementById('projectGemeente');
+      if (projGemInput) projGemInput.placeholder = t('placeholder_gemeente');
+      var catDescP = document.querySelector('#projectModal .form-group p[style*="11px"]');
+      if (catDescP) catDescP.textContent = t('selecteer_categorieen');
+      var customCatInput = document.getElementById('customCategoryInput');
+      if (customCatInput) customCatInput.placeholder = t('eigen_categorie');
+      var addCatBtn = document.querySelector('#projectModal .btn-secondary[onclick*="addCustomCategory"]');
+      if (addCatBtn) addCatBtn.textContent = t('toevoegen');
+      var boundaryEl = document.getElementById('boundaryStatus');
+      if (boundaryEl && !currentEditProjectId) boundaryEl.textContent = t('teken_gebied');
 
       // ── Melding Modal ──
       var meldModalH2 = document.querySelector('#meldingModal h2');
@@ -2274,13 +3078,25 @@
       var meldLabelKeys = [t('project'), t('titel'), t('omschrijving'), t('categorie'), t('prioriteit'), t('locatie')];
       meldFormLabels.forEach(function(lbl, i) { if (meldLabelKeys[i]) lbl.textContent = meldLabelKeys[i]; });
 
+      // Melding form placeholders
+      var meldTitleInput = document.getElementById('meldingTitle');
+      if (meldTitleInput) meldTitleInput.placeholder = t('placeholder_titel');
+      var meldDescInput2 = document.getElementById('meldingDesc');
+      if (meldDescInput2) meldDescInput2.placeholder = t('placeholder_beschrijving');
+      var meldProjSel = document.getElementById('meldingProject');
+      if (meldProjSel && meldProjSel.options[0]) meldProjSel.options[0].textContent = t('selecteer_project');
+      var meldCatSel = document.getElementById('meldingCategory');
+      if (meldCatSel && meldCatSel.options[0]) meldCatSel.options[0].textContent = t('selecteer_categorie');
+      var meldCatHint = document.getElementById('meldingCatHint');
+      if (meldCatHint) meldCatHint.textContent = t('selecteer_project_hint');
+
       // Priority options in melding modal
       var priSel = document.getElementById('meldingPriority');
       if (priSel) {
-        priSel.options[0].textContent = t('normaal') + ' — ' + t('normaal_desc');
-        priSel.options[1].textContent = t('laag') + ' — ' + t('laag_desc');
-        priSel.options[2].textContent = t('hoog') + ' — ' + t('hoog_desc');
-        priSel.options[3].textContent = t('kritiek') + ' — ' + t('kritiek_desc');
+        priSel.options[0].textContent = t('normaal') + ' \u2014 ' + t('normaal_desc');
+        priSel.options[1].textContent = t('laag') + ' \u2014 ' + t('laag_desc');
+        priSel.options[2].textContent = t('hoog') + ' \u2014 ' + t('hoog_desc');
+        priSel.options[3].textContent = t('kritiek') + ' \u2014 ' + t('kritiek_desc');
       }
 
       // ── Melding Detail Modal ──
@@ -2306,13 +3122,20 @@
       detailLabels.forEach(function(lbl) {
         var txt = lbl.textContent.trim().toLowerCase();
         if (txt.match(/status/)) lbl.textContent = t('status');
-        else if (txt.match(/prioriteit|priority|priorität/)) lbl.textContent = t('prioriteit');
-        else if (txt.match(/omschrijving|description|beschreibung/)) lbl.textContent = t('omschrijving');
-        else if (txt.match(/categori/)) lbl.textContent = t('categorie');
+        else if (txt.match(/prioriteit|priority|priorität|priorité|öncelik/)) lbl.textContent = t('prioriteit');
+        else if (txt.match(/omschrijving|description|beschreibung|açıklama/)) lbl.textContent = t('omschrijving');
+        else if (txt.match(/categori|kategori|catégori/)) lbl.textContent = t('categorie');
         else if (txt.match(/project|proje/)) lbl.textContent = t('project');
       });
 
-      // Photo labels
+      // Photo labels (headers)
+      document.querySelectorAll('#meldingDetailModal label[style*="font-weight"]').forEach(function(lbl) {
+        var txt = lbl.textContent.trim();
+        if (txt.match(/foto voor|photo before|foto vorher|photo avant|önceki/i)) lbl.textContent = t('foto_voor');
+        else if (txt.match(/foto na|photo after|foto nachher|photo après|sonraki/i)) lbl.textContent = t('foto_na');
+      });
+
+      // Photo upload labels
       var photoBeforeLbl = document.getElementById('photoBeforeLabel');
       var photoAfterLbl = document.getElementById('photoAfterLabel');
       if (photoBeforeLbl && photoBeforeLbl.style.display !== 'none') photoBeforeLbl.textContent = t('klik_upload');
@@ -2325,15 +3148,12 @@
         else if (btn.classList.contains('btn-secondary')) btn.textContent = t('sluiten');
       });
 
-      // ── Rapportage section ──
-      document.querySelectorAll('#rapportagePanel h3').forEach(function(el) {
-        if (el.textContent.match(/rapportage|reporting|bericht|rapport|raporlama/i)) el.textContent = t('rapportage');
-      });
-
       // ── Footer ──
+      var footerP = document.querySelector('.main-footer p');
+      if (footerP) footerP.innerHTML = '&copy; 2026 FieldOps. ' + t('alle_rechten');
       var footerLinks = document.querySelectorAll('.main-footer a, .footer-links a');
       footerLinks.forEach(function(a) {
-        if (a.textContent.trim().toLowerCase().match(/^privacy/)) a.textContent = t('privacy');
+        if (a.textContent.trim().toLowerCase().match(/^privacy|^gizlilik|^confidential|^datenschutz/)) a.textContent = t('privacy');
       });
 
       // ── Greeting ──
@@ -2386,6 +3206,8 @@
       // Set language switcher & translate
       var langSel = document.getElementById('langSwitcher');
       if (langSel) langSel.value = currentLang;
+      var sideLangSel = document.getElementById('sidebarLangSwitcher');
+      if (sideLangSel) sideLangSel.value = currentLang;
       translatePage();
 
       // Fetch fresh data from API
@@ -2409,7 +3231,7 @@
           window.location.href = 'https://fieldopsapp.nl';
           return;
         }
-        if (!res.ok) return res.json().then(function(e) { throw new Error(e.detail || 'Fout'); });
+        if (!res.ok) return res.json().then(function(e) { throw new Error(e.detail || t('fout_laden')); });
         return res.json();
       });
     }
@@ -2431,7 +3253,7 @@
         // Sidebar footer
         var planLabel = stats.plan === 'professional' ? 'Professional' : 'Starter';
         document.getElementById('sidebarFooter').innerHTML =
-          '<p>FieldOps ' + planLabel + '</p><strong>' + (stats.active_users || 0) + ' / ' + (stats.max_users || 10) + ' gebruikers</strong>';
+          '<p>FieldOps ' + planLabel + '</p><strong>' + (stats.active_users || 0) + ' / ' + (stats.max_users || 10) + ' '+t('gebruikers').toLowerCase()+'</strong>';
 
         // Instellingen
         document.getElementById('settOrgName').textContent = stats.organization || '-';
@@ -2496,10 +3318,10 @@
     // ── Load Users ──
     function loadUsers() {
       var tbody = document.getElementById('usersBody');
-      tbody.innerHTML = '<tr><td colspan="5"><div class="loading-spinner">Gebruikers laden...</div></td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6"><div class="loading-spinner">'+t('gebruikers_laden')+'</div></td></tr>';
       api('GET', '/api/users/').then(function(users) {
         if (!users || users.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color: var(--text-dim);">Geen gebruikers gevonden</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 40px; color: var(--text-dim);">'+t('geen_gebruikers')+'</td></tr>';
           return;
         }
         tbody.innerHTML = users.map(function(u) {
@@ -2516,17 +3338,40 @@
             else if (diff < 172800) lastLogin = t('gisteren') + ' ' + d.toLocaleTimeString(currentLang, {hour:'2-digit',minute:'2-digit'});
             else lastLogin = d.toLocaleDateString(currentLang, {day:'numeric',month:'short',year:'numeric'}) + ' ' + d.toLocaleTimeString(currentLang, {hour:'2-digit',minute:'2-digit'});
           }
+          // Don't show delete button for current user
+          var deleteBtn = '';
+          if (currentUser && u.id !== currentUser.id) {
+            var escapedName = (name.trim() || u.email).replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            deleteBtn = '<button onclick="deactivateUser(\'' + u.id + '\', \'' + escapedName + '\')" ' +
+              'style="background:none;border:1px solid var(--border);color:var(--red);font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:inherit;transition:all 0.2s;" ' +
+              'onmouseover="this.style.background=\'rgba(220,38,38,0.08)\';this.style.borderColor=\'var(--red)\'" ' +
+              'onmouseout="this.style.background=\'none\';this.style.borderColor=\'var(--border)\'">' +
+              t('deactiveer') + '</button>';
+          }
           return '<tr>' +
             '<td><strong>' + name.trim() + '</strong></td>' +
             '<td>' + u.email + '</td>' +
             '<td><span class="role-badge">' + (roleMap[u.role] || u.role) + '</span></td>' +
             '<td><span class="status-badge ' + (u.is_active ? 'active' : 'inactive') + '">' + (u.is_active ? t('actief') : t('inactief')) + '</span></td>' +
             '<td style="color: var(--text-dim);">' + lastLogin + '</td>' +
+            '<td>' + deleteBtn + '</td>' +
             '</tr>';
         }).join('');
       }).catch(function(err) {
-        document.getElementById('usersBody').innerHTML = '<tr><td colspan="5" style="color: var(--red);">' + t('fout_laden') + ': ' + err.message + '</td></tr>';
+        document.getElementById('usersBody').innerHTML = '<tr><td colspan="6" style="color: var(--red);">' + t('fout_laden') + ': ' + err.message + '</td></tr>';
       });
+    }
+
+    // ── Deactivate User ──
+    async function deactivateUser(userId, userName) {
+      if (!confirm(t('bevestig_deactiveer').replace('{name}', userName))) return;
+      try {
+        await api('DELETE', '/api/users/' + userId);
+        showToast(t('gebruiker_gedeactiveerd').replace('{name}', userName));
+        loadUsers();
+      } catch(err) {
+        showToast(t('fout_laden') + ': ' + (err.message || 'Unknown error'), 'error');
+      }
     }
 
     // ── Admin Data (eigenaar) ──
@@ -2543,7 +3388,7 @@
         var orgsBody = document.getElementById('adminOrgsBody');
         if (data.organizations && data.organizations.length > 0) {
           orgsBody.innerHTML = data.organizations.map(function(o) {
-            var date = new Date(o.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
+            var date = new Date(o.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short', year:'numeric' });
             return '<tr>' +
               '<td><strong>' + o.name + '</strong></td>' +
               '<td><span class="role-badge">' + (o.plan || '-') + '</span></td>' +
@@ -2577,7 +3422,7 @@
         var demosBody = document.getElementById('adminDemosBody');
         if (data.demo_requests && data.demo_requests.length > 0) {
           demosBody.innerHTML = data.demo_requests.map(function(d) {
-            var date = new Date(d.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
+            var date = new Date(d.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short', year:'numeric' });
             return '<tr>' +
               '<td>' + d.first_name + ' ' + d.last_name + '</td>' +
               '<td>' + d.company_name + '</td>' +
@@ -2592,24 +3437,27 @@
         }
       }).catch(function(err) {
         console.error('Admin data laden mislukt:', err);
-        document.getElementById('adminOrgsBody').innerHTML = '<tr><td colspan="5" style="color: var(--red);">Fout: ' + err.message + '</td></tr>';
+        document.getElementById('adminOrgsBody').innerHTML = '<tr><td colspan="5" style="color: var(--red);">'+t('fout_laden')+': ' + err.message + '</td></tr>';
       });
     }
 
     // ── Invite Modal ──
-    var roleDescriptions = {
-      viewer: '📊 <strong>Opdrachtgever</strong> — Heeft alleen leesrechten. Kan projectvoortgang en meldingen bekijken, maar niets aanmaken of wijzigen. Ideaal voor klanten en opdrachtgevers die inzicht willen in de status.',
-      inspector: '🔍 <strong>Toezichthouder</strong> — Kan meldingen aanmaken met foto\'s, GPS en categorieën. Kan geen statussen wijzigen of meldingen afronden. Geschikt voor inspecteurs en schouwmeesters.',
-      technician: '🔧 <strong>Technicus</strong> — Kan meldingen aanmaken en eigen meldingen bewerken. Veldregistratie met GPS, foto\'s en schadecategorieën. Voor medewerkers op de bouwplaats.',
-      contractor: '🏗️ <strong>Aannemer</strong> — Kan meldingen afronden en statussen wijzigen (In behandeling → Opgelost). Kan geen nieuwe meldingen aanmaken. Voor uitvoerende aannemers.',
-      manager: '📋 <strong>Projectleider</strong> — Kan projecten aanmaken en beheren, meldingen toewijzen, rapportages bekijken en teamleden overzien. Volledige operationele controle.',
-      admin: '⚙️ <strong>Beheerder</strong> — Volledige toegang tot het platform. Gebruikers beheren, uitnodigen en verwijderen. Organisatie-instellingen en facturatie. Alleen voor platformbeheerders.'
-    };
+    function getRoleDescriptions() {
+      return {
+        viewer: '📊 <strong>' + t('opdrachtgever') + '</strong> — ' + t('viewer_desc'),
+        inspector: '🔍 <strong>' + t('toezichthouder') + '</strong> — ' + t('inspector_desc'),
+        technician: '🔧 <strong>' + t('technicus') + '</strong> — ' + t('technician_desc'),
+        contractor: '🏗️ <strong>' + t('aannemer') + '</strong> — ' + t('contractor_desc'),
+        manager: '📋 <strong>' + t('projectleider') + '</strong> — ' + t('manager_desc'),
+        admin: '⚙️ <strong>' + t('beheerder') + '</strong> — ' + t('admin_desc')
+      };
+    }
 
     function updateRoleDescription() {
       var role = document.getElementById('inviteRole').value;
       var desc = document.getElementById('roleDescription');
-      if (desc) desc.innerHTML = roleDescriptions[role] || '';
+      var descs = getRoleDescriptions();
+      if (desc) desc.innerHTML = descs[role] || '';
     }
 
     function openInviteModal() {
@@ -2712,10 +3560,10 @@
           tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-dim);">'+t('geen_uitnodigingen')+'</td></tr>';
           return;
         }
-        var roleMap = { admin:'Admin', manager:'Manager', technician:'Technicus', viewer:'Viewer' };
+        var roleMap = { admin:t('beheerder'), manager:t('projectleider'), contractor:t('aannemer'), inspector:t('toezichthouder'), technician:t('technicus'), viewer:t('opdrachtgever') };
         tbody.innerHTML = invites.map(function(inv) {
-          var created = new Date(inv.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
-          var expires = new Date(inv.expires_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
+          var created = new Date(inv.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short', year:'numeric' });
+          var expires = new Date(inv.expires_at).toLocaleDateString(currentLang, { day:'numeric', month:'short', year:'numeric' });
           var isExpired = new Date(inv.expires_at) < new Date();
           var status = inv.accepted ? t('geaccepteerd') : (isExpired ? t('verlopen') : t('verstuurd'));
           var statusClass = inv.accepted ? 'active' : (isExpired ? 'inactive' : 'trial');
@@ -2728,7 +3576,7 @@
             '</tr>';
         }).join('');
       }).catch(function(err) {
-        document.getElementById('invitesBody').innerHTML = '<tr><td colspan="5" style="color:var(--red);">Fout: ' + err.message + '</td></tr>';
+        document.getElementById('invitesBody').innerHTML = '<tr><td colspan="5" style="color:var(--red);">'+t('fout_laden')+': ' + err.message + '</td></tr>';
       });
     }
 
@@ -2743,7 +3591,7 @@
       var cards = document.getElementById('projectCards');
       empty.style.display = 'none';
       list.style.display = 'block';
-      cards.innerHTML = '<div class="loading-spinner">Projecten laden...</div>';
+      cards.innerHTML = '<div class="loading-spinner">'+t('projecten_laden')+'</div>';
       api('GET', '/api/projects/').then(function(projects) {
         allProjects = projects || [];
         updateProjectFilter();
@@ -2756,9 +3604,9 @@
         list.style.display = 'block';
         cards.innerHTML = allProjects.map(function(p) {
           var statusColors = { active: 'green', completed: 'blue', archived: 'red' };
-          var statusLabels = { active: t('actief'), completed: t('afgerond'), archived: 'Gearchiveerd' };
-          var date = new Date(p.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
-          var hasBoundary = p.boundary_geojson ? '<span style="color:var(--green);font-size:11px;">&#9679; Gebied ingesteld</span>' : '<span style="color:var(--text-dim);font-size:11px;">&#9675; Geen gebied</span>';
+          var statusLabels = { active: t('actief'), completed: t('afgerond'), archived: t('gearchiveerd') };
+          var date = new Date(p.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short', year:'numeric' });
+          var hasBoundary = p.boundary_geojson ? '<span style="color:var(--green);font-size:11px;">&#9679; '+t('gebied_inst')+'</span>' : '<span style="color:var(--text-dim);font-size:11px;">&#9675; '+t('geen_gebied')+'</span>';
           return '<div class="stat-card" style="cursor:pointer;border-left:4px solid '+(p.color||'#00d4ff')+';" onclick="openProjectDetail(\''+p.id+'\')">' +
             '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px;">' +
             '<h3 style="font-size:16px;font-weight:600;">'+p.name+'</h3>' +
@@ -2771,8 +3619,8 @@
             hasBoundary +
             '</div>' +
             '<div style="display:flex;gap:8px;margin-top:12px;">' +
-            '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;flex:1;" onclick="event.stopPropagation();openProjectDetail(\''+p.id+'\')">Bekijken</button>' +
-            '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="event.stopPropagation();viewProjectOnMap(\''+p.id+'\')">Op kaart</button>' +
+            '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;flex:1;" onclick="event.stopPropagation();openProjectDetail(\''+p.id+'\')">'+t('bekijken')+'</button>' +
+            '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="event.stopPropagation();viewProjectOnMap(\''+p.id+'\')">'+t('op_kaart')+'</button>' +
             '</div>' +
             '</div>';
         }).join('');
@@ -2780,7 +3628,7 @@
         document.getElementById('statProjects').textContent = allProjects.filter(function(p){return p.status==='active';}).length;
       }).catch(function(err) {
         console.error('Projecten laden mislukt:', err);
-        cards.innerHTML = '<div class="error-state"><h3>Laden mislukt</h3><p>'+err.message+'</p><button class="btn-secondary" onclick="loadProjects()">Opnieuw proberen</button></div>';
+        cards.innerHTML = '<div class="error-state"><h3>'+t('laden_mislukt')+'</h3><p>'+err.message+'</p><button class="btn-secondary" onclick="loadProjects()">'+t('opnieuw_proberen')+'</button></div>';
       });
     }
 
@@ -2837,10 +3685,10 @@
       document.getElementById('projectGemeente').value = '';
       document.getElementById('projectBoundary').value = '';
       document.getElementById('customCategoryInput').value = '';
-      document.getElementById('boundaryStatus').textContent = 'Teken een vierkant of polygoon op de kaart rechts om het projectgebied af te bakenen.';
+      document.getElementById('boundaryStatus').textContent = t('teken_gebied');
       document.getElementById('boundaryStatus').style.color = 'var(--text-dim)';
-      document.getElementById('projectModalTitle').textContent = 'Nieuw Project';
-      document.getElementById('projectSubmitBtn').textContent = 'Project aanmaken';
+      document.getElementById('projectModalTitle').textContent = t('nieuw_project');
+      document.getElementById('projectSubmitBtn').textContent = t('project_aanmaken');
 
       // Default: all categories pre-selected for new projects
       var preSelected = defaultCategories.slice();
@@ -2853,10 +3701,10 @@
         document.getElementById('projectDesc').value = editProject.description || '';
         document.getElementById('projectGemeente').value = editProject.gemeente || '';
         document.getElementById('projectBoundary').value = editProject.boundary_geojson || '';
-        document.getElementById('projectModalTitle').textContent = 'Project bewerken';
-        document.getElementById('projectSubmitBtn').textContent = 'Opslaan';
+        document.getElementById('projectModalTitle').textContent = t('project_bewerken');
+        document.getElementById('projectSubmitBtn').textContent = t('opslaan');
         if (editProject.boundary_geojson) {
-          document.getElementById('boundaryStatus').textContent = 'Projectgebied is ingesteld. Teken opnieuw om aan te passen.';
+          document.getElementById('boundaryStatus').textContent = t('gebied_ingesteld');
           document.getElementById('boundaryStatus').style.color = 'var(--green)';
         }
         // Set color
@@ -2938,7 +3786,7 @@
         projectModalDrawn.addLayer(e.layer);
         var geojson = JSON.stringify(e.layer.toGeoJSON().geometry);
         document.getElementById('projectBoundary').value = geojson;
-        document.getElementById('boundaryStatus').textContent = 'Projectgebied afgebakend!';
+        document.getElementById('boundaryStatus').textContent = t('gebied_afgebakend');
         document.getElementById('boundaryStatus').style.color = 'var(--green)';
       });
 
@@ -2952,7 +3800,7 @@
 
       projectModalMap.on(L.Draw.Event.DELETED, function() {
         document.getElementById('projectBoundary').value = '';
-        document.getElementById('boundaryStatus').textContent = 'Projectgebied verwijderd. Teken opnieuw.';
+        document.getElementById('boundaryStatus').textContent = t('gebied_verwijderd');
         document.getElementById('boundaryStatus').style.color = 'var(--orange)';
       });
 
@@ -2967,7 +3815,7 @@
     function createProject(e) {
       e.preventDefault();
       var btn = document.getElementById('projectSubmitBtn');
-      btn.textContent = 'Bezig...';
+      btn.textContent = t('bezig');
       btn.disabled = true;
       var color = document.querySelector('#colorPicker input[type=radio]:checked');
       var boundary = document.getElementById('projectBoundary').value || null;
@@ -2985,7 +3833,7 @@
       var url = editId ? '/api/projects/' + editId : '/api/projects/';
 
       api(method, url, data).then(function(project) {
-        showToast(editId ? 'Project opgeslagen!' : 'Project "'+project.name+'" aangemaakt!', 'success');
+        showToast(editId ? t('project_opgeslagen') : t('project_aangemaakt'), 'success');
         closeProjectModal();
         loadProjects();
         loadDashboardStats();
@@ -2995,7 +3843,7 @@
       }).catch(function(err) {
         showToast(err.message, 'error');
       }).finally(function() {
-        btn.textContent = editId ? 'Opslaan' : 'Project aanmaken';
+        btn.textContent = editId ? t('opslaan') : t('project_aanmaken');
         btn.disabled = false;
       });
     }
@@ -3016,16 +3864,16 @@
       document.querySelector('#page-projecten .page-header').style.display = 'none';
 
       document.getElementById('projectDetailName').textContent = proj.name;
-      document.getElementById('projectDetailStatus').textContent = proj.status === 'active' ? 'Actief' : proj.status;
-      document.getElementById('projectDetailDesc').textContent = proj.description || 'Geen omschrijving';
+      document.getElementById('projectDetailStatus').textContent = proj.status === 'active' ? t('actief') : proj.status;
+      document.getElementById('projectDetailDesc').textContent = proj.description || t('geen_omschrijving');
       document.getElementById('projectDetailGemeente').textContent = proj.gemeente || '-';
-      document.getElementById('projectDetailDate').textContent = new Date(proj.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'long', year:'numeric' });
+      document.getElementById('projectDetailDate').textContent = new Date(proj.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'long', year:'numeric' });
 
       // Load meldingen for this project
       api('GET', '/api/meldingen/?project_id=' + projectId).then(function(meldingen) {
         var container = document.getElementById('projectDetailMeldingen');
         if (!meldingen || meldingen.length === 0) {
-          container.innerHTML = '<p style="color:var(--text-dim);font-size:14px;text-align:center;padding:20px;">Geen meldingen in dit project.</p>';
+          container.innerHTML = '<p style="color:var(--text-dim);font-size:14px;text-align:center;padding:20px;">'+t('geen_meldingen_project')+'</p>';
           return;
         }
         var prioColors = { kritiek:'#ff5252', hoog:'#ffab40', normaal:'#00d4ff', laag:'#888' };
@@ -3124,8 +3972,8 @@
     function updateProjectFilter() {
       var sel = document.getElementById('kaartProjectFilter');
       var msel = document.getElementById('meldingProject');
-      var opts = '<option value="">Alle projecten</option>';
-      var mopts = '<option value="">Selecteer project...</option>';
+      var opts = '<option value="">'+t('alle_projecten')+'</option>';
+      var mopts = '<option value="">'+t('selecteer_project')+'</option>';
       allProjects.forEach(function(p) {
         opts += '<option value="'+p.id+'">'+p.name+'</option>';
         mopts += '<option value="'+p.id+'">'+p.name+'</option>';
@@ -3162,9 +4010,9 @@
     function populateMonthSelector() {
       var sel = document.getElementById('dashMonthSelect');
       if (!sel) return;
-      var months = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
+      var months = [t('januari'),t('februari'),t('maart'),t('april'),t('mei_full'),t('juni'),t('juli'),t('augustus'),t('september'),t('oktober'),t('november'),t('december')];
       var now = new Date();
-      var opts = '<option value="">Maand kiezen...</option>';
+      var opts = '<option value="">'+t('maand_kiezen')+'</option>';
       // Last 12 months
       for (var i = 0; i < 12; i++) {
         var dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -3233,7 +4081,7 @@
 
     function loadDashboardStats() {
       setGreeting();
-      document.getElementById('lastUpdated').textContent = 'zojuist';
+      document.getElementById('lastUpdated').textContent = t('zojuist');
 
       api('GET', '/api/projects/').then(function(p) {
         allProjects = p || [];
@@ -3245,7 +4093,7 @@
         var listEl = document.getElementById('dashProjectList');
         if (listEl) {
           if (active.length === 0) {
-            listEl.innerHTML = '<p style="color:var(--text-dim);font-size:13px;">Geen projecten</p>';
+            listEl.innerHTML = '<p style="color:var(--text-dim);font-size:13px;">'+t('geen_projecten')+'</p>';
           } else {
             listEl.innerHTML = active.slice(0,5).map(function(pr) {
               return '<div onclick="navigateTo(\'projecten\');setTimeout(function(){openProjectDetail(\''+pr.id+'\')},200);" style="display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;cursor:pointer;transition:background 0.2s;" onmouseover="this.style.background=\'var(--card-bg)\'" onmouseout="this.style.background=\'transparent\'">' +
@@ -3278,10 +4126,10 @@
 
         // Priority bars
         var prioData = [
-          { name:'Kritiek', count:kritiek, color:'#ff5252' },
-          { name:'Hoog', count:allMeldingen.filter(function(x){return x.priority==='hoog';}).length, color:'#ffab40' },
-          { name:'Normaal', count:allMeldingen.filter(function(x){return x.priority==='normaal';}).length, color:'#00d4ff' },
-          { name:'Laag', count:allMeldingen.filter(function(x){return x.priority==='laag';}).length, color:'#94a3b8' }
+          { name:t('kritiek'), count:kritiek, color:'#ff5252' },
+          { name:t('hoog'), count:allMeldingen.filter(function(x){return x.priority==='hoog';}).length, color:'#ffab40' },
+          { name:t('normaal'), count:allMeldingen.filter(function(x){return x.priority==='normaal';}).length, color:'#00d4ff' },
+          { name:t('laag'), count:allMeldingen.filter(function(x){return x.priority==='laag';}).length, color:'#94a3b8' }
         ];
         var maxPrio = Math.max.apply(null, prioData.map(function(p){return p.count;})) || 1;
         var pbEl = document.getElementById('priorityBars');
@@ -3298,7 +4146,7 @@
         // Category chart
         var catCounts = {};
         allMeldingen.forEach(function(mel) {
-          var cat = mel.category || 'Overig';
+          var cat = mel.category || t('overig');
           catCounts[cat] = (catCounts[cat] || 0) + 1;
         });
         var catLabels = Object.keys(catCounts).sort(function(a,b){return catCounts[b]-catCounts[a];}).slice(0,8);
@@ -3438,7 +4286,7 @@
         var raEl = document.getElementById('recentActivity');
         if (raEl) {
           if (recent.length === 0) {
-            raEl.innerHTML = '<div class="activity-empty"><div class="empty-icon">🕐</div><p>Geen recente activiteit</p></div>';
+            raEl.innerHTML = '<div class="activity-empty"><div class="empty-icon">🕐</div><p>'+t('geen_recente_activiteit')+'</p></div>';
           } else {
             var statusBadgeMap = {
               open: { label:t('open'), cls:'open' },
@@ -3481,7 +4329,7 @@
       var list = document.getElementById('meldingenList');
       empty.style.display = 'none';
       list.style.display = 'block';
-      document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="7"><div class="loading-spinner">Meldingen laden...</div></td></tr>';
+      document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="7"><div class="loading-spinner">'+t('meldingen_laden')+'</div></td></tr>';
       api('GET', '/api/meldingen/').then(function(meldingen) {
         allMeldingen = meldingen || [];
         var tbody = document.getElementById('meldingenBody');
@@ -3495,7 +4343,7 @@
         var prioColors = { kritiek:'red', hoog:'orange', normaal:'blue', laag:'' };
         var statusLabels = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
         tbody.innerHTML = allMeldingen.map(function(m) {
-          var date = new Date(m.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short' });
+          var date = new Date(m.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short' });
           var projectName = '-';
           if (m.project_id) {
             var proj = allProjects.find(function(p){return p.id===m.project_id;});
@@ -3515,14 +4363,14 @@
         document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
       }).catch(function(err) {
         console.error('Meldingen laden mislukt:', err);
-        document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="7"><div class="error-state"><h3>Laden mislukt</h3><p>'+err.message+'</p><button class="btn-secondary" onclick="loadMeldingen()">Opnieuw proberen</button></div></td></tr>';
+        document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="7"><div class="error-state"><h3>'+t('laden_mislukt')+'</h3><p>'+err.message+'</p><button class="btn-secondary" onclick="loadMeldingen()">'+t('opnieuw_proberen')+'</button></div></td></tr>';
       });
     }
 
     function updateMeldingCategories() {
       var projId = document.getElementById('meldingProject').value;
       var catSel = document.getElementById('meldingCategory');
-      catSel.innerHTML = '<option value="">Selecteer categorie...</option>';
+      catSel.innerHTML = '<option value="">'+t('selecteer_categorie')+'</option>';
       var hint = document.getElementById('meldingCatHint');
       var fallbackCats = ['Wegdekschade', 'Riolering', 'Groenvoorziening', 'Verlichting', 'Bestrating', 'Verkeersborden', 'Wateroverlast', 'Geluidsoverlast', 'Kabels & Leidingen', 'Constructie', 'Veiligheid', 'Milieu'];
       if (!projId) {
@@ -3533,7 +4381,7 @@
           opt.textContent = cat;
           catSel.appendChild(opt);
         });
-        if (hint) hint.textContent = 'Selecteer een project voor project-specifieke categorieën.';
+        if (hint) hint.textContent = t('selecteer_project_hint');
         return;
       }
       var proj = allProjects.find(function(p) { return p.id === projId; });
@@ -3553,7 +4401,7 @@
           opt.textContent = cat;
           catSel.appendChild(opt);
         });
-        if (hint) hint.textContent = 'Standaard categorieën (project heeft geen eigen categorieën).';
+        if (hint) hint.textContent = t('standaard_cats');
       }
     }
 
@@ -3565,6 +4413,8 @@
         updateProjectFilter();
         updateMeldingCategories();
       }).catch(function(){});
+      // Auto-fill GPS location immediately
+      autoFillGPS();
     }
     function closeMeldingModal() {
       document.getElementById('meldingModal').classList.remove('active');
@@ -3576,10 +4426,10 @@
     function openMeldingDetail(id) {
       currentDetailMeldingId = id;
       var m = allMeldingen.find(function(x){return x.id===id;});
-      if (!m) { showToast('Melding niet gevonden','error'); return; }
+      if (!m) { showToast(t('melding_niet_gevonden'),'error'); return; }
       document.getElementById('detailTitle').textContent = m.title;
-      var date = new Date(m.created_at).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
-      document.getElementById('detailMeta').textContent = (m.creator_name||'Onbekend') + ' · ' + date;
+      var date = new Date(m.created_at).toLocaleDateString(currentLang,{day:'numeric',month:'long',year:'numeric'});
+      document.getElementById('detailMeta').textContent = (m.creator_name||t('onbekend')) + ' · ' + date;
       document.getElementById('detailStatus').value = m.status || 'open';
       document.getElementById('detailPriority').value = m.priority || 'normaal';
       document.getElementById('detailDesc').textContent = m.description || '-';
@@ -3606,10 +4456,68 @@
       } else {
         imgAfter.style.display = 'none'; imgAfter.src = ''; lblAfter.style.display = 'block';
       }
+      // Location
+      document.getElementById('detailLat').value = m.lat ? m.lat.toFixed(6) : '';
+      document.getElementById('detailLng').value = m.lng ? m.lng.toFixed(6) : '';
+      var locationLink = document.getElementById('detailLocationLink');
+      if (m.lat && m.lng) {
+        locationLink.innerHTML = '<a href="https://maps.google.com/?q='+m.lat+','+m.lng+'" target="_blank" style="color:var(--accent);text-decoration:none;">Bekijk op Google Maps</a>';
+      } else {
+        locationLink.innerHTML = '<span style="color:var(--text-dim);">Geen locatie ingesteld</span>';
+      }
       document.getElementById('meldingDetailModal').classList.add('active');
     }
 
+    function getDetailMeldingLocation() {
+      if (!navigator.geolocation) { showToast(t('gps_niet_beschikbaar'), 'error'); return; }
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        var lat = pos.coords.latitude.toFixed(6);
+        var lng = pos.coords.longitude.toFixed(6);
+        document.getElementById('detailLat').value = lat;
+        document.getElementById('detailLng').value = lng;
+        document.getElementById('detailLocationLink').innerHTML = '<a href="https://maps.google.com/?q='+lat+','+lng+'" target="_blank" style="color:var(--accent);text-decoration:none;">Bekijk op Google Maps</a>';
+        if (currentDetailMeldingId) {
+          api('PUT', '/api/meldingen/' + currentDetailMeldingId, { lat: parseFloat(lat), lng: parseFloat(lng) }).then(function() {
+            showToast(t('locatie_vastgelegd'), 'success');
+            loadMeldingen();
+            if (map) loadMapData();
+          }).catch(function(err) { showToast(t('fout_laden') + ': ' + err.message, 'error'); });
+        }
+      }, function(err) {
+        showToast(t('kan_locatie_niet_ophalen') + ': ' + err.message, 'error');
+      }, { enableHighAccuracy: true, timeout: 10000 });
+    }
+
+    function saveDetailLocation() {
+      if (!currentDetailMeldingId) return;
+      var lat = parseFloat(document.getElementById('detailLat').value) || null;
+      var lng = parseFloat(document.getElementById('detailLng').value) || null;
+      api('PUT', '/api/meldingen/' + currentDetailMeldingId, { lat: lat, lng: lng }).then(function() {
+        showToast(t('locatie_vastgelegd'), 'success');
+        loadMeldingen();
+        if (map) loadMapData();
+      }).catch(function(err) { showToast(t('fout_laden') + ': ' + err.message, 'error'); });
+    }
+
     function closeMeldingDetail() {
+      // Auto-save location if manually edited
+      if (currentDetailMeldingId) {
+        var latVal = document.getElementById('detailLat').value;
+        var lngVal = document.getElementById('detailLng').value;
+        var m = allMeldingen.find(function(x){return x.id===currentDetailMeldingId;});
+        if (m) {
+          var newLat = latVal ? parseFloat(latVal) : null;
+          var newLng = lngVal ? parseFloat(lngVal) : null;
+          var oldLat = m.lat ? parseFloat(m.lat.toFixed(6)) : null;
+          var oldLng = m.lng ? parseFloat(m.lng.toFixed(6)) : null;
+          if (newLat !== oldLat || newLng !== oldLng) {
+            api('PUT', '/api/meldingen/' + currentDetailMeldingId, { lat: newLat, lng: newLng }).then(function() {
+              loadMeldingen();
+              if (map) loadMapData();
+            }).catch(function(){});
+          }
+        }
+      }
       document.getElementById('meldingDetailModal').classList.remove('active');
       currentDetailMeldingId = null;
     }
@@ -3683,14 +4591,14 @@
       if (panel.style.display === 'none') {
         panel.style.display = 'block';
         var sel = document.getElementById('rapProject');
-        sel.innerHTML = '<option value="">Alle projecten</option>';
+        sel.innerHTML = '<option value="">'+t('alle_projecten')+'</option>';
         allProjects.forEach(function(p) {
           sel.innerHTML += '<option value="'+p.id+'">'+p.name+'</option>';
         });
         var catSet = {};
         allMeldingen.forEach(function(m) { if (m.category) catSet[m.category] = true; });
         var catSel = document.getElementById('rapCategorie');
-        catSel.innerHTML = '<option value="">Alle categorie\u00ebn</option>';
+        catSel.innerHTML = '<option value="">'+t('alle_categorieen')+'</option>';
         Object.keys(catSet).sort().forEach(function(c) {
           catSel.innerHTML += '<option value="'+c+'">'+c+'</option>';
         });
@@ -3725,7 +4633,7 @@
 
     function previewRapportage() {
       var filtered = getFilteredMeldingen();
-      if (filtered.length === 0) { showToast('Selecteer meldingen of gebruik de filters','error'); return; }
+      if (filtered.length === 0) { showToast(t('selecteer_meldingen_filters'),'error'); return; }
       // Update samenvatting
       var sum = document.getElementById('rapSamenvatting');
       sum.style.display = 'block';
@@ -3742,16 +4650,16 @@
 
     function generateRapportage(type) {
       var filtered = getFilteredMeldingen();
-      if (filtered.length === 0) { showToast('Selecteer meldingen of gebruik de filters','error'); return; }
+      if (filtered.length === 0) { showToast(t('selecteer_meldingen_filters'),'error'); return; }
 
-      var statusLabelsRap = { open:'Open', in_behandeling:'In behandeling', gereed_uitvoering:'Gereed uitvoering', in_uitvoering:'In uitvoering', opgelost:'Opgelost', afgerond:'Afgerond' };
+      var statusLabelsRap = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
 
       if (type === 'csv') {
-        var rows = [['Titel','Omschrijving','Categorie','Prioriteit','Status','Project','Aangemaakt door','Datum','Latitude','Longitude']];
+        var rows = [[t('titel'),t('omschrijving'),t('categorie'),t('prioriteit'),t('status'),t('project'),t('aangemaakt_label').replace(':',''),t('datum'),'Latitude','Longitude']];
         filtered.forEach(function(m) {
           var projName = '';
           if (m.project_id) { var pr = allProjects.find(function(p){return p.id===m.project_id;}); if (pr) projName = pr.name; }
-          var datum = new Date(m.created_at).toLocaleDateString('nl-NL',{day:'2-digit',month:'2-digit',year:'numeric'});
+          var datum = new Date(m.created_at).toLocaleDateString(currentLang,{day:'2-digit',month:'2-digit',year:'numeric'});
           rows.push([
             '"'+(m.title||'').replace(/"/g,'""')+'"',
             '"'+(m.description||'').replace(/"/g,'""')+'"',
@@ -3774,25 +4682,73 @@
         a.download = 'FieldOps_Rapportage_'+new Date().toISOString().slice(0,10)+'.csv';
         a.click();
         URL.revokeObjectURL(url);
-        showToast('CSV gedownload met '+filtered.length+' meldingen');
+        showToast(t('csv_gedownload')+' '+filtered.length+' '+t('meldingen').toLowerCase());
         return;
       }
 
-      // PDF download
+      // PDF download — open in new tab + download fallback
       if (type === 'pdf') {
         generatePdfBlob(filtered, function(blob) {
           var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url;
-          a.download = 'FieldOps_Rapportage_'+new Date().toISOString().slice(0,10)+'.pdf';
-          a.click();
-          URL.revokeObjectURL(url);
-          showToast('PDF rapport gedownload met '+filtered.length+' meldingen');
+          // Open directly in new tab
+          var win = window.open(url, '_blank');
+          // Fallback: if popup blocked, download instead
+          if (!win || win.closed || typeof win.closed === 'undefined') {
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = 'FieldOps_Rapportage_'+new Date().toISOString().slice(0,10)+'.pdf';
+            a.click();
+          }
+          showToast(t('pdf_gedownload')+' '+filtered.length+' '+t('meldingen').toLowerCase());
         });
       }
     }
 
+    // Helper: load image as base64 for jsPDF
+    function loadImageAsBase64(url) {
+      return new Promise(function(resolve) {
+        var img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function() {
+          try {
+            var canvas = document.createElement('canvas');
+            // Limit size for PDF
+            var maxW = 600, maxH = 400;
+            var w = img.naturalWidth, h = img.naturalHeight;
+            if (w > maxW) { h = h * (maxW / w); w = maxW; }
+            if (h > maxH) { w = w * (maxH / h); h = maxH; }
+            canvas.width = w;
+            canvas.height = h;
+            var ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            var dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+            resolve({ data: dataUrl, w: w, h: h });
+          } catch(e) {
+            console.warn('Image convert failed (CORS?):', e);
+            resolve(null);
+          }
+        };
+        img.onerror = function() { resolve(null); };
+        img.src = url;
+      });
+    }
+
     function generatePdfBlob(filtered, callback) {
+      // Pre-load all photo images, then generate the PDF
+      var imagePromises = filtered.map(function(m) {
+        var promises = {};
+        if (m.photo_url) promises.before = loadImageAsBase64(m.photo_url);
+        if (m.photo_after_url) promises.after = loadImageAsBase64(m.photo_after_url);
+        var keys = Object.keys(promises);
+        if (keys.length === 0) return Promise.resolve({});
+        return Promise.all(keys.map(function(k){ return promises[k]; })).then(function(results) {
+          var obj = {};
+          keys.forEach(function(k, i) { obj[k] = results[i]; });
+          return obj;
+        });
+      });
+
+      Promise.all(imagePromises).then(function(allImages) {
       try {
         var jsPDF = window.jspdf.jsPDF;
         var doc = new jsPDF('p','mm','a4');
@@ -3801,7 +4757,7 @@
         var rapTot = document.getElementById('rapTot').value || '-';
         var bold = function(){doc.setFont('helvetica','bold');};
         var normal = function(){doc.setFont('helvetica','normal');};
-        var statusLabelsRap = { open:'Open', in_behandeling:'In behandeling', gereed_uitvoering:'Gereed uitvoering', in_uitvoering:'In uitvoering', opgelost:'Opgelost', afgerond:'Afgerond' };
+        var statusLabelsRap = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
 
         // ═══ PAGINA 1: VOORBLAD + DASHBOARD ═══
         doc.setFillColor(2,132,199);
@@ -3810,15 +4766,15 @@
         doc.setFontSize(26); bold();
         doc.text('FieldOps Rapportage', M, 30);
         doc.setFontSize(12); normal();
-        doc.text('Meldingen overzicht  |  '+(currentOrg ? currentOrg.name : ''), M, 44);
+        doc.text(t('meldingen_overzicht')+'  |  '+(currentOrg ? currentOrg.name : ''), M, 44);
 
         var y = 75;
         doc.setTextColor(30,41,59);
         doc.setFontSize(11);
         var meta = [
-          ['Periode:', rapVan + '  t/m  ' + rapTot],
-          ['Totaal meldingen:', String(filtered.length)],
-          ['Gegenereerd:', new Date().toLocaleDateString('nl-NL',{day:'2-digit',month:'long',year:'numeric'}) + ' ' + new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})]
+          [t('periode'), rapVan + '  t/m  ' + rapTot],
+          [t('totaal_meldingen_label'), String(filtered.length)],
+          [t('gegenereerd')+':', new Date().toLocaleDateString(currentLang,{day:'2-digit',month:'long',year:'numeric'}) + ' ' + new Date().toLocaleTimeString(currentLang,{hour:'2-digit',minute:'2-digit'})]
         ];
         meta.forEach(function(r) {
           bold(); doc.text(r[0], M, y);
@@ -3829,7 +4785,7 @@
         // ── Dashboard blokken ──
         y += 8;
         bold(); doc.setFontSize(14); doc.setTextColor(30,41,59);
-        doc.text('Dashboard', M, y); y += 10;
+        doc.text(t('dashboard'), M, y); y += 10;
 
         var nOpen = filtered.filter(function(m){return m.status==='open';}).length;
         var nBehandeling = filtered.filter(function(m){return m.status==='in_behandeling';}).length;
@@ -3843,11 +4799,11 @@
 
         // Status blokken
         var blocks = [
-          {label:'Open',val:nOpen,r:0,g:180,b:255},
-          {label:'In behandeling',val:nBehandeling,r:255,g:171,b:64},
-          {label:'In uitvoering',val:nUitvoering,r:139,g:92,b:246},
-          {label:'Opgelost',val:nOpgelost,r:0,g:200,b:118},
-          {label:'Afgerond',val:nAfgerond,r:22,g:163,b:74}
+          {label:t('open'),val:nOpen,r:0,g:180,b:255},
+          {label:t('in_behandeling_status'),val:nBehandeling,r:255,g:171,b:64},
+          {label:t('in_uitvoering'),val:nUitvoering,r:139,g:92,b:246},
+          {label:t('opgelost_status'),val:nOpgelost,r:0,g:200,b:118},
+          {label:t('afgerond'),val:nAfgerond,r:22,g:163,b:74}
         ];
         var bw = (W-2*M-16)/5;
         blocks.forEach(function(b, i) {
@@ -3865,12 +4821,12 @@
         // Prioriteit verdeling
         doc.setTextColor(30,41,59);
         doc.setFontSize(12); bold();
-        doc.text('Prioriteit verdeling', M, y); y += 8;
+        doc.text(t('prioriteit_verdeling'), M, y); y += 8;
         var prioData = [
-          {label:'Kritiek',val:nKritiek,r:220,g:38,b:38},
-          {label:'Hoog',val:nHoog,r:234,g:88,b:12},
-          {label:'Normaal',val:nNormaal,r:2,g:132,b:199},
-          {label:'Laag',val:nLaag,r:148,g:163,b:184}
+          {label:t('kritiek'),val:nKritiek,r:220,g:38,b:38},
+          {label:t('hoog'),val:nHoog,r:234,g:88,b:12},
+          {label:t('normaal'),val:nNormaal,r:2,g:132,b:199},
+          {label:t('laag'),val:nLaag,r:148,g:163,b:184}
         ];
         var barMax = W-2*M-50;
         prioData.forEach(function(p) {
@@ -3889,9 +4845,9 @@
 
         // Categorie verdeling
         doc.setFontSize(12); bold(); doc.setTextColor(30,41,59);
-        doc.text('Top categorieën', M, y); y += 8;
+        doc.text(t('top_categorieen'), M, y); y += 8;
         var catCount = {};
-        filtered.forEach(function(m) { var c = m.category||'Geen categorie'; catCount[c] = (catCount[c]||0)+1; });
+        filtered.forEach(function(m) { var c = m.category||t('geen_categorie'); catCount[c] = (catCount[c]||0)+1; });
         var catSorted = Object.keys(catCount).sort(function(a,b){return catCount[b]-catCount[a];}).slice(0,8);
         doc.setFontSize(9);
         catSorted.forEach(function(cat) {
@@ -3908,7 +4864,7 @@
 
         // Footer voorblad
         doc.setFontSize(8); normal(); doc.setTextColor(148,163,184);
-        doc.text('FieldOps  |  fieldopsapp.nl  |  Pagina 1 van '+(filtered.length+1), M, H-10);
+        doc.text('FieldOps  |  fieldopsapp.nl  |  '+t('pagina')+' 1 '+t('van_pagina')+' '+(filtered.length+1), M, H-10);
 
         // ═══ PER MELDING EEN PAGINA ═══
         filtered.forEach(function(m, idx) {
@@ -3920,21 +4876,21 @@
           doc.rect(0,0,W,14,'F');
           doc.setTextColor(255,255,255);
           doc.setFontSize(8); normal();
-          doc.text('FieldOps Rapportage  |  Melding '+(idx+1)+' van '+filtered.length+'  |  '+(currentOrg?currentOrg.name:''), M, 10);
-          doc.text(new Date().toLocaleDateString('nl-NL'), W-M-28, 10);
+          doc.text('FieldOps Rapportage  |  '+t('meldingen')+' '+(idx+1)+' '+t('van_pagina')+' '+filtered.length+'  |  '+(currentOrg?currentOrg.name:''), M, 10);
+          doc.text(new Date().toLocaleDateString(currentLang), W-M-28, 10);
 
           py = 24;
           doc.setTextColor(30,41,59);
 
           // Titel
           doc.setFontSize(18); bold();
-          var titleLines = doc.splitTextToSize(m.title || 'Zonder titel', W-2*M);
+          var titleLines = doc.splitTextToSize(m.title || t('zonder_titel'), W-2*M);
           doc.text(titleLines, M, py); py += titleLines.length * 8 + 2;
 
           // Meta
           doc.setFontSize(10); normal(); doc.setTextColor(100,116,139);
-          var datum = new Date(m.created_at).toLocaleDateString('nl-NL',{day:'2-digit',month:'long',year:'numeric'}) + ' ' + new Date(m.created_at).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'});
-          doc.text('Aangemaakt: '+datum+'  |  Door: '+(m.creator_name||'Onbekend'), M, py); py += 12;
+          var datum = new Date(m.created_at).toLocaleDateString(currentLang,{day:'2-digit',month:'long',year:'numeric'}) + ' ' + new Date(m.created_at).toLocaleTimeString(currentLang,{hour:'2-digit',minute:'2-digit'});
+          doc.text(t('aangemaakt_label')+' '+datum+'  |  '+t('door')+' '+(m.creator_name||t('onbekend')), M, py); py += 12;
 
           // Info blok
           doc.setFillColor(245,247,250);
@@ -3945,10 +4901,10 @@
           var projName = '-';
           if (m.project_id) { var pr = allProjects.find(function(p){return p.id===m.project_id;}); if (pr) projName = pr.name; }
           var fields = [
-            ['Status', statusLabelsRap[m.status]||m.status],
-            ['Prioriteit', (m.priority||'normaal').charAt(0).toUpperCase()+(m.priority||'normaal').slice(1)],
-            ['Categorie', m.category||'-'],
-            ['Project', projName]
+            [t('status'), statusLabelsRap[m.status]||m.status],
+            [t('prioriteit'), (m.priority||t('normaal')).charAt(0).toUpperCase()+(m.priority||t('normaal')).slice(1)],
+            [t('categorie'), m.category||'-'],
+            [t('project'), projName]
           ];
           var cw = (W-2*M)/2;
           fields.forEach(function(f, fi) {
@@ -3967,14 +4923,14 @@
 
           // GPS
           doc.setFontSize(10); bold(); doc.setTextColor(2,132,199);
-          doc.text('GPS LOCATIE', M, py); py += 6;
+          doc.text(t('gps_locatie'), M, py); py += 6;
           normal(); doc.setTextColor(30,41,59); doc.setFontSize(11);
           if (m.lat && m.lng) {
-            doc.text('Coordinaten: '+m.lat.toFixed(6)+', '+m.lng.toFixed(6), M, py); py += 5;
+            doc.text(t('coordinaten')+' '+m.lat.toFixed(6)+', '+m.lng.toFixed(6), M, py); py += 5;
             doc.setFontSize(9); doc.setTextColor(100,116,139);
             doc.text('https://maps.google.com/?q='+m.lat+','+m.lng, M, py); py += 10;
           } else {
-            doc.text('Geen locatie opgegeven', M, py); py += 10;
+            doc.text(t('geen_locatie'), M, py); py += 10;
           }
 
           // Lijn
@@ -3983,9 +4939,9 @@
 
           // Omschrijving
           doc.setFontSize(10); bold(); doc.setTextColor(2,132,199);
-          doc.text('OMSCHRIJVING', M, py); py += 6;
+          doc.text(t('omschrijving').toUpperCase(), M, py); py += 6;
           normal(); doc.setTextColor(30,41,59); doc.setFontSize(11);
-          var desc = m.description || 'Geen omschrijving opgegeven.';
+          var desc = m.description || t('geen_omschrijving');
           var lines = doc.splitTextToSize(desc, W-2*M);
           if (py + lines.length * 5.5 > H-30) {
             var maxLines = Math.floor((H-30-py)/5.5);
@@ -4005,41 +4961,79 @@
 
           // Fotos
           doc.setFontSize(10); bold(); doc.setTextColor(2,132,199);
-          doc.text("FOTO'S", M, py); py += 6;
+          doc.text(t('fotos'), M, py); py += 6;
           normal(); doc.setFontSize(10); doc.setTextColor(30,41,59);
+
+          var imgs = allImages[idx] || {};
+          var hasAnyPhoto = false;
+
+          // Foto voor (before)
           if (m.photo_url) {
-            doc.text('Foto voor schade: Beschikbaar in portaal', M, py); py += 6;
+            hasAnyPhoto = true;
+            doc.setFontSize(9); bold(); doc.setTextColor(30,41,59);
+            doc.text(t('foto_voor'), M, py); py += 2;
+            if (imgs.before && imgs.before.data) {
+              var imgW = 70, imgH = (imgs.before.h / imgs.before.w) * imgW;
+              if (imgH > 60) { imgW = imgW * (60 / imgH); imgH = 60; }
+              if (py + imgH > H - 30) { doc.addPage(); py = M + 10; }
+              doc.addImage(imgs.before.data, 'JPEG', M, py, imgW, imgH);
+              py += imgH + 4;
+            } else {
+              doc.setFontSize(8); normal(); doc.setTextColor(2,132,199);
+              doc.textWithLink(m.photo_url, M, py + 2, { url: m.photo_url });
+              py += 8;
+            }
           }
+
+          // Foto na (after)
           if (m.photo_after_url) {
-            doc.text('Foto na herstel: Beschikbaar in portaal', M, py); py += 6;
+            hasAnyPhoto = true;
+            doc.setFontSize(9); bold(); doc.setTextColor(30,41,59);
+            doc.text(t('foto_na'), M, py); py += 2;
+            if (imgs.after && imgs.after.data) {
+              var imgW2 = 70, imgH2 = (imgs.after.h / imgs.after.w) * imgW2;
+              if (imgH2 > 60) { imgW2 = imgW2 * (60 / imgH2); imgH2 = 60; }
+              if (py + imgH2 > H - 30) { doc.addPage(); py = M + 10; }
+              doc.addImage(imgs.after.data, 'JPEG', M, py, imgW2, imgH2);
+              py += imgH2 + 4;
+            } else {
+              doc.setFontSize(8); normal(); doc.setTextColor(2,132,199);
+              doc.textWithLink(m.photo_after_url, M, py + 2, { url: m.photo_after_url });
+              py += 8;
+            }
           }
-          if (!m.photo_url && !m.photo_after_url) {
+
+          if (!hasAnyPhoto) {
             doc.setTextColor(148,163,184);
-            doc.text('Geen fotos beschikbaar', M, py); py += 6;
+            doc.text(t('geen_fotos'), M, py); py += 6;
           }
 
           // Melding ID
           py += 12;
           doc.setFontSize(7); doc.setTextColor(148,163,184); normal();
-          doc.text('Melding ID: '+m.id, M, py);
+          doc.text(t('melding_id')+' '+m.id, M, py);
 
           // Footer
           doc.setFontSize(8); doc.setTextColor(148,163,184);
-          doc.text('FieldOps  |  fieldopsapp.nl  |  Pagina '+(idx+2)+' van '+(filtered.length+1), M, H-10);
+          doc.text('FieldOps  |  fieldopsapp.nl  |  '+t('pagina')+' '+(idx+2)+' '+t('van_pagina')+' '+(filtered.length+1), M, H-10);
         });
 
         var blob = doc.output('blob');
         callback(blob);
       } catch(e) {
         console.error('PDF generatie fout:', e);
-        showToast('PDF generatie mislukt: '+e.message, 'error');
+        showToast(t('pdf_mislukt')+' '+e.message, 'error');
       }
+      }).catch(function(e) {
+        console.error('PDF image loading fout:', e);
+        showToast(t('pdf_mislukt')+' '+e.message, 'error');
+      });
     }
 
     function createMelding(e) {
       e.preventDefault();
       var btn = document.getElementById('meldingSubmitBtn');
-      btn.textContent = 'Bezig...';
+      btn.textContent = t('bezig');
       btn.disabled = true;
       var lat = parseFloat(document.getElementById('meldingLat').value) || null;
       var lng = parseFloat(document.getElementById('meldingLng').value) || null;
@@ -4053,7 +5047,7 @@
         lng: lng,
         project_id: projId
       }).then(function(melding) {
-        showToast('Melding "'+melding.title+'" aangemaakt!', 'success');
+        showToast(t('melding_aangemaakt'), 'success');
         closeMeldingModal();
         document.getElementById('meldingTitle').value = '';
         document.getElementById('meldingDesc').value = '';
@@ -4065,20 +5059,39 @@
       }).catch(function(err) {
         showToast(err.message, 'error');
       }).finally(function() {
-        btn.textContent = 'Melding aanmaken';
+        btn.textContent = t('melding_aanmaken');
         btn.disabled = false;
       });
     }
 
+    function autoFillGPS() {
+      if (!navigator.geolocation) return;
+      var latField = document.getElementById('meldingLat');
+      var lngField = document.getElementById('meldingLng');
+      // Quick low-accuracy fix first (fast, ~1 sec)
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        if (!latField.value) {
+          latField.value = pos.coords.latitude.toFixed(6);
+          lngField.value = pos.coords.longitude.toFixed(6);
+        }
+        // Then refine with high accuracy (slower but precise)
+        navigator.geolocation.getCurrentPosition(function(pos2) {
+          latField.value = pos2.coords.latitude.toFixed(6);
+          lngField.value = pos2.coords.longitude.toFixed(6);
+        }, function(){}, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+      }, function(){}, { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 });
+    }
+
     function getMeldingLocation() {
-      if (!navigator.geolocation) { showToast('GPS niet beschikbaar', 'error'); return; }
+      if (!navigator.geolocation) { showToast(t('gps_niet_beschikbaar'), 'error'); return; }
+      showToast(t('locatie_vastgelegd') + '...', 'info');
       navigator.geolocation.getCurrentPosition(function(pos) {
         document.getElementById('meldingLat').value = pos.coords.latitude.toFixed(6);
         document.getElementById('meldingLng').value = pos.coords.longitude.toFixed(6);
-        showToast('Locatie vastgelegd', 'success');
+        showToast(t('locatie_vastgelegd'), 'success');
       }, function(err) {
-        showToast('Kan locatie niet ophalen: ' + err.message, 'error');
-      }, { enableHighAccuracy: true });
+        showToast(t('kan_locatie_niet_ophalen') + ': ' + err.message, 'error');
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
     }
 
     // ══════════════════════════════════════
@@ -4108,6 +5121,14 @@
       // Zoom control rechtsonder
       L.control.zoom({ position: 'topright' }).addTo(map);
 
+      // Geocoder search control
+      L.Control.geocoder({
+        defaultMarkType: 'L.marker',
+        placeholder: 'Zoek straat of adres...',
+        errorMessage: 'Niets gevonden.',
+        geocoder: L.Control.Geocoder.nominatim({ geocodingQueryParams: { countrycodes: 'nl', limit: 5 } })
+      }).addTo(map);
+
       // Base layers
       var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap',
@@ -4136,12 +5157,11 @@
       satelliteWithLabels.addTo(map);
 
       // Layer control
-      var baseLayers = {
-        'Satelliet + labels': satelliteWithLabels,
-        'Satelliet (puur)': satelliteLayer,
-        'Stratenkaart': osmLayer,
-        'Topografisch': topoLayer
-      };
+      var baseLayers = {};
+      baseLayers[t('satelliet_labels')] = satelliteWithLabels;
+      baseLayers[t('satelliet_puur')] = satelliteLayer;
+      baseLayers[t('stratenkaart')] = osmLayer;
+      baseLayers[t('topografisch')] = topoLayer;
       L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
 
       // Drawing tools for project boundaries
@@ -4176,16 +5196,16 @@
         // Ask which project to assign to
         if (allProjects.length > 0) {
           var opts = allProjects.map(function(p) { return p.name; });
-          var choice = prompt('Sla projectgebied op voor welk project?\\n\\n' + allProjects.map(function(p,i){return (i+1)+'. '+p.name;}).join('\\n') + '\\n\\nTyp het nummer:');
+          var choice = prompt(t('sla_gebied_op')+'\\n\\n' + allProjects.map(function(p,i){return (i+1)+'. '+p.name;}).join('\\n') + '\\n\\n'+t('typ_nummer'));
           if (choice && allProjects[parseInt(choice)-1]) {
             var proj = allProjects[parseInt(choice)-1];
             api('PUT', '/api/projects/'+proj.id, { boundary_geojson: geojson }).then(function() {
-              showToast('Projectgebied opgeslagen voor '+proj.name, 'success');
+              showToast(t('gebied_opgeslagen')+' '+proj.name, 'success');
               loadMapData();
             }).catch(function(err) { showToast(err.message, 'error'); });
           }
         } else {
-          showToast('Maak eerst een project aan om een gebeid op te slaan.', 'error');
+          showToast(t('maak_eerst_project'), 'error');
         }
       });
 
@@ -4223,7 +5243,7 @@
 
           if (!userLocationMarker) {
             userLocationMarker = L.marker([lat, lng], { icon: blueDotIcon, zIndexOffset: 9999 }).addTo(map);
-            userLocationMarker.bindPopup('<div style="font-family:DM Sans,sans-serif;text-align:center;"><strong>Mijn locatie</strong><br><span style="color:#888;font-size:12px;">GPS nauwkeurigheid: '+Math.round(acc)+'m</span></div>');
+            userLocationMarker.bindPopup('<div style="font-family:DM Sans,sans-serif;text-align:center;"><strong>'+t('mijn_locatie')+'</strong><br><span style="color:#888;font-size:12px;">'+t('gps_nauwkeurigheid')+': '+Math.round(acc)+'m</span></div>');
             userLocationCircle = L.circle([lat, lng], { radius: acc, color: '#007AFF', fillColor: '#007AFF', fillOpacity: 0.08, weight: 1, opacity: 0.3 }).addTo(map);
           } else {
             userLocationMarker.setLatLng([lat, lng]);
@@ -4252,9 +5272,9 @@
       projectLayers = {};
       meldingMarkers.forEach(function(m) { map.removeLayer(m); });
       meldingMarkers = [];
-      drawnItems.clearLayers();
+      if (drawnItems) drawnItems.clearLayers();
 
-      // Load projects with boundaries
+      // Load projects first, then meldingen (so project names are available for popups)
       api('GET', '/api/projects/').then(function(projects) {
         allProjects = projects || [];
         updateProjectFilter();
@@ -4270,10 +5290,11 @@
             } catch(e) {}
           }
         });
-      });
 
-      // Load meldingen with category-based icons
-      api('GET', '/api/meldingen/').then(function(meldingen) {
+        // Load meldingen after projects so project names are available
+        return api('GET', '/api/meldingen/');
+      }).then(function(meldingen) {
+        if (!meldingen) return;
         allMeldingen = meldingen || [];
         var prioColors = { kritiek:'#ff5252', hoog:'#ffab40', normaal:'#00d4ff', laag:'#888' };
         var catIcons = {
@@ -4301,7 +5322,7 @@
                 '<div style="min-width:200px;font-family:DM Sans,sans-serif;">' +
                 '<strong style="font-size:14px;">'+m.title+'</strong>' +
                 (projName ? '<br><span style="color:#00d4ff;font-size:11px;">📂 '+projName+'</span>' : '') +
-                '<br><span style="color:#888;font-size:12px;">'+emoji+' '+(m.category||'Geen categorie')+'</span><br>' +
+                '<br><span style="color:#888;font-size:12px;">'+emoji+' '+(m.category||t('geen_categorie'))+'</span><br>' +
                 '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:'+color+'22;color:'+color+';font-weight:600;">'+m.priority+'</span> ' +
                 '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:#00d4ff22;color:#00d4ff;">'+m.status+'</span>' +
                 (m.description ? '<p style="margin-top:6px;font-size:12px;color:#666;">'+m.description+'</p>' : '') +
@@ -4327,6 +5348,8 @@
           );
           try { map.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 14 }); } catch(e) {}
         }
+      }).catch(function(err) {
+        console.error('Error loading map data:', err);
       });
     }
 
