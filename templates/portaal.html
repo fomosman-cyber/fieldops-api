@@ -925,6 +925,45 @@
       <div id="projectenList" style="display:none;">
         <div class="stats-grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));" id="projectCards"></div>
       </div>
+
+      <!-- Project Detail (inline) -->
+      <div id="projectDetail" style="display:none;">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:24px;">
+          <button class="btn-secondary" onclick="closeProjectDetail()" style="padding:8px 12px;">&#8592; Terug</button>
+          <h2 id="projectDetailName" style="font-size:22px;font-weight:700;"></h2>
+          <span class="status-badge active" id="projectDetailStatus"></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+          <!-- Info -->
+          <div class="card">
+            <div class="card-header"><h3>Projectgegevens</h3>
+              <button class="btn-secondary" onclick="editCurrentProject()" style="font-size:12px;padding:6px 12px;">Bewerken</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <div><label style="font-size:12px;color:var(--text-dim);">Omschrijving</label><div id="projectDetailDesc" style="font-size:14px;color:var(--text-muted);">-</div></div>
+              <div><label style="font-size:12px;color:var(--text-dim);">Gemeente</label><div id="projectDetailGemeente" style="font-size:14px;">-</div></div>
+              <div><label style="font-size:12px;color:var(--text-dim);">Aangemaakt</label><div id="projectDetailDate" style="font-size:14px;color:var(--text-muted);">-</div></div>
+            </div>
+          </div>
+          <!-- Meldingen in project -->
+          <div class="card">
+            <div class="card-header"><h3>Meldingen</h3>
+              <button class="btn-primary" onclick="openMeldingForProject()" style="font-size:12px;padding:6px 12px;">+ Melding</button>
+            </div>
+            <div id="projectDetailMeldingen" style="max-height:200px;overflow-y:auto;">
+              <p style="color:var(--text-dim);font-size:14px;">Geen meldingen in dit project.</p>
+            </div>
+          </div>
+        </div>
+        <!-- Project boundary map -->
+        <div class="card" style="margin-top:24px;padding:0;overflow:hidden;">
+          <div style="padding:16px 24px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+            <h3>Projectgebied</h3>
+            <button class="btn-secondary" onclick="editProjectBoundary()" style="font-size:12px;padding:6px 12px;" id="editBoundaryBtn">Grenzen aanpassen</button>
+          </div>
+          <div id="projectDetailMap" style="width:100%;height:350px;background:#1a1a2e;"></div>
+        </div>
+      </div>
     </div>
 
     <!-- ═══ MELDINGEN ═══ -->
@@ -1170,40 +1209,56 @@
     </div>
   </div>
 
-  <!-- ═══════ PROJECT MODAL ═══════ -->
+  <!-- ═══════ PROJECT MODAL (fullscreen met kaart) ═══════ -->
   <div class="modal-overlay" id="projectModal">
-    <div class="modal">
-      <button class="modal-close" onclick="closeProjectModal()">&times;</button>
-      <h2>Nieuw Project</h2>
-      <p class="subtitle">Maak een nieuw project aan voor je werkgebied.</p>
-      <form onsubmit="createProject(event)">
-        <div class="form-group">
-          <label>Projectnaam *</label>
-          <input type="text" id="projectName" placeholder="bijv. N50 Kampen" required>
+    <div class="modal" style="max-width:900px;padding:0;overflow:hidden;">
+      <div style="padding:24px 28px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h2 style="margin:0;" id="projectModalTitle">Nieuw Project</h2>
+          <p class="subtitle" style="margin:4px 0 0;">Vul de gegevens in en teken het projectgebied op de kaart.</p>
         </div>
-        <div class="form-group">
-          <label>Omschrijving</label>
-          <input type="text" id="projectDesc" placeholder="Korte beschrijving van het project">
+        <button class="modal-close" onclick="closeProjectModal()" style="position:static;">&times;</button>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;">
+        <!-- Left: form -->
+        <div style="flex:1;min-width:280px;padding:24px 28px;border-right:1px solid var(--border);">
+          <form onsubmit="createProject(event)" id="projectForm">
+            <input type="hidden" id="projectEditId" value="">
+            <div class="form-group">
+              <label>Projectnaam *</label>
+              <input type="text" id="projectName" placeholder="bijv. N50 Kampen" required>
+            </div>
+            <div class="form-group">
+              <label>Omschrijving</label>
+              <input type="text" id="projectDesc" placeholder="Korte beschrijving van het project">
+            </div>
+            <div class="form-group">
+              <label>Gemeente</label>
+              <input type="text" id="projectGemeente" placeholder="bijv. Amsterdam, Rotterdam">
+            </div>
+            <div class="form-group">
+              <label>Kleur op kaart</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;" id="colorPicker">
+                <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#00d4ff" checked style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#00d4ff;border:3px solid var(--accent);"></div></label>
+                <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#00e676" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#00e676;border:3px solid transparent;"></div></label>
+                <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#ffab40" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#ffab40;border:3px solid transparent;"></div></label>
+                <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#ff5252" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#ff5252;border:3px solid transparent;"></div></label>
+                <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#ab47bc" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#ab47bc;border:3px solid transparent;"></div></label>
+                <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#29b6f6" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#29b6f6;border:3px solid transparent;"></div></label>
+              </div>
+            </div>
+            <input type="hidden" id="projectBoundary" value="">
+            <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;" id="boundaryStatus">Teken een vierkant of polygoon op de kaart rechts om het projectgebied af te bakenen.</div>
+            <div class="form-actions" style="margin-top:16px;">
+              <button type="submit" class="btn-primary" id="projectSubmitBtn" style="flex:1;justify-content:center;">Project aanmaken</button>
+            </div>
+          </form>
         </div>
-        <div class="form-group">
-          <label>Gemeente</label>
-          <input type="text" id="projectGemeente" placeholder="bijv. Amsterdam, Rotterdam">
+        <!-- Right: mini map for boundary -->
+        <div style="flex:1;min-width:320px;min-height:400px;position:relative;">
+          <div id="projectMap" style="width:100%;height:100%;min-height:400px;background:#1a1a2e;"></div>
         </div>
-        <div class="form-group">
-          <label>Kleur op kaart</label>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;" id="colorPicker">
-            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#00d4ff" checked style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#00d4ff;border:3px solid var(--accent);"></div></label>
-            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#00e676" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#00e676;border:3px solid transparent;"></div></label>
-            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#ffab40" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#ffab40;border:3px solid transparent;"></div></label>
-            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#ff5252" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#ff5252;border:3px solid transparent;"></div></label>
-            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#ab47bc" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#ab47bc;border:3px solid transparent;"></div></label>
-            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#29b6f6" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#29b6f6;border:3px solid transparent;"></div></label>
-          </div>
-        </div>
-        <div class="form-actions">
-          <button type="submit" class="btn-primary" id="projectSubmitBtn">Project aanmaken</button>
-        </div>
-      </form>
+      </div>
     </div>
   </div>
 
@@ -1653,14 +1708,22 @@
           var statusColors = { active: 'green', completed: 'blue', archived: 'red' };
           var statusLabels = { active: 'Actief', completed: 'Afgerond', archived: 'Gearchiveerd' };
           var date = new Date(p.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
-          return '<div class="stat-card" style="cursor:pointer;border-left:4px solid '+(p.color||'#00d4ff')+';" onclick="viewProjectOnMap(\''+p.id+'\')">' +
+          var hasBoundary = p.boundary_geojson ? '<span style="color:var(--green);font-size:11px;">&#9679; Gebied ingesteld</span>' : '<span style="color:var(--text-dim);font-size:11px;">&#9675; Geen gebied</span>';
+          return '<div class="stat-card" style="cursor:pointer;border-left:4px solid '+(p.color||'#00d4ff')+';" onclick="openProjectDetail(\''+p.id+'\')">' +
             '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px;">' +
             '<h3 style="font-size:16px;font-weight:600;">'+p.name+'</h3>' +
             '<span class="status-badge '+(statusColors[p.status]||'active')+'">'+(statusLabels[p.status]||p.status)+'</span>' +
             '</div>' +
             (p.description ? '<p style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">'+p.description+'</p>' : '') +
             (p.gemeente ? '<p style="color:var(--text-dim);font-size:12px;">&#127970; '+p.gemeente+'</p>' : '') +
-            '<p style="color:var(--text-dim);font-size:12px;margin-top:8px;">'+date+'</p>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">' +
+            '<span style="color:var(--text-dim);font-size:12px;">'+date+'</span>' +
+            hasBoundary +
+            '</div>' +
+            '<div style="display:flex;gap:8px;margin-top:12px;">' +
+            '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;flex:1;" onclick="event.stopPropagation();openProjectDetail(\''+p.id+'\')">Bekijken</button>' +
+            '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="event.stopPropagation();viewProjectOnMap(\''+p.id+'\')">Op kaart</button>' +
+            '</div>' +
             '</div>';
         }).join('');
         // Update dashboard stats
@@ -1670,8 +1733,48 @@
       });
     }
 
-    function openProjectModal() {
+    var projectModalMap = null;
+    var projectModalDrawn = null;
+    var projectModalDrawControl = null;
+    var currentEditProjectId = null;
+
+    function openProjectModal(editProject) {
+      currentEditProjectId = null;
+      document.getElementById('projectEditId').value = '';
+      document.getElementById('projectName').value = '';
+      document.getElementById('projectDesc').value = '';
+      document.getElementById('projectGemeente').value = '';
+      document.getElementById('projectBoundary').value = '';
+      document.getElementById('boundaryStatus').textContent = 'Teken een vierkant of polygoon op de kaart rechts om het projectgebied af te bakenen.';
+      document.getElementById('boundaryStatus').style.color = 'var(--text-dim)';
+      document.getElementById('projectModalTitle').textContent = 'Nieuw Project';
+      document.getElementById('projectSubmitBtn').textContent = 'Project aanmaken';
+
+      // If editing
+      if (editProject) {
+        currentEditProjectId = editProject.id;
+        document.getElementById('projectEditId').value = editProject.id;
+        document.getElementById('projectName').value = editProject.name || '';
+        document.getElementById('projectDesc').value = editProject.description || '';
+        document.getElementById('projectGemeente').value = editProject.gemeente || '';
+        document.getElementById('projectBoundary').value = editProject.boundary_geojson || '';
+        document.getElementById('projectModalTitle').textContent = 'Project bewerken';
+        document.getElementById('projectSubmitBtn').textContent = 'Opslaan';
+        if (editProject.boundary_geojson) {
+          document.getElementById('boundaryStatus').textContent = 'Projectgebied is ingesteld. Teken opnieuw om aan te passen.';
+          document.getElementById('boundaryStatus').style.color = 'var(--green)';
+        }
+        // Set color
+        var radios = document.querySelectorAll('#colorPicker input[type=radio]');
+        radios.forEach(function(r) {
+          r.checked = r.value === (editProject.color || '#00d4ff');
+          var dot = r.parentElement.querySelector('.color-dot');
+          dot.style.borderColor = r.checked ? r.value : 'transparent';
+        });
+      }
+
       document.getElementById('projectModal').classList.add('active');
+
       // Color picker logic
       document.querySelectorAll('#colorPicker input[type=radio]').forEach(function(r) {
         r.addEventListener('change', function() {
@@ -1679,9 +1782,78 @@
           this.parentElement.querySelector('.color-dot').style.borderColor = this.value;
         });
       });
+
+      // Init modal map
+      setTimeout(function() { initProjectModalMap(editProject); }, 200);
     }
+
+    function initProjectModalMap(editProject) {
+      if (projectModalMap) { projectModalMap.remove(); projectModalMap = null; }
+
+      projectModalMap = L.map('projectMap', { zoomControl: true }).setView([52.3, 5.3], 8);
+
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri', maxZoom: 19
+      }).addTo(projectModalMap);
+
+      projectModalDrawn = new L.FeatureGroup();
+      projectModalMap.addLayer(projectModalDrawn);
+
+      // Load existing boundary
+      if (editProject && editProject.boundary_geojson) {
+        try {
+          var geo = JSON.parse(editProject.boundary_geojson);
+          var layer = L.geoJSON(geo, {
+            style: { color: editProject.color || '#00d4ff', weight: 3, fillOpacity: 0.2 }
+          });
+          layer.eachLayer(function(l) { projectModalDrawn.addLayer(l); });
+          projectModalMap.fitBounds(layer.getBounds(), { padding: [30, 30] });
+        } catch(e) {}
+      }
+
+      var selectedColor = document.querySelector('#colorPicker input[type=radio]:checked');
+      var drawColor = selectedColor ? selectedColor.value : '#00d4ff';
+
+      projectModalDrawControl = new L.Control.Draw({
+        position: 'topleft',
+        draw: {
+          polygon: { shapeOptions: { color: drawColor, weight: 3, fillOpacity: 0.2 }, allowIntersection: false, showArea: true },
+          rectangle: { shapeOptions: { color: drawColor, weight: 3, fillOpacity: 0.2 } },
+          polyline: false, circle: false, circlemarker: false, marker: false
+        },
+        edit: { featureGroup: projectModalDrawn }
+      });
+      projectModalMap.addControl(projectModalDrawControl);
+
+      projectModalMap.on(L.Draw.Event.CREATED, function(e) {
+        projectModalDrawn.clearLayers();
+        projectModalDrawn.addLayer(e.layer);
+        var geojson = JSON.stringify(e.layer.toGeoJSON().geometry);
+        document.getElementById('projectBoundary').value = geojson;
+        document.getElementById('boundaryStatus').textContent = 'Projectgebied afgebakend!';
+        document.getElementById('boundaryStatus').style.color = 'var(--green)';
+      });
+
+      projectModalMap.on(L.Draw.Event.EDITED, function() {
+        var layers = [];
+        projectModalDrawn.eachLayer(function(l) { layers.push(l); });
+        if (layers.length > 0) {
+          document.getElementById('projectBoundary').value = JSON.stringify(layers[0].toGeoJSON().geometry);
+        }
+      });
+
+      projectModalMap.on(L.Draw.Event.DELETED, function() {
+        document.getElementById('projectBoundary').value = '';
+        document.getElementById('boundaryStatus').textContent = 'Projectgebied verwijderd. Teken opnieuw.';
+        document.getElementById('boundaryStatus').style.color = 'var(--orange)';
+      });
+
+      setTimeout(function() { projectModalMap.invalidateSize(); }, 100);
+    }
+
     function closeProjectModal() {
       document.getElementById('projectModal').classList.remove('active');
+      if (projectModalMap) { projectModalMap.remove(); projectModalMap = null; }
     }
 
     function createProject(e) {
@@ -1690,25 +1862,142 @@
       btn.textContent = 'Bezig...';
       btn.disabled = true;
       var color = document.querySelector('#colorPicker input[type=radio]:checked');
-      api('POST', '/api/projects/', {
+      var boundary = document.getElementById('projectBoundary').value || null;
+      var editId = document.getElementById('projectEditId').value;
+      var data = {
         name: document.getElementById('projectName').value,
         description: document.getElementById('projectDesc').value || null,
         gemeente: document.getElementById('projectGemeente').value || null,
-        color: color ? color.value : '#00d4ff'
-      }).then(function(project) {
-        showToast('Project "'+project.name+'" aangemaakt!', 'success');
+        color: color ? color.value : '#00d4ff',
+        boundary_geojson: boundary
+      };
+
+      var method = editId ? 'PUT' : 'POST';
+      var url = editId ? '/api/projects/' + editId : '/api/projects/';
+
+      api(method, url, data).then(function(project) {
+        showToast(editId ? 'Project opgeslagen!' : 'Project "'+project.name+'" aangemaakt!', 'success');
         closeProjectModal();
-        document.getElementById('projectName').value = '';
-        document.getElementById('projectDesc').value = '';
-        document.getElementById('projectGemeente').value = '';
         loadProjects();
         loadDashboardStats();
+        if (editId && currentDetailProject) {
+          openProjectDetail(project.id);
+        }
       }).catch(function(err) {
         showToast(err.message, 'error');
       }).finally(function() {
-        btn.textContent = 'Project aanmaken';
+        btn.textContent = editId ? 'Opslaan' : 'Project aanmaken';
         btn.disabled = false;
       });
+    }
+
+    // ── Project Detail ──
+    var currentDetailProject = null;
+    var projectDetailMap = null;
+
+    function openProjectDetail(projectId) {
+      var proj = allProjects.find(function(p) { return p.id === projectId; });
+      if (!proj) return;
+      currentDetailProject = proj;
+
+      // Hide list, show detail
+      document.getElementById('projectenEmpty').style.display = 'none';
+      document.getElementById('projectenList').style.display = 'none';
+      document.getElementById('projectDetail').style.display = 'block';
+      document.querySelector('#page-projecten .page-header').style.display = 'none';
+
+      document.getElementById('projectDetailName').textContent = proj.name;
+      document.getElementById('projectDetailStatus').textContent = proj.status === 'active' ? 'Actief' : proj.status;
+      document.getElementById('projectDetailDesc').textContent = proj.description || 'Geen omschrijving';
+      document.getElementById('projectDetailGemeente').textContent = proj.gemeente || '-';
+      document.getElementById('projectDetailDate').textContent = new Date(proj.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'long', year:'numeric' });
+
+      // Load meldingen for this project
+      api('GET', '/api/meldingen/?project_id=' + projectId).then(function(meldingen) {
+        var container = document.getElementById('projectDetailMeldingen');
+        if (!meldingen || meldingen.length === 0) {
+          container.innerHTML = '<p style="color:var(--text-dim);font-size:14px;text-align:center;padding:20px;">Geen meldingen in dit project.</p>';
+          return;
+        }
+        var prioColors = { kritiek:'#ff5252', hoog:'#ffab40', normaal:'#00d4ff', laag:'#888' };
+        container.innerHTML = meldingen.map(function(m) {
+          var color = prioColors[m.priority] || '#00d4ff';
+          return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">' +
+            '<div style="width:10px;height:10px;border-radius:50%;background:'+color+';flex-shrink:0;"></div>' +
+            '<div style="flex:1;"><div style="font-size:13px;font-weight:500;">'+m.title+'</div>' +
+            '<div style="font-size:11px;color:var(--text-dim);">'+(m.category||'')+' &middot; '+m.status+'</div></div>' +
+            '</div>';
+        }).join('');
+      });
+
+      // Init detail map
+      setTimeout(function() { initProjectDetailMap(proj); }, 200);
+    }
+
+    function initProjectDetailMap(proj) {
+      if (projectDetailMap) { projectDetailMap.remove(); projectDetailMap = null; }
+
+      projectDetailMap = L.map('projectDetailMap', { zoomControl: true }).setView([52.3, 5.3], 8);
+
+      L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri', maxZoom: 19
+      }).addTo(projectDetailMap);
+
+      if (proj.boundary_geojson) {
+        try {
+          var geo = JSON.parse(proj.boundary_geojson);
+          var layer = L.geoJSON(geo, {
+            style: { color: proj.color || '#00d4ff', weight: 3, fillOpacity: 0.15, fillColor: proj.color || '#00d4ff' }
+          });
+          layer.addTo(projectDetailMap);
+          projectDetailMap.fitBounds(layer.getBounds(), { padding: [40, 40] });
+        } catch(e) {}
+      }
+
+      // Show meldingen markers on this map
+      api('GET', '/api/meldingen/?project_id=' + proj.id).then(function(meldingen) {
+        var prioColors = { kritiek:'#ff5252', hoog:'#ffab40', normaal:'#00d4ff', laag:'#888' };
+        (meldingen || []).forEach(function(m) {
+          if (m.lat && m.lng) {
+            var color = prioColors[m.priority] || '#00d4ff';
+            var icon = L.divIcon({
+              className: '',
+              html: '<div style="width:14px;height:14px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>',
+              iconSize: [14, 14], iconAnchor: [7, 7]
+            });
+            L.marker([m.lat, m.lng], { icon: icon })
+              .bindPopup('<strong>'+m.title+'</strong><br><span style="font-size:12px;color:#888;">'+m.priority+'</span>')
+              .addTo(projectDetailMap);
+          }
+        });
+      });
+
+      setTimeout(function() { projectDetailMap.invalidateSize(); }, 100);
+    }
+
+    function closeProjectDetail() {
+      document.getElementById('projectDetail').style.display = 'none';
+      document.querySelector('#page-projecten .page-header').style.display = 'flex';
+      if (projectDetailMap) { projectDetailMap.remove(); projectDetailMap = null; }
+      currentDetailProject = null;
+      loadProjects();
+    }
+
+    function editCurrentProject() {
+      if (currentDetailProject) openProjectModal(currentDetailProject);
+    }
+
+    function editProjectBoundary() {
+      if (currentDetailProject) openProjectModal(currentDetailProject);
+    }
+
+    function openMeldingForProject() {
+      if (currentDetailProject) {
+        openMeldingModal();
+        setTimeout(function() {
+          document.getElementById('meldingProject').value = currentDetailProject.id;
+        }, 100);
+      }
     }
 
     function viewProjectOnMap(projectId) {
