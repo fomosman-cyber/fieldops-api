@@ -4,6 +4,9 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from pathlib import Path
+import asyncio
+import httpx
+import os
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
@@ -11,6 +14,22 @@ from routers import auth_router, demo_router, users_router, org_router, shopify_
 
 # Maak alle tabellen aan
 Base.metadata.create_all(bind=engine)
+
+
+async def keep_alive_ping():
+    """Ping zichzelf elke 10 minuten om Render wake te houden."""
+    url = os.environ.get("RENDER_EXTERNAL_URL", "")
+    if not url:
+        return  # Alleen actief op Render
+    await asyncio.sleep(60)  # Wacht 1 min na startup
+    async with httpx.AsyncClient() as client:
+        while True:
+            try:
+                await client.get(f"{url}/api/health", timeout=10)
+                print("[keep-alive] ping OK")
+            except Exception:
+                pass
+            await asyncio.sleep(600)  # Elke 10 min
 
 
 @asynccontextmanager
@@ -46,7 +65,11 @@ async def lifespan(app: FastAPI):
             print("Owner account bestaat al")
     finally:
         db.close()
+
+    # Start keep-alive taak
+    ping_task = asyncio.create_task(keep_alive_ping())
     yield
+    ping_task.cancel()
 
 
 app = FastAPI(
