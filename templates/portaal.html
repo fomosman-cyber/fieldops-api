@@ -1247,6 +1247,16 @@
                 <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#29b6f6" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#29b6f6;border:3px solid transparent;"></div></label>
               </div>
             </div>
+            <div class="form-group">
+              <label>Meldingcategorieën</label>
+              <p style="font-size:11px;color:var(--text-dim);margin-bottom:8px;">Selecteer welke categorieën beschikbaar zijn voor meldingen in dit project.</p>
+              <div id="categoryCheckboxes" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;max-height:200px;overflow-y:auto;padding:8px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid var(--border);">
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px;">
+                <input type="text" id="customCategoryInput" placeholder="Eigen categorie toevoegen..." style="flex:1;font-size:12px;">
+                <button type="button" class="btn-secondary" onclick="addCustomCategory()" style="white-space:nowrap;font-size:12px;padding:6px 12px;">+ Toevoegen</button>
+              </div>
+            </div>
             <input type="hidden" id="projectBoundary" value="">
             <div style="font-size:12px;color:var(--text-dim);margin-bottom:16px;" id="boundaryStatus">Teken een vierkant of polygoon op de kaart rechts om het projectgebied af te bakenen.</div>
             <div class="form-actions" style="margin-top:16px;">
@@ -1280,25 +1290,22 @@
         <div class="form-group">
           <label>Categorie</label>
           <select id="meldingCategory">
-            <option value="schade">Schade</option>
-            <option value="inspectie">Inspectie</option>
-            <option value="onderhoud">Onderhoud</option>
-            <option value="veiligheid">Veiligheid</option>
-            <option value="overig">Overig</option>
+            <option value="">Selecteer categorie...</option>
           </select>
+          <p id="meldingCatHint" style="font-size:11px;color:var(--text-dim);margin-top:4px;">Selecteer eerst een project om categorieën te zien.</p>
         </div>
         <div class="form-group">
           <label>Prioriteit</label>
           <select id="meldingPriority">
-            <option value="normaal" selected>Normaal</option>
-            <option value="laag">Laag</option>
-            <option value="hoog">Hoog</option>
-            <option value="kritiek">Kritiek</option>
+            <option value="normaal" selected>Normaal — Standaard prioriteit</option>
+            <option value="laag">Laag — Geen haast</option>
+            <option value="hoog">Hoog — Snel oppakken</option>
+            <option value="kritiek">Kritiek — Direct actie vereist</option>
           </select>
         </div>
         <div class="form-group">
           <label>Project</label>
-          <select id="meldingProject"><option value="">Geen project</option></select>
+          <select id="meldingProject" onchange="updateMeldingCategories()"><option value="">Geen project</option></select>
         </div>
         <div class="form-group">
           <label>Locatie (klik op kaart of gebruik GPS)</label>
@@ -1738,17 +1745,61 @@
     var projectModalDrawControl = null;
     var currentEditProjectId = null;
 
+    var defaultCategories = [
+      'Wegdekschade', 'Riolering', 'Groenvoorziening', 'Verlichting',
+      'Bestrating', 'Verkeersborden', 'Wateroverlast', 'Geluidsoverlast',
+      'Kabels & Leidingen', 'Constructie', 'Veiligheid', 'Milieu'
+    ];
+    var customCategories = [];
+
+    function renderCategoryCheckboxes(selectedCategories) {
+      var container = document.getElementById('categoryCheckboxes');
+      var all = defaultCategories.concat(customCategories);
+      var selected = selectedCategories || [];
+      container.innerHTML = all.map(function(cat) {
+        var checked = selected.indexOf(cat) !== -1 ? 'checked' : '';
+        return '<label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:4px 6px;border-radius:6px;background:rgba(255,255,255,0.03);">' +
+          '<input type="checkbox" class="cat-check" value="'+cat+'" '+checked+' style="accent-color:var(--accent);">' +
+          '<span>'+cat+'</span></label>';
+      }).join('');
+    }
+
+    function addCustomCategory() {
+      var input = document.getElementById('customCategoryInput');
+      var val = input.value.trim();
+      if (!val) return;
+      if (defaultCategories.indexOf(val) !== -1 || customCategories.indexOf(val) !== -1) {
+        showToast('Categorie bestaat al', 'error');
+        return;
+      }
+      customCategories.push(val);
+      var currentSelected = getSelectedCategories();
+      currentSelected.push(val);
+      renderCategoryCheckboxes(currentSelected);
+      input.value = '';
+    }
+
+    function getSelectedCategories() {
+      var checks = document.querySelectorAll('#categoryCheckboxes .cat-check:checked');
+      return Array.prototype.map.call(checks, function(c) { return c.value; });
+    }
+
     function openProjectModal(editProject) {
       currentEditProjectId = null;
+      customCategories = [];
       document.getElementById('projectEditId').value = '';
       document.getElementById('projectName').value = '';
       document.getElementById('projectDesc').value = '';
       document.getElementById('projectGemeente').value = '';
       document.getElementById('projectBoundary').value = '';
+      document.getElementById('customCategoryInput').value = '';
       document.getElementById('boundaryStatus').textContent = 'Teken een vierkant of polygoon op de kaart rechts om het projectgebied af te bakenen.';
       document.getElementById('boundaryStatus').style.color = 'var(--text-dim)';
       document.getElementById('projectModalTitle').textContent = 'Nieuw Project';
       document.getElementById('projectSubmitBtn').textContent = 'Project aanmaken';
+
+      // Default: all categories pre-selected for new projects
+      var preSelected = defaultCategories.slice();
 
       // If editing
       if (editProject) {
@@ -1771,7 +1822,17 @@
           var dot = r.parentElement.querySelector('.color-dot');
           dot.style.borderColor = r.checked ? r.value : 'transparent';
         });
+        // Load existing categories
+        preSelected = editProject.categories || [];
+        // Add custom categories that are not in defaults
+        preSelected.forEach(function(c) {
+          if (defaultCategories.indexOf(c) === -1 && customCategories.indexOf(c) === -1) {
+            customCategories.push(c);
+          }
+        });
       }
+
+      renderCategoryCheckboxes(preSelected);
 
       document.getElementById('projectModal').classList.add('active');
 
@@ -1869,7 +1930,8 @@
         description: document.getElementById('projectDesc').value || null,
         gemeente: document.getElementById('projectGemeente').value || null,
         color: color ? color.value : '#00d4ff',
-        boundary_geojson: boundary
+        boundary_geojson: boundary,
+        categories: getSelectedCategories()
       };
 
       var method = editId ? 'PUT' : 'POST';
@@ -1996,6 +2058,7 @@
         openMeldingModal();
         setTimeout(function() {
           document.getElementById('meldingProject').value = currentDetailProject.id;
+          updateMeldingCategories();
         }, 100);
       }
     }
@@ -2080,11 +2143,35 @@
       });
     }
 
+    function updateMeldingCategories() {
+      var projId = document.getElementById('meldingProject').value;
+      var catSel = document.getElementById('meldingCategory');
+      catSel.innerHTML = '<option value="">Selecteer categorie...</option>';
+      var hint = document.getElementById('meldingCatHint');
+      if (!projId) {
+        if (hint) hint.textContent = 'Selecteer eerst een project om categorieën te zien.';
+        return;
+      }
+      var proj = allProjects.find(function(p) { return p.id === projId; });
+      if (proj && proj.categories && proj.categories.length > 0) {
+        proj.categories.forEach(function(cat) {
+          var opt = document.createElement('option');
+          opt.value = cat;
+          opt.textContent = cat;
+          catSel.appendChild(opt);
+        });
+        if (hint) hint.textContent = '';
+      } else {
+        if (hint) hint.textContent = 'Dit project heeft geen categorieën ingesteld.';
+      }
+    }
+
     function openMeldingModal() {
       if (allProjects.length === 0) {
-        api('GET', '/api/projects/').then(function(p) { allProjects = p || []; updateProjectFilter(); });
+        api('GET', '/api/projects/').then(function(p) { allProjects = p || []; updateProjectFilter(); updateMeldingCategories(); });
       }
       document.getElementById('meldingModal').classList.add('active');
+      updateMeldingCategories();
     }
     function closeMeldingModal() {
       document.getElementById('meldingModal').classList.remove('active');
@@ -2267,25 +2354,37 @@
         });
       });
 
-      // Load meldingen with markers
+      // Load meldingen with category-based icons
       api('GET', '/api/meldingen/').then(function(meldingen) {
         allMeldingen = meldingen || [];
         var prioColors = { kritiek:'#ff5252', hoog:'#ffab40', normaal:'#00d4ff', laag:'#888' };
+        var catIcons = {
+          'Wegdekschade': '🛣️', 'Riolering': '🚰', 'Groenvoorziening': '🌳', 'Verlichting': '💡',
+          'Bestrating': '🧱', 'Verkeersborden': '🚧', 'Wateroverlast': '🌊', 'Geluidsoverlast': '🔊',
+          'Kabels & Leidingen': '⚡', 'Constructie': '🏗️', 'Veiligheid': '🛡️', 'Milieu': '♻️'
+        };
         meldingen.forEach(function(m) {
           if (m.lat && m.lng) {
             var color = prioColors[m.priority] || '#00d4ff';
+            var emoji = catIcons[m.category] || '📍';
+            var projName = '';
+            if (m.project_id) {
+              var proj = allProjects.find(function(p) { return p.id === m.project_id; });
+              if (proj) projName = proj.name;
+            }
             var icon = L.divIcon({
               className: '',
-              html: '<div style="width:14px;height:14px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>',
-              iconSize: [14, 14],
-              iconAnchor: [7, 7]
+              html: '<div style="width:32px;height:32px;border-radius:50%;background:'+color+';border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;">'+emoji+'</div>',
+              iconSize: [32, 32],
+              iconAnchor: [16, 16]
             });
             var marker = L.marker([m.lat, m.lng], { icon: icon })
               .bindPopup(
-                '<div style="min-width:180px;">' +
-                '<strong style="font-size:14px;">'+m.title+'</strong><br>' +
-                '<span style="color:#888;font-size:12px;">'+(m.category||'')+'</span><br>' +
-                '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:'+color+'22;color:'+color+';">'+m.priority+'</span> ' +
+                '<div style="min-width:200px;font-family:DM Sans,sans-serif;">' +
+                '<strong style="font-size:14px;">'+m.title+'</strong>' +
+                (projName ? '<br><span style="color:#00d4ff;font-size:11px;">📂 '+projName+'</span>' : '') +
+                '<br><span style="color:#888;font-size:12px;">'+emoji+' '+(m.category||'Geen categorie')+'</span><br>' +
+                '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:'+color+'22;color:'+color+';font-weight:600;">'+m.priority+'</span> ' +
                 '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:#00d4ff22;color:#00d4ff;">'+m.status+'</span>' +
                 (m.description ? '<p style="margin-top:6px;font-size:12px;color:#666;">'+m.description+'</p>' : '') +
                 '</div>'
@@ -2295,6 +2394,21 @@
             meldingMarkers.push(marker);
           }
         });
+
+        // Auto-zoom to fit all content
+        var allBounds = [];
+        Object.keys(projectLayers).forEach(function(k) {
+          try { allBounds.push(projectLayers[k].getBounds()); } catch(e) {}
+        });
+        meldingMarkers.forEach(function(m) {
+          allBounds.push(m.getLatLng());
+        });
+        if (allBounds.length > 0) {
+          var group = new L.featureGroup(
+            Object.values(projectLayers).concat(meldingMarkers)
+          );
+          try { map.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 14 }); } catch(e) {}
+        }
       });
     }
 

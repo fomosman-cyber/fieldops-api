@@ -91,6 +91,7 @@ class Project(Base):
     status = Column(String(50), default="active")  # active, completed, archived
     boundary_geojson = Column(Text, nullable=True)  # GeoJSON polygon for project area
     color = Column(String(7), default="#00d4ff")  # hex color for map display
+    categories = Column(Text, nullable=True)  # JSON array of category strings
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
     created_by = Column(String, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

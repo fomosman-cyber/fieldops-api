@@ -118,6 +118,7 @@ class ProjectCreate(BaseModel):
     gemeente: Optional[str] = None
     boundary_geojson: Optional[str] = None
     color: Optional[str] = "#00d4ff"
+    categories: Optional[list[str]] = None
 
 
 class ProjectResponse(BaseModel):
@@ -128,6 +129,7 @@ class ProjectResponse(BaseModel):
     status: str
     boundary_geojson: Optional[str]
     color: Optional[str]
+    categories: Optional[list[str]] = None
     created_by: str
     created_at: datetime
 
@@ -141,6 +143,7 @@ class ProjectUpdate(BaseModel):
     status: Optional[str] = None
     boundary_geojson: Optional[str] = None
     color: Optional[str] = None
+    categories: Optional[list[str]] = None
 
 
 # Melding
