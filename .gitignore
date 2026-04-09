@@ -1,0 +1,5 @@
+fieldops.db
+__pycache__/
+.env
+*.pyc
+create_owner.py
