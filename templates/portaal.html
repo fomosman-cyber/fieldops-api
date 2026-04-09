@@ -1298,11 +1298,14 @@
         <div class="form-group">
           <label>Rol</label>
           <select id="inviteRole">
-            <option value="viewer">Viewer — Alleen inzien</option>
-            <option value="technician">Technicus — Veldregistratie &amp; meldingen</option>
-            <option value="manager">Manager — Projecten beheren &amp; rapportages</option>
-            <option value="admin">Admin — Volledige toegang &amp; gebruikersbeheer</option>
+            <option value="viewer">Opdrachtgever — Alleen inzien, geen bewerkingen</option>
+            <option value="inspector">Toezichthouder — Meldingen aanmaken, geen status wijzigen</option>
+            <option value="technician">Technicus — Meldingen aanmaken &amp; veldregistratie</option>
+            <option value="contractor">Aannemer — Meldingen afronden &amp; status wijzigen</option>
+            <option value="manager">Projectleider — Projecten beheren, rapportages &amp; teamoverzicht</option>
+            <option value="admin">Beheerder — Volledige toegang, gebruikers &amp; instellingen</option>
           </select>
+          <div id="roleDescription" style="margin-top:8px;padding:10px 12px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text-muted);line-height:1.5;"></div>
         </div>
         <div class="form-actions">
           <button type="submit" class="btn-primary">Uitnodiging versturen</button>
@@ -1591,7 +1594,7 @@
         }
         tbody.innerHTML = users.map(function(u) {
           var name = (u.first_name || '') + ' ' + (u.last_name || '');
-          var roleMap = { admin: 'Admin', manager: 'Manager', technician: 'Technicus', viewer: 'Viewer' };
+          var roleMap = { admin:'Beheerder', manager:'Projectleider', contractor:'Aannemer', inspector:'Toezichthouder', technician:'Technicus', viewer:'Opdrachtgever' };
           var lastLogin = 'Nooit';
           if (u.last_login) {
             var d = new Date(u.last_login);
@@ -1684,8 +1687,25 @@
     }
 
     // ── Invite Modal ──
+    var roleDescriptions = {
+      viewer: '📊 <strong>Opdrachtgever</strong> — Heeft alleen leesrechten. Kan projectvoortgang en meldingen bekijken, maar niets aanmaken of wijzigen. Ideaal voor klanten en opdrachtgevers die inzicht willen in de status.',
+      inspector: '🔍 <strong>Toezichthouder</strong> — Kan meldingen aanmaken met foto\'s, GPS en categorieën. Kan geen statussen wijzigen of meldingen afronden. Geschikt voor inspecteurs en schouwmeesters.',
+      technician: '🔧 <strong>Technicus</strong> — Kan meldingen aanmaken en eigen meldingen bewerken. Veldregistratie met GPS, foto\'s en schadecategorieën. Voor medewerkers op de bouwplaats.',
+      contractor: '🏗️ <strong>Aannemer</strong> — Kan meldingen afronden en statussen wijzigen (In behandeling → Opgelost). Kan geen nieuwe meldingen aanmaken. Voor uitvoerende aannemers.',
+      manager: '📋 <strong>Projectleider</strong> — Kan projecten aanmaken en beheren, meldingen toewijzen, rapportages bekijken en teamleden overzien. Volledige operationele controle.',
+      admin: '⚙️ <strong>Beheerder</strong> — Volledige toegang tot het platform. Gebruikers beheren, uitnodigen en verwijderen. Organisatie-instellingen en facturatie. Alleen voor platformbeheerders.'
+    };
+
+    function updateRoleDescription() {
+      var role = document.getElementById('inviteRole').value;
+      var desc = document.getElementById('roleDescription');
+      if (desc) desc.innerHTML = roleDescriptions[role] || '';
+    }
+
     function openInviteModal() {
       document.getElementById('inviteModal').classList.add('active');
+      updateRoleDescription();
+      document.getElementById('inviteRole').addEventListener('change', updateRoleDescription);
     }
     function closeInviteModal() {
       document.getElementById('inviteModal').classList.remove('active');

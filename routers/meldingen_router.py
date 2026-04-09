@@ -53,6 +53,9 @@ def create_melding(
     db: Session = Depends(get_db),
 ):
     """Nieuwe melding aanmaken."""
+    # Viewer en Contractor mogen geen meldingen aanmaken
+    if current_user.role and current_user.role.value in ("viewer", "contractor"):
+        raise HTTPException(status_code=403, detail="Je rol heeft geen rechten om meldingen aan te maken")
     melding = Melding(
         title=data.title,
         description=data.description,
@@ -100,6 +103,27 @@ def update_melding(
     ).first()
     if not melding:
         raise HTTPException(status_code=404, detail="Melding niet gevonden")
+
+    role = current_user.role.value if current_user.role else "viewer"
+
+    # Viewer mag niets wijzigen
+    if role == "viewer":
+        raise HTTPException(status_code=403, detail="Opdrachtgevers kunnen geen meldingen wijzigen")
+
+    # Toezichthouder/Inspector mag alleen eigen meldingen bewerken (geen status)
+    if role == "inspector":
+        if melding.created_by != current_user.id:
+            raise HTTPException(status_code=403, detail="Toezichthouders mogen alleen eigen meldingen bewerken")
+        update_data = update.model_dump(exclude_unset=True)
+        if "status" in update_data:
+            raise HTTPException(status_code=403, detail="Toezichthouders mogen geen status wijzigen")
+
+    # Aannemer/Contractor mag alleen status wijzigen (niet andere velden)
+    if role == "contractor":
+        update_data = update.model_dump(exclude_unset=True)
+        allowed = {"status"}
+        if set(update_data.keys()) - allowed:
+            raise HTTPException(status_code=403, detail="Aannemers mogen alleen de status wijzigen")
 
     for field, value in update.model_dump(exclude_unset=True).items():
         setattr(melding, field, value)

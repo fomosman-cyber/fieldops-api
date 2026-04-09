@@ -13,6 +13,8 @@ def generate_uuid():
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
     MANAGER = "manager"
+    CONTRACTOR = "contractor"
+    INSPECTOR = "inspector"
     TECHNICIAN = "technician"
     VIEWER = "viewer"
 
