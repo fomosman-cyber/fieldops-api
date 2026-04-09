@@ -4,6 +4,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from pathlib import Path
+from pydantic import BaseModel
 import asyncio
 import httpx
 import os
@@ -109,6 +110,29 @@ def root():
         "docs": "/docs",
         "status": "online",
     }
+
+
+class ContactRequest(BaseModel):
+    name: str
+    email: str
+    message: str
+
+
+@app.post("/api/contact")
+def contact_form(req: ContactRequest):
+    """Ontvang contactformulier en stuur notificatie email."""
+    from email_service import send_email, _base_template
+    content = f"""
+<h2 style="color:#1e293b;font-size:22px;margin:0 0 8px;">Nieuw contactbericht</h2>
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:12px;margin-bottom:24px;">
+<tr><td style="padding:20px 24px;">
+<p style="margin:0 0 12px;"><strong>Naam:</strong> {req.name}</p>
+<p style="margin:0 0 12px;"><strong>E-mail:</strong> {req.email}</p>
+<p style="margin:0;"><strong>Bericht:</strong><br>{req.message}</p>
+</td></tr></table>
+<p style="color:#94a3b8;font-size:13px;">Reageer rechtstreeks naar {req.email}</p>"""
+    send_email("info@fieldopsapp.nl", f"Contactformulier: {req.name}", _base_template(content, "Nieuw bericht"))
+    return {"message": "Bericht ontvangen"}
 
 
 @app.get("/portaal", response_class=HTMLResponse)
