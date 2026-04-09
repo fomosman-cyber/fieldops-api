@@ -572,6 +572,7 @@
       font-size: 24px;
       font-weight: 700;
       margin-bottom: 8px;
+      padding-right: 36px;
     }
     .modal p.subtitle {
       color: var(--text-muted);
@@ -580,17 +581,47 @@
     }
     .modal-close {
       position: absolute;
-      top: 20px; right: 20px;
-      background: none;
+      top: 12px; right: 12px;
+      background: rgba(0,0,0,0.06);
       border: none;
       color: var(--text-muted);
-      font-size: 20px;
+      font-size: 22px;
       cursor: pointer;
-      padding: 4px 8px;
-      border-radius: 6px;
+      padding: 6px 10px;
+      border-radius: 8px;
       transition: all 0.2s;
+      z-index: 10;
+      line-height: 1;
     }
-    .modal-close:hover { color: var(--text); background: var(--card-bg); }
+    .modal-close:hover { color: var(--text); background: rgba(0,0,0,0.1); }
+
+    /* ───── MOBILE MODAL FIXES ───── */
+    @media (max-width: 768px) {
+      .modal-overlay { align-items: flex-end; padding: 0; }
+      .modal {
+        max-width: 100% !important;
+        max-height: 92vh !important;
+        border-radius: 20px 20px 0 0;
+        padding: 20px 16px 24px;
+        margin: 0;
+        width: 100%;
+      }
+      .modal h2 { font-size: 20px; }
+      .modal p.subtitle { font-size: 13px; margin-bottom: 16px; }
+      .modal .form-group { margin-bottom: 14px; }
+      .modal .form-group label { font-size: 12px; margin-bottom: 6px; }
+      .modal .form-group input,
+      .modal .form-group select { padding: 11px 14px; font-size: 14px; }
+      .modal .form-actions { margin-top: 16px; flex-wrap: wrap; }
+      .modal .form-actions button { font-size: 13px; padding: 10px 16px; }
+      .modal-close { top: 10px; right: 10px; font-size: 20px; padding: 8px 12px; }
+    }
+    @media (max-width: 480px) {
+      .modal { padding: 16px 12px 20px; max-height: 95vh !important; }
+      .modal h2 { font-size: 18px; }
+      .modal .form-actions { flex-direction: column; }
+      .modal .form-actions button { width: 100%; justify-content: center; }
+    }
 
     .form-group { margin-bottom: 20px; }
     .form-group label {
@@ -764,17 +795,26 @@
       .sidebar.open { transform: translateX(0); }
       .main { margin-left: 0; padding: 24px 16px; }
       .page-header h1 { font-size: 22px; }
+      .page-header { flex-wrap: wrap; gap: 12px; }
       .stats-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
       .stat-card { padding: 16px; }
       .stat-card .stat-value { font-size: 26px; }
       .user-name { display: none; }
       .data-table { font-size: 13px; }
       .data-table th, .data-table td { padding: 10px 8px; }
+      /* Project modal: stack form + map vertically */
+      #projectModal .modal > div[style*="display:flex"] { flex-direction: column !important; }
+      #projectModal .modal > div > div[style*="min-width:320px"] { min-height: 250px !important; }
+      /* Melding detail: single column for photo grid */
+      #meldingDetailModal .modal div[style*="grid-template-columns:1fr 1fr"] { grid-template-columns: 1fr !important; }
     }
 
     @media (max-width: 480px) {
       .stats-grid { grid-template-columns: 1fr; }
       .page-header { flex-direction: column; align-items: flex-start; }
+      .topbar { padding: 0 12px; }
+      .topbar-right { gap: 6px; }
+      .btn-logout { font-size: 11px; padding: 6px 10px; }
     }
 
     /* ───── SCROLLBAR ───── */
@@ -817,6 +857,13 @@
       </nav>
     </div>
     <div class="topbar-right">
+      <select id="langSwitcher" onchange="switchLanguage(this.value)" style="background:rgba(0,0,0,0.04);border:1px solid var(--border);border-radius:8px;padding:5px 8px;font-size:12px;font-family:inherit;color:var(--text);cursor:pointer;outline:none;">
+        <option value="nl">🇳🇱 NL</option>
+        <option value="en">🇬🇧 EN</option>
+        <option value="de">🇩🇪 DE</option>
+        <option value="fr">🇫🇷 FR</option>
+        <option value="tr">🇹🇷 TR</option>
+      </select>
       <button class="notif-btn" aria-label="Meldingen">&#128276;</button>
       <div class="user-pill">
         <div class="user-avatar" id="userAvatar">U</div>
@@ -1594,6 +1641,704 @@
 
   <!-- ═══════ SCRIPTS ═══════ -->
   <script>
+    // ══════════════════════════════════════
+    // ── VERTAALSYSTEEM (i18n) ──
+    // ══════════════════════════════════════
+    var currentLang = localStorage.getItem('fieldops_lang') || 'nl';
+
+    var translations = {
+      nl: {
+        // Nav & Sidebar
+        dashboard: 'Dashboard', projecten: 'Projecten', meldingen: 'Meldingen', kaart: 'Kaart', gebruikers: 'Gebruikers',
+        beheer: 'Beheer', admin_overzicht: 'Admin Overzicht', instellingen: 'Instellingen', overig: 'Overig', hoofdmenu: 'Hoofdmenu',
+        uitloggen: 'Uitloggen',
+        // Dashboard
+        welkom_terug: 'Welkom terug',
+        overzicht_subtitle: 'Overzicht van alle projecten en meldingen',
+        realtime: 'Realtime', laatst_bijgewerkt: 'Laatst bijgewerkt', zojuist: 'zojuist',
+        nieuwe_melding: '+ Nieuwe melding',
+        totaal_meldingen: 'Totaal meldingen', open_meldingen: 'Open meldingen', in_behandeling: 'In behandeling',
+        opgelost: 'Opgelost', kritiek_label: 'Kritiek', vandaag_nieuw: 'Vandaag nieuw',
+        vandaag_opgelost: 'Vandaag opgelost',
+        prioriteit_verdeling: 'Prioriteit verdeling',
+        categorie_top: 'Top categorieën', status_verdeling: 'Status verdeling',
+        meldingen_trend: 'Meldingen trend', actieve_projecten: 'Actieve projecten',
+        recente_activiteit: 'Recente activiteit', geen_projecten: 'Geen projecten',
+        // Statuses
+        open: 'Open', in_behandeling_status: 'In behandeling', gereed_uitvoering: 'Gereed uitvoering',
+        in_uitvoering: 'In uitvoering', opgelost_status: 'Opgelost', afgerond: 'Afgerond',
+        // Priorities
+        kritiek: 'Kritiek', hoog: 'Hoog', normaal: 'Normaal', laag: 'Laag',
+        // Roles
+        beheerder: 'Beheerder', projectleider: 'Projectleider', aannemer: 'Aannemer',
+        toezichthouder: 'Toezichthouder', technicus: 'Technicus', opdrachtgever: 'Opdrachtgever',
+        // Users page
+        teamleden: 'Teamleden', gebruiker_uitnodigen: 'Gebruiker uitnodigen',
+        uitnodigingen: 'Uitnodigingen', naam: 'Naam', email: 'E-mail', rol: 'Rol',
+        status: 'Status', laatste_login: 'Laatste login', actief: 'Actief', inactief: 'Inactief',
+        geen_gebruikers: 'Geen gebruikers gevonden', laden: 'Laden...',
+        gebruikers_laden: 'Gebruikers laden...', nooit: 'Nooit',
+        min_geleden: 'min geleden', uur_geleden: 'uur geleden', gisteren: 'Gisteren',
+        dagen_geleden: 'dagen geleden',
+        // Invite modal
+        stuur_uitnodiging: 'Stuur een uitnodiging naar een nieuw teamlid.',
+        emailadres: 'E-mailadres', uitnodiging_versturen: 'Uitnodiging versturen',
+        uitnodiging_verstuurd: 'Uitnodiging verstuurd naar',
+        // Project
+        nieuw_project: 'Nieuw Project', project_bewerken: 'Project bewerken',
+        projectnaam: 'Projectnaam', omschrijving: 'Omschrijving', gemeente: 'Gemeente',
+        kleur_kaart: 'Kleur op kaart', meldingcategorieen: 'Meldingcategorieën',
+        project_aanmaken: 'Project aanmaken', opslaan: 'Opslaan',
+        teken_gebied: 'Teken een vierkant of polygoon op de kaart rechts om het projectgebied af te bakenen.',
+        gebied_ingesteld: 'Projectgebied is ingesteld. Teken opnieuw om aan te passen.',
+        selecteer_categorieen: 'Selecteer welke categorieën beschikbaar zijn voor meldingen in dit project.',
+        eigen_categorie: 'Eigen categorie toevoegen...', toevoegen: '+ Toevoegen',
+        categorie_bestaat: 'Categorie bestaat al',
+        bekijken: 'Bekijken', op_kaart: 'Op kaart', gebied_inst: 'Gebied ingesteld', geen_gebied: 'Geen gebied',
+        projecten_laden: 'Projecten laden...', laden_mislukt: 'Laden mislukt', opnieuw_proberen: 'Opnieuw proberen',
+        geen_projecten_gevonden: 'Nog geen projecten',
+        eerste_project: '+ Eerste project aanmaken',
+        // Melding modal
+        nieuwe_melding_title: 'Nieuwe Melding', registreer_melding: 'Registreer een melding vanuit het veld.',
+        project: 'Project', selecteer_project: 'Selecteer project...',
+        titel: 'Titel', beschrijf_melding: 'Beschrijf de melding',
+        categorie: 'Categorie', selecteer_categorie: 'Selecteer categorie...',
+        prioriteit: 'Prioriteit', locatie: 'Locatie (klik op kaart of gebruik GPS)',
+        melding_aanmaken: 'Melding aanmaken',
+        selecteer_project_hint: 'Selecteer eerst een project om categorieën te zien.',
+        standaard_cats: 'Standaard categorieën (project heeft geen eigen categorieën).',
+        project_cats: 'Selecteer een project voor project-specifieke categorieën.',
+        // Melding detail
+        foto_voor: 'Foto voor', foto_na: 'Foto na', klik_upload: 'Klik om foto te uploaden',
+        sluiten: 'Sluiten', verwijderen: 'Verwijderen',
+        status_bijgewerkt: 'Status bijgewerkt', prioriteit_bijgewerkt: 'Prioriteit bijgewerkt',
+        foto_opgeslagen: 'Foto opgeslagen', foto_mislukt: 'Foto upload mislukt',
+        melding_verwijderd: 'Melding verwijderd', verwijderen_mislukt: 'Verwijderen mislukt',
+        bevestig_verwijderen: 'Weet je zeker dat je deze melding wilt verwijderen?',
+        // Meldingen page
+        meldingen_laden: 'Meldingen laden...', geen_meldingen: 'Nog geen meldingen',
+        eerste_melding: '+ Eerste melding aanmaken', datum: 'Datum',
+        // Rapportage
+        rapportage: 'Rapportage', exporteren: 'Exporteren',
+        alle_projecten: 'Alle projecten', alle_statussen: 'Alle statussen',
+        alle_prioriteiten: 'Alle prioriteiten', alle_categorieen: 'Alle categorieën',
+        van_datum: 'Van', tot_datum: 'Tot', voorbeeld: 'Voorbeeld', csv: 'CSV', pdf: 'PDF',
+        geselecteerd: 'geselecteerd', gefilterd: 'gefilterd',
+        // Instellingen
+        organisatie: 'Organisatie', abonnement: 'Abonnement',
+        // Admin
+        organisaties: 'Organisaties', totaal_gebruikers: 'Totaal Gebruikers',
+        demo_aanvragen: 'Demo Aanvragen', plan: 'Plan', aangemaakt: 'Aangemaakt',
+        bedrijf: 'Bedrijf', verwerkt: 'Verwerkt', ja: 'Ja', nee: 'Nee',
+        // Kaart
+        stratenkaart: 'Stratenkaart', topografisch: 'Topografisch',
+        // Time
+        goedenacht: 'Goedenacht', goedemorgen: 'Goedemorgen', goedemiddag: 'Goedemiddag', goedenavond: 'Goedenavond',
+        // Months
+        jan:'Jan',feb:'Feb',mrt:'Mrt',apr:'Apr',mei:'Mei',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',okt:'Okt',nov:'Nov',dec:'Dec',
+        // Charts
+        nieuw_chart: 'Nieuw', opgelost_chart: 'Opgelost',
+        // Footer
+        privacy: 'Privacy',
+        // Misc
+        fout_laden: 'Fout bij laden', er_ging_iets_mis: 'Er is iets misgegaan.',
+        verstuurd: 'Verstuurd', geaccepteerd: 'Geaccepteerd', verlopen: 'Verlopen',
+        geen_uitnodigingen: 'Geen uitnodigingen verstuurd', geen_organisaties: 'Geen organisaties',
+        geen_demo: 'Geen demo aanvragen',
+        // Priority descriptions
+        normaal_desc: 'Standaard prioriteit', laag_desc: 'Geen haast',
+        hoog_desc: 'Snel oppakken', kritiek_desc: 'Direct actie vereist',
+        // Role options
+        viewer_opt: 'Opdrachtgever — Alleen inzien, geen bewerkingen',
+        inspector_opt: 'Toezichthouder — Meldingen aanmaken, geen status wijzigen',
+        technician_opt: 'Technicus — Meldingen aanmaken & veldregistratie',
+        contractor_opt: 'Aannemer — Meldingen afronden & status wijzigen',
+        manager_opt: 'Projectleider — Projecten beheren, rapportages & teamoverzicht',
+        admin_opt: 'Beheerder — Volledige toegang, gebruikers & instellingen',
+      },
+      en: {
+        dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
+        beheer: 'Management', admin_overzicht: 'Admin Overview', instellingen: 'Settings', overig: 'Other', hoofdmenu: 'Main menu',
+        uitloggen: 'Logout',
+        welkom_terug: 'Welcome back',
+        overzicht_subtitle: 'Overview of all projects and reports',
+        realtime: 'Realtime', laatst_bijgewerkt: 'Last updated', zojuist: 'just now',
+        nieuwe_melding: '+ New report',
+        totaal_meldingen: 'Total reports', open_meldingen: 'Open reports', in_behandeling: 'In progress',
+        opgelost: 'Resolved', kritiek_label: 'Critical', vandaag_nieuw: 'New today',
+        vandaag_opgelost: 'Resolved today',
+        prioriteit_verdeling: 'Priority distribution',
+        categorie_top: 'Top categories', status_verdeling: 'Status distribution',
+        meldingen_trend: 'Reports trend', actieve_projecten: 'Active projects',
+        recente_activiteit: 'Recent activity', geen_projecten: 'No projects',
+        open: 'Open', in_behandeling_status: 'In progress', gereed_uitvoering: 'Ready for execution',
+        in_uitvoering: 'In execution', opgelost_status: 'Resolved', afgerond: 'Completed',
+        kritiek: 'Critical', hoog: 'High', normaal: 'Normal', laag: 'Low',
+        beheerder: 'Administrator', projectleider: 'Project manager', aannemer: 'Contractor',
+        toezichthouder: 'Inspector', technicus: 'Technician', opdrachtgever: 'Client',
+        teamleden: 'Team members', gebruiker_uitnodigen: 'Invite user',
+        uitnodigingen: 'Invitations', naam: 'Name', email: 'Email', rol: 'Role',
+        status: 'Status', laatste_login: 'Last login', actief: 'Active', inactief: 'Inactive',
+        geen_gebruikers: 'No users found', laden: 'Loading...',
+        gebruikers_laden: 'Loading users...', nooit: 'Never',
+        min_geleden: 'min ago', uur_geleden: 'hours ago', gisteren: 'Yesterday',
+        dagen_geleden: 'days ago',
+        stuur_uitnodiging: 'Send an invitation to a new team member.',
+        emailadres: 'Email address', uitnodiging_versturen: 'Send invitation',
+        uitnodiging_verstuurd: 'Invitation sent to',
+        nieuw_project: 'New Project', project_bewerken: 'Edit project',
+        projectnaam: 'Project name', omschrijving: 'Description', gemeente: 'Municipality',
+        kleur_kaart: 'Map color', meldingcategorieen: 'Report categories',
+        project_aanmaken: 'Create project', opslaan: 'Save',
+        teken_gebied: 'Draw a rectangle or polygon on the map to define the project area.',
+        gebied_ingesteld: 'Project area is set. Draw again to adjust.',
+        selecteer_categorieen: 'Select which categories are available for reports in this project.',
+        eigen_categorie: 'Add custom category...', toevoegen: '+ Add',
+        categorie_bestaat: 'Category already exists',
+        bekijken: 'View', op_kaart: 'On map', gebied_inst: 'Area set', geen_gebied: 'No area',
+        projecten_laden: 'Loading projects...', laden_mislukt: 'Loading failed', opnieuw_proberen: 'Try again',
+        geen_projecten_gevonden: 'No projects yet',
+        eerste_project: '+ Create first project',
+        nieuwe_melding_title: 'New Report', registreer_melding: 'Register a report from the field.',
+        project: 'Project', selecteer_project: 'Select project...',
+        titel: 'Title', beschrijf_melding: 'Describe the report',
+        categorie: 'Category', selecteer_categorie: 'Select category...',
+        prioriteit: 'Priority', locatie: 'Location (click map or use GPS)',
+        melding_aanmaken: 'Create report',
+        selecteer_project_hint: 'Select a project first to see categories.',
+        standaard_cats: 'Default categories (project has no custom categories).',
+        project_cats: 'Select a project for project-specific categories.',
+        foto_voor: 'Photo before', foto_na: 'Photo after', klik_upload: 'Click to upload photo',
+        sluiten: 'Close', verwijderen: 'Delete',
+        status_bijgewerkt: 'Status updated', prioriteit_bijgewerkt: 'Priority updated',
+        foto_opgeslagen: 'Photo saved', foto_mislukt: 'Photo upload failed',
+        melding_verwijderd: 'Report deleted', verwijderen_mislukt: 'Delete failed',
+        bevestig_verwijderen: 'Are you sure you want to delete this report?',
+        meldingen_laden: 'Loading reports...', geen_meldingen: 'No reports yet',
+        eerste_melding: '+ Create first report', datum: 'Date',
+        rapportage: 'Reporting', exporteren: 'Export',
+        alle_projecten: 'All projects', alle_statussen: 'All statuses',
+        alle_prioriteiten: 'All priorities', alle_categorieen: 'All categories',
+        van_datum: 'From', tot_datum: 'To', voorbeeld: 'Preview', csv: 'CSV', pdf: 'PDF',
+        geselecteerd: 'selected', gefilterd: 'filtered',
+        organisatie: 'Organization', abonnement: 'Subscription',
+        organisaties: 'Organizations', totaal_gebruikers: 'Total Users',
+        demo_aanvragen: 'Demo Requests', plan: 'Plan', aangemaakt: 'Created',
+        bedrijf: 'Company', verwerkt: 'Processed', ja: 'Yes', nee: 'No',
+        stratenkaart: 'Street map', topografisch: 'Topographic',
+        goedenacht: 'Good night', goedemorgen: 'Good morning', goedemiddag: 'Good afternoon', goedenavond: 'Good evening',
+        jan:'Jan',feb:'Feb',mrt:'Mar',apr:'Apr',mei:'May',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',okt:'Oct',nov:'Nov',dec:'Dec',
+        nieuw_chart: 'New', opgelost_chart: 'Resolved',
+        privacy: 'Privacy',
+        fout_laden: 'Error loading', er_ging_iets_mis: 'Something went wrong.',
+        verstuurd: 'Sent', geaccepteerd: 'Accepted', verlopen: 'Expired',
+        geen_uitnodigingen: 'No invitations sent', geen_organisaties: 'No organizations',
+        geen_demo: 'No demo requests',
+        normaal_desc: 'Default priority', laag_desc: 'No rush',
+        hoog_desc: 'Pick up quickly', kritiek_desc: 'Immediate action required',
+        viewer_opt: 'Client — View only, no edits',
+        inspector_opt: 'Inspector — Create reports, no status changes',
+        technician_opt: 'Technician — Create reports & field registration',
+        contractor_opt: 'Contractor — Complete reports & change status',
+        manager_opt: 'Project manager — Manage projects, reports & team overview',
+        admin_opt: 'Administrator — Full access, users & settings',
+      },
+      de: {
+        dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
+        beheer: 'Verwaltung', admin_overzicht: 'Admin Übersicht', instellingen: 'Einstellungen', overig: 'Sonstiges', hoofdmenu: 'Hauptmenü',
+        uitloggen: 'Abmelden',
+        welkom_terug: 'Willkommen zurück',
+        overzicht_subtitle: 'Übersicht aller Projekte und Meldungen',
+        realtime: 'Echtzeit', laatst_bijgewerkt: 'Zuletzt aktualisiert', zojuist: 'gerade eben',
+        nieuwe_melding: '+ Neue Meldung',
+        totaal_meldingen: 'Gesamt Meldungen', open_meldingen: 'Offene Meldungen', in_behandeling: 'In Bearbeitung',
+        opgelost: 'Gelöst', kritiek_label: 'Kritisch', vandaag_nieuw: 'Heute neu',
+        vandaag_opgelost: 'Heute gelöst',
+        prioriteit_verdeling: 'Prioritätsverteilung',
+        categorie_top: 'Top Kategorien', status_verdeling: 'Statusverteilung',
+        meldingen_trend: 'Meldungstrend', actieve_projecten: 'Aktive Projekte',
+        recente_activiteit: 'Letzte Aktivität', geen_projecten: 'Keine Projekte',
+        open: 'Offen', in_behandeling_status: 'In Bearbeitung', gereed_uitvoering: 'Bereit zur Ausführung',
+        in_uitvoering: 'In Ausführung', opgelost_status: 'Gelöst', afgerond: 'Abgeschlossen',
+        kritiek: 'Kritisch', hoog: 'Hoch', normaal: 'Normal', laag: 'Niedrig',
+        beheerder: 'Administrator', projectleider: 'Projektleiter', aannemer: 'Auftragnehmer',
+        toezichthouder: 'Inspektor', technicus: 'Techniker', opdrachtgever: 'Auftraggeber',
+        teamleden: 'Teammitglieder', gebruiker_uitnodigen: 'Benutzer einladen',
+        uitnodigingen: 'Einladungen', naam: 'Name', email: 'E-Mail', rol: 'Rolle',
+        status: 'Status', laatste_login: 'Letzter Login', actief: 'Aktiv', inactief: 'Inaktiv',
+        geen_gebruikers: 'Keine Benutzer gefunden', laden: 'Laden...',
+        gebruikers_laden: 'Benutzer laden...', nooit: 'Nie',
+        min_geleden: 'Min. her', uur_geleden: 'Std. her', gisteren: 'Gestern',
+        dagen_geleden: 'Tage her',
+        stuur_uitnodiging: 'Senden Sie eine Einladung an ein neues Teammitglied.',
+        emailadres: 'E-Mail-Adresse', uitnodiging_versturen: 'Einladung senden',
+        uitnodiging_verstuurd: 'Einladung gesendet an',
+        nieuw_project: 'Neues Projekt', project_bewerken: 'Projekt bearbeiten',
+        projectnaam: 'Projektname', omschrijving: 'Beschreibung', gemeente: 'Gemeinde',
+        kleur_kaart: 'Kartenfarbe', meldingcategorieen: 'Meldungskategorien',
+        project_aanmaken: 'Projekt erstellen', opslaan: 'Speichern',
+        teken_gebied: 'Zeichnen Sie ein Rechteck oder Polygon auf der Karte, um das Projektgebiet zu definieren.',
+        gebied_ingesteld: 'Projektgebiet ist festgelegt. Erneut zeichnen zum Anpassen.',
+        selecteer_categorieen: 'Wählen Sie die verfügbaren Kategorien für Meldungen in diesem Projekt.',
+        eigen_categorie: 'Eigene Kategorie hinzufügen...', toevoegen: '+ Hinzufügen',
+        categorie_bestaat: 'Kategorie existiert bereits',
+        bekijken: 'Ansehen', op_kaart: 'Auf Karte', gebied_inst: 'Gebiet festgelegt', geen_gebied: 'Kein Gebiet',
+        projecten_laden: 'Projekte laden...', laden_mislukt: 'Laden fehlgeschlagen', opnieuw_proberen: 'Erneut versuchen',
+        geen_projecten_gevonden: 'Noch keine Projekte',
+        eerste_project: '+ Erstes Projekt erstellen',
+        nieuwe_melding_title: 'Neue Meldung', registreer_melding: 'Registrieren Sie eine Meldung aus dem Feld.',
+        project: 'Projekt', selecteer_project: 'Projekt auswählen...',
+        titel: 'Titel', beschrijf_melding: 'Beschreiben Sie die Meldung',
+        categorie: 'Kategorie', selecteer_categorie: 'Kategorie auswählen...',
+        prioriteit: 'Priorität', locatie: 'Standort (Karte klicken oder GPS verwenden)',
+        melding_aanmaken: 'Meldung erstellen',
+        selecteer_project_hint: 'Wählen Sie zuerst ein Projekt, um Kategorien zu sehen.',
+        standaard_cats: 'Standardkategorien (Projekt hat keine eigenen Kategorien).',
+        project_cats: 'Wählen Sie ein Projekt für projektspezifische Kategorien.',
+        foto_voor: 'Foto vorher', foto_na: 'Foto nachher', klik_upload: 'Klicken zum Hochladen',
+        sluiten: 'Schließen', verwijderen: 'Löschen',
+        status_bijgewerkt: 'Status aktualisiert', prioriteit_bijgewerkt: 'Priorität aktualisiert',
+        foto_opgeslagen: 'Foto gespeichert', foto_mislukt: 'Foto-Upload fehlgeschlagen',
+        melding_verwijderd: 'Meldung gelöscht', verwijderen_mislukt: 'Löschen fehlgeschlagen',
+        bevestig_verwijderen: 'Sind Sie sicher, dass Sie diese Meldung löschen möchten?',
+        meldingen_laden: 'Meldungen laden...', geen_meldingen: 'Noch keine Meldungen',
+        eerste_melding: '+ Erste Meldung erstellen', datum: 'Datum',
+        rapportage: 'Berichterstattung', exporteren: 'Exportieren',
+        alle_projecten: 'Alle Projekte', alle_statussen: 'Alle Status',
+        alle_prioriteiten: 'Alle Prioritäten', alle_categorieen: 'Alle Kategorien',
+        van_datum: 'Von', tot_datum: 'Bis', voorbeeld: 'Vorschau', csv: 'CSV', pdf: 'PDF',
+        geselecteerd: 'ausgewählt', gefilterd: 'gefiltert',
+        organisatie: 'Organisation', abonnement: 'Abonnement',
+        organisaties: 'Organisationen', totaal_gebruikers: 'Gesamt Benutzer',
+        demo_aanvragen: 'Demo Anfragen', plan: 'Plan', aangemaakt: 'Erstellt',
+        bedrijf: 'Unternehmen', verwerkt: 'Bearbeitet', ja: 'Ja', nee: 'Nein',
+        stratenkaart: 'Straßenkarte', topografisch: 'Topografisch',
+        goedenacht: 'Gute Nacht', goedemorgen: 'Guten Morgen', goedemiddag: 'Guten Tag', goedenavond: 'Guten Abend',
+        jan:'Jan',feb:'Feb',mrt:'Mär',apr:'Apr',mei:'Mai',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',okt:'Okt',nov:'Nov',dec:'Dez',
+        nieuw_chart: 'Neu', opgelost_chart: 'Gelöst',
+        privacy: 'Datenschutz',
+        fout_laden: 'Fehler beim Laden', er_ging_iets_mis: 'Etwas ist schiefgelaufen.',
+        verstuurd: 'Gesendet', geaccepteerd: 'Akzeptiert', verlopen: 'Abgelaufen',
+        geen_uitnodigingen: 'Keine Einladungen gesendet', geen_organisaties: 'Keine Organisationen',
+        geen_demo: 'Keine Demo-Anfragen',
+        normaal_desc: 'Standardpriorität', laag_desc: 'Keine Eile',
+        hoog_desc: 'Schnell aufnehmen', kritiek_desc: 'Sofortige Aktion erforderlich',
+        viewer_opt: 'Auftraggeber — Nur ansehen, keine Bearbeitung',
+        inspector_opt: 'Inspektor — Meldungen erstellen, kein Statuswechsel',
+        technician_opt: 'Techniker — Meldungen erstellen & Feldregistrierung',
+        contractor_opt: 'Auftragnehmer — Meldungen abschließen & Status ändern',
+        manager_opt: 'Projektleiter — Projekte verwalten, Berichte & Teamübersicht',
+        admin_opt: 'Administrator — Vollzugriff, Benutzer & Einstellungen',
+      },
+      fr: {
+        dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
+        beheer: 'Gestion', admin_overzicht: 'Vue admin', instellingen: 'Paramètres', overig: 'Autre', hoofdmenu: 'Menu principal',
+        uitloggen: 'Déconnexion',
+        welkom_terug: 'Bon retour',
+        overzicht_subtitle: 'Aperçu de tous les projets et signalements',
+        realtime: 'Temps réel', laatst_bijgewerkt: 'Dernière mise à jour', zojuist: 'à l\'instant',
+        nieuwe_melding: '+ Nouveau signalement',
+        totaal_meldingen: 'Total signalements', open_meldingen: 'Signalements ouverts', in_behandeling: 'En cours',
+        opgelost: 'Résolu', kritiek_label: 'Critique', vandaag_nieuw: 'Nouveau aujourd\'hui',
+        vandaag_opgelost: 'Résolu aujourd\'hui',
+        prioriteit_verdeling: 'Répartition des priorités',
+        categorie_top: 'Top catégories', status_verdeling: 'Répartition des statuts',
+        meldingen_trend: 'Tendance des signalements', actieve_projecten: 'Projets actifs',
+        recente_activiteit: 'Activité récente', geen_projecten: 'Aucun projet',
+        open: 'Ouvert', in_behandeling_status: 'En cours', gereed_uitvoering: 'Prêt pour exécution',
+        in_uitvoering: 'En exécution', opgelost_status: 'Résolu', afgerond: 'Terminé',
+        kritiek: 'Critique', hoog: 'Élevé', normaal: 'Normal', laag: 'Faible',
+        beheerder: 'Administrateur', projectleider: 'Chef de projet', aannemer: 'Entrepreneur',
+        toezichthouder: 'Inspecteur', technicus: 'Technicien', opdrachtgever: 'Client',
+        teamleden: 'Membres de l\'équipe', gebruiker_uitnodigen: 'Inviter un utilisateur',
+        uitnodigingen: 'Invitations', naam: 'Nom', email: 'E-mail', rol: 'Rôle',
+        status: 'Statut', laatste_login: 'Dernière connexion', actief: 'Actif', inactief: 'Inactif',
+        geen_gebruikers: 'Aucun utilisateur trouvé', laden: 'Chargement...',
+        gebruikers_laden: 'Chargement des utilisateurs...', nooit: 'Jamais',
+        min_geleden: 'min', uur_geleden: 'h', gisteren: 'Hier',
+        dagen_geleden: 'jours',
+        stuur_uitnodiging: 'Envoyez une invitation à un nouveau membre.',
+        emailadres: 'Adresse e-mail', uitnodiging_versturen: 'Envoyer l\'invitation',
+        uitnodiging_verstuurd: 'Invitation envoyée à',
+        nieuw_project: 'Nouveau Projet', project_bewerken: 'Modifier le projet',
+        projectnaam: 'Nom du projet', omschrijving: 'Description', gemeente: 'Commune',
+        kleur_kaart: 'Couleur sur la carte', meldingcategorieen: 'Catégories de signalements',
+        project_aanmaken: 'Créer le projet', opslaan: 'Enregistrer',
+        teken_gebied: 'Dessinez un rectangle ou polygone sur la carte pour définir la zone du projet.',
+        gebied_ingesteld: 'Zone du projet définie. Redessinez pour ajuster.',
+        selecteer_categorieen: 'Sélectionnez les catégories disponibles pour les signalements dans ce projet.',
+        eigen_categorie: 'Ajouter une catégorie...', toevoegen: '+ Ajouter',
+        categorie_bestaat: 'Catégorie existe déjà',
+        bekijken: 'Voir', op_kaart: 'Sur la carte', gebied_inst: 'Zone définie', geen_gebied: 'Pas de zone',
+        projecten_laden: 'Chargement des projets...', laden_mislukt: 'Échec du chargement', opnieuw_proberen: 'Réessayer',
+        geen_projecten_gevonden: 'Pas encore de projets',
+        eerste_project: '+ Créer le premier projet',
+        nieuwe_melding_title: 'Nouveau Signalement', registreer_melding: 'Enregistrez un signalement du terrain.',
+        project: 'Projet', selecteer_project: 'Sélectionner un projet...',
+        titel: 'Titre', beschrijf_melding: 'Décrivez le signalement',
+        categorie: 'Catégorie', selecteer_categorie: 'Sélectionner une catégorie...',
+        prioriteit: 'Priorité', locatie: 'Localisation (cliquez sur la carte ou utilisez le GPS)',
+        melding_aanmaken: 'Créer le signalement',
+        selecteer_project_hint: 'Sélectionnez un projet pour voir les catégories.',
+        standaard_cats: 'Catégories par défaut (le projet n\'a pas de catégories).',
+        project_cats: 'Sélectionnez un projet pour les catégories spécifiques.',
+        foto_voor: 'Photo avant', foto_na: 'Photo après', klik_upload: 'Cliquez pour télécharger',
+        sluiten: 'Fermer', verwijderen: 'Supprimer',
+        status_bijgewerkt: 'Statut mis à jour', prioriteit_bijgewerkt: 'Priorité mise à jour',
+        foto_opgeslagen: 'Photo enregistrée', foto_mislukt: 'Échec du téléchargement',
+        melding_verwijderd: 'Signalement supprimé', verwijderen_mislukt: 'Échec de la suppression',
+        bevestig_verwijderen: 'Êtes-vous sûr de vouloir supprimer ce signalement?',
+        meldingen_laden: 'Chargement des signalements...', geen_meldingen: 'Pas encore de signalements',
+        eerste_melding: '+ Créer le premier signalement', datum: 'Date',
+        rapportage: 'Rapports', exporteren: 'Exporter',
+        alle_projecten: 'Tous les projets', alle_statussen: 'Tous les statuts',
+        alle_prioriteiten: 'Toutes les priorités', alle_categorieen: 'Toutes les catégories',
+        van_datum: 'De', tot_datum: 'À', voorbeeld: 'Aperçu', csv: 'CSV', pdf: 'PDF',
+        geselecteerd: 'sélectionné(s)', gefilterd: 'filtré(s)',
+        organisatie: 'Organisation', abonnement: 'Abonnement',
+        organisaties: 'Organisations', totaal_gebruikers: 'Total Utilisateurs',
+        demo_aanvragen: 'Demandes de démo', plan: 'Plan', aangemaakt: 'Créé',
+        bedrijf: 'Entreprise', verwerkt: 'Traité', ja: 'Oui', nee: 'Non',
+        stratenkaart: 'Plan de rue', topografisch: 'Topographique',
+        goedenacht: 'Bonne nuit', goedemorgen: 'Bonjour', goedemiddag: 'Bon après-midi', goedenavond: 'Bonsoir',
+        jan:'Jan',feb:'Fév',mrt:'Mar',apr:'Avr',mei:'Mai',jun:'Jun',jul:'Jul',aug:'Aoû',sep:'Sep',okt:'Oct',nov:'Nov',dec:'Déc',
+        nieuw_chart: 'Nouveau', opgelost_chart: 'Résolu',
+        privacy: 'Confidentialité',
+        fout_laden: 'Erreur de chargement', er_ging_iets_mis: 'Quelque chose s\'est mal passé.',
+        verstuurd: 'Envoyé', geaccepteerd: 'Accepté', verlopen: 'Expiré',
+        geen_uitnodigingen: 'Aucune invitation envoyée', geen_organisaties: 'Aucune organisation',
+        geen_demo: 'Aucune demande de démo',
+        normaal_desc: 'Priorité par défaut', laag_desc: 'Pas urgent',
+        hoog_desc: 'À traiter rapidement', kritiek_desc: 'Action immédiate requise',
+        viewer_opt: 'Client — Consultation seule, pas de modifications',
+        inspector_opt: 'Inspecteur — Créer des signalements, pas de changement de statut',
+        technician_opt: 'Technicien — Créer des signalements & enregistrement terrain',
+        contractor_opt: 'Entrepreneur — Terminer les signalements & changer le statut',
+        manager_opt: 'Chef de projet — Gérer les projets, rapports & vue d\'équipe',
+        admin_opt: 'Administrateur — Accès complet, utilisateurs & paramètres',
+      },
+      tr: {
+        dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
+        beheer: 'Yönetim', admin_overzicht: 'Admin Genel Bakış', instellingen: 'Ayarlar', overig: 'Diğer', hoofdmenu: 'Ana menü',
+        uitloggen: 'Çıkış',
+        welkom_terug: 'Tekrar hoş geldiniz',
+        overzicht_subtitle: 'Tüm proje ve bildirimlerin genel görünümü',
+        realtime: 'Gerçek zamanlı', laatst_bijgewerkt: 'Son güncelleme', zojuist: 'az önce',
+        nieuwe_melding: '+ Yeni bildirim',
+        totaal_meldingen: 'Toplam bildirimler', open_meldingen: 'Açık bildirimler', in_behandeling: 'İşleniyor',
+        opgelost: 'Çözüldü', kritiek_label: 'Kritik', vandaag_nieuw: 'Bugün yeni',
+        vandaag_opgelost: 'Bugün çözülen',
+        prioriteit_verdeling: 'Öncelik dağılımı',
+        categorie_top: 'En çok kategoriler', status_verdeling: 'Durum dağılımı',
+        meldingen_trend: 'Bildirim trendi', actieve_projecten: 'Aktif projeler',
+        recente_activiteit: 'Son aktivite', geen_projecten: 'Proje yok',
+        open: 'Açık', in_behandeling_status: 'İşleniyor', gereed_uitvoering: 'Uygulamaya hazır',
+        in_uitvoering: 'Uygulamada', opgelost_status: 'Çözüldü', afgerond: 'Tamamlandı',
+        kritiek: 'Kritik', hoog: 'Yüksek', normaal: 'Normal', laag: 'Düşük',
+        beheerder: 'Yönetici', projectleider: 'Proje yöneticisi', aannemer: 'Müteahhit',
+        toezichthouder: 'Denetçi', technicus: 'Teknisyen', opdrachtgever: 'Müşteri',
+        teamleden: 'Ekip üyeleri', gebruiker_uitnodigen: 'Kullanıcı davet et',
+        uitnodigingen: 'Davetiyeler', naam: 'Ad', email: 'E-posta', rol: 'Rol',
+        status: 'Durum', laatste_login: 'Son giriş', actief: 'Aktif', inactief: 'Pasif',
+        geen_gebruikers: 'Kullanıcı bulunamadı', laden: 'Yükleniyor...',
+        gebruikers_laden: 'Kullanıcılar yükleniyor...', nooit: 'Hiç',
+        min_geleden: 'dk önce', uur_geleden: 'saat önce', gisteren: 'Dün',
+        dagen_geleden: 'gün önce',
+        stuur_uitnodiging: 'Yeni bir ekip üyesine davetiye gönderin.',
+        emailadres: 'E-posta adresi', uitnodiging_versturen: 'Davetiye gönder',
+        uitnodiging_verstuurd: 'Davetiye gönderildi',
+        nieuw_project: 'Yeni Proje', project_bewerken: 'Projeyi düzenle',
+        projectnaam: 'Proje adı', omschrijving: 'Açıklama', gemeente: 'Belediye',
+        kleur_kaart: 'Harita rengi', meldingcategorieen: 'Bildirim kategorileri',
+        project_aanmaken: 'Proje oluştur', opslaan: 'Kaydet',
+        teken_gebied: 'Proje alanını belirlemek için haritada bir dikdörtgen veya çokgen çizin.',
+        gebied_ingesteld: 'Proje alanı belirlendi. Ayarlamak için tekrar çizin.',
+        selecteer_categorieen: 'Bu projede bildirimler için hangi kategorilerin kullanılacağını seçin.',
+        eigen_categorie: 'Özel kategori ekle...', toevoegen: '+ Ekle',
+        categorie_bestaat: 'Kategori zaten mevcut',
+        bekijken: 'Görüntüle', op_kaart: 'Haritada', gebied_inst: 'Alan belirlendi', geen_gebied: 'Alan yok',
+        projecten_laden: 'Projeler yükleniyor...', laden_mislukt: 'Yükleme başarısız', opnieuw_proberen: 'Tekrar dene',
+        geen_projecten_gevonden: 'Henüz proje yok',
+        eerste_project: '+ İlk projeyi oluştur',
+        nieuwe_melding_title: 'Yeni Bildirim', registreer_melding: 'Sahadan bir bildirim kaydedin.',
+        project: 'Proje', selecteer_project: 'Proje seçin...',
+        titel: 'Başlık', beschrijf_melding: 'Bildirimi açıklayın',
+        categorie: 'Kategori', selecteer_categorie: 'Kategori seçin...',
+        prioriteit: 'Öncelik', locatie: 'Konum (haritaya tıklayın veya GPS kullanın)',
+        melding_aanmaken: 'Bildirim oluştur',
+        selecteer_project_hint: 'Kategorileri görmek için önce bir proje seçin.',
+        standaard_cats: 'Standart kategoriler (proje özel kategorilere sahip değil).',
+        project_cats: 'Projeye özel kategoriler için bir proje seçin.',
+        foto_voor: 'Önceki fotoğraf', foto_na: 'Sonraki fotoğraf', klik_upload: 'Fotoğraf yüklemek için tıklayın',
+        sluiten: 'Kapat', verwijderen: 'Sil',
+        status_bijgewerkt: 'Durum güncellendi', prioriteit_bijgewerkt: 'Öncelik güncellendi',
+        foto_opgeslagen: 'Fotoğraf kaydedildi', foto_mislukt: 'Fotoğraf yükleme başarısız',
+        melding_verwijderd: 'Bildirim silindi', verwijderen_mislukt: 'Silme başarısız',
+        bevestig_verwijderen: 'Bu bildirimi silmek istediğinizden emin misiniz?',
+        meldingen_laden: 'Bildirimler yükleniyor...', geen_meldingen: 'Henüz bildirim yok',
+        eerste_melding: '+ İlk bildirimi oluştur', datum: 'Tarih',
+        rapportage: 'Raporlama', exporteren: 'Dışa aktar',
+        alle_projecten: 'Tüm projeler', alle_statussen: 'Tüm durumlar',
+        alle_prioriteiten: 'Tüm öncelikler', alle_categorieen: 'Tüm kategoriler',
+        van_datum: 'Başlangıç', tot_datum: 'Bitiş', voorbeeld: 'Önizleme', csv: 'CSV', pdf: 'PDF',
+        geselecteerd: 'seçili', gefilterd: 'filtrelenmiş',
+        organisatie: 'Organizasyon', abonnement: 'Abonelik',
+        organisaties: 'Organizasyonlar', totaal_gebruikers: 'Toplam Kullanıcılar',
+        demo_aanvragen: 'Demo Talepleri', plan: 'Plan', aangemaakt: 'Oluşturulma',
+        bedrijf: 'Şirket', verwerkt: 'İşlendi', ja: 'Evet', nee: 'Hayır',
+        stratenkaart: 'Sokak haritası', topografisch: 'Topografik',
+        goedenacht: 'İyi geceler', goedemorgen: 'Günaydın', goedemiddag: 'İyi günler', goedenavond: 'İyi akşamlar',
+        jan:'Oca',feb:'Şub',mrt:'Mar',apr:'Nis',mei:'May',jun:'Haz',jul:'Tem',aug:'Ağu',sep:'Eyl',okt:'Eki',nov:'Kas',dec:'Ara',
+        nieuw_chart: 'Yeni', opgelost_chart: 'Çözüldü',
+        privacy: 'Gizlilik',
+        fout_laden: 'Yükleme hatası', er_ging_iets_mis: 'Bir şeyler yanlış gitti.',
+        verstuurd: 'Gönderildi', geaccepteerd: 'Kabul edildi', verlopen: 'Süresi doldu',
+        geen_uitnodigingen: 'Gönderilmiş davetiye yok', geen_organisaties: 'Organizasyon yok',
+        geen_demo: 'Demo talebi yok',
+        normaal_desc: 'Standart öncelik', laag_desc: 'Acil değil',
+        hoog_desc: 'Hızlıca ele alın', kritiek_desc: 'Acil eylem gerekli',
+        viewer_opt: 'Müşteri — Sadece görüntüleme, düzenleme yok',
+        inspector_opt: 'Denetçi — Bildirim oluşturma, durum değişikliği yok',
+        technician_opt: 'Teknisyen — Bildirim oluşturma ve saha kaydı',
+        contractor_opt: 'Müteahhit — Bildirim tamamlama ve durum değiştirme',
+        manager_opt: 'Proje yöneticisi — Proje, rapor ve ekip yönetimi',
+        admin_opt: 'Yönetici — Tam erişim, kullanıcılar ve ayarlar',
+      }
+    };
+
+    function t(key) {
+      var lang = translations[currentLang] || translations['nl'];
+      return lang[key] || translations['nl'][key] || key;
+    }
+
+    function switchLanguage(lang) {
+      currentLang = lang;
+      localStorage.setItem('fieldops_lang', lang);
+      document.documentElement.lang = lang === 'nl' ? 'nl' : lang === 'de' ? 'de' : lang === 'fr' ? 'fr' : lang === 'tr' ? 'tr' : 'en';
+      translatePage();
+    }
+
+    function translatePage() {
+      // ── Nav links (top + sidebar) ──
+      document.querySelectorAll('[data-page="dashboard"]').forEach(function(el) {
+        if (el.querySelector('.icon')) el.innerHTML = el.querySelector('.icon').outerHTML + ' ' + t('dashboard');
+        else el.textContent = t('dashboard');
+      });
+      document.querySelectorAll('[data-page="projecten"]').forEach(function(el) {
+        if (el.querySelector('.icon')) el.innerHTML = el.querySelector('.icon').outerHTML + ' ' + t('projecten');
+        else el.textContent = t('projecten');
+      });
+      document.querySelectorAll('[data-page="meldingen"]').forEach(function(el) {
+        if (el.querySelector('.icon')) el.innerHTML = el.querySelector('.icon').outerHTML + ' ' + t('meldingen');
+        else el.textContent = t('meldingen');
+      });
+      document.querySelectorAll('[data-page="kaart"]').forEach(function(el) {
+        if (el.querySelector('.icon')) el.innerHTML = el.querySelector('.icon').outerHTML + ' ' + t('kaart');
+        else el.textContent = t('kaart');
+      });
+      document.querySelectorAll('[data-page="gebruikers"]').forEach(function(el) {
+        if (el.querySelector('.icon')) el.innerHTML = el.querySelector('.icon').outerHTML + ' ' + t('gebruikers');
+        else el.textContent = t('gebruikers');
+      });
+      document.querySelectorAll('[data-page="admin"]').forEach(function(el) {
+        if (el.querySelector('.icon')) el.innerHTML = el.querySelector('.icon').outerHTML + ' ' + t('admin_overzicht');
+        else el.textContent = t('admin_overzicht');
+      });
+      document.querySelectorAll('[data-page="instellingen"]').forEach(function(el) {
+        if (el.querySelector('.icon')) el.innerHTML = el.querySelector('.icon').outerHTML + ' ' + t('instellingen');
+        else el.textContent = t('instellingen');
+      });
+
+      // Sidebar labels
+      var sideLabels = document.querySelectorAll('.sidebar-label');
+      if (sideLabels[0]) sideLabels[0].textContent = t('hoofdmenu');
+      if (sideLabels[1]) sideLabels[1].textContent = t('beheer');
+      if (sideLabels[2]) sideLabels[2].textContent = t('overig');
+
+      // Logout button
+      var logoutBtn = document.querySelector('.btn-logout');
+      if (logoutBtn) logoutBtn.textContent = t('uitloggen');
+
+      // ── Dashboard ──
+      var dashSub = document.querySelector('#page-dashboard .page-header p');
+      if (dashSub) dashSub.textContent = t('overzicht_subtitle');
+      var newMeldBtn = document.querySelector('#page-dashboard .btn-primary');
+      if (newMeldBtn) newMeldBtn.textContent = t('nieuwe_melding');
+
+      // Stat labels
+      var statLabels = document.querySelectorAll('#page-dashboard .dash-stat-grid .stat-label');
+      var statKeys = ['totaal_meldingen','open_meldingen','in_behandeling','opgelost','kritiek_label','vandaag_nieuw'];
+      statLabels.forEach(function(el, i) { if (statKeys[i]) el.textContent = t(statKeys[i]); });
+
+      // Dashboard card headers
+      document.querySelectorAll('#page-dashboard .card-header h3').forEach(function(el) {
+        var txt = el.textContent.trim();
+        if (txt.match(/prioriteit/i)) el.textContent = t('prioriteit_verdeling');
+        else if (txt.match(/categori/i)) el.textContent = t('categorie_top');
+        else if (txt.match(/status/i)) el.textContent = t('status_verdeling');
+        else if (txt.match(/trend/i)) el.textContent = t('meldingen_trend');
+        else if (txt.match(/project/i)) el.textContent = t('actieve_projecten');
+        else if (txt.match(/activiteit/i) || txt.match(/activity/i)) el.textContent = t('recente_activiteit');
+      });
+
+      // ── Projecten page ──
+      var projHeader = document.querySelector('#page-projecten .page-header h1');
+      if (projHeader) projHeader.textContent = t('projecten');
+      var projNewBtn = document.querySelector('#page-projecten .page-header .btn-primary');
+      if (projNewBtn) projNewBtn.textContent = t('nieuw_project');
+
+      // ── Meldingen page ──
+      var meldHeader = document.querySelector('#page-meldingen .page-header h1');
+      if (meldHeader) meldHeader.textContent = t('meldingen');
+      var meldNewBtn = document.querySelector('#page-meldingen .page-header .btn-primary');
+      if (meldNewBtn) meldNewBtn.textContent = t('nieuwe_melding');
+
+      // Table headers for meldingen
+      var meldThs = document.querySelectorAll('#page-meldingen .data-table th');
+      var meldThKeys = [null, t('titel'), t('categorie'), t('prioriteit'), t('status'), t('project'), t('datum')];
+      meldThs.forEach(function(th, i) { if (meldThKeys[i]) th.textContent = meldThKeys[i]; });
+
+      // ── Gebruikers page ──
+      var userHeader = document.querySelector('#page-gebruikers .page-header h1');
+      if (userHeader) userHeader.textContent = t('gebruikers');
+      var inviteBtn = document.querySelector('#page-gebruikers .page-header .btn-primary');
+      if (inviteBtn) inviteBtn.textContent = t('gebruiker_uitnodigen');
+
+      // User tabs
+      var tabUsers = document.getElementById('tabUsers');
+      var tabInvites = document.getElementById('tabInvites');
+      if (tabUsers) tabUsers.textContent = t('teamleden');
+      if (tabInvites) tabInvites.textContent = t('uitnodigingen');
+
+      // User table headers
+      var userThs = document.querySelectorAll('#usersTabContent .data-table th');
+      var userThKeys = [t('naam'), t('email'), t('rol'), t('status'), t('laatste_login')];
+      userThs.forEach(function(th, i) { if (userThKeys[i]) th.textContent = userThKeys[i]; });
+
+      // ── Kaart page ──
+      var kaartHeader = document.querySelector('#page-kaart .page-header h1');
+      if (kaartHeader) kaartHeader.textContent = t('kaart');
+
+      // ── Instellingen page ──
+      var settHeader = document.querySelector('#page-instellingen .page-header h1');
+      if (settHeader) settHeader.textContent = t('instellingen');
+
+      // ── Admin page ──
+      var adminHeader = document.querySelector('#page-admin .page-header h1');
+      if (adminHeader) adminHeader.textContent = t('admin_overzicht');
+
+      // ── Invite Modal ──
+      var invModalH2 = document.querySelector('#inviteModal h2');
+      if (invModalH2) invModalH2.textContent = t('gebruiker_uitnodigen');
+      var invModalSub = document.querySelector('#inviteModal p.subtitle');
+      if (invModalSub) invModalSub.textContent = t('stuur_uitnodiging');
+      var invEmailLabel = document.querySelector('#inviteModal label');
+      if (invEmailLabel) invEmailLabel.textContent = t('emailadres');
+      var invSubmit = document.querySelector('#inviteModal .btn-primary');
+      if (invSubmit) invSubmit.textContent = t('uitnodiging_versturen');
+
+      // Invite role options
+      var invRole = document.getElementById('inviteRole');
+      if (invRole) {
+        var opts = invRole.options;
+        if (opts[0]) opts[0].textContent = t('viewer_opt');
+        if (opts[1]) opts[1].textContent = t('inspector_opt');
+        if (opts[2]) opts[2].textContent = t('technician_opt');
+        if (opts[3]) opts[3].textContent = t('contractor_opt');
+        if (opts[4]) opts[4].textContent = t('manager_opt');
+        if (opts[5]) opts[5].textContent = t('admin_opt');
+      }
+
+      // ── Project Modal ──
+      var projModalTitle = document.getElementById('projectModalTitle');
+      if (projModalTitle && !currentEditProjectId) projModalTitle.textContent = t('nieuw_project');
+      var projSubmit = document.getElementById('projectSubmitBtn');
+      if (projSubmit && !currentEditProjectId) projSubmit.textContent = t('project_aanmaken');
+
+      // Project form labels
+      var projLabels = document.querySelectorAll('#projectModal .form-group label');
+      var projLabelKeys = [t('projectnaam'), t('omschrijving'), t('gemeente'), t('kleur_kaart'), t('meldingcategorieen')];
+      projLabels.forEach(function(lbl, i) { if (projLabelKeys[i]) lbl.textContent = projLabelKeys[i]; });
+
+      // ── Melding Modal ──
+      var meldModalH2 = document.querySelector('#meldingModal h2');
+      if (meldModalH2) meldModalH2.textContent = t('nieuwe_melding_title');
+      var meldModalSub = document.querySelector('#meldingModal p.subtitle');
+      if (meldModalSub) meldModalSub.textContent = t('registreer_melding');
+      var meldSubmitBtn = document.getElementById('meldingSubmitBtn');
+      if (meldSubmitBtn) meldSubmitBtn.textContent = t('melding_aanmaken');
+
+      // Melding form labels
+      var meldFormLabels = document.querySelectorAll('#meldingModal .form-group label');
+      var meldLabelKeys = [t('project'), t('titel'), t('omschrijving'), t('categorie'), t('prioriteit'), t('locatie')];
+      meldFormLabels.forEach(function(lbl, i) { if (meldLabelKeys[i]) lbl.textContent = meldLabelKeys[i]; });
+
+      // Priority options in melding modal
+      var priSel = document.getElementById('meldingPriority');
+      if (priSel) {
+        priSel.options[0].textContent = t('normaal') + ' — ' + t('normaal_desc');
+        priSel.options[1].textContent = t('laag') + ' — ' + t('laag_desc');
+        priSel.options[2].textContent = t('hoog') + ' — ' + t('hoog_desc');
+        priSel.options[3].textContent = t('kritiek') + ' — ' + t('kritiek_desc');
+      }
+
+      // ── Melding Detail Modal ──
+      var detailStatusSel = document.getElementById('detailStatus');
+      if (detailStatusSel) {
+        detailStatusSel.options[0].textContent = t('open');
+        detailStatusSel.options[1].textContent = t('in_behandeling_status');
+        detailStatusSel.options[2].textContent = t('gereed_uitvoering');
+        detailStatusSel.options[3].textContent = t('in_uitvoering');
+        detailStatusSel.options[4].textContent = t('opgelost_status');
+        detailStatusSel.options[5].textContent = t('afgerond');
+      }
+      var detailPriSel = document.getElementById('detailPriority');
+      if (detailPriSel) {
+        detailPriSel.options[0].textContent = t('laag');
+        detailPriSel.options[1].textContent = t('normaal');
+        detailPriSel.options[2].textContent = t('hoog');
+        detailPriSel.options[3].textContent = t('kritiek');
+      }
+
+      // Detail labels
+      var detailLabels = document.querySelectorAll('#meldingDetailModal .form-group label');
+      detailLabels.forEach(function(lbl) {
+        var txt = lbl.textContent.trim().toLowerCase();
+        if (txt.match(/status/)) lbl.textContent = t('status');
+        else if (txt.match(/prioriteit|priority|priorität/)) lbl.textContent = t('prioriteit');
+        else if (txt.match(/omschrijving|description|beschreibung/)) lbl.textContent = t('omschrijving');
+        else if (txt.match(/categori/)) lbl.textContent = t('categorie');
+        else if (txt.match(/project|proje/)) lbl.textContent = t('project');
+      });
+
+      // Photo labels
+      var photoBeforeLbl = document.getElementById('photoBeforeLabel');
+      var photoAfterLbl = document.getElementById('photoAfterLabel');
+      if (photoBeforeLbl && photoBeforeLbl.style.display !== 'none') photoBeforeLbl.textContent = t('klik_upload');
+      if (photoAfterLbl && photoAfterLbl.style.display !== 'none') photoAfterLbl.textContent = t('klik_upload');
+
+      // Detail buttons
+      var detailBtns = document.querySelectorAll('#meldingDetailModal .form-actions button');
+      detailBtns.forEach(function(btn) {
+        if (btn.style.background && btn.style.background.indexOf('red') > -1) btn.textContent = t('verwijderen');
+        else if (btn.classList.contains('btn-secondary')) btn.textContent = t('sluiten');
+      });
+
+      // ── Rapportage section ──
+      document.querySelectorAll('#rapportagePanel h3').forEach(function(el) {
+        if (el.textContent.match(/rapportage|reporting|bericht|rapport|raporlama/i)) el.textContent = t('rapportage');
+      });
+
+      // ── Footer ──
+      var footerLinks = document.querySelectorAll('.main-footer a, .footer-links a');
+      footerLinks.forEach(function(a) {
+        if (a.textContent.trim().toLowerCase().match(/^privacy/)) a.textContent = t('privacy');
+      });
+
+      // ── Greeting ──
+      setGreeting();
+    }
+
     // ── Config ──
     var API_URL = window.location.origin;
     var token = null;
@@ -1636,6 +2381,11 @@
       if (currentUser) {
         setUserUI(currentUser);
       }
+
+      // Set language switcher & translate
+      var langSel = document.getElementById('langSwitcher');
+      if (langSel) langSel.value = currentLang;
+      translatePage();
 
       // Fetch fresh data from API
       loadUserData();
@@ -1712,7 +2462,7 @@
       var gr = document.getElementById('greeting');
       if (el) el.textContent = name;
       if (av) av.textContent = name.charAt(0).toUpperCase();
-      if (gr) gr.textContent = 'Welkom terug, ' + name.split(' ')[0];
+      if (gr) gr.textContent = t('welkom_terug') + ', ' + name.split(' ')[0];
     }
 
     // ── Navigation ──
@@ -1753,28 +2503,28 @@
         }
         tbody.innerHTML = users.map(function(u) {
           var name = (u.first_name || '') + ' ' + (u.last_name || '');
-          var roleMap = { admin:'Beheerder', manager:'Projectleider', contractor:'Aannemer', inspector:'Toezichthouder', technician:'Technicus', viewer:'Opdrachtgever' };
-          var lastLogin = 'Nooit';
+          var roleMap = { admin:t('beheerder'), manager:t('projectleider'), contractor:t('aannemer'), inspector:t('toezichthouder'), technician:t('technicus'), viewer:t('opdrachtgever') };
+          var lastLogin = t('nooit');
           if (u.last_login) {
             var d = new Date(u.last_login);
             var now = new Date();
             var diff = Math.floor((now - d) / 1000);
-            if (diff < 60) lastLogin = 'Zojuist';
-            else if (diff < 3600) lastLogin = Math.floor(diff/60) + ' min geleden';
-            else if (diff < 86400) lastLogin = Math.floor(diff/3600) + ' uur geleden';
-            else if (diff < 172800) lastLogin = 'Gisteren ' + d.toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'});
-            else lastLogin = d.toLocaleDateString('nl-NL', {day:'numeric',month:'short',year:'numeric'}) + ' ' + d.toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'});
+            if (diff < 60) lastLogin = t('zojuist');
+            else if (diff < 3600) lastLogin = Math.floor(diff/60) + ' ' + t('min_geleden');
+            else if (diff < 86400) lastLogin = Math.floor(diff/3600) + ' ' + t('uur_geleden');
+            else if (diff < 172800) lastLogin = t('gisteren') + ' ' + d.toLocaleTimeString(currentLang, {hour:'2-digit',minute:'2-digit'});
+            else lastLogin = d.toLocaleDateString(currentLang, {day:'numeric',month:'short',year:'numeric'}) + ' ' + d.toLocaleTimeString(currentLang, {hour:'2-digit',minute:'2-digit'});
           }
           return '<tr>' +
             '<td><strong>' + name.trim() + '</strong></td>' +
             '<td>' + u.email + '</td>' +
             '<td><span class="role-badge">' + (roleMap[u.role] || u.role) + '</span></td>' +
-            '<td><span class="status-badge ' + (u.is_active ? 'active' : 'inactive') + '">' + (u.is_active ? 'Actief' : 'Inactief') + '</span></td>' +
+            '<td><span class="status-badge ' + (u.is_active ? 'active' : 'inactive') + '">' + (u.is_active ? t('actief') : t('inactief')) + '</span></td>' +
             '<td style="color: var(--text-dim);">' + lastLogin + '</td>' +
             '</tr>';
         }).join('');
       }).catch(function(err) {
-        document.getElementById('usersBody').innerHTML = '<tr><td colspan="5" style="color: var(--red);">Fout bij laden: ' + err.message + '</td></tr>';
+        document.getElementById('usersBody').innerHTML = '<tr><td colspan="5" style="color: var(--red);">' + t('fout_laden') + ': ' + err.message + '</td></tr>';
       });
     }
 
@@ -1802,7 +2552,7 @@
               '</tr>';
           }).join('');
         } else {
-          orgsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-dim);">Geen organisaties</td></tr>';
+          orgsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-dim);">'+t('geen_organisaties')+'</td></tr>';
         }
 
         // Users table
@@ -1815,11 +2565,11 @@
               '<td>' + u.email + '</td>' +
               '<td>' + (u.org_name || '-') + '</td>' +
               '<td><span class="role-badge">' + u.role + '</span></td>' +
-              '<td><span class="status-badge ' + (u.is_active ? 'active' : 'inactive') + '">' + (u.is_active ? 'Actief' : 'Inactief') + '</span></td>' +
+              '<td><span class="status-badge ' + (u.is_active ? 'active' : 'inactive') + '">' + (u.is_active ? t('actief') : t('inactief')) + '</span></td>' +
               '</tr>';
           }).join('');
         } else {
-          usersBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-dim);">Geen gebruikers</td></tr>';
+          usersBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-dim);">'+t('geen_gebruikers')+'</td></tr>';
         }
 
         // Demo requests table
@@ -1832,12 +2582,12 @@
               '<td>' + d.company_name + '</td>' +
               '<td>' + d.email + '</td>' +
               '<td><span class="role-badge">' + d.plan + '</span></td>' +
-              '<td><span class="status-badge ' + (d.processed ? 'active' : 'trial') + '">' + (d.processed ? 'Ja' : 'Nee') + '</span></td>' +
+              '<td><span class="status-badge ' + (d.processed ? 'active' : 'trial') + '">' + (d.processed ? t('ja') : t('nee')) + '</span></td>' +
               '<td style="color: var(--text-dim);">' + date + '</td>' +
               '</tr>';
           }).join('');
         } else {
-          demosBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-dim);">Geen demo aanvragen</td></tr>';
+          demosBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-dim);">'+t('geen_demo')+'</td></tr>';
         }
       }).catch(function(err) {
         console.error('Admin data laden mislukt:', err);
@@ -1874,7 +2624,7 @@
       var email = document.getElementById('inviteEmail').value;
       var role = document.getElementById('inviteRole').value;
       api('POST', '/api/users/invite', { email: email, role: role }).then(function() {
-        showToast('Uitnodiging verstuurd naar ' + email, 'success');
+        showToast(t('uitnodiging_verstuurd') + ' ' + email, 'success');
         closeInviteModal();
         document.getElementById('inviteEmail').value = '';
         if (document.getElementById('page-gebruikers').classList.contains('active')) {
@@ -1901,11 +2651,11 @@
     // ── Toast ──
     function showLoading(containerId, msg) {
       var el = document.getElementById(containerId);
-      if (el) el.innerHTML = '<div class="loading-spinner">'+(msg||'Laden...')+'</div>';
+      if (el) el.innerHTML = '<div class="loading-spinner">'+(msg||t('laden'))+'</div>';
     }
     function showError(containerId, msg, retryFn) {
       var el = document.getElementById(containerId);
-      if (el) el.innerHTML = '<div class="error-state"><h3>Fout bij laden</h3><p>'+(msg||'Er is iets misgegaan.')+'</p>'+(retryFn?'<button class="btn-secondary" onclick="'+retryFn+'()">Opnieuw proberen</button>':'')+'</div>';
+      if (el) el.innerHTML = '<div class="error-state"><h3>'+t('fout_laden')+'</h3><p>'+(msg||t('er_ging_iets_mis'))+'</p>'+(retryFn?'<button class="btn-secondary" onclick="'+retryFn+'()">'+t('opnieuw_proberen')+'</button>':'')+'</div>';
     }
 
     function showToast(msg, type) {
@@ -1958,7 +2708,7 @@
       api('GET', '/api/users/invitations').then(function(invites) {
         var tbody = document.getElementById('invitesBody');
         if (!invites || invites.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-dim);">Geen uitnodigingen verstuurd</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-dim);">'+t('geen_uitnodigingen')+'</td></tr>';
           return;
         }
         var roleMap = { admin:'Admin', manager:'Manager', technician:'Technicus', viewer:'Viewer' };
@@ -1966,7 +2716,7 @@
           var created = new Date(inv.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
           var expires = new Date(inv.expires_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
           var isExpired = new Date(inv.expires_at) < new Date();
-          var status = inv.accepted ? 'Geaccepteerd' : (isExpired ? 'Verlopen' : 'Verstuurd');
+          var status = inv.accepted ? t('geaccepteerd') : (isExpired ? t('verlopen') : t('verstuurd'));
           var statusClass = inv.accepted ? 'active' : (isExpired ? 'inactive' : 'trial');
           return '<tr>' +
             '<td>' + inv.email + '</td>' +
@@ -2005,7 +2755,7 @@
         list.style.display = 'block';
         cards.innerHTML = allProjects.map(function(p) {
           var statusColors = { active: 'green', completed: 'blue', archived: 'red' };
-          var statusLabels = { active: 'Actief', completed: 'Afgerond', archived: 'Gearchiveerd' };
+          var statusLabels = { active: t('actief'), completed: t('afgerond'), archived: 'Gearchiveerd' };
           var date = new Date(p.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
           var hasBoundary = p.boundary_geojson ? '<span style="color:var(--green);font-size:11px;">&#9679; Gebied ingesteld</span>' : '<span style="color:var(--text-dim);font-size:11px;">&#9675; Geen gebied</span>';
           return '<div class="stat-card" style="cursor:pointer;border-left:4px solid '+(p.color||'#00d4ff')+';" onclick="openProjectDetail(\''+p.id+'\')">' +
@@ -2062,7 +2812,7 @@
       var val = input.value.trim();
       if (!val) return;
       if (defaultCategories.indexOf(val) !== -1 || customCategories.indexOf(val) !== -1) {
-        showToast('Categorie bestaat al', 'error');
+        showToast(t('categorie_bestaat'), 'error');
         return;
       }
       customCategories.push(val);
@@ -2465,17 +3215,17 @@
       var d = new Date(dateStr);
       var now = new Date();
       var diff = Math.floor((now - d) / 1000);
-      if (diff < 60) return 'Zojuist';
-      if (diff < 3600) return Math.floor(diff/60) + ' min geleden';
-      if (diff < 86400) return Math.floor(diff/3600) + ' uur geleden';
-      if (diff < 172800) return 'Gisteren';
-      if (diff < 604800) return Math.floor(diff/86400) + ' dagen geleden';
-      return d.toLocaleDateString('nl-NL', { day:'numeric', month:'short' });
+      if (diff < 60) return t('zojuist');
+      if (diff < 3600) return Math.floor(diff/60) + ' ' + t('min_geleden');
+      if (diff < 86400) return Math.floor(diff/3600) + ' ' + t('uur_geleden');
+      if (diff < 172800) return t('gisteren');
+      if (diff < 604800) return Math.floor(diff/86400) + ' ' + t('dagen_geleden');
+      return d.toLocaleDateString(currentLang, { day:'numeric', month:'short' });
     }
 
     function setGreeting() {
       var h = new Date().getHours();
-      var g = h < 6 ? 'Goedenacht' : h < 12 ? 'Goedemorgen' : h < 18 ? 'Goedemiddag' : 'Goedenavond';
+      var g = h < 6 ? t('goedenacht') : h < 12 ? t('goedemorgen') : h < 18 ? t('goedemiddag') : t('goedenavond');
       var el = document.getElementById('greeting');
       if (el) el.textContent = g + ' 👋';
     }
@@ -2577,7 +3327,7 @@
 
         // Status chart (donut)
         var statusCounts = {};
-        var statusLabels = { open:'Open', in_behandeling:'In behandeling', afgerond:'Afgerond', opgelost:'Opgelost' };
+        var statusLabels = { open:t('open'), in_behandeling:t('in_behandeling_status'), afgerond:t('afgerond'), opgelost:t('opgelost_status') };
         var statusColors = { open:'#64748b', in_behandeling:'#f59e0b', afgerond:'#1e293b', opgelost:'#10b981' };
         allMeldingen.forEach(function(mel) {
           var s = mel.status || 'open';
@@ -2615,7 +3365,7 @@
 
         // Trend chart (meldingen per maand) with period selector
         var monthData = {};
-        var monthNames = ['Jan','Feb','Mrt','Apr','Mei','Jun','Jul','Aug','Sep','Okt','Nov','Dec'];
+        var monthNames = [t('jan'),t('feb'),t('mrt'),t('apr'),t('mei'),t('jun'),t('jul'),t('aug'),t('sep'),t('okt'),t('nov'),t('dec')];
 
         // Determine period
         var periodFrom = null, periodTo = null;
@@ -2667,8 +3417,8 @@
             data: {
               labels: tLabels,
               datasets: [
-                { label:'Nieuw', data:tNieuw, borderColor:'#00d4ff', backgroundColor:'rgba(0,212,255,0.1)', fill:true, tension:0.4, pointRadius:4, pointBackgroundColor:'#00d4ff' },
-                { label:'Opgelost', data:tOpgelost, borderColor:'#00e676', backgroundColor:'rgba(0,230,118,0.1)', fill:true, tension:0.4, pointRadius:4, pointBackgroundColor:'#00e676' }
+                { label:t('nieuw_chart'), data:tNieuw, borderColor:'#00d4ff', backgroundColor:'rgba(0,212,255,0.1)', fill:true, tension:0.4, pointRadius:4, pointBackgroundColor:'#00d4ff' },
+                { label:t('opgelost_chart'), data:tOpgelost, borderColor:'#00e676', backgroundColor:'rgba(0,230,118,0.1)', fill:true, tension:0.4, pointRadius:4, pointBackgroundColor:'#00e676' }
               ]
             },
             options: {
@@ -2690,12 +3440,12 @@
             raEl.innerHTML = '<div class="activity-empty"><div class="empty-icon">🕐</div><p>Geen recente activiteit</p></div>';
           } else {
             var statusBadgeMap = {
-              open: { label:'Nieuw', cls:'open' },
-              in_behandeling: { label:'In behandeling', cls:'in_behandeling' },
-              gereed_uitvoering: { label:'Gereed voor uitvoering', cls:'gereed' },
-              in_uitvoering: { label:'In uitvoering', cls:'in_uitvoering' },
-              opgelost: { label:'Opgelost', cls:'opgelost' },
-              afgerond: { label:'Afgerond', cls:'afgerond' }
+              open: { label:t('open'), cls:'open' },
+              in_behandeling: { label:t('in_behandeling_status'), cls:'in_behandeling' },
+              gereed_uitvoering: { label:t('gereed_uitvoering'), cls:'gereed' },
+              in_uitvoering: { label:t('in_uitvoering'), cls:'in_uitvoering' },
+              opgelost: { label:t('opgelost_status'), cls:'opgelost' },
+              afgerond: { label:t('afgerond'), cls:'afgerond' }
             };
             raEl.innerHTML = recent.map(function(mel, idx) {
               var projName = '';
@@ -2742,7 +3492,7 @@
         empty.style.display = 'none';
         list.style.display = 'block';
         var prioColors = { kritiek:'red', hoog:'orange', normaal:'blue', laag:'' };
-        var statusLabels = { open:'Open', in_behandeling:'In behandeling', gereed_uitvoering:'Gereed uitvoering', in_uitvoering:'In uitvoering', opgelost:'Opgelost', afgerond:'Afgerond' };
+        var statusLabels = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
         tbody.innerHTML = allMeldingen.map(function(m) {
           var date = new Date(m.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short' });
           var projectName = '-';
@@ -2867,18 +3617,18 @@
       if (!currentDetailMeldingId) return;
       var status = document.getElementById('detailStatus').value;
       api('PUT', '/api/meldingen/' + currentDetailMeldingId, { status: status }).then(function() {
-        showToast('Status bijgewerkt');
+        showToast(t('status_bijgewerkt'));
         loadMeldingen();
-      }).catch(function(err) { showToast('Fout bij opslaan: ' + err.message, 'error'); });
+      }).catch(function(err) { showToast(t('fout_laden') + ': ' + err.message, 'error'); });
     }
 
     function saveMeldingPriority() {
       if (!currentDetailMeldingId) return;
       var priority = document.getElementById('detailPriority').value;
       api('PUT', '/api/meldingen/' + currentDetailMeldingId, { priority: priority }).then(function() {
-        showToast('Prioriteit bijgewerkt');
+        showToast(t('prioriteit_bijgewerkt'));
         loadMeldingen();
-      }).catch(function(err) { showToast('Fout bij opslaan: ' + err.message, 'error'); });
+      }).catch(function(err) { showToast(t('fout_laden') + ': ' + err.message, 'error'); });
     }
 
     function previewPhoto(input, imgId, labelId) {
@@ -2896,21 +3646,21 @@
         var payload = {};
         payload[field] = e.target.result;
         api('PUT', '/api/meldingen/' + currentDetailMeldingId, payload).then(function() {
-          showToast('Foto opgeslagen');
+          showToast(t('foto_opgeslagen'));
           loadMeldingen();
-        }).catch(function(err) { showToast('Foto upload mislukt: ' + err.message, 'error'); });
+        }).catch(function(err) { showToast(t('foto_mislukt') + ': ' + err.message, 'error'); });
       };
       reader.readAsDataURL(input.files[0]);
     }
 
     function deleteMeldingFromDetail() {
       if (!currentDetailMeldingId) return;
-      if (!confirm('Weet je zeker dat je deze melding wilt verwijderen?')) return;
+      if (!confirm(t('bevestig_verwijderen'))) return;
       api('DELETE', '/api/meldingen/' + currentDetailMeldingId).then(function() {
-        showToast('Melding verwijderd');
+        showToast(t('melding_verwijderd'));
         closeMeldingDetail();
         loadMeldingen();
-      }).catch(function(err) { showToast('Verwijderen mislukt: ' + err.message, 'error'); });
+      }).catch(function(err) { showToast(t('verwijderen_mislukt') + ': ' + err.message, 'error'); });
     }
 
     // ══════════════════════════════════════
