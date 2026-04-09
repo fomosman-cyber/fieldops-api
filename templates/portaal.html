@@ -1175,7 +1175,7 @@
         <div class="card" style="overflow-x:auto;">
           <table class="data-table">
             <thead>
-              <tr><th>Titel</th><th>Categorie</th><th>Prioriteit</th><th>Status</th><th>Project</th><th>Datum</th></tr>
+              <tr><th style="width:32px;"><input type="checkbox" id="selectAllMeldingen" onchange="toggleAllMeldingen(this)"></th><th>Titel</th><th>Categorie</th><th>Prioriteit</th><th>Status</th><th>Project</th><th>Datum</th></tr>
             </thead>
             <tbody id="meldingenBody"></tbody>
           </table>
@@ -2730,7 +2730,7 @@
       var list = document.getElementById('meldingenList');
       empty.style.display = 'none';
       list.style.display = 'block';
-      document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="6"><div class="loading-spinner">Meldingen laden...</div></td></tr>';
+      document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="7"><div class="loading-spinner">Meldingen laden...</div></td></tr>';
       api('GET', '/api/meldingen/').then(function(meldingen) {
         allMeldingen = meldingen || [];
         var tbody = document.getElementById('meldingenBody');
@@ -2750,20 +2750,21 @@
             var proj = allProjects.find(function(p){return p.id===m.project_id;});
             if (proj) projectName = proj.name;
           }
-          return '<tr onclick="openMeldingDetail(\''+m.id+'\')" style="cursor:pointer;">' +
-            '<td><strong>'+m.title+'</strong></td>' +
-            '<td>'+(m.category||'-')+'</td>' +
-            '<td><span class="status-badge '+(prioColors[m.priority]||'')+'">'+(m.priority||'normaal')+'</span></td>' +
-            '<td><span class="status-badge '+(m.status==='open'?'trial':m.status==='afgerond'?'active':'')+'">'+
+          return '<tr style="cursor:pointer;">' +
+            '<td onclick="event.stopPropagation()"><input type="checkbox" class="melding-checkbox" value="'+m.id+'"></td>' +
+            '<td onclick="openMeldingDetail(\''+m.id+'\')"><strong>'+m.title+'</strong></td>' +
+            '<td onclick="openMeldingDetail(\''+m.id+'\')">'+(m.category||'-')+'</td>' +
+            '<td onclick="openMeldingDetail(\''+m.id+'\')"><span class="status-badge '+(prioColors[m.priority]||'')+'">'+(m.priority||'normaal')+'</span></td>' +
+            '<td onclick="openMeldingDetail(\''+m.id+'\')"><span class="status-badge '+(m.status==='open'?'trial':m.status==='afgerond'?'active':'')+'">'+
               (statusLabels[m.status]||m.status)+'</span></td>' +
-            '<td>'+projectName+'</td>' +
-            '<td style="color:var(--text-dim);">'+date+'</td>' +
+            '<td onclick="openMeldingDetail(\''+m.id+'\')">'+projectName+'</td>' +
+            '<td onclick="openMeldingDetail(\''+m.id+'\')" style="color:var(--text-dim);">'+date+'</td>' +
             '</tr>';
         }).join('');
         document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
       }).catch(function(err) {
         console.error('Meldingen laden mislukt:', err);
-        document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="6"><div class="error-state"><h3>Laden mislukt</h3><p>'+err.message+'</p><button class="btn-secondary" onclick="loadMeldingen()">Opnieuw proberen</button></div></td></tr>';
+        document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="7"><div class="error-state"><h3>Laden mislukt</h3><p>'+err.message+'</p><button class="btn-secondary" onclick="loadMeldingen()">Opnieuw proberen</button></div></td></tr>';
       });
     }
 
@@ -2916,17 +2917,25 @@
     // ── RAPPORTAGE ──
     // ══════════════════════════════════════
 
+    function toggleAllMeldingen(master) {
+      document.querySelectorAll('.melding-checkbox').forEach(function(cb) { cb.checked = master.checked; });
+    }
+
+    function getSelectedMeldingIds() {
+      var ids = [];
+      document.querySelectorAll('.melding-checkbox:checked').forEach(function(cb) { ids.push(cb.value); });
+      return ids;
+    }
+
     function toggleRapportagePanel() {
       var panel = document.getElementById('rapportagePanel');
       if (panel.style.display === 'none') {
         panel.style.display = 'block';
-        // Vul project dropdown
         var sel = document.getElementById('rapProject');
         sel.innerHTML = '<option value="">Alle projecten</option>';
         allProjects.forEach(function(p) {
           sel.innerHTML += '<option value="'+p.id+'">'+p.name+'</option>';
         });
-        // Vul categorie dropdown
         var catSet = {};
         allMeldingen.forEach(function(m) { if (m.category) catSet[m.category] = true; });
         var catSel = document.getElementById('rapCategorie');
@@ -2940,6 +2949,13 @@
     }
 
     function getFilteredMeldingen() {
+      // Eerst kijken of er checkboxes geselecteerd zijn
+      var selectedIds = getSelectedMeldingIds();
+      if (selectedIds.length > 0) {
+        return allMeldingen.filter(function(m) { return selectedIds.indexOf(m.id) > -1; })
+          .sort(function(a,b){return new Date(b.created_at)-new Date(a.created_at);});
+      }
+      // Anders filters gebruiken
       var projId = document.getElementById('rapProject').value;
       var status = document.getElementById('rapStatus').value;
       var prio = document.getElementById('rapPrioriteit').value;
@@ -2958,18 +2974,24 @@
 
     function previewRapportage() {
       var filtered = getFilteredMeldingen();
+      if (filtered.length === 0) { showToast('Selecteer meldingen of gebruik de filters','error'); return; }
+      // Update samenvatting
       var sum = document.getElementById('rapSamenvatting');
       sum.style.display = 'block';
       document.getElementById('rapTotaal').textContent = filtered.length;
       document.getElementById('rapOpen').textContent = filtered.filter(function(m){return m.status==='open';}).length;
       document.getElementById('rapAfgerond').textContent = filtered.filter(function(m){return m.status==='afgerond'||m.status==='opgelost';}).length;
       document.getElementById('rapKritiekCount').textContent = filtered.filter(function(m){return m.priority==='kritiek';}).length;
-      showToast(filtered.length + ' meldingen gevonden');
+      // Genereer PDF en open als preview in popup
+      generatePdfBlob(filtered, function(blob) {
+        var url = URL.createObjectURL(blob);
+        window.open(url, 'FieldOps_Preview', 'width=900,height=700,scrollbars=yes');
+      });
     }
 
     function generateRapportage(type) {
       var filtered = getFilteredMeldingen();
-      if (filtered.length === 0) { showToast('Geen meldingen gevonden voor deze filters','error'); return; }
+      if (filtered.length === 0) { showToast('Selecteer meldingen of gebruik de filters','error'); return; }
 
       var statusLabelsRap = { open:'Open', in_behandeling:'In behandeling', gereed_uitvoering:'Gereed uitvoering', in_uitvoering:'In uitvoering', opgelost:'Opgelost', afgerond:'Afgerond' };
 
@@ -3005,183 +3027,261 @@
         return;
       }
 
-      // PDF rapportage - elke melding op eigen pagina
+      // PDF download
       if (type === 'pdf') {
+        generatePdfBlob(filtered, function(blob) {
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'FieldOps_Rapportage_'+new Date().toISOString().slice(0,10)+'.pdf';
+          a.click();
+          URL.revokeObjectURL(url);
+          showToast('PDF rapport gedownload met '+filtered.length+' meldingen');
+        });
+      }
+    }
+
+    function generatePdfBlob(filtered, callback) {
+      try {
         var jsPDF = window.jspdf.jsPDF;
         var doc = new jsPDF('p','mm','a4');
-        var pageW = 210, pageH = 297, margin = 20;
-        var van = document.getElementById('rapVan').value || '-';
-        var tot = document.getElementById('rapTot').value || '-';
+        var W = 210, H = 297, M = 20;
+        var rapVan = document.getElementById('rapVan').value || '-';
+        var rapTot = document.getElementById('rapTot').value || '-';
+        var bold = function(){doc.setFont('helvetica','bold');};
+        var normal = function(){doc.setFont('helvetica','normal');};
+        var statusLabelsRap = { open:'Open', in_behandeling:'In behandeling', gereed_uitvoering:'Gereed uitvoering', in_uitvoering:'In uitvoering', opgelost:'Opgelost', afgerond:'Afgerond' };
 
-        // Voorblad
+        // ═══ PAGINA 1: VOORBLAD + DASHBOARD ═══
         doc.setFillColor(2,132,199);
-        doc.rect(0,0,pageW,70,'F');
+        doc.rect(0,0,W,60,'F');
         doc.setTextColor(255,255,255);
-        doc.setFontSize(28);
-        doc.setFont(undefined,'bold');
-        doc.text('FieldOps Rapportage', margin, 35);
-        doc.setFontSize(13);
-        doc.setFont(undefined,'normal');
-        doc.text('Meldingen overzicht', margin, 48);
-        doc.setTextColor(30,41,59);
-        doc.setFontSize(12);
-        var y = 90;
-        doc.setFont(undefined,'bold');
-        doc.text('Organisatie:', margin, y);
-        doc.setFont(undefined,'normal');
-        doc.text(currentOrg ? currentOrg.name : '-', margin+40, y);
-        y += 10;
-        doc.setFont(undefined,'bold');
-        doc.text('Periode:', margin, y);
-        doc.setFont(undefined,'normal');
-        doc.text(van + '  t/m  ' + tot, margin+40, y);
-        y += 10;
-        doc.setFont(undefined,'bold');
-        doc.text('Aantal meldingen:', margin, y);
-        doc.setFont(undefined,'normal');
-        doc.text(String(filtered.length), margin+50, y);
-        y += 10;
-        doc.setFont(undefined,'bold');
-        doc.text('Gegenereerd:', margin, y);
-        doc.setFont(undefined,'normal');
-        doc.text(new Date().toLocaleDateString('nl-NL',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}), margin+40, y);
-        y += 20;
+        doc.setFontSize(26); bold();
+        doc.text('FieldOps Rapportage', M, 30);
+        doc.setFontSize(12); normal();
+        doc.text('Meldingen overzicht  |  '+(currentOrg ? currentOrg.name : ''), M, 44);
 
-        // Samenvatting tabel
-        doc.setFont(undefined,'bold');
-        doc.setFontSize(14);
-        doc.text('Samenvatting', margin, y); y += 10;
+        var y = 75;
+        doc.setTextColor(30,41,59);
         doc.setFontSize(11);
-        var stats = [
-          ['Open', filtered.filter(function(m){return m.status==='open';}).length],
-          ['In behandeling', filtered.filter(function(m){return m.status==='in_behandeling';}).length],
-          ['In uitvoering', filtered.filter(function(m){return m.status==='in_uitvoering';}).length],
-          ['Opgelost', filtered.filter(function(m){return m.status==='opgelost';}).length],
-          ['Afgerond', filtered.filter(function(m){return m.status==='afgerond';}).length],
-          ['Kritiek', filtered.filter(function(m){return m.priority==='kritiek';}).length],
-          ['Hoog', filtered.filter(function(m){return m.priority==='hoog';}).length]
+        var meta = [
+          ['Periode:', rapVan + '  t/m  ' + rapTot],
+          ['Totaal meldingen:', String(filtered.length)],
+          ['Gegenereerd:', new Date().toLocaleDateString('nl-NL',{day:'2-digit',month:'long',year:'numeric'}) + ' ' + new Date().toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'})]
         ];
-        stats.forEach(function(s) {
-          doc.setFont(undefined,'normal');
-          doc.text(s[0]+':', margin+4, y);
-          doc.setFont(undefined,'bold');
-          doc.text(String(s[1]), margin+50, y);
-          y += 7;
+        meta.forEach(function(r) {
+          bold(); doc.text(r[0], M, y);
+          normal(); doc.text(r[1], M+48, y);
+          y += 8;
         });
 
-        // Per melding een pagina
+        // ── Dashboard blokken ──
+        y += 8;
+        bold(); doc.setFontSize(14); doc.setTextColor(30,41,59);
+        doc.text('Dashboard', M, y); y += 10;
+
+        var nOpen = filtered.filter(function(m){return m.status==='open';}).length;
+        var nBehandeling = filtered.filter(function(m){return m.status==='in_behandeling';}).length;
+        var nUitvoering = filtered.filter(function(m){return m.status==='in_uitvoering';}).length;
+        var nOpgelost = filtered.filter(function(m){return m.status==='opgelost';}).length;
+        var nAfgerond = filtered.filter(function(m){return m.status==='afgerond';}).length;
+        var nKritiek = filtered.filter(function(m){return m.priority==='kritiek';}).length;
+        var nHoog = filtered.filter(function(m){return m.priority==='hoog';}).length;
+        var nNormaal = filtered.filter(function(m){return m.priority==='normaal';}).length;
+        var nLaag = filtered.filter(function(m){return m.priority==='laag';}).length;
+
+        // Status blokken
+        var blocks = [
+          {label:'Open',val:nOpen,r:0,g:180,b:255},
+          {label:'In behandeling',val:nBehandeling,r:255,g:171,b:64},
+          {label:'In uitvoering',val:nUitvoering,r:139,g:92,b:246},
+          {label:'Opgelost',val:nOpgelost,r:0,g:200,b:118},
+          {label:'Afgerond',val:nAfgerond,r:22,g:163,b:74}
+        ];
+        var bw = (W-2*M-16)/5;
+        blocks.forEach(function(b, i) {
+          var bx = M + i*(bw+4);
+          doc.setFillColor(b.r,b.g,b.b);
+          doc.rect(bx, y, bw, 22, 'F');
+          doc.setTextColor(255,255,255);
+          doc.setFontSize(16); bold();
+          doc.text(String(b.val), bx+bw/2, y+10, {align:'center'});
+          doc.setFontSize(7); normal();
+          doc.text(b.label, bx+bw/2, y+17, {align:'center'});
+        });
+        y += 30;
+
+        // Prioriteit verdeling
+        doc.setTextColor(30,41,59);
+        doc.setFontSize(12); bold();
+        doc.text('Prioriteit verdeling', M, y); y += 8;
+        var prioData = [
+          {label:'Kritiek',val:nKritiek,r:220,g:38,b:38},
+          {label:'Hoog',val:nHoog,r:234,g:88,b:12},
+          {label:'Normaal',val:nNormaal,r:2,g:132,b:199},
+          {label:'Laag',val:nLaag,r:148,g:163,b:184}
+        ];
+        var barMax = W-2*M-50;
+        prioData.forEach(function(p) {
+          doc.setFontSize(9); normal(); doc.setTextColor(30,41,59);
+          doc.text(p.label, M, y+4);
+          var barW = filtered.length > 0 ? (p.val/filtered.length)*barMax : 0;
+          doc.setFillColor(240,240,240);
+          doc.rect(M+30, y, barMax, 6, 'F');
+          doc.setFillColor(p.r,p.g,p.b);
+          doc.rect(M+30, y, Math.max(barW,1), 6, 'F');
+          doc.setFontSize(8); bold();
+          doc.text(String(p.val), M+32+barMax, y+4);
+          y += 10;
+        });
+        y += 6;
+
+        // Categorie verdeling
+        doc.setFontSize(12); bold(); doc.setTextColor(30,41,59);
+        doc.text('Top categorieën', M, y); y += 8;
+        var catCount = {};
+        filtered.forEach(function(m) { var c = m.category||'Geen categorie'; catCount[c] = (catCount[c]||0)+1; });
+        var catSorted = Object.keys(catCount).sort(function(a,b){return catCount[b]-catCount[a];}).slice(0,8);
+        doc.setFontSize(9);
+        catSorted.forEach(function(cat) {
+          normal(); doc.setTextColor(30,41,59);
+          doc.text(cat, M+4, y+4);
+          var barW = filtered.length > 0 ? (catCount[cat]/filtered.length)*barMax : 0;
+          doc.setFillColor(240,240,240);
+          doc.rect(M+50, y, barMax-20, 6, 'F');
+          doc.setFillColor(2,132,199);
+          doc.rect(M+50, y, Math.max(barW-20,1), 6, 'F');
+          bold(); doc.text(String(catCount[cat]), M+32+barMax, y+4);
+          y += 9;
+        });
+
+        // Footer voorblad
+        doc.setFontSize(8); normal(); doc.setTextColor(148,163,184);
+        doc.text('FieldOps  |  fieldopsapp.nl  |  Pagina 1 van '+(filtered.length+1), M, H-10);
+
+        // ═══ PER MELDING EEN PAGINA ═══
         filtered.forEach(function(m, idx) {
           doc.addPage();
-          var py = margin;
+          var py = M;
 
           // Header balk
           doc.setFillColor(2,132,199);
-          doc.rect(0,0,pageW,16,'F');
+          doc.rect(0,0,W,14,'F');
           doc.setTextColor(255,255,255);
-          doc.setFontSize(9);
-          doc.setFont(undefined,'normal');
-          doc.text('FieldOps Rapportage  |  Melding '+(idx+1)+' van '+filtered.length, margin, 11);
-          doc.text(new Date().toLocaleDateString('nl-NL'), pageW-margin-30, 11);
+          doc.setFontSize(8); normal();
+          doc.text('FieldOps Rapportage  |  Melding '+(idx+1)+' van '+filtered.length+'  |  '+(currentOrg?currentOrg.name:''), M, 10);
+          doc.text(new Date().toLocaleDateString('nl-NL'), W-M-28, 10);
 
-          py = 28;
+          py = 24;
           doc.setTextColor(30,41,59);
 
           // Titel
-          doc.setFontSize(18);
-          doc.setFont(undefined,'bold');
-          doc.text(m.title || 'Zonder titel', margin, py);
-          py += 10;
+          doc.setFontSize(18); bold();
+          var titleLines = doc.splitTextToSize(m.title || 'Zonder titel', W-2*M);
+          doc.text(titleLines, M, py); py += titleLines.length * 8 + 2;
 
-          // Meta info
-          doc.setFontSize(10);
-          doc.setFont(undefined,'normal');
-          doc.setTextColor(100,116,139);
-          var datum = new Date(m.created_at).toLocaleDateString('nl-NL',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
-          doc.text('Aangemaakt: '+datum+'  |  Door: '+(m.creator_name||'Onbekend'), margin, py);
-          py += 12;
+          // Meta
+          doc.setFontSize(10); normal(); doc.setTextColor(100,116,139);
+          var datum = new Date(m.created_at).toLocaleDateString('nl-NL',{day:'2-digit',month:'long',year:'numeric'}) + ' ' + new Date(m.created_at).toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'});
+          doc.text('Aangemaakt: '+datum+'  |  Door: '+(m.creator_name||'Onbekend'), M, py); py += 12;
 
-          doc.setTextColor(30,41,59);
+          // Info blok
+          doc.setFillColor(245,247,250);
+          doc.rect(M, py-4, W-2*M, 38, 'F');
+          doc.setDrawColor(226,232,240);
+          doc.rect(M, py-4, W-2*M, 38, 'S');
 
-          // Info grid
+          var projName = '-';
+          if (m.project_id) { var pr = allProjects.find(function(p){return p.id===m.project_id;}); if (pr) projName = pr.name; }
           var fields = [
             ['Status', statusLabelsRap[m.status]||m.status],
             ['Prioriteit', (m.priority||'normaal').charAt(0).toUpperCase()+(m.priority||'normaal').slice(1)],
             ['Categorie', m.category||'-'],
-            ['Project', (function(){if(!m.project_id)return'-';var pr=allProjects.find(function(p){return p.id===m.project_id;});return pr?pr.name:'-';})()]
+            ['Project', projName]
           ];
-
-          doc.setFillColor(248,249,251);
-          doc.roundedRect(margin, py-4, pageW-2*margin, 36, 3, 3, 'F');
-
-          var colW = (pageW-2*margin)/2;
+          var cw = (W-2*M)/2;
           fields.forEach(function(f, fi) {
-            var fx = margin+8+(fi%2)*colW;
-            var fy = py + Math.floor(fi/2)*16 + 4;
-            doc.setFontSize(9);
-            doc.setFont(undefined,'bold');
-            doc.setTextColor(100,116,139);
-            doc.text(f[0], fx, fy);
-            doc.setFontSize(11);
-            doc.setFont(undefined,'normal');
-            doc.setTextColor(30,41,59);
-            doc.text(f[1], fx, fy+6);
+            var fx = M+6+(fi%2)*cw;
+            var fy = py + Math.floor(fi/2)*17;
+            doc.setFontSize(8); bold(); doc.setTextColor(100,116,139);
+            doc.text(f[0].toUpperCase(), fx, fy);
+            doc.setFontSize(12); normal(); doc.setTextColor(30,41,59);
+            doc.text(String(f[1]), fx, fy+6);
           });
-          py += 40;
+          py += 42;
 
-          // GPS Locatie
+          // Lijn
+          doc.setDrawColor(226,232,240);
+          doc.line(M, py, W-M, py); py += 8;
+
+          // GPS
+          doc.setFontSize(10); bold(); doc.setTextColor(2,132,199);
+          doc.text('GPS LOCATIE', M, py); py += 6;
+          normal(); doc.setTextColor(30,41,59); doc.setFontSize(11);
           if (m.lat && m.lng) {
-            doc.setFontSize(10);
-            doc.setFont(undefined,'bold');
-            doc.setTextColor(100,116,139);
-            doc.text('GPS Locatie', margin, py);
-            py += 6;
-            doc.setFont(undefined,'normal');
-            doc.setTextColor(30,41,59);
-            doc.setFontSize(11);
-            doc.text(String(m.lat.toFixed(6))+', '+String(m.lng.toFixed(6)), margin, py);
-            doc.setFontSize(9);
-            doc.setTextColor(2,132,199);
-            doc.textWithLink('Bekijk op kaart', margin+70, py, {url:'https://www.google.com/maps?q='+m.lat+','+m.lng});
-            doc.setTextColor(30,41,59);
-            py += 12;
+            doc.text('Coordinaten: '+m.lat.toFixed(6)+', '+m.lng.toFixed(6), M, py); py += 5;
+            doc.setFontSize(9); doc.setTextColor(100,116,139);
+            doc.text('https://maps.google.com/?q='+m.lat+','+m.lng, M, py); py += 10;
+          } else {
+            doc.text('Geen locatie opgegeven', M, py); py += 10;
           }
+
+          // Lijn
+          doc.setDrawColor(226,232,240);
+          doc.line(M, py, W-M, py); py += 8;
 
           // Omschrijving
-          doc.setFontSize(10);
-          doc.setFont(undefined,'bold');
-          doc.setTextColor(100,116,139);
-          doc.text('Omschrijving', margin, py);
-          py += 6;
-          doc.setFont(undefined,'normal');
-          doc.setTextColor(30,41,59);
-          doc.setFontSize(11);
+          doc.setFontSize(10); bold(); doc.setTextColor(2,132,199);
+          doc.text('OMSCHRIJVING', M, py); py += 6;
+          normal(); doc.setTextColor(30,41,59); doc.setFontSize(11);
           var desc = m.description || 'Geen omschrijving opgegeven.';
-          var lines = doc.splitTextToSize(desc, pageW-2*margin);
-          doc.text(lines, margin, py);
-          py += lines.length * 6 + 8;
-
-          // Foto referenties
-          if (m.photo_url || m.photo_after_url) {
-            doc.setFontSize(10);
-            doc.setFont(undefined,'bold');
-            doc.setTextColor(100,116,139);
-            doc.text("Foto's", margin, py);
-            py += 6;
-            doc.setFont(undefined,'normal');
-            doc.setFontSize(10);
-            doc.setTextColor(30,41,59);
-            if (m.photo_url) { doc.text('Foto voor: Beschikbaar in portaal', margin, py); py += 6; }
-            if (m.photo_after_url) { doc.text('Foto na: Beschikbaar in portaal', margin, py); py += 6; }
+          var lines = doc.splitTextToSize(desc, W-2*M);
+          if (py + lines.length * 5.5 > H-30) {
+            var maxLines = Math.floor((H-30-py)/5.5);
+            doc.text(lines.slice(0,maxLines), M, py);
+            doc.addPage();
+            py = M+10;
+            doc.text(lines.slice(maxLines), M, py);
+            py += (lines.length-maxLines) * 5.5 + 8;
+          } else {
+            doc.text(lines, M, py);
+            py += lines.length * 5.5 + 8;
           }
 
+          // Lijn
+          doc.setDrawColor(226,232,240);
+          doc.line(M, py, W-M, py); py += 8;
+
+          // Fotos
+          doc.setFontSize(10); bold(); doc.setTextColor(2,132,199);
+          doc.text("FOTO'S", M, py); py += 6;
+          normal(); doc.setFontSize(10); doc.setTextColor(30,41,59);
+          if (m.photo_url) {
+            doc.text('Foto voor schade: Beschikbaar in portaal', M, py); py += 6;
+          }
+          if (m.photo_after_url) {
+            doc.text('Foto na herstel: Beschikbaar in portaal', M, py); py += 6;
+          }
+          if (!m.photo_url && !m.photo_after_url) {
+            doc.setTextColor(148,163,184);
+            doc.text('Geen fotos beschikbaar', M, py); py += 6;
+          }
+
+          // Melding ID
+          py += 12;
+          doc.setFontSize(7); doc.setTextColor(148,163,184); normal();
+          doc.text('Melding ID: '+m.id, M, py);
+
           // Footer
-          doc.setFontSize(8);
-          doc.setTextColor(148,163,184);
-          doc.text('FieldOps  |  fieldopsapp.nl  |  Pagina '+(idx+2)+' van '+(filtered.length+1), margin, pageH-10);
+          doc.setFontSize(8); doc.setTextColor(148,163,184);
+          doc.text('FieldOps  |  fieldopsapp.nl  |  Pagina '+(idx+2)+' van '+(filtered.length+1), M, H-10);
         });
 
-        doc.save('FieldOps_Rapportage_'+new Date().toISOString().slice(0,10)+'.pdf');
-        showToast('PDF rapport gedownload met '+filtered.length+' meldingen');
+        var blob = doc.output('blob');
+        callback(blob);
+      } catch(e) {
+        console.error('PDF generatie fout:', e);
+        showToast('PDF generatie mislukt: '+e.message, 'error');
       }
     }
 
