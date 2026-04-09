@@ -81,6 +81,48 @@ class Invitation(Base):
     inviter = relationship("User", foreign_keys=[invited_by])
 
 
+class Project(Base):
+    __tablename__ = "projects"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    gemeente = Column(String(255), nullable=True)  # municipality
+    status = Column(String(50), default="active")  # active, completed, archived
+    boundary_geojson = Column(Text, nullable=True)  # GeoJSON polygon for project area
+    color = Column(String(7), default="#00d4ff")  # hex color for map display
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    organization = relationship("Organization")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class Melding(Base):
+    __tablename__ = "meldingen"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    category = Column(String(100), nullable=True)  # schade, inspectie, etc
+    priority = Column(String(20), default="normaal")  # kritiek, hoog, normaal, laag
+    status = Column(String(50), default="open")  # open, in_behandeling, afgerond
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    photo_url = Column(String(500), nullable=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    project = relationship("Project")
+    organization = relationship("Organization")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
 class DemoRequest(Base):
     __tablename__ = "demo_requests"
 

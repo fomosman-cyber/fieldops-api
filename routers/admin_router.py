@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
-from models import User, Organization, DemoRequest
+from models import User, Organization, DemoRequest, Project, Melding
 from auth import get_current_user
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
@@ -75,9 +75,19 @@ def admin_overview(
             "created_at": d.created_at.isoformat() if d.created_at else None,
         })
 
+    # Projecten & meldingen counts
+    total_projects = db.query(Project).count()
+    active_projects = db.query(Project).filter(Project.status == "active").count()
+    total_meldingen = db.query(Melding).count()
+    open_meldingen = db.query(Melding).filter(Melding.status == "open").count()
+
     return {
         "organizations": org_data,
         "all_users": users_data,
         "total_users": len(users_data),
         "demo_requests": demos_data,
+        "total_projects": total_projects,
+        "active_projects": active_projects,
+        "total_meldingen": total_meldingen,
+        "open_meldingen": open_meldingen,
     }

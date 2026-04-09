@@ -111,6 +111,75 @@ class AcceptInvitationRequest(BaseModel):
     phone: Optional[str] = None
 
 
+# Project
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    gemeente: Optional[str] = None
+    boundary_geojson: Optional[str] = None
+    color: Optional[str] = "#00d4ff"
+
+
+class ProjectResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str]
+    gemeente: Optional[str]
+    status: str
+    boundary_geojson: Optional[str]
+    color: Optional[str]
+    created_by: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    gemeente: Optional[str] = None
+    status: Optional[str] = None
+    boundary_geojson: Optional[str] = None
+    color: Optional[str] = None
+
+
+# Melding
+class MeldingCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    priority: Optional[str] = "normaal"
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    project_id: Optional[str] = None
+
+
+class MeldingResponse(BaseModel):
+    id: str
+    title: str
+    description: Optional[str]
+    category: Optional[str]
+    priority: str
+    status: str
+    lat: Optional[float]
+    lng: Optional[float]
+    photo_url: Optional[str] = None
+    project_id: Optional[str]
+    created_by: str
+    created_at: datetime
+    creator_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class MeldingUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    category: Optional[str] = None
+    priority: Optional[str] = None
+    status: Optional[str] = None
+
+
 # Shopify Webhook
 class ShopifyWebhookOrder(BaseModel):
     id: int

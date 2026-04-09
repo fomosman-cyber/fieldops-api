@@ -6,6 +6,8 @@
   <title>FieldOps — Portaal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -912,13 +914,16 @@
           <h1>Projecten</h1>
           <p>Beheer je projecten en werkgebieden.</p>
         </div>
-        <button class="btn-primary" onclick="showToast('Projecten aanmaken komt binnenkort beschikbaar.','success')">+ Nieuw Project</button>
+        <button class="btn-primary" onclick="openProjectModal()">+ Nieuw Project</button>
       </div>
-      <div class="empty-state">
+      <div id="projectenEmpty" class="empty-state">
         <div class="empty-icon">&#128193;</div>
         <h3>Geen projecten</h3>
         <p>Je hebt nog geen projecten aangemaakt. Maak een nieuw project aan om te beginnen met registreren.</p>
-        <button class="btn-primary" onclick="showToast('Projecten aanmaken komt binnenkort beschikbaar.','success')">+ Eerste project aanmaken</button>
+        <button class="btn-primary" onclick="openProjectModal()">+ Eerste project aanmaken</button>
+      </div>
+      <div id="projectenList" style="display:none;">
+        <div class="stats-grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));" id="projectCards"></div>
       </div>
     </div>
 
@@ -929,27 +934,52 @@
           <h1>Meldingen</h1>
           <p>Bekijk en beheer alle meldingen uit het veld.</p>
         </div>
-        <button class="btn-primary" onclick="showToast('Meldingen aanmaken komt binnenkort beschikbaar.','success')">+ Nieuwe Melding</button>
+        <button class="btn-primary" onclick="openMeldingModal()">+ Nieuwe Melding</button>
       </div>
-      <div class="empty-state">
+      <div id="meldingenEmpty" class="empty-state">
         <div class="empty-icon">&#128276;</div>
         <h3>Geen meldingen</h3>
         <p>Er zijn nog geen meldingen. Meldingen verschijnen hier zodra ze vanuit het veld worden ingediend.</p>
+      </div>
+      <div id="meldingenList" style="display:none;">
+        <div class="card" style="overflow-x:auto;">
+          <table class="data-table">
+            <thead>
+              <tr><th>Titel</th><th>Categorie</th><th>Prioriteit</th><th>Status</th><th>Project</th><th>Datum</th></tr>
+            </thead>
+            <tbody id="meldingenBody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
     <!-- ═══ KAART ═══ -->
     <div class="page-section" id="page-kaart">
-      <div class="page-header">
+      <div class="page-header" style="margin-bottom:16px;">
         <div>
           <h1>Kaart</h1>
           <p>Bekijk projecten en meldingen op de kaart.</p>
         </div>
+        <div style="display:flex;gap:8px;">
+          <select id="kaartProjectFilter" class="btn-secondary" style="cursor:pointer;" onchange="filterKaart()">
+            <option value="">Alle projecten</option>
+          </select>
+          <button class="btn-primary" onclick="openMeldingModal()">+ Melding</button>
+        </div>
       </div>
-      <div class="empty-state">
-        <div class="empty-icon">&#127758;</div>
-        <h3>Kaart wordt binnenkort beschikbaar</h3>
-        <p>De interactieve kaart met satellietlagen, projectgrenzen en meldingen wordt binnenkort toegevoegd.</p>
+      <div style="position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--border);flex:1;min-height:500px;">
+        <div id="map" style="width:100%;height:100%;min-height:500px;background:#1a1a2e;"></div>
+        <!-- Map Legend -->
+        <div style="position:absolute;bottom:16px;left:16px;z-index:1000;background:rgba(10,15,30,0.9);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:12px;padding:14px 18px;font-size:12px;">
+          <div style="font-weight:600;margin-bottom:8px;color:var(--text);">Legenda</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ff5252;"></div><span style="color:var(--text-muted);">Kritiek</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ffab40;"></div><span style="color:var(--text-muted);">Hoog</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#00d4ff;"></div><span style="color:var(--text-muted);">Normaal</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#888;"></div><span style="color:var(--text-muted);">Laag</span></div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;"><div style="width:12px;height:12px;border:2px solid #00d4ff;border-radius:2px;"></div><span style="color:var(--text-muted);">Projectgebied</span></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1114,8 +1144,102 @@
     </div>
   </div>
 
+  <!-- ═══════ PROJECT MODAL ═══════ -->
+  <div class="modal-overlay" id="projectModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeProjectModal()">&times;</button>
+      <h2>Nieuw Project</h2>
+      <p class="subtitle">Maak een nieuw project aan voor je werkgebied.</p>
+      <form onsubmit="createProject(event)">
+        <div class="form-group">
+          <label>Projectnaam *</label>
+          <input type="text" id="projectName" placeholder="bijv. N50 Kampen" required>
+        </div>
+        <div class="form-group">
+          <label>Omschrijving</label>
+          <input type="text" id="projectDesc" placeholder="Korte beschrijving van het project">
+        </div>
+        <div class="form-group">
+          <label>Gemeente</label>
+          <input type="text" id="projectGemeente" placeholder="bijv. Amsterdam, Rotterdam">
+        </div>
+        <div class="form-group">
+          <label>Kleur op kaart</label>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;" id="colorPicker">
+            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#00d4ff" checked style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#00d4ff;border:3px solid var(--accent);"></div></label>
+            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#00e676" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#00e676;border:3px solid transparent;"></div></label>
+            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#ffab40" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#ffab40;border:3px solid transparent;"></div></label>
+            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#ff5252" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#ff5252;border:3px solid transparent;"></div></label>
+            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#ab47bc" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#ab47bc;border:3px solid transparent;"></div></label>
+            <label style="cursor:pointer;"><input type="radio" name="projectColor" value="#29b6f6" style="display:none;"><div class="color-dot" style="width:32px;height:32px;border-radius:8px;background:#29b6f6;border:3px solid transparent;"></div></label>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="projectSubmitBtn">Project aanmaken</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═══════ MELDING MODAL ═══════ -->
+  <div class="modal-overlay" id="meldingModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeMeldingModal()">&times;</button>
+      <h2>Nieuwe Melding</h2>
+      <p class="subtitle">Registreer een melding vanuit het veld.</p>
+      <form onsubmit="createMelding(event)">
+        <div class="form-group">
+          <label>Titel *</label>
+          <input type="text" id="meldingTitle" placeholder="bijv. Scheur in wegdek" required>
+        </div>
+        <div class="form-group">
+          <label>Omschrijving</label>
+          <input type="text" id="meldingDesc" placeholder="Beschrijf de melding">
+        </div>
+        <div class="form-group">
+          <label>Categorie</label>
+          <select id="meldingCategory">
+            <option value="schade">Schade</option>
+            <option value="inspectie">Inspectie</option>
+            <option value="onderhoud">Onderhoud</option>
+            <option value="veiligheid">Veiligheid</option>
+            <option value="overig">Overig</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Prioriteit</label>
+          <select id="meldingPriority">
+            <option value="normaal" selected>Normaal</option>
+            <option value="laag">Laag</option>
+            <option value="hoog">Hoog</option>
+            <option value="kritiek">Kritiek</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Project</label>
+          <select id="meldingProject"><option value="">Geen project</option></select>
+        </div>
+        <div class="form-group">
+          <label>Locatie (klik op kaart of gebruik GPS)</label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="meldingLat" placeholder="Lat" style="flex:1;" readonly>
+            <input type="text" id="meldingLng" placeholder="Lng" style="flex:1;" readonly>
+            <button type="button" class="btn-secondary" onclick="getMeldingLocation()" style="white-space:nowrap;">GPS</button>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="meldingSubmitBtn">Melding aanmaken</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- ═══════ TOAST ═══════ -->
   <div class="toast" id="toast"></div>
+
+  <!-- ═══════ LEAFLET JS ═══════ -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
 
   <!-- ═══════ SCRIPTS ═══════ -->
   <script>
@@ -1263,6 +1387,9 @@
       // Load data for specific pages
       if (page === 'gebruikers') loadUsers();
       if (page === 'admin') loadAdminData();
+      if (page === 'projecten') loadProjects();
+      if (page === 'meldingen') loadMeldingen();
+      if (page === 'kaart') initMap();
     }
 
     // ── Load Users ──
@@ -1409,6 +1536,403 @@
         document.getElementById('sidebarOverlay').classList.remove('active');
       }
     });
+
+    // ══════════════════════════════════════
+    // ── PROJECTEN ──
+    // ══════════════════════════════════════
+    var allProjects = [];
+
+    function loadProjects() {
+      api('GET', '/api/projects/').then(function(projects) {
+        allProjects = projects || [];
+        updateProjectFilter();
+        var empty = document.getElementById('projectenEmpty');
+        var list = document.getElementById('projectenList');
+        var cards = document.getElementById('projectCards');
+        if (allProjects.length === 0) {
+          empty.style.display = 'flex';
+          list.style.display = 'none';
+          return;
+        }
+        empty.style.display = 'none';
+        list.style.display = 'block';
+        cards.innerHTML = allProjects.map(function(p) {
+          var statusColors = { active: 'green', completed: 'blue', archived: 'red' };
+          var statusLabels = { active: 'Actief', completed: 'Afgerond', archived: 'Gearchiveerd' };
+          var date = new Date(p.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
+          return '<div class="stat-card" style="cursor:pointer;border-left:4px solid '+(p.color||'#00d4ff')+';" onclick="viewProjectOnMap(\''+p.id+'\')">' +
+            '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px;">' +
+            '<h3 style="font-size:16px;font-weight:600;">'+p.name+'</h3>' +
+            '<span class="status-badge '+(statusColors[p.status]||'active')+'">'+(statusLabels[p.status]||p.status)+'</span>' +
+            '</div>' +
+            (p.description ? '<p style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">'+p.description+'</p>' : '') +
+            (p.gemeente ? '<p style="color:var(--text-dim);font-size:12px;">&#127970; '+p.gemeente+'</p>' : '') +
+            '<p style="color:var(--text-dim);font-size:12px;margin-top:8px;">'+date+'</p>' +
+            '</div>';
+        }).join('');
+        // Update dashboard stats
+        document.getElementById('statProjects').textContent = allProjects.filter(function(p){return p.status==='active';}).length;
+      }).catch(function(err) {
+        console.error('Projecten laden mislukt:', err);
+      });
+    }
+
+    function openProjectModal() {
+      document.getElementById('projectModal').classList.add('active');
+      // Color picker logic
+      document.querySelectorAll('#colorPicker input[type=radio]').forEach(function(r) {
+        r.addEventListener('change', function() {
+          document.querySelectorAll('#colorPicker .color-dot').forEach(function(d) { d.style.borderColor = 'transparent'; });
+          this.parentElement.querySelector('.color-dot').style.borderColor = this.value;
+        });
+      });
+    }
+    function closeProjectModal() {
+      document.getElementById('projectModal').classList.remove('active');
+    }
+
+    function createProject(e) {
+      e.preventDefault();
+      var btn = document.getElementById('projectSubmitBtn');
+      btn.textContent = 'Bezig...';
+      btn.disabled = true;
+      var color = document.querySelector('#colorPicker input[type=radio]:checked');
+      api('POST', '/api/projects/', {
+        name: document.getElementById('projectName').value,
+        description: document.getElementById('projectDesc').value || null,
+        gemeente: document.getElementById('projectGemeente').value || null,
+        color: color ? color.value : '#00d4ff'
+      }).then(function(project) {
+        showToast('Project "'+project.name+'" aangemaakt!', 'success');
+        closeProjectModal();
+        document.getElementById('projectName').value = '';
+        document.getElementById('projectDesc').value = '';
+        document.getElementById('projectGemeente').value = '';
+        loadProjects();
+        loadDashboardStats();
+      }).catch(function(err) {
+        showToast(err.message, 'error');
+      }).finally(function() {
+        btn.textContent = 'Project aanmaken';
+        btn.disabled = false;
+      });
+    }
+
+    function viewProjectOnMap(projectId) {
+      navigateTo('kaart');
+      setTimeout(function() {
+        var sel = document.getElementById('kaartProjectFilter');
+        if (sel) { sel.value = projectId; filterKaart(); }
+      }, 500);
+    }
+
+    function updateProjectFilter() {
+      var sel = document.getElementById('kaartProjectFilter');
+      var msel = document.getElementById('meldingProject');
+      var opts = '<option value="">Alle projecten</option>';
+      var mopts = '<option value="">Geen project</option>';
+      allProjects.forEach(function(p) {
+        opts += '<option value="'+p.id+'">'+p.name+'</option>';
+        mopts += '<option value="'+p.id+'">'+p.name+'</option>';
+      });
+      if (sel) sel.innerHTML = opts;
+      if (msel) msel.innerHTML = mopts;
+    }
+
+    function loadDashboardStats() {
+      api('GET', '/api/organization/stats').then(function(stats) {
+        if (!stats) return;
+        document.getElementById('statUsers').textContent = stats.active_users || 0;
+      }).catch(function(){});
+      api('GET', '/api/projects/').then(function(p) {
+        allProjects = p || [];
+        document.getElementById('statProjects').textContent = allProjects.filter(function(x){return x.status==='active';}).length;
+        updateProjectFilter();
+      }).catch(function(){});
+      api('GET', '/api/meldingen/').then(function(m) {
+        allMeldingen = m || [];
+        document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
+      }).catch(function(){});
+    }
+
+    // ══════════════════════════════════════
+    // ── MELDINGEN ──
+    // ══════════════════════════════════════
+    var allMeldingen = [];
+
+    function loadMeldingen() {
+      api('GET', '/api/meldingen/').then(function(meldingen) {
+        allMeldingen = meldingen || [];
+        var empty = document.getElementById('meldingenEmpty');
+        var list = document.getElementById('meldingenList');
+        var tbody = document.getElementById('meldingenBody');
+        if (allMeldingen.length === 0) {
+          empty.style.display = 'flex';
+          list.style.display = 'none';
+          return;
+        }
+        empty.style.display = 'none';
+        list.style.display = 'block';
+        var prioColors = { kritiek:'red', hoog:'orange', normaal:'blue', laag:'' };
+        var statusLabels = { open:'Open', in_behandeling:'In behandeling', afgerond:'Afgerond' };
+        tbody.innerHTML = allMeldingen.map(function(m) {
+          var date = new Date(m.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short' });
+          var projectName = '-';
+          if (m.project_id) {
+            var proj = allProjects.find(function(p){return p.id===m.project_id;});
+            if (proj) projectName = proj.name;
+          }
+          return '<tr>' +
+            '<td><strong>'+m.title+'</strong></td>' +
+            '<td>'+(m.category||'-')+'</td>' +
+            '<td><span class="status-badge '+(prioColors[m.priority]||'')+'">'+(m.priority||'normaal')+'</span></td>' +
+            '<td><span class="status-badge '+(m.status==='open'?'trial':m.status==='afgerond'?'active':'')+'">'+
+              (statusLabels[m.status]||m.status)+'</span></td>' +
+            '<td>'+projectName+'</td>' +
+            '<td style="color:var(--text-dim);">'+date+'</td>' +
+            '</tr>';
+        }).join('');
+        document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
+      }).catch(function(err) {
+        console.error('Meldingen laden mislukt:', err);
+      });
+    }
+
+    function openMeldingModal() {
+      if (allProjects.length === 0) {
+        api('GET', '/api/projects/').then(function(p) { allProjects = p || []; updateProjectFilter(); });
+      }
+      document.getElementById('meldingModal').classList.add('active');
+    }
+    function closeMeldingModal() {
+      document.getElementById('meldingModal').classList.remove('active');
+    }
+
+    function createMelding(e) {
+      e.preventDefault();
+      var btn = document.getElementById('meldingSubmitBtn');
+      btn.textContent = 'Bezig...';
+      btn.disabled = true;
+      var lat = parseFloat(document.getElementById('meldingLat').value) || null;
+      var lng = parseFloat(document.getElementById('meldingLng').value) || null;
+      var projId = document.getElementById('meldingProject').value || null;
+      api('POST', '/api/meldingen/', {
+        title: document.getElementById('meldingTitle').value,
+        description: document.getElementById('meldingDesc').value || null,
+        category: document.getElementById('meldingCategory').value,
+        priority: document.getElementById('meldingPriority').value,
+        lat: lat,
+        lng: lng,
+        project_id: projId
+      }).then(function(melding) {
+        showToast('Melding "'+melding.title+'" aangemaakt!', 'success');
+        closeMeldingModal();
+        document.getElementById('meldingTitle').value = '';
+        document.getElementById('meldingDesc').value = '';
+        document.getElementById('meldingLat').value = '';
+        document.getElementById('meldingLng').value = '';
+        loadMeldingen();
+        loadDashboardStats();
+        if (map) loadMapData();
+      }).catch(function(err) {
+        showToast(err.message, 'error');
+      }).finally(function() {
+        btn.textContent = 'Melding aanmaken';
+        btn.disabled = false;
+      });
+    }
+
+    function getMeldingLocation() {
+      if (!navigator.geolocation) { showToast('GPS niet beschikbaar', 'error'); return; }
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        document.getElementById('meldingLat').value = pos.coords.latitude.toFixed(6);
+        document.getElementById('meldingLng').value = pos.coords.longitude.toFixed(6);
+        showToast('Locatie vastgelegd', 'success');
+      }, function(err) {
+        showToast('Kan locatie niet ophalen: ' + err.message, 'error');
+      }, { enableHighAccuracy: true });
+    }
+
+    // ══════════════════════════════════════
+    // ── KAART (Leaflet) ──
+    // ══════════════════════════════════════
+    var map = null;
+    var mapInitialized = false;
+    var projectLayers = {};
+    var meldingMarkers = [];
+    var drawnItems = null;
+
+    function initMap() {
+      if (mapInitialized) {
+        map.invalidateSize();
+        loadMapData();
+        return;
+      }
+
+      // Initialize map centered on Netherlands
+      map = L.map('map', { zoomControl: false }).setView([52.3, 5.3], 8);
+
+      // Zoom control rechtsonder
+      L.control.zoom({ position: 'topright' }).addTo(map);
+
+      // Base layers
+      var osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap',
+        maxZoom: 19
+      });
+
+      var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri',
+        maxZoom: 19
+      });
+
+      var topoLayer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenTopoMap',
+        maxZoom: 17
+      });
+
+      // Default layer
+      satelliteLayer.addTo(map);
+
+      // Layer control
+      var baseLayers = {
+        'Satelliet': satelliteLayer,
+        'Stratenkaart': osmLayer,
+        'Topografisch': topoLayer
+      };
+      L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
+
+      // Drawing tools for project boundaries
+      drawnItems = new L.FeatureGroup();
+      map.addLayer(drawnItems);
+
+      var drawControl = new L.Control.Draw({
+        position: 'topleft',
+        draw: {
+          polygon: {
+            shapeOptions: { color: '#00d4ff', weight: 3, fillOpacity: 0.15 },
+            allowIntersection: false,
+            showArea: true
+          },
+          polyline: false,
+          rectangle: {
+            shapeOptions: { color: '#00d4ff', weight: 3, fillOpacity: 0.15 }
+          },
+          circle: false,
+          circlemarker: false,
+          marker: false
+        },
+        edit: { featureGroup: drawnItems }
+      });
+      map.addControl(drawControl);
+
+      // When polygon is drawn, save it to a project
+      map.on(L.Draw.Event.CREATED, function(e) {
+        var layer = e.layer;
+        drawnItems.addLayer(layer);
+        var geojson = JSON.stringify(layer.toGeoJSON().geometry);
+        // Ask which project to assign to
+        if (allProjects.length > 0) {
+          var opts = allProjects.map(function(p) { return p.name; });
+          var choice = prompt('Sla projectgebied op voor welk project?\\n\\n' + allProjects.map(function(p,i){return (i+1)+'. '+p.name;}).join('\\n') + '\\n\\nTyp het nummer:');
+          if (choice && allProjects[parseInt(choice)-1]) {
+            var proj = allProjects[parseInt(choice)-1];
+            api('PUT', '/api/projects/'+proj.id, { boundary_geojson: geojson }).then(function() {
+              showToast('Projectgebied opgeslagen voor '+proj.name, 'success');
+              loadMapData();
+            }).catch(function(err) { showToast(err.message, 'error'); });
+          }
+        } else {
+          showToast('Maak eerst een project aan om een gebeid op te slaan.', 'error');
+        }
+      });
+
+      // Click on map to set melding location
+      map.on('click', function(e) {
+        document.getElementById('meldingLat').value = e.latlng.lat.toFixed(6);
+        document.getElementById('meldingLng').value = e.latlng.lng.toFixed(6);
+      });
+
+      mapInitialized = true;
+      loadMapData();
+    }
+
+    function loadMapData() {
+      if (!map) return;
+
+      // Clear existing
+      Object.keys(projectLayers).forEach(function(k) { map.removeLayer(projectLayers[k]); });
+      projectLayers = {};
+      meldingMarkers.forEach(function(m) { map.removeLayer(m); });
+      meldingMarkers = [];
+      drawnItems.clearLayers();
+
+      // Load projects with boundaries
+      api('GET', '/api/projects/').then(function(projects) {
+        allProjects = projects || [];
+        updateProjectFilter();
+        projects.forEach(function(p) {
+          if (p.boundary_geojson) {
+            try {
+              var geo = JSON.parse(p.boundary_geojson);
+              var layer = L.geoJSON(geo, {
+                style: { color: p.color || '#00d4ff', weight: 3, fillOpacity: 0.12, fillColor: p.color || '#00d4ff' }
+              }).bindPopup('<strong>'+p.name+'</strong>'+(p.gemeente ? '<br>'+p.gemeente : ''));
+              layer.addTo(map);
+              projectLayers[p.id] = layer;
+            } catch(e) {}
+          }
+        });
+      });
+
+      // Load meldingen with markers
+      api('GET', '/api/meldingen/').then(function(meldingen) {
+        allMeldingen = meldingen || [];
+        var prioColors = { kritiek:'#ff5252', hoog:'#ffab40', normaal:'#00d4ff', laag:'#888' };
+        meldingen.forEach(function(m) {
+          if (m.lat && m.lng) {
+            var color = prioColors[m.priority] || '#00d4ff';
+            var icon = L.divIcon({
+              className: '',
+              html: '<div style="width:14px;height:14px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>',
+              iconSize: [14, 14],
+              iconAnchor: [7, 7]
+            });
+            var marker = L.marker([m.lat, m.lng], { icon: icon })
+              .bindPopup(
+                '<div style="min-width:180px;">' +
+                '<strong style="font-size:14px;">'+m.title+'</strong><br>' +
+                '<span style="color:#888;font-size:12px;">'+(m.category||'')+'</span><br>' +
+                '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:'+color+'22;color:'+color+';">'+m.priority+'</span> ' +
+                '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:#00d4ff22;color:#00d4ff;">'+m.status+'</span>' +
+                (m.description ? '<p style="margin-top:6px;font-size:12px;color:#666;">'+m.description+'</p>' : '') +
+                '</div>'
+              )
+              .addTo(map);
+            marker._meldingData = m;
+            meldingMarkers.push(marker);
+          }
+        });
+      });
+    }
+
+    function filterKaart() {
+      var projectId = document.getElementById('kaartProjectFilter').value;
+      meldingMarkers.forEach(function(m) {
+        if (!projectId || (m._meldingData && m._meldingData.project_id === projectId)) {
+          m.addTo(map);
+        } else {
+          map.removeLayer(m);
+        }
+      });
+      // Zoom to project boundary
+      if (projectId && projectLayers[projectId]) {
+        map.fitBounds(projectLayers[projectId].getBounds(), { padding: [50, 50] });
+      }
+    }
+
+    // ── Load initial dashboard data ──
+    loadDashboardStats();
   </script>
 </body>
 </html>

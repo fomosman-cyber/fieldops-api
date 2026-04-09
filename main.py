@@ -7,7 +7,7 @@ from pathlib import Path
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router
 
 # Maak alle tabellen aan
 Base.metadata.create_all(bind=engine)
@@ -72,6 +72,8 @@ app.include_router(users_router.router)
 app.include_router(org_router.router)
 app.include_router(shopify_router.router)
 app.include_router(admin_router.router)
+app.include_router(projects_router.router)
+app.include_router(meldingen_router.router)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
