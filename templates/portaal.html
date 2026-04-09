@@ -686,6 +686,7 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
     @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+    @keyframes gpsPulse { 0%{transform:scale(1);opacity:0.6;} 100%{transform:scale(3);opacity:0;} }
 
     .priority-bar { display:flex;align-items:center;gap:12px;padding:10px 0; }
     .priority-bar .bar-label { width:80px;font-size:13px;font-weight:500; }
@@ -4088,15 +4089,20 @@
     var projectLayers = {};
     var meldingMarkers = [];
     var drawnItems = null;
+    var userLocationMarker = null;
+    var userLocationCircle = null;
+    var gpsWatchId = null;
+    var firstLocationSet = false;
 
     function initMap() {
       if (mapInitialized) {
         map.invalidateSize();
         loadMapData();
+        startGPSTracking();
         return;
       }
 
-      // Initialize map centered on Netherlands
+      // Initialize map centered on Netherlands (will move to GPS)
       map = L.map('map', { zoomControl: false }).setView([52.3, 5.3], 8);
 
       // Zoom control rechtsonder
@@ -4191,6 +4197,51 @@
 
       mapInitialized = true;
       loadMapData();
+      startGPSTracking();
+    }
+
+    function startGPSTracking() {
+      if (!navigator.geolocation || gpsWatchId !== null) return;
+
+      // Blue pulsing dot style
+      var blueDotHtml = '<div style="position:relative;width:22px;height:22px;">' +
+        '<div style="position:absolute;inset:0;background:rgba(0,122,255,0.2);border-radius:50%;animation:gpsPulse 2s ease-out infinite;"></div>' +
+        '<div style="position:absolute;top:4px;left:4px;width:14px;height:14px;background:#007AFF;border:3px solid #fff;border-radius:50;box-shadow:0 2px 8px rgba(0,122,255,0.5);border-radius:50%;"></div>' +
+        '</div>';
+      var blueDotIcon = L.divIcon({
+        className: '',
+        html: blueDotHtml,
+        iconSize: [22, 22],
+        iconAnchor: [11, 11]
+      });
+
+      gpsWatchId = navigator.geolocation.watchPosition(
+        function(pos) {
+          var lat = pos.coords.latitude;
+          var lng = pos.coords.longitude;
+          var acc = pos.coords.accuracy;
+
+          if (!userLocationMarker) {
+            userLocationMarker = L.marker([lat, lng], { icon: blueDotIcon, zIndexOffset: 9999 }).addTo(map);
+            userLocationMarker.bindPopup('<div style="font-family:DM Sans,sans-serif;text-align:center;"><strong>Mijn locatie</strong><br><span style="color:#888;font-size:12px;">GPS nauwkeurigheid: '+Math.round(acc)+'m</span></div>');
+            userLocationCircle = L.circle([lat, lng], { radius: acc, color: '#007AFF', fillColor: '#007AFF', fillOpacity: 0.08, weight: 1, opacity: 0.3 }).addTo(map);
+          } else {
+            userLocationMarker.setLatLng([lat, lng]);
+            userLocationCircle.setLatLng([lat, lng]);
+            userLocationCircle.setRadius(acc);
+          }
+
+          // Zoom to user location on first fix
+          if (!firstLocationSet) {
+            firstLocationSet = true;
+            map.setView([lat, lng], 18);
+          }
+        },
+        function(err) {
+          console.log('GPS error:', err.message);
+        },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+      );
     }
 
     function loadMapData() {
