@@ -8,6 +8,7 @@ from schemas import (
     AcceptInvitationRequest,
 )
 from auth import get_current_user, require_admin, hash_password
+from email_service import send_invitation_email, send_welcome_email
 import secrets
 
 router = APIRouter(prefix="/api/users", tags=["Gebruikers"])
@@ -120,8 +121,15 @@ def invite_user(
     db.commit()
     db.refresh(inv)
 
-    # TODO: Stuur uitnodiging email met link
-    # invite_url = f"{FRONTEND_URL}/invite?token={token}"
+    # Stuur uitnodiging email
+    inviter_name = f"{current_user.first_name} {current_user.last_name}".strip()
+    send_invitation_email(
+        to_email=invitation.email,
+        inviter_name=inviter_name,
+        org_name=org.name,
+        role=invitation.role.value if hasattr(invitation.role, 'value') else str(invitation.role),
+        token=token,
+    )
 
     return inv
 
@@ -172,4 +180,13 @@ def accept_invitation(
     inv.accepted = True
     db.commit()
     db.refresh(user)
+
+    # Stuur welkom email
+    org = db.query(Organization).filter(Organization.id == inv.organization_id).first()
+    send_welcome_email(
+        to_email=user.email,
+        user_name=f"{user.first_name} {user.last_name}".strip(),
+        org_name=org.name if org else "",
+    )
+
     return user
