@@ -1,10 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+from pathlib import Path
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router
 
 # Maak alle tabellen aan
 Base.metadata.create_all(bind=engine)
@@ -68,6 +71,9 @@ app.include_router(demo_router.router)
 app.include_router(users_router.router)
 app.include_router(org_router.router)
 app.include_router(shopify_router.router)
+app.include_router(admin_router.router)
+
+TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
 @app.get("/")
@@ -78,6 +84,13 @@ def root():
         "docs": "/docs",
         "status": "online",
     }
+
+
+@app.get("/portaal", response_class=HTMLResponse)
+def portaal():
+    """Serve de FieldOps portaal SPA."""
+    html = (TEMPLATES_DIR / "portaal.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
 
 
 @app.get("/api/health")

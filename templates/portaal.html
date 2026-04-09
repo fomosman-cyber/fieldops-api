@@ -1,0 +1,1414 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FieldOps — Portaal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0f1e;
+      --bg-sidebar: #070b16;
+      --card-bg: rgba(255,255,255,0.05);
+      --card-bg-hover: rgba(255,255,255,0.08);
+      --border: rgba(255,255,255,0.1);
+      --border-hover: rgba(255,255,255,0.2);
+      --text: #fff;
+      --text-muted: rgba(255,255,255,0.6);
+      --text-dim: rgba(255,255,255,0.35);
+      --accent: #00d4ff;
+      --accent-dark: #0099cc;
+      --gradient: linear-gradient(135deg, #00d4ff, #0099cc);
+      --gradient-hover: linear-gradient(135deg, #00e5ff, #00aadd);
+      --green: #00e676;
+      --orange: #ffab40;
+      --red: #ff5252;
+      --sidebar-w: 260px;
+      --topbar-h: 64px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ───── TOPBAR ───── */
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--topbar-h);
+      background: rgba(10,15,30,0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      z-index: 1000;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .hamburger {
+      display: none;
+      background: none;
+      border: none;
+      color: var(--text);
+      font-size: 22px;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 8px;
+      transition: background 0.2s;
+    }
+    .hamburger:hover { background: var(--card-bg); }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: var(--gradient);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 14px;
+      color: #0a0f1e;
+    }
+    .logo-text {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.5px;
+    }
+    .logo-text span { color: var(--accent); }
+
+    .topbar-nav {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .topbar-nav a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 8px 14px;
+      border-radius: 8px;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .topbar-nav a:hover,
+    .topbar-nav a.active {
+      color: var(--text);
+      background: var(--card-bg);
+    }
+    .topbar-nav a.active { color: var(--accent); }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .notif-btn {
+      position: relative;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      transition: all 0.2s;
+      font-size: 18px;
+    }
+    .notif-btn:hover { color: var(--text); background: var(--card-bg); }
+
+    .user-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px 6px 6px;
+      border-radius: 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      cursor: default;
+    }
+    .user-avatar {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      background: var(--gradient);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 13px;
+      color: #0a0f1e;
+    }
+    .user-name { font-size: 14px; font-weight: 500; }
+
+    .btn-logout {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-logout:hover {
+      border-color: var(--red);
+      color: var(--red);
+      background: rgba(255,82,82,0.08);
+    }
+
+    /* ───── SIDEBAR ───── */
+    .sidebar {
+      position: fixed;
+      top: var(--topbar-h);
+      left: 0; bottom: 0;
+      width: var(--sidebar-w);
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      padding: 20px 12px;
+      overflow-y: auto;
+      z-index: 900;
+      transition: transform 0.3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar-section { margin-bottom: 28px; }
+    .sidebar-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--text-dim);
+      padding: 0 12px;
+      margin-bottom: 8px;
+    }
+
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .sidebar-nav a {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .sidebar-nav a:hover {
+      color: var(--text);
+      background: var(--card-bg);
+    }
+    .sidebar-nav a.active {
+      color: var(--accent);
+      background: rgba(0,212,255,0.08);
+    }
+    .sidebar-nav a .icon {
+      width: 20px;
+      text-align: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 16px;
+      background: var(--card-bg);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+    .sidebar-footer p { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+    .sidebar-footer strong { font-size: 13px; color: var(--text-muted); }
+
+    /* ───── MAIN ───── */
+    .main {
+      margin-left: var(--sidebar-w);
+      margin-top: var(--topbar-h);
+      padding: 32px;
+      min-height: calc(100vh - var(--topbar-h));
+      display: flex;
+      flex-direction: column;
+    }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+    .page-header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+    .page-header p {
+      color: var(--text-muted);
+      font-size: 15px;
+      margin-top: 4px;
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--gradient);
+      color: #0a0f1e;
+      border: none;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 12px 24px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.25s;
+      box-shadow: 0 4px 20px rgba(0,212,255,0.25);
+    }
+    .btn-primary:hover {
+      background: var(--gradient-hover);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(0,212,255,0.35);
+    }
+
+    .btn-secondary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--card-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 10px 20px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-secondary:hover {
+      background: var(--card-bg-hover);
+      border-color: var(--border-hover);
+    }
+
+    .btn-danger {
+      background: rgba(255,82,82,0.12);
+      color: var(--red);
+      border: 1px solid rgba(255,82,82,0.3);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-danger:hover { background: rgba(255,82,82,0.2); }
+
+    /* ───── STAT CARDS ───── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: var(--gradient);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .stat-card:hover {
+      background: var(--card-bg-hover);
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+    }
+    .stat-card:hover::before { opacity: 1; }
+
+    .stat-card .stat-icon {
+      width: 44px; height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      margin-bottom: 16px;
+    }
+    .stat-icon.blue   { background: rgba(0,212,255,0.12); color: var(--accent); }
+    .stat-icon.orange  { background: rgba(255,171,64,0.12); color: var(--orange); }
+    .stat-icon.green   { background: rgba(0,230,118,0.12); color: var(--green); }
+    .stat-icon.red     { background: rgba(255,82,82,0.12); color: var(--red); }
+
+    .stat-card .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: -1px;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .stat-card .stat-label {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    /* ───── CARDS ───── */
+    .content-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+      margin-bottom: 32px;
+      flex: 1;
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      transition: border-color 0.3s;
+    }
+    .card:hover { border-color: var(--border-hover); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    .card-header h3 { font-size: 16px; font-weight: 600; }
+    .card-header .badge {
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: rgba(0,212,255,0.1);
+      color: var(--accent);
+    }
+
+    .chart-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 280px;
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      text-align: center;
+      padding: 40px;
+    }
+    .chart-placeholder .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }
+    .chart-placeholder h4 { font-size: 16px; font-weight: 600; margin-bottom: 8px; color: var(--text-muted); }
+    .chart-placeholder p { font-size: 14px; color: var(--text-dim); max-width: 280px; line-height: 1.5; }
+
+    .activity-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 200px;
+      text-align: center;
+    }
+    .activity-empty .empty-icon { font-size: 36px; margin-bottom: 12px; opacity: 0.4; }
+    .activity-empty p { color: var(--text-dim); font-size: 14px; }
+
+    .quick-actions { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .quick-action {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .quick-action:hover {
+      background: var(--card-bg);
+      border-color: var(--border-hover);
+      color: var(--text);
+    }
+    .quick-action .qa-icon {
+      width: 36px; height: 36px;
+      border-radius: 8px;
+      background: var(--card-bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    /* ───── TABLE ───── */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .data-table th {
+      text-align: left;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-dim);
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table td {
+      padding: 14px 16px;
+      font-size: 14px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    .data-table tr:hover td {
+      background: rgba(255,255,255,0.02);
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .status-badge.active { background: rgba(0,230,118,0.12); color: var(--green); }
+    .status-badge.inactive { background: rgba(255,82,82,0.12); color: var(--red); }
+    .status-badge.trial { background: rgba(255,171,64,0.12); color: var(--orange); }
+    .status-badge.admin { background: rgba(0,212,255,0.12); color: var(--accent); }
+
+    .role-badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--card-bg);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    /* ───── MODAL ───── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.active { display: flex; }
+
+    .modal {
+      background: #0d1225;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 32px;
+      width: 100%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+    }
+    .modal h2 {
+      font-size: 22px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .modal p.subtitle {
+      color: var(--text-muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+    }
+    .modal-close {
+      position: absolute;
+      top: 20px; right: 20px;
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 20px;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+    .modal-close:hover { color: var(--text); background: var(--card-bg); }
+
+    .form-group { margin-bottom: 20px; }
+    .form-group label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text-muted);
+    }
+    .form-group input,
+    .form-group select {
+      width: 100%;
+      padding: 12px 16px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+      transition: border-color 0.2s;
+      outline: none;
+    }
+    .form-group input:focus,
+    .form-group select:focus {
+      border-color: var(--accent);
+    }
+    .form-group input::placeholder { color: var(--text-dim); }
+
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 28px;
+    }
+    .form-actions .btn-primary { flex: 1; justify-content: center; }
+
+    /* ───── PAGE SECTIONS ───── */
+    .page-section { display: none; flex-direction: column; flex: 1; }
+    .page-section.active { display: flex; }
+
+    /* ───── EMPTY STATE ───── */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 400px;
+      text-align: center;
+      padding: 40px;
+    }
+    .empty-state .empty-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.3; }
+    .empty-state h3 { font-size: 20px; font-weight: 600; margin-bottom: 8px; color: var(--text-muted); }
+    .empty-state p { font-size: 14px; color: var(--text-dim); max-width: 360px; line-height: 1.6; margin-bottom: 24px; }
+
+    /* ───── LOADING ───── */
+    .loading-spinner {
+      display: inline-block;
+      width: 20px; height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .page-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 300px;
+      gap: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ───── TOAST ───── */
+    .toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      padding: 14px 24px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 500;
+      z-index: 3000;
+      transform: translateY(100px);
+      opacity: 0;
+      transition: all 0.3s ease;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { background: rgba(0,230,118,0.15); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
+    .toast.error { background: rgba(255,82,82,0.15); color: var(--red); border: 1px solid rgba(255,82,82,0.3); }
+
+    /* ───── FOOTER ───── */
+    .main-footer {
+      margin-top: auto;
+      padding-top: 32px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .main-footer p { font-size: 13px; color: var(--text-dim); }
+    .main-footer a { color: var(--text-muted); text-decoration: none; font-size: 13px; }
+    .main-footer a:hover { color: var(--accent); }
+    .footer-links { display: flex; gap: 20px; }
+
+    /* ───── SIDEBAR OVERLAY ───── */
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 899;
+    }
+    .sidebar-overlay.active { display: block; }
+
+    /* ───── RESPONSIVE ───── */
+    @media (max-width: 1024px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .content-grid { grid-template-columns: 1fr; }
+      .topbar-nav { display: none; }
+    }
+
+    @media (max-width: 768px) {
+      .hamburger { display: flex; }
+      .sidebar { transform: translateX(-100%); }
+      .sidebar.open { transform: translateX(0); }
+      .main { margin-left: 0; padding: 24px 16px; }
+      .page-header h1 { font-size: 22px; }
+      .stats-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+      .stat-card { padding: 16px; }
+      .stat-card .stat-value { font-size: 26px; }
+      .user-name { display: none; }
+      .data-table { font-size: 13px; }
+      .data-table th, .data-table td { padding: 10px 8px; }
+    }
+
+    @media (max-width: 480px) {
+      .stats-grid { grid-template-columns: 1fr; }
+      .page-header { flex-direction: column; align-items: flex-start; }
+    }
+
+    /* ───── SCROLLBAR ───── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+    /* ───── ANIMATIONS ───── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .animate-in {
+      animation: fadeUp 0.5s ease forwards;
+      opacity: 0;
+    }
+    .animate-in:nth-child(1) { animation-delay: 0.05s; }
+    .animate-in:nth-child(2) { animation-delay: 0.1s; }
+    .animate-in:nth-child(3) { animation-delay: 0.15s; }
+    .animate-in:nth-child(4) { animation-delay: 0.2s; }
+  </style>
+</head>
+<body>
+
+  <!-- ═══════ TOPBAR ═══════ -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">&#9776;</button>
+      <a class="logo" onclick="navigateTo('dashboard')">
+        <div class="logo-icon">FO</div>
+        <div class="logo-text">Field<span>Ops</span></div>
+      </a>
+      <nav class="topbar-nav" id="topNav">
+        <a data-page="dashboard" class="active" onclick="navigateTo('dashboard')">Dashboard</a>
+        <a data-page="projecten" onclick="navigateTo('projecten')">Projecten</a>
+        <a data-page="meldingen" onclick="navigateTo('meldingen')">Meldingen</a>
+        <a data-page="kaart" onclick="navigateTo('kaart')">Kaart</a>
+        <a data-page="gebruikers" onclick="navigateTo('gebruikers')">Gebruikers</a>
+      </nav>
+    </div>
+    <div class="topbar-right">
+      <button class="notif-btn" aria-label="Meldingen">&#128276;</button>
+      <div class="user-pill">
+        <div class="user-avatar" id="userAvatar">U</div>
+        <span class="user-name" id="userName">Gebruiker</span>
+      </div>
+      <button class="btn-logout" onclick="uitloggen()">Uitloggen</button>
+    </div>
+  </header>
+
+  <!-- ═══════ SIDEBAR OVERLAY ═══════ -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+  <!-- ═══════ SIDEBAR ═══════ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Hoofdmenu</div>
+      <nav class="sidebar-nav" id="sideNav">
+        <a data-page="dashboard" class="active" onclick="navigateTo('dashboard')">
+          <span class="icon">&#9632;</span> Dashboard
+        </a>
+        <a data-page="projecten" onclick="navigateTo('projecten')">
+          <span class="icon">&#128193;</span> Projecten
+        </a>
+        <a data-page="meldingen" onclick="navigateTo('meldingen')">
+          <span class="icon">&#128276;</span> Meldingen
+        </a>
+        <a data-page="kaart" onclick="navigateTo('kaart')">
+          <span class="icon">&#127758;</span> Kaart
+        </a>
+        <a data-page="gebruikers" onclick="navigateTo('gebruikers')">
+          <span class="icon">&#128101;</span> Gebruikers
+        </a>
+      </nav>
+    </div>
+    <div class="sidebar-section" id="adminSection" style="display:none;">
+      <div class="sidebar-label">Beheer</div>
+      <nav class="sidebar-nav">
+        <a data-page="admin" onclick="navigateTo('admin')">
+          <span class="icon">&#128274;</span> Admin Overzicht
+        </a>
+      </nav>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Overig</div>
+      <nav class="sidebar-nav">
+        <a data-page="instellingen" onclick="navigateTo('instellingen')">
+          <span class="icon">&#9881;</span> Instellingen
+        </a>
+      </nav>
+    </div>
+    <div class="sidebar-footer" id="sidebarFooter">
+      <p>FieldOps</p>
+      <strong>Laden...</strong>
+    </div>
+  </aside>
+
+  <!-- ═══════ MAIN CONTENT ═══════ -->
+  <main class="main">
+
+    <!-- ═══ DASHBOARD ═══ -->
+    <div class="page-section active" id="page-dashboard">
+      <div class="page-header">
+        <div>
+          <h1 id="greeting">Welkom terug</h1>
+          <p>Hier is een overzicht van jouw werkgebied.</p>
+        </div>
+        <button class="btn-primary" onclick="navigateTo('projecten')">+ Nieuw Project</button>
+      </div>
+
+      <div class="stats-grid">
+        <div class="stat-card animate-in">
+          <div class="stat-icon blue">&#128193;</div>
+          <div class="stat-value" id="statProjects">0</div>
+          <div class="stat-label">Actieve Projecten</div>
+        </div>
+        <div class="stat-card animate-in">
+          <div class="stat-icon orange">&#128276;</div>
+          <div class="stat-value" id="statMeldingen">0</div>
+          <div class="stat-label">Open Meldingen</div>
+        </div>
+        <div class="stat-card animate-in">
+          <div class="stat-icon green">&#128101;</div>
+          <div class="stat-value" id="statUsers">0</div>
+          <div class="stat-label">Gebruikers</div>
+        </div>
+        <div class="stat-card animate-in">
+          <div class="stat-icon red">&#9745;</div>
+          <div class="stat-value" id="statTaken">0</div>
+          <div class="stat-label">Taken Vandaag</div>
+        </div>
+      </div>
+
+      <div class="content-grid">
+        <div class="card animate-in">
+          <div class="card-header">
+            <h3>Projectoverzicht</h3>
+            <span class="badge">Deze week</span>
+          </div>
+          <div class="chart-placeholder">
+            <div class="empty-icon">&#128202;</div>
+            <h4>Nog geen data</h4>
+            <p>Maak een project aan om te beginnen. Je ziet hier straks een overzicht van je activiteiten.</p>
+            <button class="btn-primary" onclick="navigateTo('projecten')" style="margin-top:20px;">+ Nieuw Project</button>
+          </div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:24px;">
+          <div class="card animate-in">
+            <div class="card-header">
+              <h3>Recente Activiteit</h3>
+            </div>
+            <div class="activity-empty">
+              <div class="empty-icon">&#128340;</div>
+              <p>Geen recente activiteit</p>
+            </div>
+          </div>
+          <div class="card animate-in">
+            <div class="card-header">
+              <h3>Snelle Acties</h3>
+            </div>
+            <div class="quick-actions">
+              <a class="quick-action" onclick="navigateTo('projecten')">
+                <div class="qa-icon">&#43;</div>
+                Project aanmaken
+              </a>
+              <a class="quick-action" onclick="openInviteModal()">
+                <div class="qa-icon">&#128101;</div>
+                Gebruiker uitnodigen
+              </a>
+              <a class="quick-action" onclick="navigateTo('kaart')">
+                <div class="qa-icon">&#127758;</div>
+                Kaart bekijken
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PROJECTEN ═══ -->
+    <div class="page-section" id="page-projecten">
+      <div class="page-header">
+        <div>
+          <h1>Projecten</h1>
+          <p>Beheer je projecten en werkgebieden.</p>
+        </div>
+        <button class="btn-primary" onclick="showToast('Projecten aanmaken komt binnenkort beschikbaar.','success')">+ Nieuw Project</button>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon">&#128193;</div>
+        <h3>Geen projecten</h3>
+        <p>Je hebt nog geen projecten aangemaakt. Maak een nieuw project aan om te beginnen met registreren.</p>
+        <button class="btn-primary" onclick="showToast('Projecten aanmaken komt binnenkort beschikbaar.','success')">+ Eerste project aanmaken</button>
+      </div>
+    </div>
+
+    <!-- ═══ MELDINGEN ═══ -->
+    <div class="page-section" id="page-meldingen">
+      <div class="page-header">
+        <div>
+          <h1>Meldingen</h1>
+          <p>Bekijk en beheer alle meldingen uit het veld.</p>
+        </div>
+        <button class="btn-primary" onclick="showToast('Meldingen aanmaken komt binnenkort beschikbaar.','success')">+ Nieuwe Melding</button>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon">&#128276;</div>
+        <h3>Geen meldingen</h3>
+        <p>Er zijn nog geen meldingen. Meldingen verschijnen hier zodra ze vanuit het veld worden ingediend.</p>
+      </div>
+    </div>
+
+    <!-- ═══ KAART ═══ -->
+    <div class="page-section" id="page-kaart">
+      <div class="page-header">
+        <div>
+          <h1>Kaart</h1>
+          <p>Bekijk projecten en meldingen op de kaart.</p>
+        </div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon">&#127758;</div>
+        <h3>Kaart wordt binnenkort beschikbaar</h3>
+        <p>De interactieve kaart met satellietlagen, projectgrenzen en meldingen wordt binnenkort toegevoegd.</p>
+      </div>
+    </div>
+
+    <!-- ═══ GEBRUIKERS ═══ -->
+    <div class="page-section" id="page-gebruikers">
+      <div class="page-header">
+        <div>
+          <h1>Gebruikers</h1>
+          <p>Beheer de gebruikers van je organisatie.</p>
+        </div>
+        <button class="btn-primary" onclick="openInviteModal()">+ Gebruiker uitnodigen</button>
+      </div>
+      <div class="card" style="overflow-x: auto;">
+        <table class="data-table" id="usersTable">
+          <thead>
+            <tr>
+              <th>Naam</th>
+              <th>E-mail</th>
+              <th>Rol</th>
+              <th>Status</th>
+              <th>Laatste login</th>
+            </tr>
+          </thead>
+          <tbody id="usersBody">
+            <tr><td colspan="5" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ INSTELLINGEN ═══ -->
+    <div class="page-section" id="page-instellingen">
+      <div class="page-header">
+        <div>
+          <h1>Instellingen</h1>
+          <p>Organisatie instellingen en account informatie.</p>
+        </div>
+      </div>
+      <div class="card" style="max-width: 600px;">
+        <div class="card-header"><h3>Organisatie</h3></div>
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+          <div>
+            <label style="font-size: 13px; color: var(--text-dim); display: block; margin-bottom: 4px;">Naam</label>
+            <div style="font-size: 16px; font-weight: 500;" id="settOrgName">-</div>
+          </div>
+          <div>
+            <label style="font-size: 13px; color: var(--text-dim); display: block; margin-bottom: 4px;">Abonnement</label>
+            <div style="font-size: 16px; font-weight: 500;" id="settPlan">-</div>
+          </div>
+          <div>
+            <label style="font-size: 13px; color: var(--text-dim); display: block; margin-bottom: 4px;">Status</label>
+            <div id="settStatus">-</div>
+          </div>
+          <div>
+            <label style="font-size: 13px; color: var(--text-dim); display: block; margin-bottom: 4px;">Gebruikers</label>
+            <div style="font-size: 16px; font-weight: 500;" id="settUsers">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ ADMIN (eigenaar) ═══ -->
+    <div class="page-section" id="page-admin">
+      <div class="page-header">
+        <div>
+          <h1>Admin Overzicht</h1>
+          <p>Alle bedrijven en gebruikers op het platform.</p>
+        </div>
+      </div>
+
+      <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 32px;">
+        <div class="stat-card">
+          <div class="stat-icon blue">&#127970;</div>
+          <div class="stat-value" id="adminOrgs">0</div>
+          <div class="stat-label">Organisaties</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon green">&#128101;</div>
+          <div class="stat-value" id="adminUsers">0</div>
+          <div class="stat-label">Totaal Gebruikers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon orange">&#128203;</div>
+          <div class="stat-value" id="adminDemos">0</div>
+          <div class="stat-label">Demo Aanvragen</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom: 24px;">
+        <div class="card-header"><h3>Organisaties</h3></div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Naam</th><th>Plan</th><th>Status</th><th>Gebruikers</th><th>Aangemaakt</th></tr>
+          </thead>
+          <tbody id="adminOrgsBody">
+            <tr><td colspan="5" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-bottom: 24px;">
+        <div class="card-header"><h3>Alle Gebruikers</h3></div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Naam</th><th>E-mail</th><th>Organisatie</th><th>Rol</th><th>Actief</th></tr>
+          </thead>
+          <tbody id="adminUsersBody">
+            <tr><td colspan="5" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><h3>Demo Aanvragen</h3></div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Naam</th><th>Bedrijf</th><th>E-mail</th><th>Plan</th><th>Verwerkt</th><th>Datum</th></tr>
+          </thead>
+          <tbody id="adminDemosBody">
+            <tr><td colspan="6" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="main-footer">
+      <p>&copy; 2026 FieldOps. Alle rechten voorbehouden.</p>
+      <div class="footer-links">
+        <a href="https://fieldopsapp.nl" target="_blank">Website</a>
+        <a href="#">Support</a>
+        <a href="#">Privacy</a>
+      </div>
+    </footer>
+
+  </main>
+
+  <!-- ═══════ INVITE MODAL ═══════ -->
+  <div class="modal-overlay" id="inviteModal">
+    <div class="modal">
+      <button class="modal-close" onclick="closeInviteModal()">&times;</button>
+      <h2>Gebruiker uitnodigen</h2>
+      <p class="subtitle">Stuur een uitnodiging naar een nieuw teamlid.</p>
+      <form onsubmit="sendInvite(event)">
+        <div class="form-group">
+          <label>E-mailadres</label>
+          <input type="email" id="inviteEmail" placeholder="naam@bedrijf.nl" required>
+        </div>
+        <div class="form-group">
+          <label>Rol</label>
+          <select id="inviteRole">
+            <option value="viewer">Viewer</option>
+            <option value="technician">Technicus</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Uitnodiging versturen</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═══════ TOAST ═══════ -->
+  <div class="toast" id="toast"></div>
+
+  <!-- ═══════ SCRIPTS ═══════ -->
+  <script>
+    // ── Config ──
+    var API_URL = window.location.origin;
+    var token = null;
+    var currentUser = null;
+    var currentOrg = null;
+
+    // ── Init: check token from URL hash or localStorage ──
+    (function init() {
+      // Check for token in URL hash (coming from Shopify login)
+      var hash = window.location.hash;
+      if (hash && hash.indexOf('token=') > -1) {
+        var params = {};
+        hash.substring(1).split('&').forEach(function(part) {
+          var kv = part.split('=');
+          params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1] || '');
+        });
+        if (params.token) {
+          localStorage.setItem('fieldops_token', params.token);
+          if (params.user) {
+            localStorage.setItem('fieldops_user', params.user);
+          }
+          // Clear hash
+          history.replaceState(null, '', window.location.pathname);
+        }
+      }
+
+      token = localStorage.getItem('fieldops_token');
+      if (!token) {
+        window.location.href = 'https://fieldopsapp.nl';
+        return;
+      }
+
+      // Load user from localStorage
+      var stored = localStorage.getItem('fieldops_user');
+      if (stored) {
+        try { currentUser = JSON.parse(stored); } catch(e) { currentUser = null; }
+      }
+
+      // Set UI from stored user while we load fresh data
+      if (currentUser) {
+        setUserUI(currentUser);
+      }
+
+      // Fetch fresh data from API
+      loadUserData();
+    })();
+
+    // ── API Helper ──
+    function api(method, path, body) {
+      var opts = {
+        method: method,
+        headers: {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json'
+        }
+      };
+      if (body) opts.body = JSON.stringify(body);
+      return fetch(API_URL + path, opts).then(function(res) {
+        if (res.status === 401) {
+          localStorage.removeItem('fieldops_token');
+          localStorage.removeItem('fieldops_user');
+          window.location.href = 'https://fieldopsapp.nl';
+          return;
+        }
+        if (!res.ok) return res.json().then(function(e) { throw new Error(e.detail || 'Fout'); });
+        return res.json();
+      });
+    }
+
+    // ── Load user data from API ──
+    function loadUserData() {
+      // Get current user
+      api('GET', '/api/auth/me').then(function(user) {
+        currentUser = user;
+        localStorage.setItem('fieldops_user', JSON.stringify(user));
+        setUserUI(user);
+
+        // Load org stats
+        return api('GET', '/api/organization/stats');
+      }).then(function(stats) {
+        if (!stats) return;
+        currentOrg = stats;
+        document.getElementById('statUsers').textContent = stats.active_users || 0;
+
+        // Sidebar footer
+        var planLabel = stats.plan === 'professional' ? 'Professional' : 'Starter';
+        document.getElementById('sidebarFooter').innerHTML =
+          '<p>FieldOps ' + planLabel + '</p><strong>' + (stats.active_users || 0) + ' / ' + (stats.max_users || 10) + ' gebruikers</strong>';
+
+        // Instellingen
+        document.getElementById('settOrgName').textContent = stats.organization || '-';
+        document.getElementById('settPlan').textContent = planLabel;
+        document.getElementById('settStatus').innerHTML = '<span class="status-badge ' + stats.status + '">' + stats.status + '</span>';
+        document.getElementById('settUsers').textContent = (stats.active_users || 0) + ' / ' + (stats.max_users || 10);
+
+        // Show admin section for org admin
+        if (currentUser && currentUser.is_org_admin) {
+          document.getElementById('adminSection').style.display = 'block';
+        }
+      }).catch(function(err) {
+        console.error('Data laden mislukt:', err);
+      });
+    }
+
+    function setUserUI(user) {
+      var name = '';
+      if (user.first_name) {
+        name = user.first_name + (user.last_name ? ' ' + user.last_name : '');
+      } else if (user.name) {
+        name = user.name;
+      } else {
+        name = user.email || 'Gebruiker';
+      }
+
+      var el = document.getElementById('userName');
+      var av = document.getElementById('userAvatar');
+      var gr = document.getElementById('greeting');
+      if (el) el.textContent = name;
+      if (av) av.textContent = name.charAt(0).toUpperCase();
+      if (gr) gr.textContent = 'Welkom terug, ' + name.split(' ')[0];
+    }
+
+    // ── Navigation ──
+    function navigateTo(page) {
+      // Hide all sections
+      document.querySelectorAll('.page-section').forEach(function(s) {
+        s.classList.remove('active');
+      });
+      // Show selected
+      var target = document.getElementById('page-' + page);
+      if (target) target.classList.add('active');
+
+      // Update nav active states
+      document.querySelectorAll('[data-page]').forEach(function(a) {
+        a.classList.toggle('active', a.getAttribute('data-page') === page);
+      });
+
+      // Close mobile sidebar
+      document.getElementById('sidebar').classList.remove('open');
+      document.getElementById('sidebarOverlay').classList.remove('active');
+
+      // Load data for specific pages
+      if (page === 'gebruikers') loadUsers();
+      if (page === 'admin') loadAdminData();
+    }
+
+    // ── Load Users ──
+    function loadUsers() {
+      api('GET', '/api/users/').then(function(users) {
+        var tbody = document.getElementById('usersBody');
+        if (!users || users.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 40px; color: var(--text-dim);">Geen gebruikers gevonden</td></tr>';
+          return;
+        }
+        tbody.innerHTML = users.map(function(u) {
+          var name = (u.first_name || '') + ' ' + (u.last_name || '');
+          var roleMap = { admin: 'Admin', manager: 'Manager', technician: 'Technicus', viewer: 'Viewer' };
+          var lastLogin = u.last_login ? new Date(u.last_login).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'Nooit';
+          return '<tr>' +
+            '<td><strong>' + name.trim() + '</strong></td>' +
+            '<td>' + u.email + '</td>' +
+            '<td><span class="role-badge">' + (roleMap[u.role] || u.role) + '</span></td>' +
+            '<td><span class="status-badge ' + (u.is_active ? 'active' : 'inactive') + '">' + (u.is_active ? 'Actief' : 'Inactief') + '</span></td>' +
+            '<td style="color: var(--text-dim);">' + lastLogin + '</td>' +
+            '</tr>';
+        }).join('');
+      }).catch(function(err) {
+        document.getElementById('usersBody').innerHTML = '<tr><td colspan="5" style="color: var(--red);">Fout bij laden: ' + err.message + '</td></tr>';
+      });
+    }
+
+    // ── Admin Data (eigenaar) ──
+    function loadAdminData() {
+      api('GET', '/api/admin/overview').then(function(data) {
+        if (!data) return;
+
+        // Stats
+        document.getElementById('adminOrgs').textContent = data.organizations ? data.organizations.length : 0;
+        document.getElementById('adminUsers').textContent = data.total_users || 0;
+        document.getElementById('adminDemos').textContent = data.demo_requests ? data.demo_requests.length : 0;
+
+        // Organizations table
+        var orgsBody = document.getElementById('adminOrgsBody');
+        if (data.organizations && data.organizations.length > 0) {
+          orgsBody.innerHTML = data.organizations.map(function(o) {
+            var date = new Date(o.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
+            return '<tr>' +
+              '<td><strong>' + o.name + '</strong></td>' +
+              '<td><span class="role-badge">' + (o.plan || '-') + '</span></td>' +
+              '<td><span class="status-badge ' + o.status + '">' + o.status + '</span></td>' +
+              '<td>' + (o.user_count || 0) + ' / ' + (o.max_users || 10) + '</td>' +
+              '<td style="color: var(--text-dim);">' + date + '</td>' +
+              '</tr>';
+          }).join('');
+        } else {
+          orgsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-dim);">Geen organisaties</td></tr>';
+        }
+
+        // Users table
+        var usersBody = document.getElementById('adminUsersBody');
+        if (data.all_users && data.all_users.length > 0) {
+          usersBody.innerHTML = data.all_users.map(function(u) {
+            var name = (u.first_name || '') + ' ' + (u.last_name || '');
+            return '<tr>' +
+              '<td><strong>' + name.trim() + '</strong></td>' +
+              '<td>' + u.email + '</td>' +
+              '<td>' + (u.org_name || '-') + '</td>' +
+              '<td><span class="role-badge">' + u.role + '</span></td>' +
+              '<td><span class="status-badge ' + (u.is_active ? 'active' : 'inactive') + '">' + (u.is_active ? 'Actief' : 'Inactief') + '</span></td>' +
+              '</tr>';
+          }).join('');
+        } else {
+          usersBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-dim);">Geen gebruikers</td></tr>';
+        }
+
+        // Demo requests table
+        var demosBody = document.getElementById('adminDemosBody');
+        if (data.demo_requests && data.demo_requests.length > 0) {
+          demosBody.innerHTML = data.demo_requests.map(function(d) {
+            var date = new Date(d.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
+            return '<tr>' +
+              '<td>' + d.first_name + ' ' + d.last_name + '</td>' +
+              '<td>' + d.company_name + '</td>' +
+              '<td>' + d.email + '</td>' +
+              '<td><span class="role-badge">' + d.plan + '</span></td>' +
+              '<td><span class="status-badge ' + (d.processed ? 'active' : 'trial') + '">' + (d.processed ? 'Ja' : 'Nee') + '</span></td>' +
+              '<td style="color: var(--text-dim);">' + date + '</td>' +
+              '</tr>';
+          }).join('');
+        } else {
+          demosBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-dim);">Geen demo aanvragen</td></tr>';
+        }
+      }).catch(function(err) {
+        console.error('Admin data laden mislukt:', err);
+        document.getElementById('adminOrgsBody').innerHTML = '<tr><td colspan="5" style="color: var(--red);">Fout: ' + err.message + '</td></tr>';
+      });
+    }
+
+    // ── Invite Modal ──
+    function openInviteModal() {
+      document.getElementById('inviteModal').classList.add('active');
+    }
+    function closeInviteModal() {
+      document.getElementById('inviteModal').classList.remove('active');
+    }
+    function sendInvite(e) {
+      e.preventDefault();
+      var email = document.getElementById('inviteEmail').value;
+      var role = document.getElementById('inviteRole').value;
+      api('POST', '/api/users/invite', { email: email, role: role }).then(function() {
+        showToast('Uitnodiging verstuurd naar ' + email, 'success');
+        closeInviteModal();
+        document.getElementById('inviteEmail').value = '';
+        if (document.getElementById('page-gebruikers').classList.contains('active')) {
+          loadUsers();
+        }
+      }).catch(function(err) {
+        showToast(err.message, 'error');
+      });
+    }
+
+    // ── Uitloggen ──
+    function uitloggen() {
+      localStorage.removeItem('fieldops_token');
+      localStorage.removeItem('fieldops_user');
+      window.location.href = 'https://fieldopsapp.nl';
+    }
+
+    // ── Sidebar toggle ──
+    function toggleSidebar() {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('sidebarOverlay').classList.toggle('active');
+    }
+
+    // ── Toast ──
+    function showToast(msg, type) {
+      var t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast ' + (type || 'success');
+      setTimeout(function() { t.classList.add('show'); }, 10);
+      setTimeout(function() { t.classList.remove('show'); }, 3500);
+    }
+
+    // ── Resize handler ──
+    window.addEventListener('resize', function() {
+      if (window.innerWidth > 768) {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebarOverlay').classList.remove('active');
+      }
+    });
+  </script>
+</body>
+</html>
