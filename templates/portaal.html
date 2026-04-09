@@ -992,7 +992,15 @@
         </div>
         <button class="btn-primary" onclick="openInviteModal()">+ Gebruiker uitnodigen</button>
       </div>
-      <div class="card" style="overflow-x: auto;">
+
+      <!-- Tabs -->
+      <div style="display:flex;gap:4px;margin-bottom:20px;">
+        <button class="btn-secondary" id="tabUsers" onclick="switchUserTab('users')" style="background:rgba(0,212,255,0.08);color:var(--accent);border-color:var(--accent);">Gebruikers</button>
+        <button class="btn-secondary" id="tabInvites" onclick="switchUserTab('invites')">Uitnodigingen</button>
+      </div>
+
+      <!-- Users tab -->
+      <div id="usersTabContent" class="card" style="overflow-x: auto;">
         <table class="data-table" id="usersTable">
           <thead>
             <tr>
@@ -1004,6 +1012,24 @@
             </tr>
           </thead>
           <tbody id="usersBody">
+            <tr><td colspan="5" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Invitations tab -->
+      <div id="invitesTabContent" class="card" style="overflow-x:auto;display:none;">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>E-mail</th>
+              <th>Rol</th>
+              <th>Status</th>
+              <th>Verstuurd op</th>
+              <th>Verloopt</th>
+            </tr>
+          </thead>
+          <tbody id="invitesBody">
             <tr><td colspan="5" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
           </tbody>
         </table>
@@ -1131,10 +1157,10 @@
         <div class="form-group">
           <label>Rol</label>
           <select id="inviteRole">
-            <option value="viewer">Viewer</option>
-            <option value="technician">Technicus</option>
-            <option value="manager">Manager</option>
-            <option value="admin">Admin</option>
+            <option value="viewer">Viewer — Alleen inzien</option>
+            <option value="technician">Technicus — Veldregistratie &amp; meldingen</option>
+            <option value="manager">Manager — Projecten beheren &amp; rapportages</option>
+            <option value="admin">Admin — Volledige toegang &amp; gebruikersbeheer</option>
           </select>
         </div>
         <div class="form-actions">
@@ -1403,7 +1429,17 @@
         tbody.innerHTML = users.map(function(u) {
           var name = (u.first_name || '') + ' ' + (u.last_name || '');
           var roleMap = { admin: 'Admin', manager: 'Manager', technician: 'Technicus', viewer: 'Viewer' };
-          var lastLogin = u.last_login ? new Date(u.last_login).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : 'Nooit';
+          var lastLogin = 'Nooit';
+          if (u.last_login) {
+            var d = new Date(u.last_login);
+            var now = new Date();
+            var diff = Math.floor((now - d) / 1000);
+            if (diff < 60) lastLogin = 'Zojuist';
+            else if (diff < 3600) lastLogin = Math.floor(diff/60) + ' min geleden';
+            else if (diff < 86400) lastLogin = Math.floor(diff/3600) + ' uur geleden';
+            else if (diff < 172800) lastLogin = 'Gisteren ' + d.toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'});
+            else lastLogin = d.toLocaleDateString('nl-NL', {day:'numeric',month:'short',year:'numeric'}) + ' ' + d.toLocaleTimeString('nl-NL', {hour:'2-digit',minute:'2-digit'});
+          }
           return '<tr>' +
             '<td><strong>' + name.trim() + '</strong></td>' +
             '<td>' + u.email + '</td>' +
@@ -1536,6 +1572,63 @@
         document.getElementById('sidebarOverlay').classList.remove('active');
       }
     });
+
+    // ══════════════════════════════════════
+    // ── GEBRUIKERS TABS + UITNODIGINGEN ──
+    // ══════════════════════════════════════
+    function switchUserTab(tab) {
+      var btnU = document.getElementById('tabUsers');
+      var btnI = document.getElementById('tabInvites');
+      var contentU = document.getElementById('usersTabContent');
+      var contentI = document.getElementById('invitesTabContent');
+      if (tab === 'users') {
+        btnU.style.background = 'rgba(0,212,255,0.08)';
+        btnU.style.color = 'var(--accent)';
+        btnU.style.borderColor = 'var(--accent)';
+        btnI.style.background = '';
+        btnI.style.color = '';
+        btnI.style.borderColor = '';
+        contentU.style.display = 'block';
+        contentI.style.display = 'none';
+      } else {
+        btnI.style.background = 'rgba(0,212,255,0.08)';
+        btnI.style.color = 'var(--accent)';
+        btnI.style.borderColor = 'var(--accent)';
+        btnU.style.background = '';
+        btnU.style.color = '';
+        btnU.style.borderColor = '';
+        contentU.style.display = 'none';
+        contentI.style.display = 'block';
+        loadInvitations();
+      }
+    }
+
+    function loadInvitations() {
+      api('GET', '/api/users/invitations').then(function(invites) {
+        var tbody = document.getElementById('invitesBody');
+        if (!invites || invites.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-dim);">Geen uitnodigingen verstuurd</td></tr>';
+          return;
+        }
+        var roleMap = { admin:'Admin', manager:'Manager', technician:'Technicus', viewer:'Viewer' };
+        tbody.innerHTML = invites.map(function(inv) {
+          var created = new Date(inv.created_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
+          var expires = new Date(inv.expires_at).toLocaleDateString('nl-NL', { day:'numeric', month:'short', year:'numeric' });
+          var isExpired = new Date(inv.expires_at) < new Date();
+          var status = inv.accepted ? 'Geaccepteerd' : (isExpired ? 'Verlopen' : 'Verstuurd');
+          var statusClass = inv.accepted ? 'active' : (isExpired ? 'inactive' : 'trial');
+          return '<tr>' +
+            '<td>' + inv.email + '</td>' +
+            '<td><span class="role-badge">' + (roleMap[inv.role] || inv.role) + '</span></td>' +
+            '<td><span class="status-badge ' + statusClass + '">' + status + '</span></td>' +
+            '<td style="color:var(--text-dim);">' + created + '</td>' +
+            '<td style="color:var(--text-dim);">' + expires + '</td>' +
+            '</tr>';
+        }).join('');
+      }).catch(function(err) {
+        document.getElementById('invitesBody').innerHTML = '<tr><td colspan="5" style="color:var(--red);">Fout: ' + err.message + '</td></tr>';
+      });
+    }
 
     // ══════════════════════════════════════
     // ── PROJECTEN ──
