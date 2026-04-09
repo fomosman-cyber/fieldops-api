@@ -188,6 +188,16 @@ class MeldingUpdate(BaseModel):
     photo_after_url: Optional[str] = None
 
 
+# Password Reset
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str
+    new_password: str
+
+
 # Shopify Webhook
 class ShopifyWebhookOrder(BaseModel):
     id: int

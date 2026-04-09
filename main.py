@@ -118,6 +118,13 @@ def portaal():
     return HTMLResponse(content=html)
 
 
+@app.get("/reset-wachtwoord", response_class=HTMLResponse)
+def reset_wachtwoord():
+    """Serve de wachtwoord-reset pagina."""
+    html = (TEMPLATES_DIR / "reset-password.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
+
+
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
