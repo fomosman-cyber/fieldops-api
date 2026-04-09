@@ -915,15 +915,20 @@
       </div>
 
       <!-- Period Selector -->
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-        <div style="display:flex;gap:8px;align-items:center;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <span style="font-size:13px;color:var(--text-muted);">Periode:</span>
           <div style="display:flex;gap:4px;" id="periodSelector">
+            <button onclick="setDashPeriod(1)" class="period-btn" data-months="1" style="padding:5px 14px;border-radius:8px;font-size:12px;font-weight:500;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;transition:all 0.2s;">1M</button>
             <button onclick="setDashPeriod(3)" class="period-btn" data-months="3" style="padding:5px 14px;border-radius:8px;font-size:12px;font-weight:500;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;transition:all 0.2s;">3M</button>
             <button onclick="setDashPeriod(6)" class="period-btn active" data-months="6" style="padding:5px 14px;border-radius:8px;font-size:12px;font-weight:500;background:var(--accent);border:1px solid var(--accent);color:#0a0f1e;cursor:pointer;transition:all 0.2s;">6M</button>
             <button onclick="setDashPeriod(12)" class="period-btn" data-months="12" style="padding:5px 14px;border-radius:8px;font-size:12px;font-weight:500;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;transition:all 0.2s;">12M</button>
             <button onclick="setDashPeriod(0)" class="period-btn" data-months="0" style="padding:5px 14px;border-radius:8px;font-size:12px;font-weight:500;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text-muted);cursor:pointer;transition:all 0.2s;">Alles</button>
           </div>
+          <span style="color:var(--border);font-size:14px;">|</span>
+          <select id="dashMonthSelect" onchange="setDashMonth()" style="padding:5px 10px;border-radius:8px;font-size:12px;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);cursor:pointer;">
+            <option value="">Maand kiezen...</option>
+          </select>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <input type="date" id="dashDateFrom" style="padding:5px 10px;border-radius:8px;font-size:12px;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);cursor:pointer;" onchange="setDashCustomPeriod()">
@@ -2228,9 +2233,47 @@
           b.style.color = 'var(--text-muted)';
         }
       });
-      // Clear custom dates
+      // Clear custom dates and month selector
       document.getElementById('dashDateFrom').value = '';
       document.getElementById('dashDateTo').value = '';
+      var msel = document.getElementById('dashMonthSelect');
+      if (msel) msel.value = '';
+      loadDashboardStats();
+    }
+
+    function populateMonthSelector() {
+      var sel = document.getElementById('dashMonthSelect');
+      if (!sel) return;
+      var months = ['Januari','Februari','Maart','April','Mei','Juni','Juli','Augustus','September','Oktober','November','December'];
+      var now = new Date();
+      var opts = '<option value="">Maand kiezen...</option>';
+      // Last 12 months
+      for (var i = 0; i < 12; i++) {
+        var dt = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        var val = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0');
+        opts += '<option value="'+val+'">'+months[dt.getMonth()]+' '+dt.getFullYear()+'</option>';
+      }
+      sel.innerHTML = opts;
+    }
+
+    function setDashMonth() {
+      var sel = document.getElementById('dashMonthSelect');
+      var val = sel.value;
+      if (!val) return;
+      var parts = val.split('-');
+      var y = parseInt(parts[0]);
+      var m = parseInt(parts[1]) - 1;
+      var from = new Date(y, m, 1);
+      var to = new Date(y, m + 1, 0); // last day of month
+      document.getElementById('dashDateFrom').value = from.toISOString().split('T')[0];
+      document.getElementById('dashDateTo').value = to.toISOString().split('T')[0];
+      dashPeriodMonths = -1;
+      // Deselect period buttons
+      document.querySelectorAll('.period-btn').forEach(function(b) {
+        b.style.background = 'rgba(255,255,255,0.04)';
+        b.style.borderColor = 'var(--border)';
+        b.style.color = 'var(--text-muted)';
+      });
       loadDashboardStats();
     }
 
@@ -2239,6 +2282,7 @@
       var to = document.getElementById('dashDateTo').value;
       if (from && to) {
         dashPeriodMonths = -1; // custom
+        document.getElementById('dashMonthSelect').value = '';
         document.querySelectorAll('.period-btn').forEach(function(b) {
           b.style.background = 'rgba(255,255,255,0.04)';
           b.style.borderColor = 'var(--border)';
@@ -2863,6 +2907,7 @@
     }
 
     // ── Load initial dashboard data ──
+    populateMonthSelector();
     loadDashboardStats();
   </script>
 </body>
