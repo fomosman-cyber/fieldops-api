@@ -1,15 +1,56 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from database import engine, Base
+from contextlib import asynccontextmanager
+from database import engine, Base, SessionLocal
+from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
+from auth import hash_password
 from routers import auth_router, demo_router, users_router, org_router, shopify_router
 
 # Maak alle tabellen aan
 Base.metadata.create_all(bind=engine)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: maak owner account aan als die nog niet bestaat
+    db = SessionLocal()
+    try:
+        existing = db.query(User).filter(User.email == "fomosman@gmail.com").first()
+        if not existing:
+            org = Organization(
+                name="FieldOps",
+                plan=SubscriptionPlan.PROFESSIONAL,
+                status=AccountStatus.ACTIVE,
+                max_users=999,
+                trial_ends_at=None,
+            )
+            db.add(org)
+            db.flush()
+            user = User(
+                email="fomosman@gmail.com",
+                hashed_password=hash_password("Nieuwjaar2026@"),
+                first_name="Faris",
+                last_name="Osman",
+                role=UserRole.ADMIN,
+                is_active=True,
+                is_org_admin=True,
+                organization_id=org.id,
+            )
+            db.add(user)
+            db.commit()
+            print("Owner account aangemaakt: fomosman@gmail.com")
+        else:
+            print("Owner account bestaat al")
+    finally:
+        db.close()
+    yield
+
+
 app = FastAPI(
     title="FieldOps API",
     description="Backend API voor FieldOps - Veldregistratie platform",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS - sta frontend toe
