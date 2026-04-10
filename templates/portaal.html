@@ -3501,15 +3501,39 @@
       e.preventDefault();
       var email = document.getElementById('inviteEmail').value;
       var role = document.getElementById('inviteRole').value;
-      api('POST', '/api/users/invite', { email: email, role: role }).then(function() {
-        showToast(t('uitnodiging_verstuurd') + ' ' + email, 'success');
+
+      // Vraag naam en wachtwoord
+      var firstName = prompt('Voornaam van de gebruiker:', '');
+      if (!firstName) return;
+      var lastName = prompt('Achternaam:', '');
+      if (!lastName) return;
+      var password = prompt('Wachtwoord (standaard: Fieldops1@):', 'Fieldops1@');
+      if (!password) return;
+
+      // Probeer eerst direct account aanmaken
+      api('POST', '/api/users/create', {
+        email: email,
+        password: password,
+        first_name: firstName,
+        last_name: lastName,
+        role: role,
+        phone: ''
+      }).then(function() {
+        showToast('Account aangemaakt voor ' + email + '! Wachtwoord: ' + password, 'success');
         closeInviteModal();
         document.getElementById('inviteEmail').value = '';
         if (document.getElementById('page-gebruikers').classList.contains('active')) {
           loadUsers();
         }
       }).catch(function(err) {
-        showToast(err.message, 'error');
+        // Fallback naar invite als create niet werkt
+        api('POST', '/api/users/invite', { email: email, role: role }).then(function() {
+          showToast('Uitnodiging verstuurd naar ' + email, 'success');
+          closeInviteModal();
+          document.getElementById('inviteEmail').value = '';
+        }).catch(function(err2) {
+          showToast(err2.message || err.message, 'error');
+        });
       });
     }
 
