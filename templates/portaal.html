@@ -3338,15 +3338,20 @@
             else if (diff < 172800) lastLogin = t('gisteren') + ' ' + d.toLocaleTimeString(currentLang, {hour:'2-digit',minute:'2-digit'});
             else lastLogin = d.toLocaleDateString(currentLang, {day:'numeric',month:'short',year:'numeric'}) + ' ' + d.toLocaleTimeString(currentLang, {hour:'2-digit',minute:'2-digit'});
           }
-          // Don't show delete button for current user
-          var deleteBtn = '';
+          // Action buttons for non-current users
+          var actionsHtml = '';
           if (currentUser && u.id !== currentUser.id) {
             var escapedName = (name.trim() || u.email).replace(/'/g, "\\'").replace(/"/g, '&quot;');
-            deleteBtn = '<button onclick="deactivateUser(\'' + u.id + '\', \'' + escapedName + '\')" ' +
-              'style="background:none;border:1px solid var(--border);color:var(--red);font-size:12px;padding:4px 10px;border-radius:6px;cursor:pointer;font-family:inherit;transition:all 0.2s;" ' +
-              'onmouseover="this.style.background=\'rgba(220,38,38,0.08)\';this.style.borderColor=\'var(--red)\'" ' +
-              'onmouseout="this.style.background=\'none\';this.style.borderColor=\'var(--border)\'">' +
-              t('deactiveer') + '</button>';
+            // Role dropdown
+            var roleSelect = '<select onchange="changeUserRole(\'' + u.id + '\', this.value)" style="padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;color:var(--accent);background:rgba(2,132,199,0.05);cursor:pointer;">';
+            var roles = [['viewer','Opdrachtgever'],['inspector','Toezichthouder'],['technician','Technicus'],['contractor','Aannemer'],['manager','Projectleider'],['admin','Beheerder']];
+            roles.forEach(function(r) { roleSelect += '<option value="' + r[0] + '"' + (u.role === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; });
+            roleSelect += '</select>';
+            // Reset password button
+            var resetBtn = '<button onclick="resetUserPassword(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);color:var(--accent);font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;font-family:inherit;margin:0 4px;" title="Wachtwoord resetten">&#128273;</button>';
+            // Delete button
+            var deleteBtn = '<button onclick="deactivateUser(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);color:var(--red);font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;font-family:inherit;" title="Verwijderen">&#128465;</button>';
+            actionsHtml = roleSelect + resetBtn + deleteBtn;
           }
           return '<tr>' +
             '<td><strong>' + name.trim() + '</strong></td>' +
@@ -3354,7 +3359,7 @@
             '<td><span class="role-badge">' + (roleMap[u.role] || u.role) + '</span></td>' +
             '<td><span class="status-badge ' + (u.is_active ? 'active' : 'inactive') + '">' + (u.is_active ? t('actief') : t('inactief')) + '</span></td>' +
             '<td style="color: var(--text-dim);">' + lastLogin + '</td>' +
-            '<td>' + deleteBtn + '</td>' +
+            '<td>' + actionsHtml + '</td>' +
             '</tr>';
         }).join('');
       }).catch(function(err) {
@@ -3371,6 +3376,30 @@
         loadUsers();
       } catch(err) {
         showToast(t('fout_laden') + ': ' + (err.message || 'Unknown error'), 'error');
+      }
+    }
+
+    // ── Change User Role ──
+    async function changeUserRole(userId, newRole) {
+      try {
+        await api('PUT', '/api/users/' + userId, { role: newRole });
+        var roleNames = { viewer:'Opdrachtgever', inspector:'Toezichthouder', technician:'Technicus', contractor:'Aannemer', manager:'Projectleider', admin:'Beheerder' };
+        showToast('Rol gewijzigd naar ' + (roleNames[newRole] || newRole));
+        loadUsers();
+      } catch(err) {
+        showToast('Fout bij wijzigen rol: ' + (err.message || 'Unknown error'), 'error');
+      }
+    }
+
+    // ── Reset User Password ──
+    async function resetUserPassword(userId, userName) {
+      var newPass = prompt('Nieuw wachtwoord voor ' + userName + ':', '');
+      if (!newPass) return;
+      try {
+        await api('PUT', '/api/users/' + userId, { password: newPass });
+        showToast('Wachtwoord gereset voor ' + userName);
+      } catch(err) {
+        showToast('Fout bij resetten: ' + (err.message || 'Unknown error'), 'error');
       }
     }
 
