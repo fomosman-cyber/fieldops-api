@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from database import get_db
@@ -81,8 +82,6 @@ class AdminCreateUser(BaseModel):
     last_name: str
     role: str = "viewer"
     phone: str = ""
-
-from pydantic import BaseModel as _BM
 
 @router.post("/create", response_model=UserResponse)
 def admin_create_user(
