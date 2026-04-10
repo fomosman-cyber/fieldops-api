@@ -72,6 +72,53 @@ def deactivate_user(
     return {"message": f"Gebruiker {user.email} is gedeactiveerd"}
 
 
+# --- Direct account aanmaken (admin) ---
+
+class AdminCreateUser(BaseModel):
+    email: str
+    password: str
+    first_name: str
+    last_name: str
+    role: str = "viewer"
+    phone: str = ""
+
+from pydantic import BaseModel as _BM
+
+@router.post("/create", response_model=UserResponse)
+def admin_create_user(
+    data: AdminCreateUser,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Direct een gebruiker aanmaken (alleen admin). Geen uitnodiging nodig."""
+    existing = db.query(User).filter(User.email == data.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Dit e-mailadres is al in gebruik")
+
+    user = User(
+        email=data.email,
+        hashed_password=hash_password(data.password),
+        first_name=data.first_name,
+        last_name=data.last_name,
+        phone=data.phone,
+        role=data.role,
+        is_org_admin=(data.role == "admin"),
+        organization_id=current_user.organization_id,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    # Stuur welkom email
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    try:
+        send_welcome_email(data.email, f"{data.first_name} {data.last_name}", org.name if org else "FieldOps")
+    except Exception as e:
+        print(f"Welcome email error: {e}")
+
+    return user
+
+
 # --- Uitnodigingen ---
 
 @router.post("/invite", response_model=InvitationResponse)
