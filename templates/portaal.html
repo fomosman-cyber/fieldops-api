@@ -3388,9 +3388,10 @@
             else if (diff < 172800) lastLogin = t('gisteren') + ' ' + d.toLocaleTimeString(currentLang, {hour:'2-digit',minute:'2-digit'});
             else lastLogin = d.toLocaleDateString(currentLang, {day:'numeric',month:'short',year:'numeric'}) + ' ' + d.toLocaleTimeString(currentLang, {hour:'2-digit',minute:'2-digit'});
           }
-          // Action buttons for non-current users
+          // Action buttons — only for org admins, and only for non-self users
           var actionsHtml = '';
-          if (currentUser && u.id !== currentUser.id) {
+          var isOrgAdmin = currentUser && currentUser.is_org_admin;
+          if (isOrgAdmin && u.id !== currentUser.id) {
             var escapedName = (name.trim() || u.email).replace(/'/g, "\\'").replace(/"/g, '&quot;');
             // Role dropdown
             var roleSelect = '<select onchange="changeUserRole(\'' + u.id + '\', this.value)" style="padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-family:inherit;color:var(--accent);background:rgba(2,132,199,0.05);cursor:pointer;">';
