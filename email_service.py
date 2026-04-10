@@ -1,21 +1,20 @@
 """
 FieldOps Email Service
-Verstuurt uitnodigingen, wachtwoord resets en notificaties via SMTP.
+Verstuurt uitnodigingen, wachtwoord resets en notificaties via Resend API.
 """
-import smtplib
 import os
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import json
+import urllib.request
 
-# SMTP configuratie via environment variables
-SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+# Resend API configuratie
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+FROM_EMAIL = os.getenv("FROM_EMAIL", "FieldOps <onboarding@resend.dev>")
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://www.fieldopsapp.nl")
+PORTAAL_URL = os.getenv("PORTAAL_URL", os.getenv("RENDER_EXTERNAL_URL", "https://portaal.fieldopsapp.nl"))
+
+# Backwards compatibility
 SMTP_USER = os.getenv("SMTP_USER", "")
 SMTP_PASS = os.getenv("SMTP_PASS", "")
-FROM_EMAIL = os.getenv("FROM_EMAIL", SMTP_USER or "noreply@fieldopsapp.nl")
-FROM_NAME = os.getenv("FROM_NAME", "FieldOps")
-FRONTEND_URL = os.getenv("FRONTEND_URL", "https://fieldopsapp.nl")
-PORTAAL_URL = os.getenv("RENDER_EXTERNAL_URL", "https://fieldops-api-8txr.onrender.com")
 
 
 def _base_template(content: str, title: str = "FieldOps") -> str:
@@ -42,7 +41,7 @@ def _base_template(content: str, title: str = "FieldOps") -> str:
 <tr><td style="padding:20px 40px 28px;border-top:1px solid #e8ecf0;">
 <p style="color:#94a3b8;font-size:12px;margin:0;line-height:1.6;">
 Dit is een automatisch bericht van FieldOps.<br>
-<a href="{FRONTEND_URL}" style="color:#0284c7;text-decoration:none;">fieldopsapp.nl</a>
+<a href="{FRONTEND_URL}" style="color:#0284c7;text-decoration:none;">www.fieldopsapp.nl</a>
 </p>
 </td></tr>
 </table>
@@ -51,25 +50,31 @@ Dit is een automatisch bericht van FieldOps.<br>
 
 
 def send_email(to_email: str, subject: str, html_content: str) -> bool:
-    """Verstuur een email via SMTP. Returns True bij succes."""
-    if not SMTP_USER or not SMTP_PASS:
-        print(f"[EMAIL] SMTP niet geconfigureerd - email naar {to_email} niet verstuurd")
+    """Verstuur een email via Resend API. Returns True bij succes."""
+    if not RESEND_API_KEY:
+        print(f"[EMAIL] Resend API key niet geconfigureerd - email naar {to_email} niet verstuurd")
         print(f"[EMAIL] Subject: {subject}")
         return False
 
     try:
-        msg = MIMEMultipart("alternative")
-        msg["From"] = f"{FROM_NAME} <{FROM_EMAIL}>"
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(html_content, "html", "utf-8"))
+        data = json.dumps({
+            "from": FROM_EMAIL,
+            "to": [to_email],
+            "subject": subject,
+            "html": html_content,
+        }).encode("utf-8")
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
-
-        print(f"[EMAIL] Verstuurd naar {to_email}: {subject}")
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=data,
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+        )
+        resp = urllib.request.urlopen(req)
+        result = json.loads(resp.read().decode())
+        print(f"[EMAIL] Verstuurd naar {to_email}: {subject} (id={result.get('id', '?')})")
         return True
     except Exception as e:
         print(f"[EMAIL] Fout bij verzenden naar {to_email}: {e}")
