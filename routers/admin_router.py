@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import Optional
 from sqlalchemy.orm import Session
 from database import get_db
-from models import User, Organization, DemoRequest, Project, Melding
-from auth import get_current_user
+from models import User, Organization, DemoRequest, Project, Melding, SubscriptionPlan, AccountStatus
+from auth import get_current_user, hash_password
 
 router = APIRouter(prefix="/api/admin", tags=["Admin"])
 
@@ -91,3 +93,131 @@ def admin_overview(
         "total_meldingen": total_meldingen,
         "open_meldingen": open_meldingen,
     }
+
+
+# --- Organisatie beheer ---
+
+class CreateOrganization(BaseModel):
+    name: str
+    plan: str = "starter"  # starter or professional
+    max_users: int = 10
+    admin_email: str
+    admin_password: str
+    admin_first_name: str
+    admin_last_name: str
+    admin_phone: Optional[str] = ""
+
+
+@router.post("/organizations")
+def create_organization(
+    data: CreateOrganization,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Nieuwe organisatie aanmaken met een beheerder (alleen platform eigenaar)."""
+    # Check of email al bestaat
+    existing = db.query(User).filter(User.email == data.admin_email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"E-mailadres {data.admin_email} is al in gebruik")
+
+    # Maak organisatie aan
+    plan = SubscriptionPlan.PROFESSIONAL if data.plan == "professional" else SubscriptionPlan.STARTER
+    org = Organization(
+        name=data.name,
+        plan=plan,
+        status=AccountStatus.ACTIVE,
+        max_users=data.max_users,
+    )
+    db.add(org)
+    db.flush()  # Get org.id
+
+    # Maak admin gebruiker aan
+    admin_user = User(
+        email=data.admin_email,
+        hashed_password=hash_password(data.admin_password),
+        first_name=data.admin_first_name,
+        last_name=data.admin_last_name,
+        phone=data.admin_phone or "",
+        role="admin",
+        is_org_admin=True,
+        organization_id=org.id,
+    )
+    db.add(admin_user)
+    db.commit()
+    db.refresh(org)
+    db.refresh(admin_user)
+
+    return {
+        "success": True,
+        "message": f"Organisatie '{data.name}' aangemaakt met beheerder {data.admin_email}",
+        "organization": {
+            "id": org.id,
+            "name": org.name,
+            "plan": org.plan.value,
+            "status": org.status.value,
+            "max_users": org.max_users,
+        },
+        "admin": {
+            "id": admin_user.id,
+            "email": admin_user.email,
+            "name": f"{admin_user.first_name} {admin_user.last_name}",
+        },
+    }
+
+
+@router.put("/organizations/{org_id}")
+def update_organization(
+    org_id: str,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+    name: Optional[str] = None,
+    plan: Optional[str] = None,
+    max_users: Optional[int] = None,
+    status: Optional[str] = None,
+):
+    """Organisatie bijwerken (alleen platform eigenaar)."""
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organisatie niet gevonden")
+    if name:
+        org.name = name
+    if plan:
+        org.plan = SubscriptionPlan.PROFESSIONAL if plan == "professional" else SubscriptionPlan.STARTER
+    if max_users is not None:
+        org.max_users = max_users
+    if status:
+        status_map = {"active": AccountStatus.ACTIVE, "trial": AccountStatus.TRIAL, "expired": AccountStatus.EXPIRED, "suspended": AccountStatus.SUSPENDED}
+        org.status = status_map.get(status, AccountStatus.ACTIVE)
+    db.commit()
+    db.refresh(org)
+    return {
+        "id": org.id,
+        "name": org.name,
+        "plan": org.plan.value,
+        "status": org.status.value,
+        "max_users": org.max_users,
+    }
+
+
+@router.delete("/organizations/{org_id}")
+def delete_organization(
+    org_id: str,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Organisatie en alle bijbehorende data verwijderen (alleen platform eigenaar)."""
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organisatie niet gevonden")
+    if org.name == "FieldOps":
+        raise HTTPException(status_code=400, detail="Kan de platform organisatie niet verwijderen")
+
+    # Verwijder alle data van deze organisatie
+    projects = db.query(Project).filter(Project.organization_id == org_id).all()
+    for p in projects:
+        db.query(Melding).filter(Melding.project_id == p.id).delete()
+    db.query(Project).filter(Project.organization_id == org_id).delete()
+    db.query(User).filter(User.organization_id == org_id).delete()
+    db.delete(org)
+    db.commit()
+    return {"success": True, "message": f"Organisatie '{org.name}' en alle data verwijderd"}

@@ -1420,6 +1420,7 @@
           <h1>Admin Overzicht</h1>
           <p>Alle bedrijven en gebruikers op het platform.</p>
         </div>
+        <button class="btn-primary" onclick="openCreateOrgModal()">+ Nieuwe organisatie</button>
       </div>
 
       <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 32px;">
@@ -1514,6 +1515,55 @@
         </div>
         <div class="form-actions">
           <button type="submit" class="btn-primary">Uitnodiging versturen</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═══════ CREATE ORGANIZATION MODAL ═══════ -->
+  <div class="modal-overlay" id="createOrgModal">
+    <div class="modal" style="max-width:520px;">
+      <button class="modal-close" onclick="closeCreateOrgModal()">&times;</button>
+      <h2>Nieuwe organisatie</h2>
+      <p class="subtitle">Maak een nieuw bedrijf aan met een beheerder.</p>
+      <form onsubmit="submitCreateOrg(event)">
+        <div class="form-group">
+          <label>Bedrijfsnaam</label>
+          <input type="text" id="orgName" placeholder="bijv. Jan's Bouwbedrijf" required>
+        </div>
+        <div class="form-group">
+          <label>Abonnement</label>
+          <select id="orgPlan">
+            <option value="starter">Starter — 10 gebruikers</option>
+            <option value="professional" selected>Professional — 999 gebruikers</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Max gebruikers</label>
+          <input type="number" id="orgMaxUsers" value="10" min="1" max="999">
+        </div>
+        <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+        <p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;">Beheerder van deze organisatie</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>Voornaam</label>
+            <input type="text" id="orgAdminFirst" placeholder="Jan" required>
+          </div>
+          <div class="form-group">
+            <label>Achternaam</label>
+            <input type="text" id="orgAdminLast" placeholder="de Vries" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>E-mailadres beheerder</label>
+          <input type="email" id="orgAdminEmail" placeholder="jan@bedrijf.nl" required>
+        </div>
+        <div class="form-group">
+          <label>Wachtwoord</label>
+          <input type="text" id="orgAdminPassword" value="Fieldops1@" required>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary">Organisatie aanmaken</button>
         </div>
       </form>
     </div>
@@ -3534,6 +3584,39 @@
         }).catch(function(err2) {
           showToast(err2.message || err.message, 'error');
         });
+      });
+    }
+
+    // ── Create Organization Modal ──
+    function openCreateOrgModal() {
+      document.getElementById('createOrgModal').classList.add('active');
+    }
+    function closeCreateOrgModal() {
+      document.getElementById('createOrgModal').classList.remove('active');
+    }
+    function submitCreateOrg(e) {
+      e.preventDefault();
+      var data = {
+        name: document.getElementById('orgName').value,
+        plan: document.getElementById('orgPlan').value,
+        max_users: parseInt(document.getElementById('orgMaxUsers').value) || 10,
+        admin_email: document.getElementById('orgAdminEmail').value,
+        admin_password: document.getElementById('orgAdminPassword').value,
+        admin_first_name: document.getElementById('orgAdminFirst').value,
+        admin_last_name: document.getElementById('orgAdminLast').value,
+      };
+      api('POST', '/api/admin/organizations', data).then(function(result) {
+        showToast('Organisatie "' + data.name + '" aangemaakt! Beheerder: ' + data.admin_email, 'success');
+        closeCreateOrgModal();
+        // Reset form
+        document.getElementById('orgName').value = '';
+        document.getElementById('orgAdminFirst').value = '';
+        document.getElementById('orgAdminLast').value = '';
+        document.getElementById('orgAdminEmail').value = '';
+        document.getElementById('orgAdminPassword').value = 'Fieldops1@';
+        loadAdminData();
+      }).catch(function(err) {
+        showToast(err.message || 'Fout bij aanmaken organisatie', 'error');
       });
     }
 
