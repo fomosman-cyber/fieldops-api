@@ -44,7 +44,11 @@ def update_user(
     if not user:
         raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
 
-    for field, value in update.model_dump(exclude_unset=True).items():
+    update_data = update.model_dump(exclude_unset=True)
+    # Handle password update separately (needs hashing)
+    if "password" in update_data:
+        user.hashed_password = hash_password(update_data.pop("password"))
+    for field, value in update_data.items():
         setattr(user, field, value)
     db.commit()
     db.refresh(user)

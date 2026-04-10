@@ -71,6 +71,7 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
+    password: Optional[str] = None
 
 
 # Organization
