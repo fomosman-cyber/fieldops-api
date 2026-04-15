@@ -1448,10 +1448,10 @@
         <div class="card-header"><h3>Organisaties</h3></div>
         <table class="data-table">
           <thead>
-            <tr><th>Naam</th><th>Plan</th><th>Status</th><th>Gebruikers</th><th>Aangemaakt</th></tr>
+            <tr><th>Naam</th><th>Plan</th><th>Status</th><th>Gebruikers</th><th>Aangemaakt</th><th>Acties</th></tr>
           </thead>
           <tbody id="adminOrgsBody">
-            <tr><td colspan="5" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
+            <tr><td colspan="6" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
           </tbody>
         </table>
       </div>
@@ -3463,6 +3463,29 @@
     }
 
     // ── Admin Data (eigenaar) ──
+    // ── Admin Organization Actions ──
+    async function adminUpdateOrg(orgId, data) {
+      try {
+        var qs = Object.keys(data).map(function(k) { return k + '=' + encodeURIComponent(data[k]); }).join('&');
+        await api('PUT', '/api/admin/organizations/' + orgId + '?' + qs);
+        showToast('Organisatie bijgewerkt');
+        loadAdminData();
+      } catch(err) { showToast('Fout: ' + err.message, 'error'); }
+    }
+    async function adminChangeMaxUsers(orgId, currentMax) {
+      var newMax = prompt('Max aantal gebruikers (nu: ' + currentMax + '):', currentMax);
+      if (!newMax || isNaN(newMax)) return;
+      await adminUpdateOrg(orgId, { max_users: parseInt(newMax) });
+    }
+    async function adminDeleteOrg(orgId, orgName) {
+      if (!confirm('WAARSCHUWING: Dit verwijdert organisatie "' + orgName + '" en ALLE bijbehorende projecten, meldingen en gebruikers. Weet je het zeker?')) return;
+      try {
+        await api('DELETE', '/api/admin/organizations/' + orgId);
+        showToast('Organisatie "' + orgName + '" verwijderd');
+        loadAdminData();
+      } catch(err) { showToast('Fout: ' + err.message, 'error'); }
+    }
+
     // ── Admin User Actions (platform owner only) ──
     async function adminChangeRole(userId, newRole, orgName) {
       try {
@@ -3504,21 +3527,28 @@
         document.getElementById('adminUsers').textContent = data.total_users || 0;
         document.getElementById('adminDemos').textContent = data.demo_requests ? data.demo_requests.length : 0;
 
-        // Organizations table
+        // Organizations table with actions
         var orgsBody = document.getElementById('adminOrgsBody');
         if (data.organizations && data.organizations.length > 0) {
           orgsBody.innerHTML = data.organizations.map(function(o) {
             var date = new Date(o.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short', year:'numeric' });
+            var escapedName = o.name.replace(/'/g, "\\'");
+            var planSelect = '<select onchange="adminUpdateOrg(\'' + o.id + '\', {plan: this.value})" style="padding:2px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;cursor:pointer;">' +
+              '<option value="starter"' + (o.plan === 'starter' ? ' selected' : '') + '>Starter</option>' +
+              '<option value="professional"' + (o.plan === 'professional' ? ' selected' : '') + '>Professional</option></select>';
+            var usersBtn = '<button onclick="adminChangeMaxUsers(\'' + o.id + '\', ' + (o.max_users||10) + ')" style="background:none;border:1px solid var(--border);font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;">' + (o.user_count||0) + ' / ' + (o.max_users||10) + '</button>';
+            var deleteBtn = o.name === 'FieldOps' ? '' : '<button onclick="adminDeleteOrg(\'' + o.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);color:var(--red);font-size:11px;padding:2px 6px;border-radius:4px;cursor:pointer;" title="Verwijderen">&#128465;</button>';
             return '<tr>' +
               '<td><strong>' + o.name + '</strong></td>' +
-              '<td><span class="role-badge">' + (o.plan || '-') + '</span></td>' +
+              '<td>' + planSelect + '</td>' +
               '<td><span class="status-badge ' + o.status + '">' + o.status + '</span></td>' +
-              '<td>' + (o.user_count || 0) + ' / ' + (o.max_users || 10) + '</td>' +
+              '<td>' + usersBtn + '</td>' +
               '<td style="color: var(--text-dim);">' + date + '</td>' +
+              '<td>' + deleteBtn + '</td>' +
               '</tr>';
           }).join('');
         } else {
-          orgsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-dim);">'+t('geen_organisaties')+'</td></tr>';
+          orgsBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-dim);">'+t('geen_organisaties')+'</td></tr>';
         }
 
         // Users table with admin actions
