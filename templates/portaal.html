@@ -1472,7 +1472,7 @@
         <div class="card-header"><h3>Demo Aanvragen</h3></div>
         <table class="data-table">
           <thead>
-            <tr><th>Naam</th><th>Bedrijf</th><th>E-mail</th><th>Telefoon</th><th>Plan</th><th>Verwerkt</th><th>Datum</th></tr>
+            <tr><th>Naam</th><th>Bedrijf</th><th>E-mail</th><th>Telefoon</th><th>Plan</th><th>Status</th><th>Datum</th><th>Acties</th></tr>
           </thead>
           <tbody id="adminDemosBody">
             <tr><td colspan="7" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
@@ -3464,6 +3464,35 @@
     }
 
     // ── Admin Data (eigenaar) ──
+    // ── Admin Demo Actions ──
+    async function convertDemoToOrg(demoId, name, company, email, plan) {
+      var pw = prompt('Wachtwoord voor ' + name + ':', 'Fieldops1@');
+      if (!pw) return;
+      try {
+        // Create org with admin
+        var names = name.split(' ');
+        var firstName = names[0] || '';
+        var lastName = names.slice(1).join(' ') || '';
+        await api('POST', '/api/admin/organizations', {
+          name: company,
+          plan: plan === 'professional' ? 'professional' : 'starter',
+          max_users: plan === 'professional' ? 50 : 10,
+          admin_email: email,
+          admin_password: pw,
+          admin_first_name: firstName,
+          admin_last_name: lastName,
+        });
+        showToast('Organisatie "' + company + '" aangemaakt voor ' + email + '! Wachtwoord: ' + pw, 'success');
+        loadAdminData();
+      } catch(err) {
+        showToast('Fout: ' + err.message, 'error');
+      }
+    }
+    async function deleteDemo(demoId) {
+      if (!confirm('Demo aanvraag verwijderen?')) return;
+      showToast('Demo verwijderen is nog niet beschikbaar via de API', 'error');
+    }
+
     // ── Admin Organization Actions ──
     async function adminUpdateOrg(orgId, data) {
       try {
@@ -3588,18 +3617,24 @@
           demosBody.innerHTML = data.demo_requests.map(function(d) {
             var date = new Date(d.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short', year:'numeric' });
             var phone = d.phone || '-';
+            var name = d.first_name + ' ' + d.last_name;
+            var escapedName = name.replace(/'/g, "\\'");
+            // Convert to org button (creates org + admin user from demo request)
+            var convertBtn = !d.processed ? '<button onclick="convertDemoToOrg(\'' + d.id + '\', \'' + escapedName + '\', \'' + d.company_name + '\', \'' + d.email + '\', \'' + d.plan + '\')" style="background:none;border:1px solid var(--accent);color:var(--accent);font-size:10px;padding:2px 6px;border-radius:4px;cursor:pointer;margin-right:4px;" title="Omzetten naar organisatie">&#10004;</button>' : '';
+            var deleteBtn = '<button onclick="deleteDemo(\'' + d.id + '\')" style="background:none;border:1px solid var(--border);color:var(--red);font-size:10px;padding:2px 6px;border-radius:4px;cursor:pointer;" title="Verwijderen">&#128465;</button>';
             return '<tr>' +
-              '<td>' + d.first_name + ' ' + d.last_name + '</td>' +
+              '<td>' + name + '</td>' +
               '<td>' + d.company_name + '</td>' +
-              '<td><a href="mailto:' + d.email + '" style="color:var(--accent);text-decoration:none;">' + d.email + '</a></td>' +
+              '<td><a href="mailto:' + d.email + '" style="color:var(--accent);text-decoration:none;font-size:12px;">' + d.email + '</a></td>' +
               '<td>' + (phone !== '-' ? '<a href="tel:' + phone + '" style="color:var(--accent);text-decoration:none;">' + phone + '</a>' : '-') + '</td>' +
               '<td><span class="role-badge">' + d.plan + '</span></td>' +
-              '<td><span class="status-badge ' + (d.processed ? 'active' : 'trial') + '">' + (d.processed ? t('ja') : t('nee')) + '</span></td>' +
-              '<td style="color: var(--text-dim);">' + date + '</td>' +
+              '<td><span class="status-badge ' + (d.processed ? 'active' : 'trial') + '">' + (d.processed ? 'Verwerkt' : 'Nieuw') + '</span></td>' +
+              '<td style="color: var(--text-dim);font-size:12px;">' + date + '</td>' +
+              '<td>' + convertBtn + deleteBtn + '</td>' +
               '</tr>';
           }).join('');
         } else {
-          demosBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--text-dim);">'+t('geen_demo')+'</td></tr>';
+          demosBody.innerHTML = '<tr><td colspan="8" style="text-align:center; color: var(--text-dim);">'+t('geen_demo')+'</td></tr>';
         }
       }).catch(function(err) {
         console.error('Admin data laden mislukt:', err);
