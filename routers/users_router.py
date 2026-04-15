@@ -37,10 +37,14 @@ def update_user(
     db: Session = Depends(get_db),
 ):
     """Gebruiker bijwerken (alleen admin)."""
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.organization_id == current_user.organization_id,
-    ).first()
+    # Platform owner (FieldOps org) can edit ANY user cross-org
+    if current_user.is_org_admin and current_user.organization and current_user.organization.name == "FieldOps":
+        user = db.query(User).filter(User.id == user_id).first()
+    else:
+        user = db.query(User).filter(
+            User.id == user_id,
+            User.organization_id == current_user.organization_id,
+        ).first()
     if not user:
         raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
 
@@ -65,10 +69,14 @@ def deactivate_user(
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Je kunt jezelf niet deactiveren")
 
-    user = db.query(User).filter(
-        User.id == user_id,
-        User.organization_id == current_user.organization_id,
-    ).first()
+    # Platform owner can deactivate ANY user
+    if current_user.is_org_admin and current_user.organization and current_user.organization.name == "FieldOps":
+        user = db.query(User).filter(User.id == user_id).first()
+    else:
+        user = db.query(User).filter(
+            User.id == user_id,
+            User.organization_id == current_user.organization_id,
+        ).first()
     if not user:
         raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
 
