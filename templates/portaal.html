@@ -1338,13 +1338,13 @@
           <h1>Gebruikers</h1>
           <p>Beheer de gebruikers van je organisatie.</p>
         </div>
-        <button class="btn-primary" onclick="openInviteModal()">+ Gebruiker uitnodigen</button>
+        <button class="btn-primary" id="inviteUserBtn" onclick="openInviteModal()" style="display:none;">+ Gebruiker uitnodigen</button>
       </div>
 
-      <!-- Tabs -->
+      <!-- Tabs (uitnodigingen alleen voor admins) -->
       <div style="display:flex;gap:4px;margin-bottom:20px;">
-        <button class="btn-secondary" id="tabUsers" onclick="switchUserTab('users')" style="background:rgba(0,212,255,0.08);color:var(--accent);border-color:var(--accent);">Gebruikers</button>
-        <button class="btn-secondary" id="tabInvites" onclick="switchUserTab('invites')">Uitnodigingen</button>
+        <button class="btn-secondary" id="tabUsers" onclick="switchUserTab('users')" style="background:rgba(0,212,255,0.08);color:var(--accent);border-color:var(--accent);">Teamleden</button>
+        <button class="btn-secondary" id="tabInvites" onclick="switchUserTab('invites')" style="display:none;">Uitnodigingen</button>
       </div>
 
       <!-- Users tab -->
@@ -3314,9 +3314,14 @@
         document.getElementById('settStatus').innerHTML = '<span class="status-badge ' + stats.status + '">' + stats.status + '</span>';
         document.getElementById('settUsers').textContent = (stats.active_users || 0) + ' / ' + (stats.max_users || 10);
 
-        // Show admin section for org admin
+        // Show admin section + invite buttons for org admin
         if (currentUser && currentUser.is_org_admin) {
           document.getElementById('adminSection').style.display = 'block';
+          // Show invite button and invitations tab for admins
+          var invBtn = document.getElementById('inviteUserBtn');
+          var tabInv = document.getElementById('tabInvites');
+          if (invBtn) invBtn.style.display = '';
+          if (tabInv) tabInv.style.display = '';
         }
       }).catch(function(err) {
         console.error('Data laden mislukt:', err);
