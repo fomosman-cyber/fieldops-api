@@ -3490,7 +3490,11 @@
     }
     async function deleteDemo(demoId) {
       if (!confirm('Demo aanvraag verwijderen?')) return;
-      showToast('Demo verwijderen is nog niet beschikbaar via de API', 'error');
+      try {
+        await api('DELETE', '/api/admin/demo/' + demoId);
+        showToast('Demo aanvraag verwijderd');
+        loadAdminData();
+      } catch(err) { showToast('Fout: ' + err.message, 'error'); }
     }
 
     // ── Admin Organization Actions ──

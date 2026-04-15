@@ -212,12 +212,16 @@ def delete_organization(
     if org.name == "FieldOps":
         raise HTTPException(status_code=400, detail="Kan de platform organisatie niet verwijderen")
 
-    # Verwijder alle data van deze organisatie
+    # Verwijder ALLE data van deze organisatie (alle tabellen met organization_id)
+    from models import Invitation
     try:
-        from models import Invitation
         db.query(Invitation).filter(Invitation.organization_id == org_id).delete()
     except Exception:
-        pass  # Invitation table might not exist
+        pass
+    try:
+        db.query(DemoRequest).filter(DemoRequest.organization_id == org_id).delete()
+    except Exception:
+        pass
     projects = db.query(Project).filter(Project.organization_id == org_id).all()
     for p in projects:
         db.query(Melding).filter(Melding.project_id == p.id).delete()
@@ -226,3 +230,18 @@ def delete_organization(
     db.delete(org)
     db.commit()
     return {"success": True, "message": f"Organisatie '{org.name}' en alle data verwijderd"}
+
+
+@router.delete("/demo/{demo_id}")
+def delete_demo_request(
+    demo_id: str,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Demo aanvraag verwijderen (alleen platform eigenaar)."""
+    demo = db.query(DemoRequest).filter(DemoRequest.id == demo_id).first()
+    if not demo:
+        raise HTTPException(status_code=404, detail="Demo aanvraag niet gevonden")
+    db.delete(demo)
+    db.commit()
+    return {"success": True, "message": "Demo aanvraag verwijderd"}
