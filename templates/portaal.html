@@ -1472,10 +1472,10 @@
         <div class="card-header"><h3>Demo Aanvragen</h3></div>
         <table class="data-table">
           <thead>
-            <tr><th>Naam</th><th>Bedrijf</th><th>E-mail</th><th>Plan</th><th>Verwerkt</th><th>Datum</th></tr>
+            <tr><th>Naam</th><th>Bedrijf</th><th>E-mail</th><th>Telefoon</th><th>Plan</th><th>Verwerkt</th><th>Datum</th></tr>
           </thead>
           <tbody id="adminDemosBody">
-            <tr><td colspan="6" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
+            <tr><td colspan="7" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
           </tbody>
         </table>
       </div>
@@ -1536,9 +1536,10 @@
         </div>
         <div class="form-group">
           <label>Abonnement</label>
-          <select id="orgPlan">
-            <option value="starter">Starter — 10 gebruikers</option>
-            <option value="professional" selected>Professional — 999 gebruikers</option>
+          <select id="orgPlan" onchange="var mu=document.getElementById('orgMaxUsers'); if(this.value==='starter'){mu.value=10;}else if(this.value==='professional'){mu.value=50;}else{mu.value=999;}">
+            <option value="starter">Starter — max 10 gebruikers</option>
+            <option value="professional" selected>Pro — max 50 gebruikers</option>
+            <option value="enterprise">Op maat — onbeperkt</option>
           </select>
         </div>
         <div class="form-group">
@@ -3535,7 +3536,8 @@
             var escapedName = o.name.replace(/'/g, "\\'");
             var planSelect = '<select onchange="adminUpdateOrg(\'' + o.id + '\', {plan: this.value})" style="padding:2px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;cursor:pointer;">' +
               '<option value="starter"' + (o.plan === 'starter' ? ' selected' : '') + '>Starter</option>' +
-              '<option value="professional"' + (o.plan === 'professional' ? ' selected' : '') + '>Professional</option></select>';
+              '<option value="professional"' + (o.plan === 'professional' ? ' selected' : '') + '>Pro</option>' +
+              '<option value="enterprise"' + (o.plan === 'enterprise' ? ' selected' : '') + '>Op maat</option></select>';
             var usersBtn = '<button onclick="adminChangeMaxUsers(\'' + o.id + '\', ' + (o.max_users||10) + ')" style="background:none;border:1px solid var(--border);font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;">' + (o.user_count||0) + ' / ' + (o.max_users||10) + '</button>';
             var deleteBtn = o.name === 'FieldOps' ? '' : '<button onclick="adminDeleteOrg(\'' + o.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);color:var(--red);font-size:11px;padding:2px 6px;border-radius:4px;cursor:pointer;" title="Verwijderen">&#128465;</button>';
             return '<tr>' +
@@ -3585,17 +3587,19 @@
         if (data.demo_requests && data.demo_requests.length > 0) {
           demosBody.innerHTML = data.demo_requests.map(function(d) {
             var date = new Date(d.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short', year:'numeric' });
+            var phone = d.phone || '-';
             return '<tr>' +
               '<td>' + d.first_name + ' ' + d.last_name + '</td>' +
               '<td>' + d.company_name + '</td>' +
-              '<td>' + d.email + '</td>' +
+              '<td><a href="mailto:' + d.email + '" style="color:var(--accent);text-decoration:none;">' + d.email + '</a></td>' +
+              '<td>' + (phone !== '-' ? '<a href="tel:' + phone + '" style="color:var(--accent);text-decoration:none;">' + phone + '</a>' : '-') + '</td>' +
               '<td><span class="role-badge">' + d.plan + '</span></td>' +
               '<td><span class="status-badge ' + (d.processed ? 'active' : 'trial') + '">' + (d.processed ? t('ja') : t('nee')) + '</span></td>' +
               '<td style="color: var(--text-dim);">' + date + '</td>' +
               '</tr>';
           }).join('');
         } else {
-          demosBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-dim);">'+t('geen_demo')+'</td></tr>';
+          demosBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--text-dim);">'+t('geen_demo')+'</td></tr>';
         }
       }).catch(function(err) {
         console.error('Admin data laden mislukt:', err);
