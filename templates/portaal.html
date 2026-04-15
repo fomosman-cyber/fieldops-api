@@ -1721,7 +1721,7 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0;">
         <div class="form-group">
           <label>Categorie</label>
-          <select id="detailCategory" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text);background:#fff;"></select>
+          <select id="detailCategory" onchange="saveMeldingCategory()" style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text);background:#fff;"></select>
         </div>
         <div class="form-group">
           <label>Project</label>
@@ -4695,11 +4695,29 @@
       document.getElementById('detailStatus').value = m.status || 'open';
       document.getElementById('detailPriority').value = m.priority || 'normaal';
       document.getElementById('detailDesc').textContent = m.description || '-';
-      document.getElementById('detailCategory').textContent = m.category || '-';
-      var projName = '-';
+      // Fill category dropdown with project categories
+      var catSelect = document.getElementById('detailCategory');
+      catSelect.innerHTML = '';
+      var projectCats = [];
       if (m.project_id) {
         var pr = allProjects.find(function(p){return p.id===m.project_id;});
-        if (pr) projName = pr.name;
+        if (pr && pr.categories) projectCats = pr.categories;
+      }
+      // Add current category if not in list
+      if (m.category && projectCats.indexOf(m.category) === -1) {
+        projectCats.unshift(m.category);
+      }
+      if (projectCats.length === 0) projectCats = ['Wegdek','Kunstwerk','Watergang','Kering','Riolering','Grondwerk','Verkeer','Groen','Overig'];
+      projectCats.forEach(function(c) {
+        var opt = document.createElement('option');
+        opt.value = c; opt.textContent = c;
+        if (c === m.category) opt.selected = true;
+        catSelect.appendChild(opt);
+      });
+      var projName = '-';
+      if (m.project_id) {
+        var pr2 = allProjects.find(function(p){return p.id===m.project_id;});
+        if (pr2) projName = pr2.name;
       }
       document.getElementById('detailProject').textContent = projName;
       // Photo before
@@ -4798,6 +4816,15 @@
       var priority = document.getElementById('detailPriority').value;
       api('PUT', '/api/meldingen/' + currentDetailMeldingId, { priority: priority }).then(function() {
         showToast(t('prioriteit_bijgewerkt'));
+        loadMeldingen();
+      }).catch(function(err) { showToast(t('fout_laden') + ': ' + err.message, 'error'); });
+    }
+
+    function saveMeldingCategory() {
+      if (!currentDetailMeldingId) return;
+      var category = document.getElementById('detailCategory').value;
+      api('PUT', '/api/meldingen/' + currentDetailMeldingId, { category: category }).then(function() {
+        showToast('Categorie bijgewerkt');
         loadMeldingen();
       }).catch(function(err) { showToast(t('fout_laden') + ': ' + err.message, 'error'); });
     }
