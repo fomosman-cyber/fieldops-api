@@ -213,6 +213,11 @@ def delete_organization(
         raise HTTPException(status_code=400, detail="Kan de platform organisatie niet verwijderen")
 
     # Verwijder alle data van deze organisatie
+    try:
+        from models import Invitation
+        db.query(Invitation).filter(Invitation.organization_id == org_id).delete()
+    except Exception:
+        pass  # Invitation table might not exist
     projects = db.query(Project).filter(Project.organization_id == org_id).all()
     for p in projects:
         db.query(Melding).filter(Melding.project_id == p.id).delete()
