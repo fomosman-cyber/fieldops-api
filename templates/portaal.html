@@ -1460,10 +1460,10 @@
         <div class="card-header"><h3>Alle Gebruikers</h3></div>
         <table class="data-table">
           <thead>
-            <tr><th>Naam</th><th>E-mail</th><th>Organisatie</th><th>Rol</th><th>Actief</th></tr>
+            <tr><th>Naam</th><th>E-mail</th><th>Organisatie</th><th>Rol</th><th>Status</th><th>Acties</th></tr>
           </thead>
           <tbody id="adminUsersBody">
-            <tr><td colspan="5" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
+            <tr><td colspan="6" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
           </tbody>
         </table>
       </div>
@@ -3463,6 +3463,38 @@
     }
 
     // ── Admin Data (eigenaar) ──
+    // ── Admin User Actions (platform owner only) ──
+    async function adminChangeRole(userId, newRole, orgName) {
+      try {
+        await api('PUT', '/api/users/' + userId, { role: newRole });
+        showToast('Rol gewijzigd naar ' + newRole + ' (' + orgName + ')');
+        loadAdminData();
+      } catch(err) { showToast('Fout: ' + err.message, 'error'); }
+    }
+    async function adminToggleStatus(userId, newStatus) {
+      try {
+        await api('PUT', '/api/users/' + userId, { is_active: newStatus });
+        showToast('Status gewijzigd');
+        loadAdminData();
+      } catch(err) { showToast('Fout: ' + err.message, 'error'); }
+    }
+    async function adminResetPw(userId, userName) {
+      var pw = prompt('Nieuw wachtwoord voor ' + userName + ':', 'Fieldops1@');
+      if (!pw) return;
+      try {
+        await api('PUT', '/api/users/' + userId, { password: pw });
+        showToast('Wachtwoord gereset voor ' + userName);
+      } catch(err) { showToast('Fout: ' + err.message, 'error'); }
+    }
+    async function adminDeleteUser(userId, userName) {
+      if (!confirm('Weet je zeker dat je ' + userName + ' wilt verwijderen?')) return;
+      try {
+        await api('DELETE', '/api/users/' + userId);
+        showToast(userName + ' verwijderd');
+        loadAdminData();
+      } catch(err) { showToast('Fout: ' + err.message, 'error'); }
+    }
+
     function loadAdminData() {
       api('GET', '/api/admin/overview').then(function(data) {
         if (!data) return;
@@ -3489,21 +3521,33 @@
           orgsBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-dim);">'+t('geen_organisaties')+'</td></tr>';
         }
 
-        // Users table
+        // Users table with admin actions
         var usersBody = document.getElementById('adminUsersBody');
         if (data.all_users && data.all_users.length > 0) {
           usersBody.innerHTML = data.all_users.map(function(u) {
             var name = (u.first_name || '') + ' ' + (u.last_name || '');
+            var escapedName = name.trim().replace(/'/g, "\\'");
+            // Role dropdown
+            var roleSelect = '<select onchange="adminChangeRole(\'' + u.id + '\', this.value, \'' + (u.org_name||'') + '\')" style="padding:2px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;color:var(--accent);background:rgba(2,132,199,0.05);cursor:pointer;">';
+            var roles = [['viewer','Opdrachtgever'],['inspector','Toezichthouder'],['technician','Technicus'],['contractor','Aannemer'],['manager','Projectleider'],['admin','Beheerder']];
+            roles.forEach(function(r) { roleSelect += '<option value="' + r[0] + '"' + (u.role === r[0] ? ' selected' : '') + '>' + r[1] + '</option>'; });
+            roleSelect += '</select>';
+            // Status toggle
+            var statusBtn = '<button onclick="adminToggleStatus(\'' + u.id + '\', ' + !u.is_active + ')" style="background:none;border:1px solid var(--border);color:' + (u.is_active ? 'var(--green)' : 'var(--red)') + ';font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;">' + (u.is_active ? 'Actief' : 'Inactief') + '</button>';
+            // Password + delete buttons
+            var actionBtns = '<button onclick="adminResetPw(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);font-size:11px;padding:2px 6px;border-radius:4px;cursor:pointer;margin:0 2px;" title="Wachtwoord">&#128273;</button>';
+            actionBtns += '<button onclick="adminDeleteUser(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);color:var(--red);font-size:11px;padding:2px 6px;border-radius:4px;cursor:pointer;" title="Verwijderen">&#128465;</button>';
             return '<tr>' +
               '<td><strong>' + name.trim() + '</strong></td>' +
-              '<td>' + u.email + '</td>' +
-              '<td>' + (u.org_name || '-') + '</td>' +
-              '<td><span class="role-badge">' + u.role + '</span></td>' +
-              '<td><span class="status-badge ' + (u.is_active ? 'active' : 'inactive') + '">' + (u.is_active ? t('actief') : t('inactief')) + '</span></td>' +
+              '<td style="font-size:12px;">' + u.email + '</td>' +
+              '<td style="font-size:12px;">' + (u.org_name || '-') + '</td>' +
+              '<td>' + roleSelect + '</td>' +
+              '<td>' + statusBtn + '</td>' +
+              '<td>' + actionBtns + '</td>' +
               '</tr>';
           }).join('');
         } else {
-          usersBody.innerHTML = '<tr><td colspan="5" style="text-align:center; color: var(--text-dim);">'+t('geen_gebruikers')+'</td></tr>';
+          usersBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-dim);">'+t('geen_gebruikers')+'</td></tr>';
         }
 
         // Demo requests table
