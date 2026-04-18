@@ -138,6 +138,7 @@ class DemoRequest(Base):
     phone = Column(String(50), nullable=True)
     plan = Column(SQLEnum(SubscriptionPlan), default=SubscriptionPlan.STARTER)
     num_users = Column(Integer, default=10)
+    status = Column(String(20), default="pending")  # pending, approved
     processed = Column(Boolean, default=False)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

@@ -71,9 +71,12 @@ def admin_overview(
             "last_name": d.last_name,
             "company_name": d.company_name,
             "email": d.email,
+            "phone": d.phone or "",
             "plan": d.plan.value if d.plan else None,
             "num_users": d.num_users,
+            "status": d.status or ("approved" if d.processed else "pending"),
             "processed": d.processed,
+            "organization_id": d.organization_id,
             "created_at": d.created_at.isoformat() if d.created_at else None,
         })
 
@@ -245,3 +248,75 @@ def delete_demo_request(
     db.delete(demo)
     db.commit()
     return {"success": True, "message": "Demo aanvraag verwijderd"}
+
+
+# Standaard wachtwoord voor goedgekeurde demo accounts
+DEMO_STANDARD_PASSWORD = "Fieldops1@"
+
+
+@router.post("/demo/{demo_id}/approve")
+def approve_demo_request(
+    demo_id: str,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Demo aanvraag goedkeuren: maakt organisatie + admin account aan met standaard wachtwoord.
+
+    Verstuurt welkomstmail met inloggegevens + mededeling dat iemand contact opneemt.
+    """
+    demo = db.query(DemoRequest).filter(DemoRequest.id == demo_id).first()
+    if not demo:
+        raise HTTPException(status_code=404, detail="Demo aanvraag niet gevonden")
+    if demo.status == "approved" or demo.processed:
+        raise HTTPException(status_code=400, detail="Deze demo aanvraag is al goedgekeurd")
+
+    # Check of email intussen al een account heeft
+    existing_user = db.query(User).filter(User.email == demo.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail=f"Er bestaat al een account met {demo.email}")
+
+    # Maak organisatie aan (ACTIVE, plan volgens demo)
+    org = Organization(
+        name=demo.company_name,
+        plan=demo.plan or SubscriptionPlan.STARTER,
+        status=AccountStatus.ACTIVE,
+        max_users=demo.num_users or 10,
+    )
+    db.add(org)
+    db.flush()
+
+    # Maak admin gebruiker aan met standaard wachtwoord
+    admin_user = User(
+        email=demo.email,
+        hashed_password=hash_password(DEMO_STANDARD_PASSWORD),
+        first_name=demo.first_name,
+        last_name=demo.last_name,
+        phone=demo.phone or "",
+        role="admin",
+        is_org_admin=True,
+        organization_id=org.id,
+    )
+    db.add(admin_user)
+
+    # Update demo status
+    demo.status = "approved"
+    demo.processed = True
+    demo.organization_id = org.id
+
+    db.commit()
+    db.refresh(org)
+    db.refresh(admin_user)
+
+    # Verstuur welkomstmail met wachtwoord + "iemand neemt contact op" tekst
+    try:
+        from email_service import send_demo_welcome
+        send_demo_welcome(admin_user, DEMO_STANDARD_PASSWORD, org)
+    except Exception as e:
+        print(f"[ADMIN] Welcome email error: {e}")
+
+    return {
+        "success": True,
+        "message": f"Demo goedgekeurd. Welkomstmail verstuurd naar {demo.email}",
+        "organization_id": org.id,
+        "user_id": admin_user.id,
+    }

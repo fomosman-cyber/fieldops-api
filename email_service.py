@@ -183,3 +183,136 @@ Inloggen op FieldOps</a>
 </p>"""
 
     return send_email(to_email, f"Welkom bij FieldOps - {org_name}", _base_template(content, "Welkom"))
+
+
+# --- Demo aanvraag emails ---
+
+ADMIN_NOTIFICATION_EMAIL = os.getenv("ADMIN_NOTIFICATION_EMAIL", "info@fieldopsapp.nl")
+
+
+def send_demo_admin_notification(demo) -> bool:
+    """Notificatie naar admin (info@fieldopsapp.nl) bij nieuwe demo aanvraag."""
+    plan_label = (demo.plan.value if demo.plan else "starter").title()
+    phone_display = demo.phone or "(niet opgegeven)"
+
+    content = f"""
+<h2 style="color:#1e293b;font-size:22px;margin:0 0 8px;">Nieuwe demo aanvraag</h2>
+<p style="color:#64748b;font-size:15px;line-height:1.6;margin:0 0 24px;">
+Er is een nieuwe demo aanvraag binnengekomen via <strong>fieldopsapp.nl</strong>. Log in op het portaal om goed te keuren.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:12px;margin-bottom:24px;">
+<tr><td style="padding:20px 24px;">
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">NAAM</span><br>
+<span style="color:#1e293b;font-size:14px;font-weight:500;">{demo.first_name} {demo.last_name}</span></td></tr>
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">BEDRIJF</span><br>
+<span style="color:#1e293b;font-size:14px;font-weight:500;">{demo.company_name}</span></td></tr>
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">E-MAIL</span><br>
+<a href="mailto:{demo.email}" style="color:#0284c7;font-size:14px;font-weight:500;">{demo.email}</a></td></tr>
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">TELEFOON</span><br>
+<span style="color:#1e293b;font-size:14px;font-weight:500;">{phone_display}</span></td></tr>
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">GEWENST PLAN</span><br>
+<span style="color:#1e293b;font-size:14px;font-weight:500;">{plan_label}</span></td></tr>
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">AANTAL GEBRUIKERS</span><br>
+<span style="color:#1e293b;font-size:14px;font-weight:500;">{demo.num_users}</span></td></tr>
+</table>
+</td></tr></table>
+
+<table cellpadding="0" cellspacing="0" style="margin:0 auto 24px;">
+<tr><td style="background:linear-gradient(135deg,#0284c7,#0369a1);border-radius:12px;padding:14px 36px;">
+<a href="{PORTAAL_URL}/portaal" style="color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;display:inline-block;">
+Openen in portaal</a>
+</td></tr></table>
+
+<p style="color:#94a3b8;font-size:13px;margin:0;">
+Neem contact op met de aanvrager voor een kennismaking of keur direct goed via het admin overzicht.
+</p>"""
+
+    return send_email(
+        ADMIN_NOTIFICATION_EMAIL,
+        f"Nieuwe demo aanvraag: {demo.company_name}",
+        _base_template(content, "Nieuwe demo aanvraag"),
+    )
+
+
+def send_demo_confirmation(demo) -> bool:
+    """Bevestigingsmail naar aanvrager na indienen demo aanvraag."""
+    content = f"""
+<h2 style="color:#1e293b;font-size:22px;margin:0 0 8px;">Bedankt voor uw aanvraag, {demo.first_name}!</h2>
+<p style="color:#64748b;font-size:15px;line-height:1.6;margin:0 0 24px;">
+We hebben uw demo aanvraag voor <strong>{demo.company_name}</strong> ontvangen. Iemand van het FieldOps team neemt binnen <strong>1 werkdag</strong> persoonlijk contact met u op voor een kennismaking.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:12px;margin-bottom:24px;">
+<tr><td style="padding:20px 24px;">
+<p style="color:#1e293b;font-size:14px;font-weight:600;margin:0 0 12px;">Wat gebeurt er nu?</p>
+<p style="color:#64748b;font-size:13px;line-height:1.8;margin:0;">
+1. &nbsp;We bespreken kort uw situatie en wensen<br>
+2. &nbsp;Uw demo account wordt geactiveerd<br>
+3. &nbsp;U ontvangt een welkomstmail met inloggegevens<br>
+4. &nbsp;U kunt FieldOps 7 dagen gratis uitproberen
+</p>
+</td></tr></table>
+
+<p style="color:#64748b;font-size:13px;line-height:1.6;margin:0;">
+Heeft u in de tussentijd vragen? Stuur een mail naar <a href="mailto:info@fieldopsapp.nl" style="color:#0284c7;">info@fieldopsapp.nl</a>.
+</p>
+
+<p style="color:#94a3b8;font-size:13px;margin:20px 0 0;">
+Met vriendelijke groet,<br>
+<strong style="color:#1e293b;">Faris Osman</strong><br>
+FieldOps
+</p>"""
+
+    return send_email(
+        demo.email,
+        "Uw demo aanvraag is ontvangen - FieldOps",
+        _base_template(content, "Demo aanvraag ontvangen"),
+    )
+
+
+def send_demo_welcome(user, password: str, org) -> bool:
+    """Welkomstmail na goedkeuring demo: inloggegevens + contact tekst."""
+    login_url = FRONTEND_URL
+    user_name = f"{user.first_name} {user.last_name}".strip() or "daar"
+
+    content = f"""
+<h2 style="color:#1e293b;font-size:22px;margin:0 0 8px;">Welkom bij FieldOps, {user.first_name}!</h2>
+<p style="color:#64748b;font-size:15px;line-height:1.6;margin:0 0 24px;">
+Uw demo aanvraag voor <strong>{org.name}</strong> is goedgekeurd. Hieronder vindt u uw inloggegevens. Iemand van FieldOps neemt binnen 1 werkdag persoonlijk contact met u op voor een korte kennismaking en uitleg.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:12px;margin-bottom:24px;">
+<tr><td style="padding:20px 24px;">
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">APP</span><br>
+<a href="{login_url}" style="color:#0284c7;font-size:14px;font-weight:500;">app.fieldopsapp.nl</a></td></tr>
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">E-MAILADRES</span><br>
+<span style="color:#1e293b;font-size:14px;font-weight:500;">{user.email}</span></td></tr>
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">WACHTWOORD</span><br>
+<span style="color:#0284c7;font-size:14px;font-weight:600;font-family:monospace;">{password}</span></td></tr>
+</table>
+</td></tr></table>
+
+<table cellpadding="0" cellspacing="0" style="margin:0 auto 24px;">
+<tr><td style="background:linear-gradient(135deg,#0284c7,#0369a1);border-radius:12px;padding:14px 36px;">
+<a href="{login_url}" style="color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;display:inline-block;">
+Inloggen op FieldOps</a>
+</td></tr></table>
+
+<p style="color:#64748b;font-size:13px;line-height:1.6;margin:0 0 20px;">
+<strong>Tip:</strong> Wijzig uw wachtwoord na het eerste inloggen via Instellingen.
+</p>
+
+<p style="color:#94a3b8;font-size:13px;margin:0;">
+Met vriendelijke groet,<br>
+<strong style="color:#1e293b;">Faris Osman</strong><br>
+FieldOps
+</p>"""
+
+    return send_email(
+        user.email,
+        f"Welkom bij FieldOps - uw account is klaar",
+        _base_template(content, "Account geactiveerd"),
+    )
