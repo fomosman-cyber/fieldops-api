@@ -17,6 +17,32 @@ from routers import auth_router, demo_router, users_router, org_router, shopify_
 Base.metadata.create_all(bind=engine)
 
 
+def _run_migrations():
+    """Eenvoudige idempotente migraties voor nieuwe kolommen.
+
+    SQLAlchemy create_all() maakt geen nieuwe kolommen aan op bestaande tabellen,
+    dus we checken hier kolommen die later zijn toegevoegd.
+    """
+    from sqlalchemy import inspect, text
+    try:
+        insp = inspect(engine)
+        # demo_requests.status (toegevoegd na initiele release)
+        if "demo_requests" in insp.get_table_names():
+            cols = [c["name"] for c in insp.get_columns("demo_requests")]
+            if "status" not in cols:
+                print("[migration] demo_requests.status kolom toevoegen...")
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE demo_requests ADD COLUMN status VARCHAR(20) DEFAULT 'pending'"))
+                    # Mark bestaande verwerkte rijen als 'approved'
+                    conn.execute(text("UPDATE demo_requests SET status = 'approved' WHERE processed = true"))
+                print("[migration] demo_requests.status toegevoegd.")
+    except Exception as e:
+        print(f"[migration] Waarschuwing: {e}")
+
+
+_run_migrations()
+
+
 async def keep_alive_ping():
     """Ping zichzelf elke 10 minuten om Render wake te houden."""
     url = os.environ.get("RENDER_EXTERNAL_URL", "")

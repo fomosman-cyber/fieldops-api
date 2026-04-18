@@ -61,22 +61,23 @@ def admin_overview(
             "last_login": u.last_login.isoformat() if u.last_login else None,
         })
 
-    # Demo aanvragen
+    # Demo aanvragen - defensief gebruik van getattr voor velden die later zijn toegevoegd
     demos = db.query(DemoRequest).order_by(DemoRequest.created_at.desc()).all()
     demos_data = []
     for d in demos:
+        status_val = getattr(d, "status", None) or ("approved" if d.processed else "pending")
         demos_data.append({
             "id": d.id,
             "first_name": d.first_name,
             "last_name": d.last_name,
             "company_name": d.company_name,
             "email": d.email,
-            "phone": d.phone or "",
+            "phone": getattr(d, "phone", None) or "",
             "plan": d.plan.value if d.plan else None,
             "num_users": d.num_users,
-            "status": d.status or ("approved" if d.processed else "pending"),
+            "status": status_val,
             "processed": d.processed,
-            "organization_id": d.organization_id,
+            "organization_id": getattr(d, "organization_id", None),
             "created_at": d.created_at.isoformat() if d.created_at else None,
         })
 
