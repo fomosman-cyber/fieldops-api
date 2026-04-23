@@ -49,35 +49,66 @@ Dit is een automatisch bericht van FieldOps.<br>
 </body></html>"""
 
 
+# Laatste error voor debugging via health endpoint
+_LAST_EMAIL_ERROR = {"to": None, "subject": None, "error": None, "body": None}
+
+
+def get_last_email_error():
+    """Retourneer de laatste email error (voor debug doeleinden)."""
+    return dict(_LAST_EMAIL_ERROR)
+
+
 def send_email(to_email: str, subject: str, html_content: str) -> bool:
     """Verstuur een email via Resend API. Returns True bij succes."""
+    global _LAST_EMAIL_ERROR
     if not RESEND_API_KEY:
         print(f"[EMAIL] Resend API key niet geconfigureerd - email naar {to_email} niet verstuurd")
-        print(f"[EMAIL] Subject: {subject}")
+        _LAST_EMAIL_ERROR = {"to": to_email, "subject": subject, "error": "RESEND_API_KEY not set", "body": None}
         return False
 
-    try:
-        data = json.dumps({
-            "from": FROM_EMAIL,
-            "to": [to_email],
-            "subject": subject,
-            "html": html_content,
-        }).encode("utf-8")
+    data = json.dumps({
+        "from": FROM_EMAIL,
+        "to": [to_email],
+        "subject": subject,
+        "html": html_content,
+    }).encode("utf-8")
 
-        req = urllib.request.Request(
-            "https://api.resend.com/emails",
-            data=data,
-            headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json",
-            },
-        )
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=data,
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
         resp = urllib.request.urlopen(req)
         result = json.loads(resp.read().decode())
         print(f"[EMAIL] Verstuurd naar {to_email}: {subject} (id={result.get('id', '?')})")
+        _LAST_EMAIL_ERROR = {"to": to_email, "subject": subject, "error": None, "body": None}
         return True
+    except urllib.error.HTTPError as e:
+        # Lees de response body voor details over wat er mis ging
+        try:
+            error_body = e.read().decode()
+        except Exception:
+            error_body = "(could not read body)"
+        print(f"[EMAIL] HTTP {e.code} bij {to_email}: {error_body}")
+        _LAST_EMAIL_ERROR = {
+            "to": to_email,
+            "subject": subject,
+            "error": f"HTTP {e.code} {e.reason}",
+            "body": error_body,
+        }
+        return False
     except Exception as e:
-        print(f"[EMAIL] Fout bij verzenden naar {to_email}: {e}")
+        print(f"[EMAIL] Onverwachte fout bij verzenden naar {to_email}: {type(e).__name__}: {e}")
+        _LAST_EMAIL_ERROR = {
+            "to": to_email,
+            "subject": subject,
+            "error": f"{type(e).__name__}: {e}",
+            "body": None,
+        }
         return False
 
 
