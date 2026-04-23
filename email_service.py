@@ -79,6 +79,10 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
         headers={
             "Authorization": f"Bearer {RESEND_API_KEY}",
             "Content-Type": "application/json",
+            # User-Agent nodig om Cloudflare error 1010 te voorkomen
+            # (Cloudflare blokkeert default urllib/python User-Agent)
+            "User-Agent": "FieldOps-Backend/1.0 (+https://www.fieldopsapp.nl)",
+            "Accept": "application/json",
         },
     )
     try:
