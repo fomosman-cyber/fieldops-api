@@ -51,18 +51,53 @@ def create_demo_request(request: DemoRequestCreate, db: Session = Depends(get_db
     db.commit()
     db.refresh(demo)
 
-    # Verstuur emails (best effort, errors blokkeren submit niet)
-    try:
-        from email_service import send_demo_admin_notification, send_demo_confirmation
+    # Verstuur emails (best effort, errors blokkeren submit niet) - met uitgebreide logging
+    import traceback
+    email_status = {"admin_notification": False, "confirmation": False, "errors": []}
 
-        send_demo_admin_notification(demo)
-        send_demo_confirmation(demo)
+    try:
+        from email_service import send_demo_admin_notification
+        ok = send_demo_admin_notification(demo)
+        email_status["admin_notification"] = bool(ok)
+        if not ok:
+            email_status["errors"].append("admin_notification: send_email returned False (check RESEND_API_KEY / FROM_EMAIL / domain verification)")
+        print(f"[DEMO] Admin notification sent: {ok}")
     except Exception as e:
-        print(f"[DEMO] Email error: {e}")
+        tb = traceback.format_exc()
+        email_status["errors"].append(f"admin_notification exception: {type(e).__name__}: {e}")
+        print(f"[DEMO] Admin notification error: {e}\n{tb}")
+
+    try:
+        from email_service import send_demo_confirmation
+        ok = send_demo_confirmation(demo)
+        email_status["confirmation"] = bool(ok)
+        if not ok:
+            email_status["errors"].append("confirmation: send_email returned False")
+        print(f"[DEMO] Confirmation sent: {ok}")
+    except Exception as e:
+        tb = traceback.format_exc()
+        email_status["errors"].append(f"confirmation exception: {type(e).__name__}: {e}")
+        print(f"[DEMO] Confirmation error: {e}\n{tb}")
 
     return {
         "success": True,
         "message": "Bedankt voor uw aanvraag! We nemen binnen 1 werkdag contact met u op.",
+        "email_status": email_status,  # Voor debugging: laat zien of emails verstuurd zijn
+    }
+
+
+@router.get("/email-health", response_model=dict)
+def demo_email_health():
+    """Debug endpoint: test email configuratie zonder een echte demo aan te maken."""
+    import os
+    from email_service import RESEND_API_KEY, FROM_EMAIL, ADMIN_NOTIFICATION_EMAIL, FRONTEND_URL, PORTAAL_URL
+    return {
+        "resend_api_key_set": bool(RESEND_API_KEY),
+        "resend_api_key_prefix": RESEND_API_KEY[:7] + "..." if RESEND_API_KEY else None,
+        "from_email": FROM_EMAIL,
+        "admin_notification_email": ADMIN_NOTIFICATION_EMAIL,
+        "frontend_url": FRONTEND_URL,
+        "portaal_url": PORTAAL_URL,
     }
 
 
