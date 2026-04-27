@@ -12,9 +12,15 @@ import os
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY", "fieldops-secret-key")
+SECRET_KEY = os.getenv("SECRET_KEY", "")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+
+if not SECRET_KEY or SECRET_KEY in ("fieldops-secret-key", "fieldops-secret-key-change-in-production-2024"):
+    if os.getenv("RENDER") or os.getenv("ENV") == "production":
+        raise RuntimeError("SECRET_KEY env variabele moet gezet zijn in productie")
+    SECRET_KEY = "dev-only-not-for-production"
+    print("[WARN] SECRET_KEY niet gezet — dev fallback actief")
 
 security = HTTPBearer()
 

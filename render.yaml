@@ -2,10 +2,49 @@ services:
   - type: web
     name: fieldops-api
     runtime: python
+    plan: starter
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:///./fieldops.db
+        fromDatabase:
+          name: fieldops-db
+          property: connectionString
+      - key: ENV
+        value: production
+      - key: FRONTEND_URL
+        value: https://fieldopsapp.nl
+      - key: CORS_ORIGINS
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: FROM_EMAIL
+        value: noreply@fieldopsapp.nl
+      - key: FROM_NAME
+        value: FieldOps
+      - key: SHOPIFY_STORE
+        value: fieldops-2
+      - key: SHOPIFY_API_KEY
+        sync: false
+      - key: SHOPIFY_API_SECRET
+        sync: false
+      - key: BOOTSTRAP_OWNER
+        sync: false
+      - key: OWNER_EMAIL
+        sync: false
+      - key: OWNER_PASSWORD
+        sync: false
+
+databases:
+  - name: fieldops-db
+    plan: basic-256mb
+    databaseName: fieldops
+    user: fieldops

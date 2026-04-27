@@ -61,37 +61,42 @@ async def keep_alive_ping():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: maak owner account aan als die nog niet bestaat
-    db = SessionLocal()
-    try:
-        existing = db.query(User).filter(User.email == "fomosman@gmail.com").first()
-        if not existing:
-            org = Organization(
-                name="FieldOps",
-                plan=SubscriptionPlan.PROFESSIONAL,
-                status=AccountStatus.ACTIVE,
-                max_users=999,
-                trial_ends_at=None,
-            )
-            db.add(org)
-            db.flush()
-            user = User(
-                email="fomosman@gmail.com",
-                hashed_password=hash_password("Nieuwjaar2026@"),
-                first_name="Faris",
-                last_name="Osman",
-                role=UserRole.ADMIN,
-                is_active=True,
-                is_org_admin=True,
-                organization_id=org.id,
-            )
-            db.add(user)
-            db.commit()
-            print("Owner account aangemaakt: fomosman@gmail.com")
-        else:
-            print("Owner account bestaat al")
-    finally:
-        db.close()
+    # Startup: maak owner account alleen aan als BOOTSTRAP_OWNER=true en password via env
+    bootstrap = os.environ.get("BOOTSTRAP_OWNER", "").lower() == "true"
+    owner_email = os.environ.get("OWNER_EMAIL", "fomosman@gmail.com")
+    owner_password = os.environ.get("OWNER_PASSWORD", "")
+
+    if bootstrap and owner_password:
+        db = SessionLocal()
+        try:
+            existing = db.query(User).filter(User.email == owner_email).first()
+            if not existing:
+                org = Organization(
+                    name="FieldOps",
+                    plan=SubscriptionPlan.PROFESSIONAL,
+                    status=AccountStatus.ACTIVE,
+                    max_users=999,
+                    trial_ends_at=None,
+                )
+                db.add(org)
+                db.flush()
+                user = User(
+                    email=owner_email,
+                    hashed_password=hash_password(owner_password),
+                    first_name="Faris",
+                    last_name="Osman",
+                    role=UserRole.ADMIN,
+                    is_active=True,
+                    is_org_admin=True,
+                    organization_id=org.id,
+                )
+                db.add(user)
+                db.commit()
+                print(f"Owner account aangemaakt: {owner_email}")
+            else:
+                print("Owner account bestaat al")
+        finally:
+            db.close()
 
     # Start keep-alive taak
     ping_task = asyncio.create_task(keep_alive_ping())
@@ -106,10 +111,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS - sta frontend toe
+# CORS - alleen eigen domeinen toestaan
+_default_origins = [
+    "https://fieldopsapp.nl",
+    "https://www.fieldopsapp.nl",
+    "https://app.fieldopsapp.nl",
+]
+_extra = os.environ.get("CORS_ORIGINS", "")
+allowed_origins = _default_origins + [o.strip() for o in _extra.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
