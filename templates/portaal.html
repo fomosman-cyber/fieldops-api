@@ -2,8 +2,36 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>FieldOps — Portaal</title>
+
+  <!-- ───── PWA ───── -->
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#0a0f1e">
+  <meta name="application-name" content="FieldOps">
+  <meta name="description" content="FieldOps — veldregistratie voor wegen & waterbouw">
+
+  <!-- iOS PWA -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="FieldOps">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="152x152" href="/static/icons/icon-152.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="/static/icons/icon-192.png">
+
+  <!-- iOS splash screens -->
+  <link rel="apple-touch-startup-image" href="/static/icons/splash-640x1136.png"  media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)">
+  <link rel="apple-touch-startup-image" href="/static/icons/splash-750x1334.png"  media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)">
+  <link rel="apple-touch-startup-image" href="/static/icons/splash-1170x2532.png" media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3)">
+  <link rel="apple-touch-startup-image" href="/static/icons/splash-1284x2778.png" media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3)">
+  <link rel="apple-touch-startup-image" href="/static/icons/splash-1290x2796.png" media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3)">
+
+  <!-- Favicons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/static/icons/favicon-16.png">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -5703,6 +5731,149 @@
     // ── Load initial dashboard data ──
     populateMonthSelector();
     loadDashboardStats();
+  </script>
+
+  <!-- ───── PWA: service worker + install prompt ───── -->
+  <style>
+    #pwaInstallBanner {
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      right: 16px;
+      max-width: 480px;
+      margin: 0 auto;
+      background: linear-gradient(135deg, #00d4ff, #0099cc);
+      color: #fff;
+      padding: 14px 18px;
+      border-radius: 14px;
+      box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+      display: none;
+      align-items: center;
+      gap: 12px;
+      z-index: 9999;
+      font-family: 'DM Sans', sans-serif;
+      animation: pwaSlideUp .3s ease-out;
+    }
+    #pwaInstallBanner.show { display: flex; }
+    #pwaInstallBanner .pwa-text { flex: 1; font-size: 14px; line-height: 1.4; }
+    #pwaInstallBanner .pwa-text strong { display: block; font-size: 15px; margin-bottom: 2px; }
+    #pwaInstallBanner button {
+      background: #fff;
+      color: #0099cc;
+      border: 0;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #pwaInstallBanner .pwa-close {
+      background: transparent;
+      color: rgba(255,255,255,0.8);
+      padding: 4px 8px;
+      font-size: 18px;
+    }
+    @keyframes pwaSlideUp { from { transform: translateY(120%); } to { transform: translateY(0); } }
+
+    /* iOS safe area padding voor standalone modus */
+    @supports (padding: max(0px)) {
+      body { padding-bottom: env(safe-area-inset-bottom); }
+    }
+  </style>
+
+  <div id="pwaInstallBanner" role="dialog" aria-label="App installeren">
+    <div class="pwa-text">
+      <strong>FieldOps installeren</strong>
+      <span id="pwaInstallText">Installeer als app op je startscherm</span>
+    </div>
+    <button id="pwaInstallBtn" type="button">Installeren</button>
+    <button class="pwa-close" id="pwaCloseBtn" type="button" aria-label="Sluiten">&times;</button>
+  </div>
+
+  <script>
+    (function() {
+      // ─── Register service worker ───
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+            .then(function(reg) {
+              console.log('[PWA] Service worker geregistreerd:', reg.scope);
+              // Check voor updates elke 60 min
+              setInterval(function() { reg.update(); }, 60 * 60 * 1000);
+            })
+            .catch(function(err) { console.warn('[PWA] SW fout:', err); });
+        });
+      }
+
+      // ─── Detecteer of al geïnstalleerd ───
+      var isStandalone = window.matchMedia('(display-mode: standalone)').matches
+        || window.navigator.standalone === true;
+      if (isStandalone) {
+        document.documentElement.classList.add('pwa-standalone');
+        return; // geen banner als al geïnstalleerd
+      }
+
+      var installDismissed = localStorage.getItem('pwaInstallDismissed');
+      var dismissedAt = installDismissed ? parseInt(installDismissed, 10) : 0;
+      var weekMs = 7 * 24 * 60 * 60 * 1000;
+      if (dismissedAt && (Date.now() - dismissedAt < weekMs)) return;
+
+      var banner = document.getElementById('pwaInstallBanner');
+      var btn = document.getElementById('pwaInstallBtn');
+      var closeBtn = document.getElementById('pwaCloseBtn');
+      var textEl = document.getElementById('pwaInstallText');
+      var deferredPrompt = null;
+
+      // ─── Android / desktop Chrome: beforeinstallprompt ───
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        deferredPrompt = e;
+        textEl.textContent = 'Installeer als app op je startscherm';
+        btn.style.display = '';
+        banner.classList.add('show');
+      });
+
+      btn.addEventListener('click', function() {
+        if (deferredPrompt) {
+          deferredPrompt.prompt();
+          deferredPrompt.userChoice.then(function(choice) {
+            if (choice.outcome === 'accepted') {
+              banner.classList.remove('show');
+            }
+            deferredPrompt = null;
+          });
+        } else {
+          // iOS: toon instructies
+          alert('Tik op het deel-icoon onderaan Safari, scroll en kies "Voeg toe aan beginscherm".');
+        }
+      });
+
+      closeBtn.addEventListener('click', function() {
+        banner.classList.remove('show');
+        localStorage.setItem('pwaInstallDismissed', Date.now().toString());
+      });
+
+      // ─── iOS Safari: geen beforeinstallprompt — toon eigen instructie ───
+      var ua = window.navigator.userAgent;
+      var isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+      var isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(ua);
+      if (isIOS && isSafari && !isStandalone) {
+        setTimeout(function() {
+          textEl.innerHTML = 'Tik op <span style="font-size:16px">⎙</span> en kies <strong>Voeg toe aan beginscherm</strong>';
+          btn.textContent = 'Begrepen';
+          banner.classList.add('show');
+          btn.onclick = function() {
+            banner.classList.remove('show');
+            localStorage.setItem('pwaInstallDismissed', Date.now().toString());
+          };
+        }, 3000);
+      }
+
+      window.addEventListener('appinstalled', function() {
+        console.log('[PWA] Geïnstalleerd');
+        banner.classList.remove('show');
+      });
+    })();
   </script>
 </body>
 </html>

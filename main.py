@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -139,6 +139,50 @@ app.include_router(projects_router.router)
 app.include_router(meldingen_router.router)
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
+STATIC_DIR = Path(__file__).parent / "static"
+
+# Mount static files (icons, manifest, etc.)
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    """PWA manifest — vanuit root voor maximum scope."""
+    return FileResponse(
+        STATIC_DIR / "manifest.webmanifest",
+        media_type="application/manifest+json",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+@app.get("/service-worker.js")
+def service_worker():
+    """Service worker — moet vanuit root komen voor scope '/'."""
+    return FileResponse(
+        STATIC_DIR / "service-worker.js",
+        media_type="application/javascript",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Service-Worker-Allowed": "/",
+        },
+    )
+
+
+@app.get("/apple-touch-icon.png")
+def apple_touch_icon():
+    return FileResponse(STATIC_DIR / "icons" / "apple-touch-icon.png")
+
+
+@app.get("/apple-touch-icon-precomposed.png")
+def apple_touch_icon_precomposed():
+    return FileResponse(STATIC_DIR / "icons" / "apple-touch-icon.png")
+
+
+@app.get("/favicon.ico")
+def favicon():
+    return FileResponse(STATIC_DIR / "icons" / "favicon-32.png")
+
 
 
 @app.get("/")
