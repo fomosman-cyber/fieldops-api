@@ -12,10 +12,11 @@ const RUNTIME_CACHE = `fieldops-runtime-${VERSION}`;
 
 const SHELL_URLS = [
   '/portaal',
-  '/static/manifest.webmanifest',
+  '/static/offline.html',
+  '/manifest.webmanifest',
   '/static/icons/icon-192.png',
   '/static/icons/icon-512.png',
-  '/static/icons/apple-touch-icon.png',
+  '/apple-touch-icon.png',
 ];
 
 // ───── Install: pre-cache app shell ─────
@@ -65,7 +66,9 @@ self.addEventListener('fetch', (event) => {
   // 3. App shell HTML: network-first met offline fallback
   if (req.mode === 'navigate' || url.pathname === '/portaal') {
     event.respondWith(
-      networkFirst(req, SHELL_CACHE).catch(() => caches.match('/portaal'))
+      networkFirst(req, SHELL_CACHE)
+        .catch(() => caches.match('/portaal'))
+        .then((res) => res || caches.match('/static/offline.html'))
     );
     return;
   }

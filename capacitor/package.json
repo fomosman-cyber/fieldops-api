@@ -1,0 +1,33 @@
+{
+  "name": "fieldops-mobile",
+  "version": "1.0.0",
+  "description": "FieldOps native iOS/Android wrapper (Capacitor)",
+  "private": true,
+  "scripts": {
+    "init": "npx cap init FieldOps nl.fieldopsapp.app --web-dir=www",
+    "add:ios": "npx cap add ios",
+    "add:android": "npx cap add android",
+    "sync": "npx cap sync",
+    "open:ios": "npx cap open ios",
+    "open:android": "npx cap open android",
+    "build:ios": "npx cap sync ios && npx cap open ios",
+    "build:android": "npx cap sync android && npx cap open android"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/app": "^6.0.1",
+    "@capacitor/camera": "^6.1.0",
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/geolocation": "^6.0.1",
+    "@capacitor/ios": "^6.1.2",
+    "@capacitor/network": "^6.0.2",
+    "@capacitor/preferences": "^6.0.2",
+    "@capacitor/push-notifications": "^6.0.2",
+    "@capacitor/share": "^6.0.2",
+    "@capacitor/splash-screen": "^6.0.2",
+    "@capacitor/status-bar": "^6.0.1"
+  }
+}

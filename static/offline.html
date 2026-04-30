@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<title>Offline — FieldOps</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0a0f1e">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<style>
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: linear-gradient(135deg, #0a0f1e 0%, #0f1729 100%);
+    color: #fff;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .card {
+    max-width: 420px;
+    text-align: center;
+  }
+  .logo {
+    width: 96px;
+    height: 96px;
+    margin: 0 auto 24px;
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+    border-radius: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    font-weight: 700;
+    color: #fff;
+    box-shadow: 0 12px 32px rgba(0, 212, 255, 0.3);
+  }
+  h1 { font-size: 24px; font-weight: 600; margin-bottom: 12px; }
+  p { color: rgba(255,255,255,0.7); font-size: 15px; line-height: 1.6; margin-bottom: 24px; }
+  button {
+    background: linear-gradient(135deg, #00d4ff, #0099cc);
+    color: #fff;
+    border: 0;
+    padding: 14px 28px;
+    font-size: 15px;
+    font-weight: 600;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: transform .2s;
+  }
+  button:active { transform: scale(0.97); }
+  .status {
+    margin-top: 24px;
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+  }
+  .online { color: #00e676; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">F</div>
+    <h1>Geen internetverbinding</h1>
+    <p>Je bent offline. FieldOps werkt door zodra je weer verbinding hebt — eerder geladen meldingen blijven beschikbaar.</p>
+    <button onclick="location.reload()">Opnieuw proberen</button>
+    <div class="status" id="status">Offline</div>
+  </div>
+  <script>
+    function update() {
+      var s = document.getElementById('status');
+      if (navigator.onLine) {
+        s.textContent = 'Online — laden...';
+        s.classList.add('online');
+        setTimeout(function() { location.href = '/portaal'; }, 500);
+      } else {
+        s.textContent = 'Offline';
+        s.classList.remove('online');
+      }
+    }
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    update();
+  </script>
+</body>
+</html>
