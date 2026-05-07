@@ -389,39 +389,71 @@ def _normalize_key(s: str) -> str:
     return (s or "").strip().lower().replace(" ", "_").replace("-", "_")
 
 
-def _build_column_mapping(fieldnames: list[str]) -> tuple[dict[str, str], list[str]]:
-    """Map onze interne velden → de kolomnaam in de CSV. Returnt (mapping, missing-required)."""
+def _build_column_mapping(fieldnames: list[str]) -> tuple[dict[str, list[str]], list[str]]:
+    """Map onze interne velden → ALLE matchende kolomnamen in de CSV (in alias-volgorde).
+    Per-row valt later de leesfunctie terug op de volgende alias als de primaire leeg is.
+    """
     available = {_normalize_key(c): c for c in (fieldnames or [])}
-    mapping: dict[str, str] = {}
+    mapping: dict[str, list[str]] = {}
     for internal, aliases in _CSV_ALIASES.items():
-        for a in aliases:
-            if _normalize_key(a) in available:
-                mapping[internal] = available[_normalize_key(a)]
-                break
+        cols = [available[_normalize_key(a)] for a in aliases if _normalize_key(a) in available]
+        if cols:
+            mapping[internal] = cols
     missing = [k for k in ("code", "asset_type") if k not in mapping]
     return mapping, missing
 
 
-def _get(row: dict, mapping: dict[str, str], internal: str) -> str:
-    col = mapping.get(internal)
-    if not col:
-        return ""
-    return (row.get(col) or "").strip()
+def _get(row: dict, mapping: dict[str, list[str]], internal: str) -> str:
+    """Probeer kolommen in alias-volgorde — eerste niet-lege waarde wint."""
+    cols = mapping.get(internal) or []
+    for col in cols:
+        v = (row.get(col) or "").strip()
+        if v:
+            return v
+    return ""
 
 
-def _parse_coords(row: dict, mapping: dict[str, str]) -> tuple[Optional[float], Optional[float], Optional[str]]:
-    """Probeer eerst lat/lng. Als alleen X/Y aanwezig én ze in RD-range vallen,
-    converteer naar WGS84. Returns (lat, lng, warning-or-None)."""
+# GPS-coords embedded in vrije tekst (bv. MOR+ locatie-veld):
+# Voorbeelden: "52.385° N, 4.6319° E" / "lat 52.39, lng 4.63" / "(52.385, 4.6319)"
+import re
+_GPS_TEXT_RE = re.compile(
+    r"(?P<lat>\d{1,2}[\.,]\d{3,8})\s*°?\s*N?\s*[,;\s]+\s*(?P<lng>\d{1,2}[\.,]\d{3,8})\s*°?\s*E?",
+    re.IGNORECASE,
+)
+
+
+def _parse_gps_from_text(text: str) -> tuple[Optional[float], Optional[float]]:
+    """Probeer een lat/lng-paar uit vrije tekst te halen. NL-bereik: lat 50-54, lng 3-8."""
+    if not text:
+        return None, None
+    for m in _GPS_TEXT_RE.finditer(text):
+        try:
+            lat = float(m.group("lat").replace(",", "."))
+            lng = float(m.group("lng").replace(",", "."))
+        except ValueError:
+            continue
+        # Sanity-check: NL-grenzen
+        if 50.0 <= lat <= 54.0 and 3.0 <= lng <= 8.0:
+            return lat, lng
+        # Soms staan ze omgewisseld
+        if 50.0 <= lng <= 54.0 and 3.0 <= lat <= 8.0:
+            return lng, lat
+    return None, None
+
+
+def _parse_coords(row: dict, mapping: dict[str, list[str]]) -> tuple[Optional[float], Optional[float], Optional[str]]:
+    """Probeer in volgorde:
+       1. Expliciete lat/lng kolommen
+       2. RD X/Y-conversie als de waarden in RD-range vallen
+       3. GPS-pattern in de locatie-tekst
+    """
     lat_raw = _get(row, mapping, "lat")
     lng_raw = _get(row, mapping, "lng")
     if lat_raw and lng_raw:
         try:
             lat = float(lat_raw.replace(",", "."))
             lng = float(lng_raw.replace(",", "."))
-            # Heuristiek: als beide getallen > 1000 (~RD-meters), converteer
             if abs(lat) > 1000 and abs(lng) > 1000:
-                # In RD: x = lng-kolom, y = lat-kolom (bij sommige systemen)
-                # We checken op range
                 if (_RD_X_RANGE[0] <= lng <= _RD_X_RANGE[1]
                         and _RD_Y_RANGE[0] <= lat <= _RD_Y_RANGE[1]):
                     new_lat, new_lng = _rd_to_wgs84(lng, lat)
@@ -432,7 +464,12 @@ def _parse_coords(row: dict, mapping: dict[str, str]) -> tuple[Optional[float], 
                     return new_lat, new_lng, None
             return lat, lng, None
         except ValueError:
-            return None, None, "lat/lng niet numeriek"
+            pass  # val terug op tekst-parsing
+    # Fallback: zoek GPS in locatie-tekst
+    loc_text = _get(row, mapping, "location_description")
+    lat, lng = _parse_gps_from_text(loc_text)
+    if lat is not None and lng is not None:
+        return lat, lng, None
     return None, None, None
 
 
@@ -509,7 +546,24 @@ async def import_assets_csv(
             errors.append({"row": i, "error": coord_err})
 
         name_val = _get(row, mapping, "name") or None
+
+        # Combineer locatie-velden indien beschikbaar — handig voor MOR+/gemeente-data
+        # waar straat + huisnummer + buurt + wijk in losse kolommen staan.
         loc_val = _get(row, mapping, "location_description") or None
+        if not loc_val:
+            parts = []
+            for key in ("straat", "huisnummer", "buurt", "wijk"):
+                norm = _normalize_key(key)
+                # Zoek de originele kolomnaam in de DictReader-row
+                for col in row.keys():
+                    if _normalize_key(col) == norm:
+                        v = (row.get(col) or "").strip()
+                        if v:
+                            parts.append(v)
+                        break
+            if parts:
+                loc_val = " ".join(parts[:2]) + (" · " + " ".join(parts[2:]) if len(parts) > 2 else "")
+
         proj_val = _get(row, mapping, "project_id") or None
 
         existing = db.query(Asset).filter(
