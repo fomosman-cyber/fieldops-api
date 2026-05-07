@@ -744,6 +744,10 @@
     /* ───── PAGE SECTIONS ───── */
     .page-section { display: none; flex-direction: column; flex: 1; }
     .page-section.active { display: flex; }
+    /* Integraties-tabs */
+    .int-tab { background:none;border:none;padding:10px 16px;font-size:14px;font-weight:600;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:inherit;transition:all 0.2s;}
+    .int-tab:hover { color: var(--text); }
+    .int-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
     /* ───── EMPTY STATE ───── */
     .empty-state {
@@ -1001,6 +1005,9 @@
       <nav class="sidebar-nav">
         <a data-page="admin" onclick="navigateTo('admin')">
           <span class="icon">&#128274;</span> Admin Overzicht
+        </a>
+        <a data-page="integraties" onclick="navigateTo('integraties')">
+          <span class="icon">&#128268;</span> Integraties
         </a>
       </nav>
     </div>
@@ -1649,6 +1656,201 @@
     </div>
 
     <!-- ═══ ADMIN (eigenaar) ═══ -->
+    <!-- ═══ INTEGRATIES (admin-only) ═══ -->
+    <div class="page-section" id="page-integraties">
+      <div class="page-header">
+        <div>
+          <h1>Integraties</h1>
+          <p>Webhooks, sensoren en compliance-trail in één overzicht.</p>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:24px;">
+        <button class="int-tab active" data-tab="hooks-out" onclick="switchIntegrationTab('hooks-out')">📤 Webhooks (uit)</button>
+        <button class="int-tab" data-tab="hooks-in" onclick="switchIntegrationTab('hooks-in')">📥 Sensoren (IoT in)</button>
+        <button class="int-tab" data-tab="audit" onclick="switchIntegrationTab('audit')">📜 Audit-log</button>
+      </div>
+
+      <!-- Tab 1: Outgoing webhooks -->
+      <div class="int-tab-content" id="int-tab-hooks-out">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <p style="color:var(--text-muted);font-size:13px;margin:0;">Stuur events naar Slack, Teams of een eigen endpoint. HMAC-signing voor generic-format.</p>
+          <button class="btn-primary" onclick="openWebhookModal()">+ Nieuwe webhook</button>
+        </div>
+        <div class="card" style="overflow-x:auto;padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr><th>Naam</th><th>Type</th><th>URL</th><th>Events</th><th style="text-align:center;">Status</th><th></th></tr>
+            </thead>
+            <tbody id="hooksOutBody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Laden...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 2: Incoming webhooks (IoT) -->
+      <div class="int-tab-content" id="int-tab-hooks-in" style="display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <p style="color:var(--text-muted);font-size:13px;margin:0;">Geef sensoren een unieke URL. POST'en zonder auth — token is de auth.</p>
+          <button class="btn-primary" onclick="openIncomingModal()">+ Nieuwe sensor-token</button>
+        </div>
+        <div class="card" style="overflow-x:auto;padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr><th>Naam</th><th>Default project</th><th>Default asset</th><th style="text-align:center;">Ontvangen</th><th>Laatste</th><th></th></tr>
+            </thead>
+            <tbody id="hooksInBody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Laden...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab 3: Audit-log -->
+      <div class="int-tab-content" id="int-tab-audit" style="display:none;">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;">
+          <p style="color:var(--text-muted);font-size:13px;margin:0;flex:1;min-width:300px;">Onveranderlijk logboek van alle business-mutaties. Inclusief IP, request-ID en before/after-snapshots.</p>
+          <select id="auditFilterAction" onchange="loadAuditLog(true)" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+            <option value="">Alle acties</option>
+          </select>
+          <button class="btn-secondary" onclick="loadAuditLog(true)" style="font-size:12px;padding:6px 12px;">↻ Vernieuwen</button>
+        </div>
+        <div class="card" style="overflow-x:auto;padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr><th style="width:170px;">Wanneer</th><th>Actie</th><th>Door</th><th>Object</th><th>IP</th><th></th></tr>
+            </thead>
+            <tbody id="auditBody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Laden...</td></tr></tbody>
+          </table>
+        </div>
+        <div style="text-align:center;margin-top:16px;">
+          <button class="btn-secondary" id="auditMoreBtn" onclick="loadAuditLog(false)" style="display:none;">Meer laden</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ WEBHOOK MODAL ═══════ -->
+    <div class="modal-overlay" id="webhookModal">
+      <div class="modal" style="max-width:560px;">
+        <button class="modal-close" onclick="closeWebhookModal()">&times;</button>
+        <h2>Nieuwe webhook</h2>
+        <p class="subtitle">Stuur events automatisch naar een extern systeem.</p>
+        <form onsubmit="submitWebhook(event)">
+          <div class="form-group">
+            <label>Naam *</label>
+            <input type="text" id="hookName" placeholder="bv. #calamiteiten-kanaal" required>
+          </div>
+          <div class="form-group">
+            <label>Type *</label>
+            <select id="hookFormat" onchange="onHookFormatChange()">
+              <option value="slack">Slack — incoming webhook URL</option>
+              <option value="teams">Microsoft Teams — connector URL</option>
+              <option value="generic">Generic — eigen endpoint met HMAC</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>URL *</label>
+            <input type="url" id="hookUrl" placeholder="https://hooks.slack.com/services/..." required>
+            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;" id="hookUrlHint">Plak hier je Slack incoming-webhook URL.</p>
+          </div>
+          <div class="form-group" id="hookSecretGroup" style="display:none;">
+            <label>HMAC secret</label>
+            <input type="text" id="hookSecret" placeholder="Random gegenereerd zo">
+            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Wij signeren elke request met SHA-256 in <code>X-FieldOps-Signature</code>. Je receiver verifieert met dezelfde secret.</p>
+          </div>
+          <div class="form-group">
+            <label>Events *</label>
+            <div id="hookEventsList" style="display:flex;flex-wrap:wrap;gap:6px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg-hover);min-height:60px;">
+              <span style="color:var(--text-dim);font-size:12px;">Laden...</span>
+            </div>
+            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Klik om events te (de)selecteren. Wildcard <code>*</code> matcht alles.</p>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Webhook toevoegen</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ═══════ INCOMING WEBHOOK MODAL ═══════ -->
+    <div class="modal-overlay" id="incomingModal">
+      <div class="modal" style="max-width:560px;">
+        <button class="modal-close" onclick="closeIncomingModal()">&times;</button>
+        <h2>Nieuwe sensor-token</h2>
+        <p class="subtitle">Sensoren POSTen JSON naar een unieke URL — automatisch een melding.</p>
+        <form onsubmit="submitIncoming(event)">
+          <div class="form-group">
+            <label>Naam *</label>
+            <input type="text" id="incName" placeholder="bv. Watersensor dijk-zuid" required>
+          </div>
+          <div class="form-group">
+            <label>Beschrijving</label>
+            <input type="text" id="incDesc" placeholder="Wat doet deze sensor?">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Default project</label>
+              <select id="incProject"><option value="">— Geen —</option></select>
+            </div>
+            <div class="form-group">
+              <label>Default asset</label>
+              <select id="incAsset"><option value="">— Geen —</option></select>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Default prioriteit</label>
+              <select id="incPriority">
+                <option value="laag">Laag</option>
+                <option value="normaal" selected>Normaal</option>
+                <option value="hoog">Hoog</option>
+                <option value="kritiek">Kritiek</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Default categorie</label>
+              <input type="text" id="incCategory" placeholder="bv. waterstand">
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Title-template</label>
+            <input type="text" id="incTitleTpl" placeholder="Sensor {sensor_id}: {value} {unit}" value="Sensor {sensor_id}: {value} {unit}">
+            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Velden uit de payload: <code>{sensor_id}</code>, <code>{value}</code>, <code>{unit}</code>, <code>{message}</code>.</p>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">Token aanmaken</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ═══════ TOKEN-DISPLAY MODAL (na create) ═══════ -->
+    <div class="modal-overlay" id="tokenDisplayModal">
+      <div class="modal" style="max-width:560px;">
+        <button class="modal-close" onclick="closeTokenDisplay()">&times;</button>
+        <h2>🔑 Token aangemaakt</h2>
+        <p class="subtitle">Bewaar deze URL — wij tonen 'm maar één keer (om veiligheidsredenen).</p>
+        <div class="form-group">
+          <label>Sensor-URL</label>
+          <input type="text" id="tokenDisplayUrl" readonly onclick="this.select()" style="font-family:monospace;font-size:12px;background:var(--card-bg-hover);">
+          <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Configureer je sensor om hier te POSTen. JSON-payload met <code>sensor_id</code>, <code>value</code>, <code>unit</code> wordt aangeraden.</p>
+        </div>
+        <div class="form-group">
+          <label>Voorbeeld curl</label>
+          <textarea id="tokenDisplayCurl" readonly onclick="this.select()" rows="4" style="font-family:monospace;font-size:11px;background:var(--card-bg-hover);"></textarea>
+        </div>
+        <div class="form-actions">
+          <button class="btn-primary" onclick="copyTokenUrl()">📋 Kopieer URL</button>
+          <button class="btn-secondary" onclick="closeTokenDisplay()">Sluiten</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ AUDIT-DETAIL MODAL ═══════ -->
+    <div class="modal-overlay" id="auditDetailModal">
+      <div class="modal" style="max-width:680px;">
+        <button class="modal-close" onclick="document.getElementById('auditDetailModal').classList.remove('active')">&times;</button>
+        <h2>Audit-record</h2>
+        <div id="auditDetailBody" style="font-family:monospace;font-size:12px;background:var(--card-bg-hover);padding:16px;border-radius:8px;white-space:pre-wrap;max-height:60vh;overflow-y:auto;"></div>
+      </div>
+    </div>
+
     <div class="page-section" id="page-admin">
       <div class="page-header">
         <div>
@@ -3636,6 +3838,7 @@
       if (page === 'assets') loadAssets();
       if (page === 'predictive') loadPredictive();
       if (page === 'dashboard') loadDashboardPredictiveWidget();
+      if (page === 'integraties') loadIntegrations();
     }
 
     // ── Load Users ──
@@ -5979,6 +6182,323 @@
       }).catch(function(){
         widget.style.display = 'none';
       });
+    }
+
+    // ══════════════════════════════════════
+    // ── INTEGRATIES PAGINA ──
+    // ══════════════════════════════════════
+
+    var _knownEvents = null;        // cache voor /api/webhooks/events
+    var _selectedEvents = new Set();
+    var _auditCursor = null;        // cursor voor pagination
+
+    function switchIntegrationTab(tab) {
+      document.querySelectorAll('.int-tab').forEach(function(b){
+        b.classList.toggle('active', b.dataset.tab === tab);
+      });
+      document.querySelectorAll('.int-tab-content').forEach(function(c){
+        c.style.display = (c.id === 'int-tab-' + tab) ? '' : 'none';
+      });
+      if (tab === 'hooks-out') loadWebhooksOut();
+      if (tab === 'hooks-in') loadIncomingHooks();
+      if (tab === 'audit') { loadAuditActions(); loadAuditLog(true); }
+    }
+
+    function loadIntegrations() {
+      switchIntegrationTab('hooks-out');
+    }
+
+    // ── Outgoing webhooks ──
+
+    function loadWebhooksOut() {
+      var tbody = document.getElementById('hooksOutBody');
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Laden...</td></tr>';
+      api('GET', '/api/webhooks/').then(function(items) {
+        if (!items || items.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Nog geen webhooks. Klik <strong>+ Nieuwe webhook</strong> om Slack/Teams te koppelen.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = items.map(function(h) {
+          var status = h.last_status === null
+            ? '<span style="color:var(--text-dim);">—</span>'
+            : (h.last_status >= 200 && h.last_status < 300
+                ? '<span style="background:rgba(22,163,74,.1);color:#16a34a;padding:2px 8px;border-radius:8px;font-weight:700;font-size:12px;">'+h.last_status+'</span>'
+                : '<span style="background:rgba(220,38,38,.1);color:#dc2626;padding:2px 8px;border-radius:8px;font-weight:700;font-size:12px;">'+h.last_status+'</span>');
+          var typeBadge = ({slack:'#4A154B',teams:'#5059C9',generic:'#475569'})[h.format_type] || '#475569';
+          return '<tr>'
+            + '<td style="font-weight:600;">' + escapeHtml(h.name) + (!h.enabled ? ' <span style="color:var(--text-dim);font-weight:400;">(uit)</span>' : '') + '</td>'
+            + '<td><span style="background:'+typeBadge+'20;color:'+typeBadge+';padding:2px 8px;border-radius:6px;font-size:11px;text-transform:uppercase;font-weight:700;">' + h.format_type + '</span></td>'
+            + '<td style="color:var(--text-muted);font-family:monospace;font-size:11px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(h.url) + '</td>'
+            + '<td style="color:var(--text-muted);font-size:11px;">' + (h.events||[]).join(', ') + '</td>'
+            + '<td style="text-align:center;">' + status + '</td>'
+            + '<td style="text-align:right;white-space:nowrap;">'
+            +   '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;margin-right:4px;" onclick="testWebhook(\''+h.id+'\')">Test</button>'
+            +   '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;color:#dc2626;" onclick="deleteWebhook(\''+h.id+'\')">Verwijder</button>'
+            + '</td></tr>';
+        }).join('');
+      }).catch(function(err) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#dc2626;">'+escapeHtml(err.message||'fout')+'</td></tr>';
+      });
+    }
+
+    function openWebhookModal() {
+      _selectedEvents = new Set();
+      document.getElementById('hookName').value = '';
+      document.getElementById('hookUrl').value = '';
+      document.getElementById('hookSecret').value = randomSecret();
+      document.getElementById('hookFormat').value = 'slack';
+      onHookFormatChange();
+      // Laad bekende events
+      var listEl = document.getElementById('hookEventsList');
+      if (_knownEvents) {
+        renderEventChips();
+      } else {
+        listEl.innerHTML = '<span style="color:var(--text-dim);font-size:12px;">Laden...</span>';
+        api('GET', '/api/webhooks/events').then(function(data) {
+          _knownEvents = (data.wildcards || []).concat(data.actions || []);
+          renderEventChips();
+        }).catch(function(){
+          listEl.innerHTML = '<span style="color:#dc2626;font-size:12px;">Kon events niet laden</span>';
+        });
+      }
+      document.getElementById('webhookModal').classList.add('active');
+    }
+    function closeWebhookModal() { document.getElementById('webhookModal').classList.remove('active'); }
+
+    function onHookFormatChange() {
+      var fmt = document.getElementById('hookFormat').value;
+      var hint = document.getElementById('hookUrlHint');
+      var secretGroup = document.getElementById('hookSecretGroup');
+      if (fmt === 'slack') { hint.textContent = 'Plak hier je Slack incoming-webhook URL (start met hooks.slack.com).'; secretGroup.style.display = 'none'; }
+      else if (fmt === 'teams') { hint.textContent = 'Plak hier je Teams Connector URL.'; secretGroup.style.display = 'none'; }
+      else { hint.textContent = 'POST-endpoint van je eigen systeem; ondertekend met HMAC-SHA256.'; secretGroup.style.display = ''; }
+    }
+
+    function renderEventChips() {
+      var listEl = document.getElementById('hookEventsList');
+      listEl.innerHTML = '';
+      (_knownEvents || []).forEach(function(ev) {
+        var isSel = _selectedEvents.has(ev);
+        var chip = document.createElement('button');
+        chip.type = 'button';
+        chip.textContent = ev;
+        chip.style.cssText = 'padding:4px 10px;border-radius:14px;font-size:11px;font-family:monospace;cursor:pointer;border:1px solid '+(isSel?'var(--accent)':'var(--border)')+';background:'+(isSel?'rgba(2,132,199,0.12)':'#fff')+';color:'+(isSel?'var(--accent)':'var(--text-muted)');
+        chip.onclick = function() {
+          if (_selectedEvents.has(ev)) _selectedEvents.delete(ev);
+          else _selectedEvents.add(ev);
+          renderEventChips();
+        };
+        listEl.appendChild(chip);
+      });
+    }
+
+    function randomSecret() {
+      var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+      var s = '';
+      var arr = new Uint8Array(32);
+      crypto.getRandomValues(arr);
+      arr.forEach(function(n){ s += chars[n % chars.length]; });
+      return s;
+    }
+
+    function submitWebhook(e) {
+      e.preventDefault();
+      if (_selectedEvents.size === 0) { showToast('Kies minstens één event-patroon', 'error'); return; }
+      var fmt = document.getElementById('hookFormat').value;
+      var payload = {
+        name: document.getElementById('hookName').value,
+        url: document.getElementById('hookUrl').value,
+        format_type: fmt,
+        events: Array.from(_selectedEvents),
+        secret: fmt === 'generic' ? document.getElementById('hookSecret').value : null,
+      };
+      api('POST', '/api/webhooks/', payload).then(function() {
+        showToast('Webhook aangemaakt', 'success');
+        closeWebhookModal();
+        loadWebhooksOut();
+      }).catch(function(err) { showToast(err.message, 'error'); });
+    }
+
+    function testWebhook(id) {
+      api('POST', '/api/webhooks/' + id + '/test', {}).then(function(res) {
+        if (res.succeeded) showToast('✓ Webhook werkt — status ' + res.status_code + ' in ' + res.duration_ms + 'ms', 'success');
+        else showToast('✗ Test mislukt: ' + (res.error || res.status_code), 'error');
+        loadWebhooksOut();
+      }).catch(function(err) { showToast(err.message, 'error'); });
+    }
+
+    function deleteWebhook(id) {
+      if (!confirm('Webhook permanent verwijderen?')) return;
+      api('DELETE', '/api/webhooks/' + id).then(function() {
+        showToast('Verwijderd', 'success'); loadWebhooksOut();
+      }).catch(function(err) { showToast(err.message, 'error'); });
+    }
+
+    // ── Incoming webhooks (IoT) ──
+
+    function loadIncomingHooks() {
+      var tbody = document.getElementById('hooksInBody');
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Laden...</td></tr>';
+      api('GET', '/api/incoming/').then(function(items) {
+        if (!items || items.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Nog geen sensor-tokens. Klik <strong>+ Nieuwe sensor-token</strong> om een sensor te koppelen.</td></tr>';
+          return;
+        }
+        var projMap = {}; (allProjects||[]).forEach(function(p){ projMap[p.id] = p.name || p.naam; });
+        var assetMap = {}; (allAssets||[]).forEach(function(a){ assetMap[a.id] = a.code; });
+        tbody.innerHTML = items.map(function(h) {
+          var last = h.last_received_at ? new Date(h.last_received_at).toLocaleString('nl-NL') : '—';
+          return '<tr>'
+            + '<td style="font-weight:600;">' + escapeHtml(h.name) + (!h.enabled ? ' <span style="color:var(--text-dim);font-weight:400;">(uit)</span>' : '') + '</td>'
+            + '<td style="color:var(--text-muted);">' + escapeHtml(projMap[h.default_project_id] || '—') + '</td>'
+            + '<td style="color:var(--text-muted);">' + escapeHtml(assetMap[h.default_asset_id] || '—') + '</td>'
+            + '<td style="text-align:center;font-weight:700;">' + h.received_count + '</td>'
+            + '<td style="color:var(--text-muted);font-size:12px;">' + last + '</td>'
+            + '<td style="text-align:right;white-space:nowrap;">'
+            +   '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;margin-right:4px;" onclick="rotateIncoming(\''+h.id+'\')">Rotate</button>'
+            +   '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;color:#dc2626;" onclick="deleteIncoming(\''+h.id+'\')">Verwijder</button>'
+            + '</td></tr>';
+        }).join('');
+      }).catch(function(err) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#dc2626;">'+escapeHtml(err.message||'fout')+'</td></tr>';
+      });
+    }
+
+    function openIncomingModal() {
+      ['incName','incDesc','incCategory'].forEach(function(id){ document.getElementById(id).value = ''; });
+      document.getElementById('incTitleTpl').value = 'Sensor {sensor_id}: {value} {unit}';
+      document.getElementById('incPriority').value = 'normaal';
+      // Vul project + asset
+      var pSel = document.getElementById('incProject');
+      pSel.innerHTML = '<option value="">— Geen —</option>';
+      (allProjects||[]).forEach(function(p) {
+        var o = document.createElement('option'); o.value = p.id; o.textContent = p.name || p.naam;
+        pSel.appendChild(o);
+      });
+      var aSel = document.getElementById('incAsset');
+      aSel.innerHTML = '<option value="">— Geen —</option>';
+      (allAssets||[]).forEach(function(a) {
+        var o = document.createElement('option'); o.value = a.id; o.textContent = a.code + ' (' + a.asset_type + ')';
+        aSel.appendChild(o);
+      });
+      // Als assets nog niet geladen, fetch ze
+      if (!allAssets || allAssets.length === 0) {
+        api('GET', '/api/assets/?limit=500').then(function(items) {
+          allAssets = items || [];
+          (items||[]).forEach(function(a){
+            var o = document.createElement('option'); o.value = a.id; o.textContent = a.code + ' (' + a.asset_type + ')';
+            aSel.appendChild(o);
+          });
+        }).catch(function(){});
+      }
+      document.getElementById('incomingModal').classList.add('active');
+    }
+    function closeIncomingModal() { document.getElementById('incomingModal').classList.remove('active'); }
+
+    function submitIncoming(e) {
+      e.preventDefault();
+      var payload = {
+        name: document.getElementById('incName').value,
+        description: document.getElementById('incDesc').value || null,
+        default_project_id: document.getElementById('incProject').value || null,
+        default_asset_id: document.getElementById('incAsset').value || null,
+        default_priority: document.getElementById('incPriority').value,
+        default_category: document.getElementById('incCategory').value || null,
+        title_template: document.getElementById('incTitleTpl').value || null,
+        enabled: true,
+      };
+      api('POST', '/api/incoming/', payload).then(function(h) {
+        closeIncomingModal();
+        showTokenDisplay(h.token);
+        loadIncomingHooks();
+      }).catch(function(err) { showToast(err.message, 'error'); });
+    }
+
+    function showTokenDisplay(token) {
+      var url = window.location.origin + '/api/incoming/' + token;
+      document.getElementById('tokenDisplayUrl').value = url;
+      var curl = "curl -X POST '" + url + "' \\\n  -H 'Content-Type: application/json' \\\n  -d '{\"sensor_id\":\"WS-1\",\"value\":245,\"unit\":\"cm\"}'";
+      document.getElementById('tokenDisplayCurl').value = curl;
+      document.getElementById('tokenDisplayModal').classList.add('active');
+    }
+    function closeTokenDisplay() { document.getElementById('tokenDisplayModal').classList.remove('active'); }
+    function copyTokenUrl() {
+      var inp = document.getElementById('tokenDisplayUrl');
+      inp.select(); document.execCommand('copy');
+      showToast('Gekopieerd naar klembord', 'success');
+    }
+
+    function rotateIncoming(id) {
+      if (!confirm('Token roteren? De huidige URL wordt direct ongeldig.')) return;
+      api('POST', '/api/incoming/' + id + '/rotate', {}).then(function(res) {
+        showTokenDisplay(res.token);
+      }).catch(function(err) { showToast(err.message, 'error'); });
+    }
+
+    function deleteIncoming(id) {
+      if (!confirm('Sensor-token verwijderen? Sensoren met deze URL kunnen geen data meer sturen.')) return;
+      api('DELETE', '/api/incoming/' + id).then(function() {
+        showToast('Verwijderd', 'success'); loadIncomingHooks();
+      }).catch(function(err) { showToast(err.message, 'error'); });
+    }
+
+    // ── Audit-log viewer ──
+
+    function loadAuditActions() {
+      var sel = document.getElementById('auditFilterAction');
+      if (sel.options.length > 1) return;  // al geladen
+      api('GET', '/api/audit/actions').then(function(actions) {
+        (actions || []).forEach(function(a) {
+          var o = document.createElement('option'); o.value = a; o.textContent = a;
+          sel.appendChild(o);
+        });
+      }).catch(function(){});
+    }
+
+    function loadAuditLog(reset) {
+      var tbody = document.getElementById('auditBody');
+      var moreBtn = document.getElementById('auditMoreBtn');
+      if (reset) {
+        _auditCursor = null;
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Laden...</td></tr>';
+      }
+      var qs = ['limit=50'];
+      var act = document.getElementById('auditFilterAction').value;
+      if (act) qs.push('action=' + encodeURIComponent(act));
+      if (_auditCursor) qs.push('cursor=' + encodeURIComponent(_auditCursor));
+      api('GET', '/api/audit/logs?' + qs.join('&')).then(function(res) {
+        var items = res.items || [];
+        if (reset && items.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Geen records gevonden.</td></tr>';
+          moreBtn.style.display = 'none';
+          return;
+        }
+        if (reset) tbody.innerHTML = '';
+        items.forEach(function(it) {
+          var when = new Date(it.created_at).toLocaleString('nl-NL');
+          var entity = it.entity_type ? (it.entity_type + (it.entity_id ? '/' + it.entity_id.substring(0,8) : '')) : '—';
+          var tr = document.createElement('tr');
+          tr.style.cursor = 'pointer';
+          tr.onclick = function(){ showAuditDetail(it); };
+          tr.innerHTML =
+            '<td style="font-size:12px;color:var(--text-muted);white-space:nowrap;">' + when + '</td>' +
+            '<td><code style="font-size:11px;background:var(--card-bg-hover);padding:2px 6px;border-radius:4px;">' + escapeHtml(it.action) + '</code></td>' +
+            '<td style="font-size:13px;">' + escapeHtml(it.user_email || '—') + '</td>' +
+            '<td style="font-family:monospace;font-size:11px;color:var(--text-muted);">' + escapeHtml(entity) + '</td>' +
+            '<td style="font-family:monospace;font-size:11px;color:var(--text-dim);">' + escapeHtml(it.ip_address || '—') + '</td>' +
+            '<td style="text-align:right;color:var(--text-dim);font-size:11px;">→</td>';
+          tbody.appendChild(tr);
+        });
+        _auditCursor = res.next_cursor;
+        moreBtn.style.display = _auditCursor ? '' : 'none';
+      }).catch(function(err) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:#dc2626;">'+escapeHtml(err.message||'fout')+'</td></tr>';
+      });
+    }
+
+    function showAuditDetail(item) {
+      document.getElementById('auditDetailBody').textContent = JSON.stringify(item, null, 2);
+      document.getElementById('auditDetailModal').classList.add('active');
     }
 
     // ══════════════════════════════════════

@@ -335,15 +335,118 @@ def archive_asset(
 # Bulk-import
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Aliases voor veel-gebruikte kolomnamen in NL gemeente/aannemer-CSVs.
+# Eerste match wint. Lowercase compare; ondersteunt spaties + underscores.
+_CSV_ALIASES: dict[str, list[str]] = {
+    "code":                 ["code", "objectnummer", "object_nummer", "objectid", "object_id",
+                             "nummer", "id", "externe_code", "kenmerk", "asset_id", "asset_code"],
+    "asset_type":           ["asset_type", "objecttype", "object_type", "type", "categorie",
+                             "category", "soort", "klasse", "klasse_omschrijving"],
+    "name":                 ["name", "naam", "omschrijving", "beschrijving", "description", "label"],
+    "lat":                  ["lat", "latitude", "breedte", "wgs84_lat", "y_lat"],
+    "lng":                  ["lng", "lon", "longitude", "lengte", "wgs84_lng", "wgs84_lon", "x_lng"],
+    "location_description": ["location_description", "locatie", "locatie_omschrijving",
+                             "adres", "straat", "plaats", "gemeente_locatie", "omschrijving_locatie"],
+    "parent_code":          ["parent_code", "parent", "parent_id", "hoofdobject", "hoofdcode",
+                             "ouder", "ouder_code"],
+    "project_id":           ["project_id", "project"],
+}
+
+# RD-coördinaten herkenning: X meestal 0-300.000 m, Y meestal 300.000-650.000 m
+_RD_X_RANGE = (0, 300000)
+_RD_Y_RANGE = (300000, 650000)
+
+
+def _rd_to_wgs84(x: float, y: float) -> tuple[float, float]:
+    """Pseudo-conversie RD → WGS84. Gebruikt benadering goed genoeg voor weergave;
+    gemeenten die echte precisie nodig hebben moeten zelf de juiste lat/lng meegeven."""
+    # Polynome benadering uit https://thomasv.nl/rd-naar-wgs84
+    dx = (x - 155000) * 1e-5
+    dy = (y - 463000) * 1e-5
+    lat = 52.15517440 + (3235.65389 * dy - 32.58297 * dx*dx - 0.24750 * dy*dy
+                         - 0.84978 * dx*dx*dy - 0.06550 * dy*dy*dy
+                         - 0.01709 * dx*dx*dy*dy - 0.00738 * dx
+                         + 0.00530 * dx*dx*dx*dx + 0.00033 * dx*dx*dy*dy*dy
+                         - 0.00012 * dx*dy) / 3600
+    lng = 5.38720621 + (5260.52916 * dx + 105.94684 * dx*dy + 2.45656 * dx*dy*dy
+                         + 0.81885 * dx*dx*dx + 0.05594 * dx*dy*dy*dy
+                         - 0.05607 * dx*dx*dx*dy + 0.01199 * dy
+                         + 0.00256 * dx*dx*dx*dy*dy - 0.00128 * dx*dy*dy*dy*dy
+                         + 0.00022 * dy*dy - 0.00022 * dx*dx
+                         + 0.00026 * dx*dx*dx*dx*dx) / 3600
+    return lat, lng
+
+
+def _normalize_key(s: str) -> str:
+    return (s or "").strip().lower().replace(" ", "_").replace("-", "_")
+
+
+def _build_column_mapping(fieldnames: list[str]) -> tuple[dict[str, str], list[str]]:
+    """Map onze interne velden → de kolomnaam in de CSV. Returnt (mapping, missing-required)."""
+    available = {_normalize_key(c): c for c in (fieldnames or [])}
+    mapping: dict[str, str] = {}
+    for internal, aliases in _CSV_ALIASES.items():
+        for a in aliases:
+            if _normalize_key(a) in available:
+                mapping[internal] = available[_normalize_key(a)]
+                break
+    missing = [k for k in ("code", "asset_type") if k not in mapping]
+    return mapping, missing
+
+
+def _get(row: dict, mapping: dict[str, str], internal: str) -> str:
+    col = mapping.get(internal)
+    if not col:
+        return ""
+    return (row.get(col) or "").strip()
+
+
+def _parse_coords(row: dict, mapping: dict[str, str]) -> tuple[Optional[float], Optional[float], Optional[str]]:
+    """Probeer eerst lat/lng. Als alleen X/Y aanwezig én ze in RD-range vallen,
+    converteer naar WGS84. Returns (lat, lng, warning-or-None)."""
+    lat_raw = _get(row, mapping, "lat")
+    lng_raw = _get(row, mapping, "lng")
+    if lat_raw and lng_raw:
+        try:
+            lat = float(lat_raw.replace(",", "."))
+            lng = float(lng_raw.replace(",", "."))
+            # Heuristiek: als beide getallen > 1000 (~RD-meters), converteer
+            if abs(lat) > 1000 and abs(lng) > 1000:
+                # In RD: x = lng-kolom, y = lat-kolom (bij sommige systemen)
+                # We checken op range
+                if (_RD_X_RANGE[0] <= lng <= _RD_X_RANGE[1]
+                        and _RD_Y_RANGE[0] <= lat <= _RD_Y_RANGE[1]):
+                    new_lat, new_lng = _rd_to_wgs84(lng, lat)
+                    return new_lat, new_lng, None
+                if (_RD_X_RANGE[0] <= lat <= _RD_X_RANGE[1]
+                        and _RD_Y_RANGE[0] <= lng <= _RD_Y_RANGE[1]):
+                    new_lat, new_lng = _rd_to_wgs84(lat, lng)
+                    return new_lat, new_lng, None
+            return lat, lng, None
+        except ValueError:
+            return None, None, "lat/lng niet numeriek"
+    return None, None, None
+
+
 @router.post("/import/csv")
 async def import_assets_csv(
     request: Request,
-    file: UploadFile = File(..., description="CSV met kolommen: code, asset_type, name, lat, lng, location_description, parent_code, project_id"),
+    file: UploadFile = File(..., description="CSV. Auto-detecteert kolomnamen — code/objectnummer, type/objecttype/categorie, naam/omschrijving, lat-lng of RD x/y."),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Bulk-CSV-import. Bestaande codes worden geüpdatet (idempotent),
-    nieuwe codes aangemaakt. `parent_code` wordt resolved naar `parent_asset_id`."""
+    """Bulk-CSV-import met flexibele kolomdetectie.
+
+    Auto-mapping van Nederlandse synoniemen:
+      - code ⇐ code, objectnummer, nummer, asset_id, kenmerk, ...
+      - asset_type ⇐ asset_type, objecttype, type, categorie, soort, ...
+      - name ⇐ name, naam, omschrijving, beschrijving, ...
+      - lat/lng ⇐ lat/lng, latitude/longitude, breedte/lengte, of RD x/y (auto-converted)
+      - location_description ⇐ locatie, adres, straat, ...
+      - parent_code ⇐ parent_code, parent, hoofdobject, ouder_code, ...
+
+    Bestaande codes worden geüpdatet (idempotent), nieuwe codes aangemaakt.
+    """
     if not can_manage_assets(current_user):
         raise HTTPException(status_code=403, detail="Geen rechten voor bulk-import")
 
@@ -351,17 +454,34 @@ async def import_assets_csv(
     try:
         text = raw.decode("utf-8-sig")  # BOM-tolerant
     except UnicodeDecodeError:
-        raise HTTPException(status_code=400, detail="Bestand moet UTF-8 zijn")
+        try:
+            text = raw.decode("cp1252")  # Excel/Windows fallback
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="Bestand moet UTF-8 of Windows-1252 zijn")
 
-    reader = csv.DictReader(io.StringIO(text))
-    required = {"code", "asset_type"}
-    if not required.issubset({c.strip().lower() for c in (reader.fieldnames or [])}):
-        raise HTTPException(status_code=400, detail=f"CSV mist verplichte kolommen: {required}")
+    # Probeer eerst comma, dan semicolon (Excel NL gebruikt vaak semicolon)
+    sample = text[:2048]
+    delimiter = ";" if sample.count(";") > sample.count(",") else ","
+    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+
+    mapping, missing = _build_column_mapping(reader.fieldnames or [])
+    if missing:
+        # Helpfully: tonen wat er WEL in de CSV staat + welke aliases we kennen
+        available_cols = list(reader.fieldnames or [])
+        hint_lines = []
+        for m in missing:
+            aliases = _CSV_ALIASES[m][:6]
+            hint_lines.append(f"'{m}' — verwachte kolomnaam: {', '.join(aliases)}")
+        raise HTTPException(status_code=400, detail={
+            "error": f"Verplichte kolommen niet gevonden: {missing}",
+            "csv_columns": available_cols,
+            "expected": hint_lines,
+            "tip": "Hernoem 1 kolom in je CSV of stuur ons je kolomnamen — we voegen aliases toe.",
+        })
 
     created = updated = 0
     errors: list[dict] = []
 
-    # Pass 1: maak/update assets zonder parent (parent komt in pass 2)
     code_to_id: dict[str, str] = {
         a.code: a.id for a in db.query(Asset).filter(
             Asset.organization_id == current_user.organization_id,
@@ -369,39 +489,40 @@ async def import_assets_csv(
     }
 
     rows = list(reader)
-    for i, row in enumerate(rows, start=2):  # 2 = eerste data-rij na header
-        code = (row.get("code") or "").strip()
-        asset_type = (row.get("asset_type") or "").strip()
+    for i, row in enumerate(rows, start=2):
+        code = _get(row, mapping, "code")
+        asset_type = _get(row, mapping, "asset_type")
         if not code or not asset_type:
-            errors.append({"row": i, "error": "code en asset_type zijn verplicht"})
+            errors.append({"row": i, "error": "code/asset_type ontbreken in deze rij"})
             continue
+
+        lat, lng, coord_err = _parse_coords(row, mapping)
+        if coord_err:
+            errors.append({"row": i, "error": coord_err})
+
+        name_val = _get(row, mapping, "name") or None
+        loc_val = _get(row, mapping, "location_description") or None
+        proj_val = _get(row, mapping, "project_id") or None
 
         existing = db.query(Asset).filter(
             Asset.organization_id == current_user.organization_id,
             Asset.code == code,
         ).first()
 
-        try:
-            lat = float(row["lat"]) if row.get("lat") else None
-            lng = float(row["lng"]) if row.get("lng") else None
-        except ValueError:
-            errors.append({"row": i, "error": "lat/lng moet numeriek zijn"})
-            continue
-
         if existing:
             existing.asset_type = asset_type
-            existing.name = row.get("name") or existing.name
+            existing.name = name_val or existing.name
             existing.lat = lat if lat is not None else existing.lat
             existing.lng = lng if lng is not None else existing.lng
-            existing.location_description = row.get("location_description") or existing.location_description
-            existing.project_id = row.get("project_id") or existing.project_id
+            existing.location_description = loc_val or existing.location_description
+            existing.project_id = proj_val or existing.project_id
             updated += 1
         else:
             new_asset = Asset(
-                code=code, asset_type=asset_type, name=row.get("name") or None,
+                code=code, asset_type=asset_type, name=name_val,
                 lat=lat, lng=lng,
-                location_description=row.get("location_description") or None,
-                project_id=row.get("project_id") or None,
+                location_description=loc_val,
+                project_id=proj_val,
                 organization_id=current_user.organization_id,
                 created_by=current_user.id,
             )
@@ -412,8 +533,8 @@ async def import_assets_csv(
 
     # Pass 2: parent koppelen op basis van parent_code
     for i, row in enumerate(rows, start=2):
-        code = (row.get("code") or "").strip()
-        parent_code = (row.get("parent_code") or "").strip()
+        code = _get(row, mapping, "code")
+        parent_code = _get(row, mapping, "parent_code")
         if not code or not parent_code:
             continue
         if parent_code not in code_to_id:
@@ -429,9 +550,12 @@ async def import_assets_csv(
     db.commit()
     log_action(db, request, current_user,
                action=ACTION.ASSET_BULK_IMPORT, entity_type="asset",
-               extra={"created": created, "updated": updated, "errors": len(errors), "filename": file.filename})
+               extra={"created": created, "updated": updated, "errors": len(errors),
+                      "filename": file.filename, "delimiter": delimiter,
+                      "mapping": mapping})
 
-    return {"created": created, "updated": updated, "errors": errors}
+    return {"created": created, "updated": updated, "errors": errors,
+            "detected_mapping": mapping, "delimiter": delimiter}
 
 
 @router.post("/import/geojson")
