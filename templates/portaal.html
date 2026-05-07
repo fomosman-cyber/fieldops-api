@@ -6100,13 +6100,63 @@
         headers: token ? {'Authorization':'Bearer '+token} : {},
         body: fd,
       }).then(function(r){
-        if (!r.ok) return r.json().then(function(j){ throw new Error(j.detail||'fout'); });
+        if (!r.ok) {
+          return r.json().then(function(j){
+            // detail kan string óf object zijn (bij missing columns retourneert API een rijk object)
+            var d = j.detail;
+            if (typeof d === 'string') throw new Error(d);
+            if (d && typeof d === 'object') {
+              throw Object.assign(new Error(d.error || 'CSV-fout'), { _detailObj: d });
+            }
+            throw new Error('Onbekende fout (HTTP '+r.status+')');
+          });
+        }
         return r.json();
       }).then(function(res){
         showToast('CSV import: '+res.created+' aangemaakt, '+res.updated+' bijgewerkt'+ (res.errors&&res.errors.length?' ('+res.errors.length+' fouten)':''), res.errors&&res.errors.length?'warning':'success');
         loadAssets();
-      }).catch(function(err){ showToast('CSV import mislukt: '+err.message, 'error'); })
+      }).catch(function(err){
+        if (err._detailObj) {
+          showCsvImportErrorModal(err._detailObj);
+        } else {
+          showToast('CSV import mislukt: '+(err.message||'fout'), 'error');
+        }
+      })
       .finally(function(){ event.target.value = ''; });
+    }
+
+    function showCsvImportErrorModal(detail) {
+      // Toon een nuttig modal met gevonden kolommen + verwachte aliases
+      var existing = document.getElementById('csvErrorModal');
+      if (existing) existing.remove();
+      var html =
+        '<div id="csvErrorModal" class="modal-overlay active" onclick="if(event.target===this)this.remove()">' +
+        '<div class="modal" style="max-width:640px;">' +
+        '<button class="modal-close" onclick="document.getElementById(\'csvErrorModal\').remove()">&times;</button>' +
+        '<h2>CSV import mislukt</h2>' +
+        '<p class="subtitle" style="color:#dc2626;font-weight:600;">' + escapeHtml(detail.error || 'Verplichte kolommen niet gevonden') + '</p>';
+      if (detail.csv_columns && detail.csv_columns.length) {
+        html += '<div class="form-group" style="margin-top:16px;">' +
+          '<label>Gevonden in jouw CSV:</label>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;">' +
+          detail.csv_columns.map(function(c){
+            return '<span style="padding:3px 10px;border-radius:14px;font-size:12px;font-family:monospace;background:var(--card-bg-hover);border:1px solid var(--border);">'+escapeHtml(c)+'</span>';
+          }).join('') + '</div></div>';
+      }
+      if (detail.expected && detail.expected.length) {
+        html += '<div class="form-group" style="margin-top:16px;">' +
+          '<label>Wij verwachten (eerste match wint):</label>' +
+          '<ul style="margin:8px 0 0 18px;padding:0;color:var(--text-muted);font-size:13px;">' +
+          detail.expected.map(function(e){
+            return '<li style="margin:4px 0;font-family:monospace;">'+escapeHtml(e)+'</li>';
+          }).join('') + '</ul></div>';
+      }
+      if (detail.tip) {
+        html += '<p style="margin-top:16px;padding:12px;border-radius:10px;background:rgba(2,132,199,0.06);border:1px solid rgba(2,132,199,0.2);font-size:13px;color:var(--text);">💡 '+escapeHtml(detail.tip)+'</p>';
+      }
+      html += '<div class="form-actions"><button class="btn-primary" onclick="document.getElementById(\'csvErrorModal\').remove()">Sluiten</button></div>' +
+        '</div></div>';
+      document.body.insertAdjacentHTML('beforeend', html);
     }
 
     // ══════════════════════════════════════
