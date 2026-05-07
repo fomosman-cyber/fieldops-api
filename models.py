@@ -59,6 +59,7 @@ class User(Base):
     role = Column(SQLEnum(UserRole), default=UserRole.VIEWER)
     is_active = Column(Boolean, default=True)
     is_org_admin = Column(Boolean, default=False)
+    must_change_password = Column(Boolean, default=False, nullable=False)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = Column(DateTime, nullable=True)
@@ -103,6 +104,60 @@ class Project(Base):
     creator = relationship("User", foreign_keys=[created_by])
 
 
+class Asset(Base):
+    """Een fysiek object in de infrastructuur — bijv. lantaarnpaal, put, wegvak,
+    duiker, brug, sluis. Meldingen worden aan assets gekoppeld zodat je per
+    object onderhoud, inspecties en levensduur kan volgen.
+
+    Hierarchie via `parent_asset_id`: een wegvak bevat 12 putten, elke put
+    heeft 3 deksels. Self-referencing FK; de tree-API komt uit het router-laag.
+
+    `properties_json` is een vrije JSON-string (SQLite-vriendelijk) met asset-
+    type-specifieke velden — bijv. {"materiaal": "beton", "diameter_mm": 800}.
+    """
+    __tablename__ = "assets"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+
+    # Identificatie
+    code = Column(String(64), nullable=False, index=True)  # interne/extern code; uniek per organisatie via constraint
+    name = Column(String(255), nullable=True)              # leesbare naam (optioneel — code is leidend)
+    asset_type = Column(String(64), nullable=False, index=True)  # bv. "lantaarnpaal", "put", "wegvak"
+
+    # Locatie
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    location_description = Column(String(500), nullable=True)  # "A12 km 45.2 noord-zijde"
+
+    # Hierarchie & scope
+    parent_asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    # Levensduur & conditie
+    installed_at = Column(DateTime, nullable=True)
+    expected_lifespan_years = Column(Integer, nullable=True)
+    condition_score = Column(Integer, nullable=True)   # 1-5 (NEN 2767-achtig); validatie in schema
+    last_inspection_at = Column(DateTime, nullable=True)
+
+    # Vrije eigenschappen per asset-type (JSON-string)
+    properties_json = Column(Text, nullable=True)
+
+    # Audit
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    archived_at = Column(DateTime, nullable=True)  # soft-delete
+
+    # Relationships
+    organization = relationship("Organization")
+    project = relationship("Project", foreign_keys=[project_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    parent = relationship("Asset", remote_side=[id], backref="children", foreign_keys=[parent_asset_id])
+    meldingen = relationship("Melding", back_populates="asset", foreign_keys="Melding.asset_id")
+
+
 class Melding(Base):
     __tablename__ = "meldingen"
 
@@ -117,14 +172,203 @@ class Melding(Base):
     photo_url = Column(String(500), nullable=True)
     photo_after_url = Column(String(500), nullable=True)
     project_id = Column(String, ForeignKey("projects.id"), nullable=True)
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
     created_by = Column(String, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     project = relationship("Project")
+    asset = relationship("Asset", back_populates="meldingen", foreign_keys=[asset_id])
     organization = relationship("Organization")
     creator = relationship("User", foreign_keys=[created_by])
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    token_hash = Column(String(128), unique=True, nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User")
+
+
+class AIAnalysis(Base):
+    """Resultaat van een AI-foto-analyse (Claude vision).
+
+    Onveranderlijk record voor compliance: prompt-versie + model-versie + raw
+    response zitten erin zodat een resultaat altijd reproduceerbaar/uitlegbaar
+    is. Mens blijft in de loop — het record is een SUGGESTIE, geen besluit.
+
+    Wordt aan een asset of een melding gekoppeld (of beide). Optioneel ongekoppeld
+    bij ad-hoc-analyses tijdens veldwerk.
+    """
+    __tablename__ = "ai_analyses"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+
+    # Wat geanalyseerd
+    photo_url = Column(String(1024), nullable=True)        # als foto extern is opgeslagen
+    photo_sha256 = Column(String(64), nullable=True, index=True)  # dedup + integrity
+    asset_type_context = Column(String(64), nullable=True) # gebruikt voor prompt-keuze
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)
+    melding_id = Column(String, ForeignKey("meldingen.id"), nullable=True, index=True)
+
+    # AI-context (cruciaal voor compliance/audit)
+    prompt_version = Column(String(32), nullable=False)
+    model_id = Column(String(64), nullable=False)
+
+    # Resultaat
+    schade_aanwezig = Column(Boolean, nullable=True)
+    schade_type = Column(String(64), nullable=True, index=True)
+    ernst = Column(String(32), nullable=True, index=True)        # geen/licht/matig/ernstig/kritiek
+    kosten_klasse = Column(String(64), nullable=True)
+    aanbevolen_actie = Column(Text, nullable=True)
+    bevindingen_json = Column(Text, nullable=True)               # ["string", "string"]
+    confidence = Column(Float, nullable=True)                    # 0.0 - 1.0
+    raw_response = Column(Text, nullable=True)                   # complete API-response voor traceability
+
+    # Mens-in-de-loop
+    accepted_at = Column(DateTime, nullable=True)
+    accepted_by = Column(String, ForeignKey("users.id"), nullable=True)
+    rejected_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(String(500), nullable=True)
+
+    # Wie/wanneer
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+    asset = relationship("Asset", foreign_keys=[asset_id])
+    melding = relationship("Melding", foreign_keys=[melding_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    acceptor = relationship("User", foreign_keys=[accepted_by])
+
+
+class WebhookEndpoint(Base):
+    """Een externe webhook waar events naar worden gestuurd.
+
+    `events_json` is een JSON-lijst van action-patronen die deze hook abonneert,
+    bv. ["melding.*", "ai.analysis.run", "asset.create"]. Het sterretje matcht
+    één segment.
+
+    `format_type`:
+      - 'slack'   → Slack-incoming-webhook payload
+      - 'teams'   → Microsoft Teams MessageCard
+      - 'generic' → Ruwe FieldOps-event JSON met HMAC-signature header
+
+    `secret` wordt gebruikt voor HMAC-SHA256 signering bij format='generic';
+    voor Slack/Teams is de URL zelf al het geheim en wordt niet gesigneerd.
+    """
+    __tablename__ = "webhook_endpoints"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    url = Column(String(1024), nullable=False)
+    secret = Column(String(128), nullable=True)            # alleen voor 'generic'
+    format_type = Column(String(16), nullable=False, default="generic")
+    events_json = Column(Text, nullable=False, default="[]")
+    enabled = Column(Boolean, nullable=False, default=True)
+
+    last_triggered_at = Column(DateTime, nullable=True)
+    last_status = Column(Integer, nullable=True)            # HTTP-status laatste delivery
+    failure_count = Column(Integer, nullable=False, default=0)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    organization = relationship("Organization")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class WebhookDelivery(Base):
+    """Log van elke afgevuurde webhook (succesvol of niet) — voor debugging
+    en retry-strategie. Ouder dan 30 dagen mag gepruned worden."""
+    __tablename__ = "webhook_deliveries"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    webhook_endpoint_id = Column(String, ForeignKey("webhook_endpoints.id"), nullable=False, index=True)
+    action = Column(String(64), nullable=False, index=True)
+    payload_json = Column(Text, nullable=True)
+    status_code = Column(Integer, nullable=True)
+    response_snippet = Column(String(500), nullable=True)
+    error = Column(String(500), nullable=True)
+    succeeded = Column(Boolean, nullable=False, default=False)
+    duration_ms = Column(Integer, nullable=True)
+    attempted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+    endpoint = relationship("WebhookEndpoint")
+
+
+class IncomingWebhook(Base):
+    """Inkomend webhook-token voor IoT-sensoren e.d. Sensoren POSTen JSON
+    naar `/api/incoming/{token}`, server maakt een melding aan in de gekoppelde
+    organisatie / project / asset.
+
+    Token = unieke key (zoals een API-key). Geen extra auth nodig — token is
+    geheim genoeg en mag geroteerd worden. Beheer via admin-router.
+    """
+    __tablename__ = "incoming_webhooks"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+
+    # Defaults voor automatisch aangemaakte meldingen
+    default_project_id = Column(String, ForeignKey("projects.id"), nullable=True)
+    default_asset_id = Column(String, ForeignKey("assets.id"), nullable=True)
+    default_priority = Column(String(20), nullable=False, default="normaal")
+    default_category = Column(String(64), nullable=True)
+    title_template = Column(String(255), nullable=True)  # bv. "Sensor {sensor_id}: {value} {unit}"
+
+    enabled = Column(Boolean, nullable=False, default=True)
+    last_received_at = Column(DateTime, nullable=True)
+    received_count = Column(Integer, nullable=False, default=0)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class AuditLog(Base):
+    """Onveranderlijk logboek van alle business-mutaties.
+
+    Wordt automatisch gevuld via `audit.log_action()` (zie audit.py).
+    Is read-only vanuit de app — alleen INSERT, geen UPDATE/DELETE.
+    Gebruikt voor compliance (GDPR, ISO27001, NEN7510), incident-onderzoek,
+    en als verkoopwapen richting B2B-klanten ('hier zie je wie wat wanneer
+    heeft gewijzigd').
+    """
+    __tablename__ = "audit_logs"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    # Wie
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    user_email = Column(String(255), nullable=True)  # gedenormaliseerd; user kan later gedeactiveerd zijn
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=True, index=True)
+    # Wat
+    action = Column(String(64), nullable=False, index=True)        # bv. "melding.create", "user.role_change"
+    entity_type = Column(String(64), nullable=True, index=True)    # bv. "melding", "project", "user"
+    entity_id = Column(String, nullable=True, index=True)
+    # Detail (jsonb-light: SQLite-vriendelijk via Text+JSON)
+    details = Column(Text, nullable=True)                          # JSON-string: {"before": ..., "after": ...}
+    # Context
+    ip_address = Column(String(45), nullable=True)                 # IPv4 of IPv6
+    user_agent = Column(String(512), nullable=True)
+    request_id = Column(String(64), nullable=True, index=True)     # correlatie over requests
+    # Wanneer
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+    organization = relationship("Organization", foreign_keys=[organization_id])
 
 
 class DemoRequest(Base):

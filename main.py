@@ -11,7 +11,8 @@ import os
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router
+from audit import assign_request_id
 
 # Maak alle tabellen aan
 Base.metadata.create_all(bind=engine)
@@ -36,6 +37,25 @@ def _run_migrations():
                     # Mark bestaande verwerkte rijen als 'approved'
                     conn.execute(text("UPDATE demo_requests SET status = 'approved' WHERE processed = true"))
                 print("[migration] demo_requests.status toegevoegd.")
+
+        # users.must_change_password (toegevoegd voor force-reset bij eerste login)
+        if "users" in insp.get_table_names():
+            user_cols = [c["name"] for c in insp.get_columns("users")]
+            if "must_change_password" not in user_cols:
+                print("[migration] users.must_change_password kolom toevoegen...")
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT FALSE NOT NULL"))
+                print("[migration] users.must_change_password toegevoegd.")
+
+        # meldingen.asset_id (toegevoegd voor asset-management koppeling)
+        if "meldingen" in insp.get_table_names():
+            mcols = [c["name"] for c in insp.get_columns("meldingen")]
+            if "asset_id" not in mcols:
+                print("[migration] meldingen.asset_id kolom toevoegen...")
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE meldingen ADD COLUMN asset_id VARCHAR"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_asset_id ON meldingen(asset_id)"))
+                print("[migration] meldingen.asset_id toegevoegd.")
     except Exception as e:
         print(f"[migration] Waarschuwing: {e}")
 
@@ -111,11 +131,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS - alleen eigen domeinen toestaan
+# CORS — alleen vertrouwde origins. CORS_ORIGINS env voegt extras toe aan de default-lijst.
 _default_origins = [
     "https://fieldopsapp.nl",
     "https://www.fieldopsapp.nl",
     "https://app.fieldopsapp.nl",
+    "https://portaal.fieldopsapp.nl",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:8001",
 ]
 _extra = os.environ.get("CORS_ORIGINS", "")
 allowed_origins = _default_origins + [o.strip() for o in _extra.split(",") if o.strip()]
@@ -124,8 +148,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Routers
@@ -137,6 +161,23 @@ app.include_router(shopify_router.router)
 app.include_router(admin_router.router)
 app.include_router(projects_router.router)
 app.include_router(meldingen_router.router)
+app.include_router(audit_router.router)
+app.include_router(assets_router.router)
+app.include_router(inspecties_router.router)
+app.include_router(webhooks_router.router)
+app.include_router(predictive_router.router)
+app.include_router(incoming_router.router)
+app.include_router(realtime_router.router)
+
+
+# Request-ID middleware — koppelt elke request aan een correlatie-ID dat
+# in de audit-log terechtkomt. Klanten kunnen 'X-Request-Id' meesturen.
+@app.middleware("http")
+async def request_id_middleware(request, call_next):
+    rid = assign_request_id(request)
+    response = await call_next(request)
+    response.headers["X-Request-Id"] = rid
+    return response
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"

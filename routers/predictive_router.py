@@ -1,0 +1,67 @@
+"""Predictive Maintenance endpoints.
+
+  GET /api/predictive/at-risk             top-N assets boven een drempel
+  GET /api/predictive/asset/{asset_id}    risicoscore + rationale voor één asset
+  GET /api/predictive/summary             distributie over band + asset-type
+"""
+
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
+
+from database import get_db
+from models import Asset, User
+from auth import get_current_user
+from predictive import compute_asset_risk, list_at_risk
+
+router = APIRouter(prefix="/api/predictive", tags=["Predictive Maintenance"])
+
+
+@router.get("/at-risk")
+def at_risk(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    min_score: int = Query(60, ge=0, le=100),
+    asset_type: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
+    return list_at_risk(db, current_user.organization_id,
+                        min_score=min_score, asset_type=asset_type, limit=limit)
+
+
+@router.get("/asset/{asset_id}")
+def asset_risk(
+    asset_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    a = db.query(Asset).filter(
+        Asset.id == asset_id,
+        Asset.organization_id == current_user.organization_id,
+    ).first()
+    if not a:
+        raise HTTPException(status_code=404, detail="Asset niet gevonden")
+    return compute_asset_risk(db, a)
+
+
+@router.get("/summary")
+def summary(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Snelle aggregatie voor het dashboard."""
+    assets = (db.query(Asset)
+                .filter(Asset.organization_id == current_user.organization_id,
+                        Asset.archived_at.is_(None)).all())
+    bands = {"laag": 0, "matig": 0, "hoog": 0}
+    by_type: dict[str, dict[str, int]] = {}
+    for a in assets:
+        r = compute_asset_risk(db, a)
+        bands[r["band"]] += 1
+        t = by_type.setdefault(a.asset_type, {"laag": 0, "matig": 0, "hoog": 0})
+        t[r["band"]] += 1
+    return {
+        "total_assets": len(assets),
+        "bands": bands,
+        "by_asset_type": by_type,
+    }

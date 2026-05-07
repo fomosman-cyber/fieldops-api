@@ -940,7 +940,9 @@
       <nav class="topbar-nav" id="topNav">
         <a data-page="dashboard" class="active" onclick="navigateTo('dashboard')">Dashboard</a>
         <a data-page="projecten" onclick="navigateTo('projecten')">Projecten</a>
+        <a data-page="assets" onclick="navigateTo('assets')">Assets</a>
         <a data-page="meldingen" onclick="navigateTo('meldingen')">Meldingen</a>
+        <a data-page="predictive" onclick="navigateTo('predictive')">Voorspeller</a>
         <a data-page="kaart" onclick="navigateTo('kaart')">Kaart</a>
         <a data-page="gebruikers" onclick="navigateTo('gebruikers')">Gebruikers</a>
       </nav>
@@ -977,8 +979,14 @@
         <a data-page="projecten" onclick="navigateTo('projecten')">
           <span class="icon">&#128193;</span> Projecten
         </a>
+        <a data-page="assets" onclick="navigateTo('assets')">
+          <span class="icon">&#128302;</span> Assets
+        </a>
         <a data-page="meldingen" onclick="navigateTo('meldingen')">
           <span class="icon">&#128276;</span> Meldingen
+        </a>
+        <a data-page="predictive" onclick="navigateTo('predictive')">
+          <span class="icon">&#128202;</span> Voorspeller
         </a>
         <a data-page="kaart" onclick="navigateTo('kaart')">
           <span class="icon">&#127758;</span> Kaart
@@ -1154,6 +1162,29 @@
         </div>
       </div>
 
+      <!-- Predictive Maintenance widget -->
+      <div class="card animate-in" id="predictiveWidget" style="margin-bottom:20px;display:none;">
+        <div class="card-header">
+          <h3>Voorspeller — assets met aandachtspunt</h3>
+          <a onclick="navigateTo('predictive')" style="font-size:12px;color:var(--accent);cursor:pointer;">Volledig overzicht →</a>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+          <div style="padding:12px;border-radius:10px;background:rgba(22,163,74,0.06);border-left:3px solid #16a34a;">
+            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;">Laag</div>
+            <div id="dashPredLaag" style="font-size:24px;font-weight:800;color:#16a34a;">0</div>
+          </div>
+          <div style="padding:12px;border-radius:10px;background:rgba(245,158,11,0.06);border-left:3px solid #f59e0b;">
+            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;">Matig</div>
+            <div id="dashPredMatig" style="font-size:24px;font-weight:800;color:#f59e0b;">0</div>
+          </div>
+          <div style="padding:12px;border-radius:10px;background:rgba(220,38,38,0.06);border-left:3px solid #dc2626;">
+            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;">Hoog</div>
+            <div id="dashPredHoog" style="font-size:24px;font-weight:800;color:#dc2626;">0</div>
+          </div>
+        </div>
+        <div id="dashPredTopList" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+
       <!-- Row 3: Recent Activity (full width like app) -->
       <div class="card animate-in" style="margin-bottom:20px;">
         <div class="card-header">
@@ -1326,6 +1357,179 @@
             <tbody id="meldingenBody"></tbody>
           </table>
         </div>
+      </div>
+    </div>
+
+    <!-- ═══ ASSETS ═══ -->
+    <div class="page-section" id="page-assets">
+      <div class="page-header">
+        <div>
+          <h1>Assets</h1>
+          <p>Beheer je infrastructuur — lantaarnpalen, putten, wegvakken, kunstwerken.</p>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-secondary" onclick="document.getElementById('assetCsvInput').click()">CSV importeren</button>
+          <input type="file" id="assetCsvInput" accept=".csv" style="display:none;" onchange="importAssetsCsv(event)">
+          <button class="btn-primary" onclick="openAssetModal()">+ Nieuw Asset</button>
+        </div>
+      </div>
+      <div class="card" style="margin-bottom:16px;padding:16px;">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+          <select id="assetFilterProject" onchange="loadAssets()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+            <option value="">Alle projecten</option>
+          </select>
+          <select id="assetFilterType" onchange="loadAssets()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+            <option value="">Alle types</option>
+          </select>
+          <input type="text" id="assetSearch" placeholder="Zoek code, naam of locatie..." oninput="debouncedAssetSearch()" style="flex:1;min-width:200px;padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+          <span id="assetCount" style="font-size:12px;color:var(--text-dim);"></span>
+        </div>
+      </div>
+      <div id="assetsEmpty" class="empty-state" style="display:none;">
+        <div class="empty-icon">&#128302;</div>
+        <h3>Geen assets</h3>
+        <p>Voeg assets toe om meldingen aan fysieke objecten te koppelen — handmatig of via CSV-import.</p>
+        <button class="btn-primary" onclick="openAssetModal()">+ Eerste asset aanmaken</button>
+      </div>
+      <div id="assetsList" style="display:none;">
+        <div class="card" style="overflow-x:auto;padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr><th>Code</th><th>Naam</th><th>Type</th><th>Project</th><th style="text-align:center;">NEN</th><th style="text-align:center;">Open</th><th style="text-align:center;">Risico</th><th></th></tr>
+            </thead>
+            <tbody id="assetsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PREDICTIVE ═══ -->
+    <div class="page-section" id="page-predictive">
+      <div class="page-header">
+        <div>
+          <h1>Voorspeller</h1>
+          <p>Predictive maintenance — risicoscore per asset op basis van leeftijd, NEN-conditie en meldingen-historie.</p>
+        </div>
+        <button class="btn-secondary" onclick="loadPredictive()">&#8635; Vernieuwen</button>
+      </div>
+      <div id="predictiveEmpty" class="empty-state" style="display:none;">
+        <div class="empty-icon">&#128202;</div>
+        <h3>Nog geen data</h3>
+        <p>Voeg eerst assets toe (met installatiedatum, levensduur en NEN-conditiescore) om voorspellingen te genereren.</p>
+        <button class="btn-primary" onclick="navigateTo('assets')">Naar Assets</button>
+      </div>
+      <div id="predictiveContent" style="display:none;">
+        <div class="stats-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));margin-bottom:24px;">
+          <div class="stat-card" style="border-left:3px solid #16a34a;">
+            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;">Laag risico</div>
+            <div id="predBandLaag" style="font-size:32px;font-weight:800;color:#16a34a;margin-top:4px;">0</div>
+            <div style="font-size:11px;color:var(--text-dim);">geen acute actie</div>
+          </div>
+          <div class="stat-card" style="border-left:3px solid #f59e0b;">
+            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;">Matig risico</div>
+            <div id="predBandMatig" style="font-size:32px;font-weight:800;color:#f59e0b;margin-top:4px;">0</div>
+            <div style="font-size:11px;color:var(--text-dim);">inspectie 3 mnd</div>
+          </div>
+          <div class="stat-card" style="border-left:3px solid #dc2626;">
+            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;">Hoog risico</div>
+            <div id="predBandHoog" style="font-size:32px;font-weight:800;color:#dc2626;margin-top:4px;">0</div>
+            <div style="font-size:11px;color:var(--text-dim);">actie binnen 4 wk</div>
+          </div>
+          <div class="stat-card">
+            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;">Totaal assets</div>
+            <div id="predTotal" style="font-size:32px;font-weight:800;margin-top:4px;">0</div>
+            <div style="font-size:11px;color:var(--text-dim);">in alle projecten</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+            <h3>Top assets met aandachtspunt</h3>
+            <select id="predMinScore" onchange="loadPredictiveList()" style="padding:5px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;">
+              <option value="60" selected>Score &ge; 60</option>
+              <option value="40">Score &ge; 40</option>
+              <option value="20">Score &ge; 20</option>
+              <option value="0">Alle</option>
+            </select>
+          </div>
+          <div id="predList" style="display:flex;flex-direction:column;gap:10px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ ASSET MODAL ═══════ -->
+    <div class="modal-overlay" id="assetModal">
+      <div class="modal">
+        <button class="modal-close" onclick="closeAssetModal()">&times;</button>
+        <h2 id="assetModalTitle">Nieuw Asset</h2>
+        <p class="subtitle">Registreer een fysiek object dat onderhoud nodig heeft.</p>
+        <form onsubmit="submitAsset(event)">
+          <input type="hidden" id="assetEditId" value="">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Code *</label>
+              <input type="text" id="assetCode" placeholder="bv. WV-001" required>
+            </div>
+            <div class="form-group">
+              <label>Asset-type *</label>
+              <select id="assetType" required>
+                <option value="">Kies...</option>
+                <option value="wegdek">Wegdek</option>
+                <option value="kunstwerk">Kunstwerk (brug/viaduct/sluis)</option>
+                <option value="lantaarnpaal">Lantaarnpaal</option>
+                <option value="put">Put / riolering</option>
+                <option value="watergang">Watergang</option>
+                <option value="kering">Kering / dijk / damwand</option>
+                <option value="verkeer">Verkeer (bord/markering/VRI)</option>
+                <option value="groen">Groen (boom/berm)</option>
+                <option value="overig">Overig</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Naam (optioneel)</label>
+            <input type="text" id="assetName" placeholder="bv. Lekdijk km 12-14">
+          </div>
+          <div class="form-group">
+            <label>Project (optioneel)</label>
+            <select id="assetProject"><option value="">— Geen project —</option></select>
+          </div>
+          <div class="form-group">
+            <label>Locatie-omschrijving</label>
+            <input type="text" id="assetLocDesc" placeholder="bv. A12 km 45.2 noord-zijde">
+          </div>
+          <div class="form-group">
+            <label>GPS</label>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="assetLat" placeholder="Lat" style="flex:1;">
+              <input type="text" id="assetLng" placeholder="Lng" style="flex:1;">
+              <button type="button" class="btn-secondary" onclick="getAssetLocation()" style="white-space:nowrap;">📍 GPS</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Geïnstalleerd</label>
+              <input type="date" id="assetInstalled">
+            </div>
+            <div class="form-group">
+              <label>Levensduur (jaar)</label>
+              <input type="number" id="assetLifespan" min="1" max="150" placeholder="bv. 30">
+            </div>
+            <div class="form-group">
+              <label>NEN-conditie 1-5</label>
+              <select id="assetCondition">
+                <option value="">—</option>
+                <option value="1">1 — Als nieuw</option>
+                <option value="2">2 — Goed</option>
+                <option value="3">3 — Redelijk</option>
+                <option value="4">4 — Matig</option>
+                <option value="5">5 — Zeer slecht</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary" id="assetSubmitBtn">Asset aanmaken</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -1673,7 +1877,14 @@
       <form onsubmit="createMelding(event)">
         <div class="form-group">
           <label>Project *</label>
-          <select id="meldingProject" onchange="updateMeldingCategories()"><option value="">Selecteer project...</option></select>
+          <select id="meldingProject" onchange="onMeldingProjectChange()"><option value="">Selecteer project...</option></select>
+        </div>
+        <div class="form-group">
+          <label>Asset (optioneel)</label>
+          <select id="meldingAsset" onchange="onMeldingAssetChange()">
+            <option value="">— Geen asset gekoppeld —</option>
+          </select>
+          <p id="meldingAssetHint" style="font-size:11px;color:var(--text-dim);margin-top:4px;">Selecteer eerst een project om assets te zien.</p>
         </div>
         <div class="form-group">
           <label>Titel *</label>
@@ -1705,6 +1916,28 @@
             <input type="text" id="meldingLat" placeholder="Lat" style="flex:1;">
             <input type="text" id="meldingLng" placeholder="Lng" style="flex:1;">
             <button type="button" class="btn-secondary" onclick="getMeldingLocation()" style="white-space:nowrap;">📍 GPS</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Foto (optioneel) — laat AI de schade beoordelen</label>
+          <div id="meldingPhotoZone" style="width:100%;min-height:120px;border:2px dashed var(--border);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--card-bg-hover);cursor:pointer;position:relative;padding:16px;" onclick="document.getElementById('meldingPhotoInput').click()">
+            <span id="meldingPhotoLabel" style="color:var(--text-dim);font-size:13px;">📷 Klik om een foto te kiezen</span>
+            <img id="meldingPhotoPreview" style="max-width:100%;max-height:200px;border-radius:8px;display:none;" />
+          </div>
+          <input type="file" id="meldingPhotoInput" accept="image/*" capture="environment" style="display:none;" onchange="onMeldingPhotoChange(event)">
+          <div id="meldingAIBox" style="display:none;margin-top:10px;">
+            <button type="button" class="btn-primary" id="meldingAIBtn" onclick="analyseFotoMetAI()" style="width:100%;background:linear-gradient(135deg,#0284c7,#7c3aed);color:#fff;">✨ AI analyseer foto</button>
+            <div id="meldingAIResult" style="display:none;margin-top:10px;padding:12px;border-radius:10px;background:rgba(2,132,199,0.06);border:1px solid rgba(2,132,199,0.2);font-size:13px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <strong style="color:var(--accent);">AI-suggestie</strong>
+                <span id="meldingAIConfidence" style="font-size:11px;color:var(--text-dim);"></span>
+              </div>
+              <div id="meldingAISummary" style="color:var(--text);line-height:1.5;"></div>
+              <div style="display:flex;gap:8px;margin-top:10px;">
+                <button type="button" class="btn-primary" onclick="applyAISuggestion()" style="flex:1;font-size:12px;padding:6px 10px;">✓ Overnemen</button>
+                <button type="button" class="btn-secondary" onclick="dismissAISuggestion()" style="flex:1;font-size:12px;padding:6px 10px;">✕ Negeren</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="form-actions">
@@ -3400,6 +3633,9 @@
       if (page === 'projecten') loadProjects();
       if (page === 'meldingen') loadMeldingen();
       if (page === 'kaart') initMap();
+      if (page === 'assets') loadAssets();
+      if (page === 'predictive') loadPredictive();
+      if (page === 'dashboard') loadDashboardPredictiveWidget();
     }
 
     // ── Load Users ──
@@ -4745,7 +4981,11 @@
         allProjects = p || [];
         updateProjectFilter();
         updateMeldingCategories();
+        // Assets opnieuw laden als er een project is geselecteerd
+        if (document.getElementById('meldingProject').value) loadAssetsForMelding();
       }).catch(function(){});
+      // Foto / AI-state schoonmaken zodat een vorige sessie geen restjes laat staan
+      if (typeof resetMeldingPhotoState === 'function') resetMeldingPhotoState();
       // Auto-fill GPS location immediately
       autoFillGPS();
     }
@@ -5398,6 +5638,7 @@
       var lat = parseFloat(document.getElementById('meldingLat').value) || null;
       var lng = parseFloat(document.getElementById('meldingLng').value) || null;
       var projId = document.getElementById('meldingProject').value || null;
+      var assetId = document.getElementById('meldingAsset').value || null;
       api('POST', '/api/meldingen/', {
         title: document.getElementById('meldingTitle').value,
         description: document.getElementById('meldingDesc').value || null,
@@ -5405,7 +5646,8 @@
         priority: document.getElementById('meldingPriority').value,
         lat: lat,
         lng: lng,
-        project_id: projId
+        project_id: projId,
+        asset_id: assetId
       }).then(function(melding) {
         showToast(t('melding_aangemaakt'), 'success');
         closeMeldingModal();
@@ -5413,6 +5655,9 @@
         document.getElementById('meldingDesc').value = '';
         document.getElementById('meldingLat').value = '';
         document.getElementById('meldingLng').value = '';
+        var assetSel = document.getElementById('meldingAsset');
+        if (assetSel) assetSel.value = '';
+        resetMeldingPhotoState();
         loadMeldingen();
         loadDashboardStats();
         if (map) loadMapData();
@@ -5452,6 +5697,491 @@
       }, function(err) {
         showToast(t('kan_locatie_niet_ophalen') + ': ' + err.message, 'error');
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    }
+
+    // ══════════════════════════════════════
+    // ── ASSETS PAGINA ──
+    // ══════════════════════════════════════
+
+    var allAssets = [];
+    var _assetSearchTimer = null;
+
+    function debouncedAssetSearch() {
+      clearTimeout(_assetSearchTimer);
+      _assetSearchTimer = setTimeout(loadAssets, 300);
+    }
+
+    function loadAssets() {
+      var tbody = document.getElementById('assetsBody');
+      var listWrap = document.getElementById('assetsList');
+      var emptyWrap = document.getElementById('assetsEmpty');
+      var countEl = document.getElementById('assetCount');
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-dim);">Assets laden...</td></tr>';
+      listWrap.style.display = ''; emptyWrap.style.display = 'none';
+
+      // Vul project-filter
+      var projSel = document.getElementById('assetFilterProject');
+      if (projSel.options.length <= 1 && Array.isArray(allProjects)) {
+        allProjects.forEach(function(p){
+          var opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name || p.naam;
+          projSel.appendChild(opt);
+        });
+      }
+
+      var qs = [];
+      var pf = projSel.value; if (pf) qs.push('project_id='+encodeURIComponent(pf));
+      var tf = document.getElementById('assetFilterType').value; if (tf) qs.push('asset_type='+encodeURIComponent(tf));
+      var sq = document.getElementById('assetSearch').value; if (sq) qs.push('q='+encodeURIComponent(sq));
+      qs.push('limit=500');
+
+      api('GET', '/api/assets/?' + qs.join('&')).then(function(items){
+        allAssets = items || [];
+        // Vul type-filter eenmalig vanuit /types
+        if (document.getElementById('assetFilterType').options.length <= 1) {
+          api('GET', '/api/assets/types').then(function(types){
+            var sel = document.getElementById('assetFilterType');
+            (types||[]).forEach(function(t){
+              var opt = document.createElement('option'); opt.value = t.asset_type;
+              opt.textContent = t.asset_type + ' ('+t.count+')';
+              sel.appendChild(opt);
+            });
+          }).catch(function(){});
+        }
+
+        if (allAssets.length === 0) {
+          listWrap.style.display = 'none'; emptyWrap.style.display = '';
+          countEl.textContent = '';
+          return;
+        }
+        countEl.textContent = allAssets.length + ' assets';
+        renderAssetRows(allAssets);
+      }).catch(function(err){
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--red);">'+escapeHtml(err.message||'fout')+'</td></tr>';
+      });
+    }
+
+    function renderAssetRows(items) {
+      var tbody = document.getElementById('assetsBody');
+      tbody.innerHTML = '';
+      var projMap = {};
+      (allProjects||[]).forEach(function(p){ projMap[p.id] = p.name || p.naam; });
+
+      items.forEach(function(a){
+        var tr = document.createElement('tr');
+        tr.style.cursor = 'pointer';
+        tr.onclick = function(){ openAssetEditModal(a.id); };
+        var nen = a.condition_score ? '<span style="display:inline-block;width:24px;height:24px;line-height:24px;text-align:center;border-radius:50%;font-weight:700;color:#fff;background:'+nenColor(a.condition_score)+';">'+a.condition_score+'</span>' : '<span style="color:var(--text-dim);">—</span>';
+        var open = a.open_meldingen_count > 0
+          ? '<span style="background:rgba(220,38,38,0.1);color:#dc2626;padding:2px 8px;border-radius:8px;font-weight:700;font-size:12px;">'+a.open_meldingen_count+'</span>'
+          : '<span style="color:var(--text-dim);">0</span>';
+        tr.innerHTML =
+          '<td style="font-weight:700;font-family:monospace;">'+escapeHtml(a.code)+'</td>' +
+          '<td>'+escapeHtml(a.name || '—')+'</td>' +
+          '<td><span style="background:var(--card-bg-hover);padding:2px 8px;border-radius:6px;font-size:12px;">'+escapeHtml(a.asset_type)+'</span></td>' +
+          '<td style="color:var(--text-muted);">'+escapeHtml(projMap[a.project_id] || '—')+'</td>' +
+          '<td style="text-align:center;">'+nen+'</td>' +
+          '<td style="text-align:center;">'+open+'</td>' +
+          '<td style="text-align:center;" id="riskCell-'+a.id+'"><span style="color:var(--text-dim);font-size:11px;">—</span></td>' +
+          '<td style="text-align:right;"><button class="btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="event.stopPropagation();archiveAsset(\''+a.id+'\')">Archiveren</button></td>';
+        tbody.appendChild(tr);
+      });
+      // Lazy: vraag risk-scores op (top 50 zichtbare)
+      items.slice(0, 50).forEach(function(a){
+        api('GET', '/api/predictive/asset/'+a.id).then(function(r){
+          var cell = document.getElementById('riskCell-'+a.id); if (!cell) return;
+          var color = r.band === 'hoog' ? '#dc2626' : (r.band === 'matig' ? '#f59e0b' : '#16a34a');
+          cell.innerHTML = '<span style="display:inline-block;padding:2px 8px;border-radius:8px;font-weight:700;font-size:12px;background:'+color+'20;color:'+color+';">'+r.score+'</span>';
+        }).catch(function(){});
+      });
+    }
+
+    function nenColor(score) {
+      return ({1:'#16a34a',2:'#65a30d',3:'#f59e0b',4:'#ea580c',5:'#dc2626'})[score] || '#94a3b8';
+    }
+
+    function openAssetModal() {
+      document.getElementById('assetModalTitle').textContent = 'Nieuw Asset';
+      document.getElementById('assetSubmitBtn').textContent = 'Asset aanmaken';
+      document.getElementById('assetEditId').value = '';
+      ['assetCode','assetName','assetLocDesc','assetLat','assetLng','assetInstalled','assetLifespan'].forEach(function(id){
+        var el = document.getElementById(id); if (el) el.value = '';
+      });
+      document.getElementById('assetType').value = '';
+      document.getElementById('assetCondition').value = '';
+      // Vul project-select
+      var projSel = document.getElementById('assetProject');
+      projSel.innerHTML = '<option value="">— Geen project —</option>';
+      (allProjects||[]).forEach(function(p){
+        var opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name || p.naam;
+        projSel.appendChild(opt);
+      });
+      document.getElementById('assetModal').classList.add('active');
+    }
+
+    function openAssetEditModal(id) {
+      var a = allAssets.find(function(x){ return x.id === id; });
+      if (!a) return;
+      openAssetModal();
+      document.getElementById('assetModalTitle').textContent = 'Asset bewerken';
+      document.getElementById('assetSubmitBtn').textContent = 'Wijzigingen opslaan';
+      document.getElementById('assetEditId').value = id;
+      document.getElementById('assetCode').value = a.code || '';
+      document.getElementById('assetName').value = a.name || '';
+      document.getElementById('assetType').value = a.asset_type || '';
+      document.getElementById('assetProject').value = a.project_id || '';
+      document.getElementById('assetLocDesc').value = a.location_description || '';
+      document.getElementById('assetLat').value = a.lat != null ? a.lat : '';
+      document.getElementById('assetLng').value = a.lng != null ? a.lng : '';
+      if (a.installed_at) document.getElementById('assetInstalled').value = a.installed_at.substr(0,10);
+      document.getElementById('assetLifespan').value = a.expected_lifespan_years || '';
+      document.getElementById('assetCondition').value = a.condition_score || '';
+    }
+
+    function closeAssetModal() {
+      document.getElementById('assetModal').classList.remove('active');
+    }
+
+    function getAssetLocation() {
+      if (!navigator.geolocation) { showToast('GPS niet beschikbaar', 'error'); return; }
+      navigator.geolocation.getCurrentPosition(function(pos){
+        document.getElementById('assetLat').value = pos.coords.latitude.toFixed(6);
+        document.getElementById('assetLng').value = pos.coords.longitude.toFixed(6);
+      }, function(err){ showToast('GPS fout: '+err.message, 'error'); }, { enableHighAccuracy: true, timeout: 10000 });
+    }
+
+    function submitAsset(e) {
+      e.preventDefault();
+      var btn = document.getElementById('assetSubmitBtn');
+      btn.disabled = true; var orig = btn.textContent; btn.textContent = 'Bezig...';
+      var editId = document.getElementById('assetEditId').value;
+      var payload = {
+        code: document.getElementById('assetCode').value,
+        name: document.getElementById('assetName').value || null,
+        asset_type: document.getElementById('assetType').value,
+        project_id: document.getElementById('assetProject').value || null,
+        location_description: document.getElementById('assetLocDesc').value || null,
+        lat: parseFloat(document.getElementById('assetLat').value) || null,
+        lng: parseFloat(document.getElementById('assetLng').value) || null,
+        installed_at: document.getElementById('assetInstalled').value || null,
+        expected_lifespan_years: parseInt(document.getElementById('assetLifespan').value, 10) || null,
+        condition_score: parseInt(document.getElementById('assetCondition').value, 10) || null,
+      };
+      var promise = editId
+        ? api('PUT', '/api/assets/'+editId, payload)
+        : api('POST', '/api/assets/', payload);
+      promise.then(function(){
+        showToast(editId ? 'Asset bijgewerkt' : 'Asset aangemaakt', 'success');
+        closeAssetModal();
+        loadAssets();
+      }).catch(function(err){
+        showToast(err.message, 'error');
+      }).finally(function(){
+        btn.disabled = false; btn.textContent = orig;
+      });
+    }
+
+    function archiveAsset(id) {
+      if (!confirm('Asset archiveren? (terug te halen via beheer)')) return;
+      api('DELETE', '/api/assets/'+id).then(function(){
+        showToast('Asset gearchiveerd', 'success'); loadAssets();
+      }).catch(function(err){ showToast(err.message, 'error'); });
+    }
+
+    function importAssetsCsv(event) {
+      var f = event.target.files && event.target.files[0]; if (!f) return;
+      var fd = new FormData(); fd.append('file', f);
+      var token = localStorage.getItem('fieldops_token') || '';
+      showToast('CSV uploaden...', 'info');
+      fetch('/api/assets/import/csv', {
+        method:'POST',
+        headers: token ? {'Authorization':'Bearer '+token} : {},
+        body: fd,
+      }).then(function(r){
+        if (!r.ok) return r.json().then(function(j){ throw new Error(j.detail||'fout'); });
+        return r.json();
+      }).then(function(res){
+        showToast('CSV import: '+res.created+' aangemaakt, '+res.updated+' bijgewerkt'+ (res.errors&&res.errors.length?' ('+res.errors.length+' fouten)':''), res.errors&&res.errors.length?'warning':'success');
+        loadAssets();
+      }).catch(function(err){ showToast('CSV import mislukt: '+err.message, 'error'); })
+      .finally(function(){ event.target.value = ''; });
+    }
+
+    // ══════════════════════════════════════
+    // ── PREDICTIVE PAGINA + DASHBOARD WIDGET ──
+    // ══════════════════════════════════════
+
+    function loadPredictive() {
+      var content = document.getElementById('predictiveContent');
+      var emptyEl = document.getElementById('predictiveEmpty');
+      api('GET', '/api/predictive/summary').then(function(s){
+        if (!s.total_assets) {
+          emptyEl.style.display = ''; content.style.display = 'none'; return;
+        }
+        emptyEl.style.display = 'none'; content.style.display = '';
+        document.getElementById('predTotal').textContent = s.total_assets;
+        document.getElementById('predBandLaag').textContent = s.bands.laag;
+        document.getElementById('predBandMatig').textContent = s.bands.matig;
+        document.getElementById('predBandHoog').textContent = s.bands.hoog;
+        loadPredictiveList();
+      }).catch(function(err){
+        emptyEl.style.display = ''; content.style.display = 'none';
+      });
+    }
+
+    function loadPredictiveList() {
+      var min = document.getElementById('predMinScore').value;
+      var listEl = document.getElementById('predList');
+      listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Laden...</div>';
+      api('GET', '/api/predictive/at-risk?min_score='+min+'&limit=20').then(function(items){
+        if (!items.length) {
+          listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Geen assets boven deze drempel — goed nieuws!</div>';
+          return;
+        }
+        listEl.innerHTML = items.map(function(r){
+          var color = r.band === 'hoog' ? '#dc2626' : (r.band === 'matig' ? '#f59e0b' : '#16a34a');
+          return '<div style="border:1px solid var(--border);border-left:3px solid '+color+';border-radius:10px;padding:12px 16px;display:grid;grid-template-columns:80px 1fr auto;gap:12px;align-items:center;">' +
+            '<div style="text-align:center;"><div style="font-size:32px;font-weight:800;color:'+color+';line-height:1;">'+r.score+'</div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;">'+r.band+'</div></div>' +
+            '<div><div style="font-weight:700;">'+escapeHtml(r.asset_code)+' <span style="color:var(--text-dim);font-weight:400;font-size:13px;">('+escapeHtml(r.asset_type)+')</span></div>' +
+            '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">'+escapeHtml(r.recommendation)+'</div>' +
+            '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">leeftijd '+r.components.age+'pt · conditie '+r.components.condition+'pt · meldingen '+r.components.meldingen+'pt</div></div>' +
+            '<button class="btn-secondary" style="font-size:11px;padding:5px 10px;" onclick="navigateTo(\'assets\');setTimeout(function(){openAssetEditModal(\''+r.asset_id+'\')},250)">Bekijken</button>' +
+            '</div>';
+        }).join('');
+      }).catch(function(err){
+        listEl.innerHTML = '<div style="color:var(--red);padding:20px;">'+escapeHtml(err.message||'fout')+'</div>';
+      });
+    }
+
+    function loadDashboardPredictiveWidget() {
+      var widget = document.getElementById('predictiveWidget');
+      if (!widget) return;
+      api('GET', '/api/predictive/summary').then(function(s){
+        if (!s.total_assets) { widget.style.display = 'none'; return; }
+        widget.style.display = '';
+        document.getElementById('dashPredLaag').textContent = s.bands.laag;
+        document.getElementById('dashPredMatig').textContent = s.bands.matig;
+        document.getElementById('dashPredHoog').textContent = s.bands.hoog;
+        return api('GET', '/api/predictive/at-risk?min_score=60&limit=5');
+      }).then(function(items){
+        if (!items) return;
+        var topList = document.getElementById('dashPredTopList');
+        if (!items.length) {
+          topList.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:14px;">Geen assets met hoog risico — alles onder controle.</div>';
+          return;
+        }
+        topList.innerHTML = items.map(function(r){
+          var color = r.band === 'hoog' ? '#dc2626' : (r.band === 'matig' ? '#f59e0b' : '#16a34a');
+          return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-radius:8px;background:var(--card-bg-hover);">' +
+            '<div><span style="font-weight:700;">'+escapeHtml(r.asset_code)+'</span> <span style="color:var(--text-dim);font-size:12px;">'+escapeHtml(r.asset_type)+'</span></div>' +
+            '<span style="background:'+color+'20;color:'+color+';padding:2px 8px;border-radius:8px;font-weight:700;font-size:12px;">'+r.score+'</span>' +
+            '</div>';
+        }).join('');
+      }).catch(function(){
+        widget.style.display = 'none';
+      });
+    }
+
+    // ══════════════════════════════════════
+    // ── MELDING-FORMULIER: ASSETS + AI-FOTO ──
+    // ══════════════════════════════════════
+
+    var meldingAssets = [];          // assets geladen voor het huidige project
+    var meldingPhotoFile = null;     // File object van uploaded foto
+    var meldingAILastResult = null;  // resultaat van laatste AI-analyse
+
+    function onMeldingProjectChange() {
+      // Bestaande gedrag: categorieën updaten
+      if (typeof updateMeldingCategories === 'function') updateMeldingCategories();
+      // Nieuw: assets laden
+      loadAssetsForMelding();
+    }
+
+    function loadAssetsForMelding() {
+      var projId = document.getElementById('meldingProject').value;
+      var sel = document.getElementById('meldingAsset');
+      var hint = document.getElementById('meldingAssetHint');
+      sel.innerHTML = '<option value="">— Geen asset gekoppeld —</option>';
+      meldingAssets = [];
+      if (!projId) {
+        if (hint) hint.textContent = 'Selecteer eerst een project om assets te zien.';
+        return;
+      }
+      if (hint) hint.textContent = 'Assets laden...';
+      api('GET', '/api/assets/?project_id=' + encodeURIComponent(projId) + '&limit=500')
+        .then(function(items) {
+          meldingAssets = items || [];
+          if (meldingAssets.length === 0) {
+            if (hint) hint.textContent = 'Geen assets in dit project. Voeg ze toe via de Assets-pagina (binnenkort) of CSV-import.';
+            return;
+          }
+          meldingAssets.forEach(function(a) {
+            var opt = document.createElement('option');
+            opt.value = a.id;
+            var open = a.open_meldingen_count > 0 ? ' · ' + a.open_meldingen_count + ' open' : '';
+            opt.textContent = a.code + (a.name ? ' — ' + a.name : '') + ' (' + a.asset_type + ')' + open;
+            sel.appendChild(opt);
+          });
+          if (hint) hint.textContent = meldingAssets.length + ' assets beschikbaar';
+        })
+        .catch(function(err) {
+          if (hint) hint.textContent = 'Assets laden mislukt: ' + (err.message || 'onbekend');
+        });
+    }
+
+    function onMeldingAssetChange() {
+      var assetId = document.getElementById('meldingAsset').value;
+      if (!assetId) return;
+      var asset = meldingAssets.find(function(a){ return a.id === assetId; });
+      if (!asset) return;
+      // Vul GPS van de asset (alleen als de velden nog leeg/ouder zijn)
+      var latField = document.getElementById('meldingLat');
+      var lngField = document.getElementById('meldingLng');
+      if (asset.lat != null && asset.lng != null) {
+        latField.value = asset.lat;
+        lngField.value = asset.lng;
+      }
+      // Suggereer locatie-omschrijving in de title als die nog leeg is
+      var titleField = document.getElementById('meldingTitle');
+      if (!titleField.value && asset.location_description) {
+        titleField.placeholder = 'bijv. Schade aan ' + asset.code + ' (' + asset.location_description + ')';
+      }
+    }
+
+    function onMeldingPhotoChange(event) {
+      var f = event.target.files && event.target.files[0];
+      if (!f) return;
+      if (f.size > 10 * 1024 * 1024) {
+        showToast('Foto te groot (max 10 MB)', 'error');
+        event.target.value = '';
+        return;
+      }
+      meldingPhotoFile = f;
+      // Preview
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = document.getElementById('meldingPhotoPreview');
+        img.src = e.target.result;
+        img.style.display = 'block';
+        document.getElementById('meldingPhotoLabel').style.display = 'none';
+      };
+      reader.readAsDataURL(f);
+      document.getElementById('meldingAIBox').style.display = 'block';
+      document.getElementById('meldingAIResult').style.display = 'none';
+      meldingAILastResult = null;
+    }
+
+    function analyseFotoMetAI() {
+      if (!meldingPhotoFile) { showToast('Kies eerst een foto', 'error'); return; }
+      var btn = document.getElementById('meldingAIBtn');
+      var origText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳ AI analyseert...';
+
+      var fd = new FormData();
+      fd.append('file', meldingPhotoFile);
+      var assetId = document.getElementById('meldingAsset').value;
+      if (assetId) fd.append('asset_id', assetId);
+      var desc = document.getElementById('meldingDesc').value;
+      if (desc) fd.append('extra_context', desc);
+
+      var token = localStorage.getItem('fieldops_token') || '';
+      fetch('/api/inspecties/analyse-foto', {
+        method: 'POST',
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        body: fd,
+      }).then(function(r) {
+        if (!r.ok) return r.json().then(function(j){ throw new Error(j.detail || ('HTTP '+r.status)); });
+        return r.json();
+      }).then(function(result) {
+        meldingAILastResult = result;
+        renderAIResult(result);
+      }).catch(function(err) {
+        showToast('AI-analyse mislukt: ' + err.message, 'error');
+      }).finally(function() {
+        btn.disabled = false;
+        btn.textContent = origText;
+      });
+    }
+
+    function renderAIResult(r) {
+      var box = document.getElementById('meldingAIResult');
+      var summary = document.getElementById('meldingAISummary');
+      var conf = document.getElementById('meldingAIConfidence');
+
+      var lines = [];
+      if (r.schade_aanwezig === false) {
+        lines.push('<em>Geen schade gedetecteerd op de foto.</em>');
+      }
+      if (r.schade_type) lines.push('<strong>Schadetype:</strong> ' + r.schade_type);
+      if (r.ernst) lines.push('<strong>Ernst:</strong> ' + r.ernst);
+      if (r.kosten_klasse) lines.push('<strong>Geschatte kosten:</strong> ' + r.kosten_klasse);
+      if (r.aanbevolen_actie) lines.push('<strong>Actie:</strong> ' + escapeHtml(r.aanbevolen_actie));
+      if (r.bevindingen && r.bevindingen.length) {
+        lines.push('<div style="margin-top:6px;"><strong>Bevindingen:</strong><ul style="margin:4px 0 0 18px;padding:0;">' +
+          r.bevindingen.map(function(b){ return '<li>' + escapeHtml(b) + '</li>'; }).join('') + '</ul></div>');
+      }
+      summary.innerHTML = lines.join('<br>');
+      if (r.confidence != null) {
+        conf.textContent = 'Vertrouwen: ' + Math.round(r.confidence * 100) + '%';
+      } else {
+        conf.textContent = '';
+      }
+      box.style.display = 'block';
+    }
+
+    function escapeHtml(s) {
+      return String(s || '').replace(/[&<>"']/g, function(c){
+        return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+      });
+    }
+
+    function applyAISuggestion() {
+      var r = meldingAILastResult;
+      if (!r) return;
+      // Title — alleen als nog leeg
+      var titleField = document.getElementById('meldingTitle');
+      if (!titleField.value && r.schade_type) {
+        var assetSel = document.getElementById('meldingAsset');
+        var assetTxt = assetSel.value ? (meldingAssets.find(function(a){return a.id===assetSel.value;}) || {}).code : '';
+        titleField.value = (assetTxt ? assetTxt + ' — ' : '') + r.schade_type.charAt(0).toUpperCase() + r.schade_type.slice(1);
+      }
+      // Description — append AI-bevindingen
+      var descField = document.getElementById('meldingDesc');
+      if (r.bevindingen && r.bevindingen.length) {
+        var bev = '• ' + r.bevindingen.join('\n• ');
+        descField.value = descField.value ? (descField.value + '\n\n' + bev) : bev;
+      } else if (!descField.value && r.aanbevolen_actie) {
+        descField.value = r.aanbevolen_actie;
+      }
+      // Category — alleen als nog niet gekozen + matching optie bestaat
+      var catSel = document.getElementById('meldingCategory');
+      if (!catSel.value && r.schade_type) {
+        var match = Array.from(catSel.options).find(function(o){
+          return o.value && o.value.toLowerCase().indexOf(r.schade_type.toLowerCase()) !== -1;
+        });
+        if (match) catSel.value = match.value;
+      }
+      // Priority — bij ernstig/kritiek omhoog
+      var priSel = document.getElementById('meldingPriority');
+      if (r.ernst === 'kritiek') priSel.value = 'kritiek';
+      else if (r.ernst === 'ernstig') priSel.value = 'hoog';
+
+      showToast('AI-suggestie overgenomen — controleer en pas aan waar nodig', 'success');
+    }
+
+    function dismissAISuggestion() {
+      document.getElementById('meldingAIResult').style.display = 'none';
+      meldingAILastResult = null;
+    }
+
+    function resetMeldingPhotoState() {
+      meldingPhotoFile = null;
+      meldingAILastResult = null;
+      var inp = document.getElementById('meldingPhotoInput'); if (inp) inp.value = '';
+      var prev = document.getElementById('meldingPhotoPreview'); if (prev) { prev.src = ''; prev.style.display = 'none'; }
+      var lbl = document.getElementById('meldingPhotoLabel'); if (lbl) lbl.style.display = 'block';
+      var box = document.getElementById('meldingAIBox'); if (box) box.style.display = 'none';
+      var res = document.getElementById('meldingAIResult'); if (res) res.style.display = 'none';
     }
 
     // ══════════════════════════════════════

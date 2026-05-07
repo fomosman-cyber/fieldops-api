@@ -1,28 +1,42 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
+import hashlib
+import secrets
+
 from database import get_db
-from models import User
+from models import User, PasswordResetToken
 from schemas import LoginRequest, TokenResponse, UserResponse, PasswordResetRequest, PasswordResetConfirm
 from auth import verify_password, create_access_token, get_current_user, hash_password
 from email_service import send_password_reset_email
-import secrets
+from audit import log_action, ACTION
 
 router = APIRouter(prefix="/api/auth", tags=["Authenticatie"])
 
-# In-memory store voor password reset tokens: {token: {"email": ..., "expires": ...}}
-_reset_tokens: dict[str, dict] = {}
+
+def _hash_token(token: str) -> str:
+    """SHA-256 van de raw token. Alleen de hash zit in DB; de raw waarde gaat
+    één keer per email naar de gebruiker. Lekt de DB, dan zijn tokens niet bruikbaar."""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(request: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == request.email).first()
-    if not user or not verify_password(request.password, user.hashed_password):
+def login(payload: LoginRequest, http_request: Request, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == payload.email).first()
+    if not user or not verify_password(payload.password, user.hashed_password):
+        # Log poging zonder user-binding zodat brute-force detecteerbaar is
+        log_action(db, http_request, None,
+                   action=ACTION.LOGIN_FAILED,
+                   entity_type="user", entity_id=user.id if user else None,
+                   extra={"email": payload.email, "reason": "invalid_credentials"})
         raise HTTPException(status_code=401, detail="Onjuist e-mailadres of wachtwoord")
     if not user.is_active:
+        log_action(db, http_request, user,
+                   action=ACTION.LOGIN_FAILED,
+                   entity_type="user", entity_id=user.id,
+                   extra={"reason": "deactivated"})
         raise HTTPException(status_code=403, detail="Account is gedeactiveerd")
 
-    # Check of organisatie nog actief is
     org = user.organization
     if org.status == "expired":
         raise HTTPException(status_code=403, detail="Uw proefperiode is verlopen. Neem een abonnement.")
@@ -33,6 +47,7 @@ def login(request: LoginRequest, db: Session = Depends(get_db)):
     db.commit()
 
     token = create_access_token(data={"sub": user.id, "org": user.organization_id, "role": user.role.value})
+    log_action(db, http_request, user, action=ACTION.LOGIN_SUCCESS, entity_type="user", entity_id=user.id)
 
     return TokenResponse(
         access_token=token,
@@ -46,61 +61,75 @@ def get_me(current_user: User = Depends(get_current_user)):
 
 
 @router.post("/reset-password-request")
-def reset_password_request(request: PasswordResetRequest, db: Session = Depends(get_db)):
-    """Genereer een wachtwoord-reset token voor het opgegeven e-mailadres."""
-    user = db.query(User).filter(User.email == request.email).first()
+def reset_password_request(payload: PasswordResetRequest, http_request: Request, db: Session = Depends(get_db)):
+    """Genereer een wachtwoord-reset token en stuur deze per email.
 
-    # Altijd hetzelfde bericht teruggeven (voorkomt email enumeration)
+    - Token wordt gehasht in DB opgeslagen (geen plaintext)
+    - Tokens 1 uur geldig
+    - Verlopen + gebruikte tokens periodiek opgeruimd
+    - Antwoord is altijd hetzelfde (voorkomt email enumeration)
+    """
     success_msg = {"message": "Als dit e-mailadres bij ons bekend is, ontvangt u een reset-link."}
 
+    user = db.query(User).filter(User.email == payload.email).first()
     if not user:
+        # Log onbekende email-pogingen ook (voor enumeration-detectie)
+        log_action(db, http_request, None,
+                   action=ACTION.PASSWORD_RESET_REQ,
+                   extra={"email": payload.email, "user_found": False})
         return success_msg
 
-    # Genereer token
-    token = secrets.token_urlsafe(48)
-    _reset_tokens[token] = {
-        "email": user.email,
-        "expires": datetime.now(timezone.utc) + timedelta(hours=1),
-    }
-
-    # Cleanup verlopen tokens
+    # Cleanup: verwijder verlopen + gebruikte tokens (eenvoudig housekeeping)
     now = datetime.now(timezone.utc)
-    expired = [t for t, data in _reset_tokens.items() if data["expires"] < now]
-    for t in expired:
-        del _reset_tokens[t]
+    db.query(PasswordResetToken).filter(
+        (PasswordResetToken.expires_at < now) | (PasswordResetToken.used_at.isnot(None))
+    ).delete(synchronize_session=False)
 
-    # Stuur e-mail met reset link
+    raw_token = secrets.token_urlsafe(48)
+    db.add(PasswordResetToken(
+        token_hash=_hash_token(raw_token),
+        user_id=user.id,
+        expires_at=now + timedelta(hours=1),
+    ))
+    db.commit()
+
+    log_action(db, http_request, user,
+               action=ACTION.PASSWORD_RESET_REQ,
+               entity_type="user", entity_id=user.id,
+               extra={"user_found": True})
+
     user_name = f"{user.first_name} {user.last_name}".strip()
-    send_password_reset_email(to_email=user.email, token=token, user_name=user_name)
+    send_password_reset_email(to_email=user.email, token=raw_token, user_name=user_name)
 
     return success_msg
 
 
 @router.post("/reset-password")
-def reset_password(request: PasswordResetConfirm, db: Session = Depends(get_db)):
+def reset_password(payload: PasswordResetConfirm, http_request: Request, db: Session = Depends(get_db)):
     """Stel een nieuw wachtwoord in met een geldig reset-token."""
-    token_data = _reset_tokens.get(request.token)
-    if not token_data:
-        raise HTTPException(status_code=400, detail="Ongeldige of verlopen reset-link.")
-
-    # Check expiry
-    if datetime.now(timezone.utc) > token_data["expires"]:
-        del _reset_tokens[request.token]
-        raise HTTPException(status_code=400, detail="Deze reset-link is verlopen. Vraag een nieuwe aan.")
-
-    # Validatie nieuw wachtwoord
-    if len(request.new_password) < 8:
+    if len(payload.new_password) < 8:
         raise HTTPException(status_code=400, detail="Wachtwoord moet minimaal 8 tekens bevatten.")
 
-    # Update wachtwoord
-    user = db.query(User).filter(User.email == token_data["email"]).first()
+    token_hash = _hash_token(payload.token)
+    rec = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).first()
+
+    if not rec or rec.used_at is not None:
+        raise HTTPException(status_code=400, detail="Ongeldige of al gebruikte reset-link.")
+    if rec.expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="Deze reset-link is verlopen. Vraag een nieuwe aan.")
+
+    user = db.query(User).filter(User.id == rec.user_id).first()
     if not user:
         raise HTTPException(status_code=400, detail="Gebruiker niet gevonden.")
 
-    user.hashed_password = hash_password(request.new_password)
+    user.hashed_password = hash_password(payload.new_password)
+    if hasattr(user, "must_change_password"):
+        user.must_change_password = False
+    rec.used_at = datetime.now(timezone.utc)
     db.commit()
 
-    # Verwijder gebruikte token
-    del _reset_tokens[request.token]
+    log_action(db, http_request, user,
+               action=ACTION.PASSWORD_RESET_DONE,
+               entity_type="user", entity_id=user.id)
 
     return {"message": "Wachtwoord succesvol gewijzigd. U kunt nu inloggen met uw nieuwe wachtwoord."}

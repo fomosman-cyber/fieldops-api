@@ -1,10 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from typing import Optional
 from database import get_db
 from models import Melding, User
 from schemas import MeldingCreate, MeldingResponse, MeldingUpdate
-from auth import get_current_user, require_admin
+from auth import get_current_user
+from permissions import (
+    can_create_meldingen, can_change_status, can_edit_melding_full,
+    is_inspector, require_org_admin,
+)
+from audit import log_action, ACTION
 
 router = APIRouter(prefix="/api/meldingen", tags=["Meldingen"])
 
@@ -50,12 +55,12 @@ def list_meldingen(
 @router.post("/", response_model=MeldingResponse)
 def create_melding(
     data: MeldingCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Nieuwe melding aanmaken."""
-    # Viewer en Contractor mogen geen meldingen aanmaken
-    if current_user.role and current_user.role.value in ("viewer", "contractor"):
+    if not can_create_meldingen(current_user):
         raise HTTPException(status_code=403, detail="Je rol heeft geen rechten om meldingen aan te maken")
     melding = Melding(
         title=data.title,
@@ -73,6 +78,11 @@ def create_melding(
     db.add(melding)
     db.commit()
     db.refresh(melding)
+    log_action(db, request, current_user,
+               action=ACTION.MELDING_CREATE,
+               entity_type="melding", entity_id=melding.id,
+               after={"title": melding.title, "category": melding.category,
+                      "priority": melding.priority, "project_id": melding.project_id})
     return _melding_to_response(melding)
 
 
@@ -96,6 +106,7 @@ def get_melding(
 def update_melding(
     melding_id: str,
     update: MeldingUpdate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -107,38 +118,49 @@ def update_melding(
     if not melding:
         raise HTTPException(status_code=404, detail="Melding niet gevonden")
 
-    role = current_user.role.value if current_user.role else "viewer"
+    update_data = update.model_dump(exclude_unset=True)
+    is_status_only = set(update_data.keys()) == {"status"}
+    has_status_field = "status" in update_data
 
-    # Viewer mag niets wijzigen
-    if role == "viewer":
-        raise HTTPException(status_code=403, detail="Opdrachtgevers kunnen geen meldingen wijzigen")
-
-    # Toezichthouder/Inspector mag alleen eigen meldingen bewerken (geen status)
-    if role == "inspector":
+    # Permissielogica gerouteerd via permissions.py:
+    # - Volledige edit (alle velden incl. status): admin/manager/technician
+    # - Inspector mag eigen meldingen, MAAR geen status
+    # - Contractor mag enkel status (en alleen via een status-only payload)
+    # - Viewer mag niets
+    if can_edit_melding_full(current_user):
+        pass  # alle velden ok
+    elif is_inspector(current_user):
         if melding.created_by != current_user.id:
             raise HTTPException(status_code=403, detail="Toezichthouders mogen alleen eigen meldingen bewerken")
-        update_data = update.model_dump(exclude_unset=True)
-        if "status" in update_data:
+        if has_status_field:
             raise HTTPException(status_code=403, detail="Toezichthouders mogen geen status wijzigen")
+    elif can_change_status(current_user):
+        # Aannemers e.d. — alleen pure status-update toegestaan
+        if not is_status_only:
+            raise HTTPException(status_code=403, detail="Je rol mag alleen de status wijzigen")
+    else:
+        raise HTTPException(status_code=403, detail="Geen rechten om meldingen te wijzigen")
 
-    # Aannemer/Contractor mag alleen status wijzigen (niet andere velden)
-    if role == "contractor":
-        update_data = update.model_dump(exclude_unset=True)
-        allowed = {"status"}
-        if set(update_data.keys()) - allowed:
-            raise HTTPException(status_code=403, detail="Aannemers mogen alleen de status wijzigen")
+    before = {k: getattr(melding, k) for k in update_data.keys()}
+    status_change = has_status_field and update_data["status"] != melding.status
 
-    for field, value in update.model_dump(exclude_unset=True).items():
+    for field, value in update_data.items():
         setattr(melding, field, value)
     db.commit()
     db.refresh(melding)
+
+    log_action(db, request, current_user,
+               action=ACTION.MELDING_STATUS if status_change else ACTION.MELDING_UPDATE,
+               entity_type="melding", entity_id=melding.id,
+               before=before, after=update_data)
     return _melding_to_response(melding)
 
 
 @router.delete("/{melding_id}")
 def delete_melding(
     melding_id: str,
-    current_user: User = Depends(require_admin),
+    request: Request,
+    current_user: User = Depends(require_org_admin),
     db: Session = Depends(get_db),
 ):
     """Melding verwijderen (alleen admin)."""
@@ -149,6 +171,11 @@ def delete_melding(
     if not melding:
         raise HTTPException(status_code=404, detail="Melding niet gevonden")
 
+    snapshot = {"title": melding.title, "category": melding.category,
+                "status": melding.status, "project_id": melding.project_id}
     db.delete(melding)
     db.commit()
+    log_action(db, request, current_user,
+               action=ACTION.MELDING_DELETE,
+               entity_type="melding", entity_id=melding_id, before=snapshot)
     return {"message": "Melding verwijderd"}

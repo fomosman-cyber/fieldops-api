@@ -124,15 +124,8 @@ def send_invitation_email(
     token: str,
 ) -> bool:
     """Verstuur uitnodiging email met accepteer link."""
-    role_labels = {
-        "admin": "Beheerder",
-        "manager": "Projectleider",
-        "contractor": "Aannemer",
-        "inspector": "Toezichthouder",
-        "technician": "Technicus",
-        "viewer": "Opdrachtgever",
-    }
-    role_label = role_labels.get(role, role)
+    from permissions import label_for
+    role_label = label_for(role)
     accept_url = f"{PORTAAL_URL}/uitnodiging?token={token}"
 
     content = f"""
