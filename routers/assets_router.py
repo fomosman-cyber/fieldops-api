@@ -337,16 +337,24 @@ def archive_asset(
 
 # Aliases voor veel-gebruikte kolomnamen in NL gemeente/aannemer-CSVs.
 # Eerste match wint. Lowercase compare; ondersteunt spaties + underscores.
+# Inclusief MOR+/MOR-Plus exports van NL-gemeenten (Haarlem etc.)
 _CSV_ALIASES: dict[str, list[str]] = {
     "code":                 ["code", "objectnummer", "object_nummer", "objectid", "object_id",
-                             "nummer", "id", "externe_code", "kenmerk", "asset_id", "asset_code"],
+                             "nummer", "uniek_nummer", "uniek nummer", "id", "externe_code",
+                             "kenmerk", "asset_id", "asset_code", "wlo_nr", "wlo-nr"],
     "asset_type":           ["asset_type", "objecttype", "object_type", "type", "categorie",
-                             "category", "soort", "klasse", "klasse_omschrijving"],
-    "name":                 ["name", "naam", "omschrijving", "beschrijving", "description", "label"],
-    "lat":                  ["lat", "latitude", "breedte", "wgs84_lat", "y_lat"],
-    "lng":                  ["lng", "lon", "longitude", "lengte", "wgs84_lng", "wgs84_lon", "x_lng"],
+                             "category", "soort", "klasse", "klasse_omschrijving",
+                             "hoofdrubriek", "subrubriek", "rubriek"],
+    "name":                 ["name", "naam", "omschrijving", "beschrijving", "description",
+                             "label", "korte_omschrijving", "korte omschrijving"],
+    "lat":                  ["lat", "latitude", "breedte", "wgs84_lat", "y_lat",
+                             "objectcoordinatey", "coordinaaty", "coordinaat_y", "coordinatey"],
+    "lng":                  ["lng", "lon", "longitude", "lengte", "wgs84_lng", "wgs84_lon",
+                             "x_lng", "objectcoordinatex", "coordinaatx", "coordinaat_x",
+                             "coordinatex"],
     "location_description": ["location_description", "locatie", "locatie_omschrijving",
-                             "adres", "straat", "plaats", "gemeente_locatie", "omschrijving_locatie"],
+                             "adres", "straat", "plaats", "gemeente_locatie",
+                             "omschrijving_locatie", "buurt", "wijk"],
     "parent_code":          ["parent_code", "parent", "parent_id", "hoofdobject", "hoofdcode",
                              "ouder", "ouder_code"],
     "project_id":           ["project_id", "project"],
