@@ -1921,6 +1921,21 @@
           <button id="msDisconnectBtn" class="btn-secondary" onclick="disconnectMicrosoft()" style="display:none;color:#dc2626;">Verbinding verbreken</button>
         </div>
       </div>
+
+      <!-- Privacy & GDPR — Article 15 + 17 -->
+      <div class="card" style="max-width: 600px; margin-top: 20px;">
+        <div class="card-header"><h3 data-i18n="privacy_gdpr_header">🔒 Privacy & mijn gegevens</h3></div>
+        <p style="color:var(--text-muted);font-size:14px;margin:0 0 16px;" data-i18n="privacy_gdpr_intro">
+          Onder de AVG/GDPR heeft u recht op inzage in uw persoonsgegevens (Artikel 15) en het recht om vergeten te worden (Artikel 17).
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="dsarSelfExport()" data-i18n="dsar_btn" title="GDPR Article 15 — download JSON met al uw persoonsgegevens">📦 Mijn gegevens downloaden</button>
+          <button class="btn-secondary" onclick="confirmSelfErasure()" style="color:#dc2626;border-color:#dc2626;" data-i18n="erasure_btn" title="GDPR Article 17 — anonymiseer mijn account permanent">🗑 Mijn account verwijderen</button>
+        </div>
+        <p style="color:var(--text-dim);font-size:11px;margin:14px 0 0;" data-i18n="privacy_gdpr_footnote">
+          Bij verwijderen worden persoonsgegevens overschreven; audit-records blijven bewaard zonder uw naam (compliance-vereiste).
+        </p>
+      </div>
     </div>
 
     <!-- ═══ ADMIN (eigenaar) ═══ -->
@@ -1975,9 +1990,10 @@
         <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;">
           <p style="color:var(--text-muted);font-size:13px;margin:0;flex:1;min-width:300px;">Onveranderlijk logboek van alle business-mutaties. Inclusief IP, request-ID en before/after-snapshots.</p>
           <select id="auditFilterAction" onchange="loadAuditLog(true)" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
-            <option value="">Alle acties</option>
+            <option value="" data-i18n="alle_acties">Alle acties</option>
           </select>
-          <button class="btn-secondary" onclick="loadAuditLog(true)" style="font-size:12px;padding:6px 12px;">↻ Vernieuwen</button>
+          <button class="btn-secondary" onclick="loadAuditLog(true)" style="font-size:12px;padding:6px 12px;" data-i18n="vernieuwen">↻ Vernieuwen</button>
+          <button class="btn-secondary" onclick="exportAuditLogCsv()" style="font-size:12px;padding:6px 12px;" data-i18n="export_csv" title="Exporteer audit-log als CSV (Rekenkamer/ISO27001)">📥 Exporteer CSV</button>
         </div>
         <div class="card" style="overflow-x:auto;padding:0;">
           <table class="data-table">
@@ -2915,6 +2931,23 @@
         start_cluster: '▶️ Start cluster',
         cluster_afronden: '✓ Cluster afronden',
         nog_geen_meldingen: 'Nog geen meldingen',
+        // Compliance dashboard UI — GDPR Art.15+17 + audit export (i18n added 2026-05-09)
+        alle_acties: 'Alle acties',
+        vernieuwen: '↻ Vernieuwen',
+        export_csv: '📥 Exporteer CSV',
+        csv_export_done: 'Audit-log gedownload als CSV',
+        csv_export_failed: 'CSV-export mislukt:',
+        privacy_gdpr_header: '🔒 Privacy & mijn gegevens',
+        privacy_gdpr_intro: 'Onder de AVG/GDPR heeft u recht op inzage in uw persoonsgegevens (Artikel 15) en het recht om vergeten te worden (Artikel 17).',
+        privacy_gdpr_footnote: 'Bij verwijderen worden persoonsgegevens overschreven; audit-records blijven bewaard zonder uw naam (compliance-vereiste).',
+        dsar_btn: '📦 Mijn gegevens downloaden',
+        dsar_done: 'Uw gegevens zijn gedownload als JSON',
+        dsar_failed: 'Export mislukt:',
+        erasure_btn: '🗑 Mijn account verwijderen',
+        erasure_confirm_1: 'Weet u zeker dat u uw account wilt verwijderen? Dit kan niet ongedaan gemaakt worden. Persoonsgegevens worden geanonymiseerd; audit-records blijven bewaard zonder uw naam.',
+        erasure_confirm_2: 'Typ WIS in hoofdletters om te bevestigen:',
+        erasure_done: 'Uw account is verwijderd. U wordt uitgelogd...',
+        erasure_failed: 'Verwijderen mislukt:',
       },
       en: {
         dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
@@ -3118,6 +3151,23 @@
         start_cluster: '▶️ Start cluster',
         cluster_afronden: '✓ Complete cluster',
         nog_geen_meldingen: 'No reports yet',
+        // Compliance dashboard UI — GDPR Art.15+17 + audit export (i18n added 2026-05-09)
+        alle_acties: 'All actions',
+        vernieuwen: '↻ Refresh',
+        export_csv: '📥 Export CSV',
+        csv_export_done: 'Audit log downloaded as CSV',
+        csv_export_failed: 'CSV export failed:',
+        privacy_gdpr_header: '🔒 Privacy & my data',
+        privacy_gdpr_intro: 'Under GDPR you have the right of access to your personal data (Article 15) and the right to be forgotten (Article 17).',
+        privacy_gdpr_footnote: 'On deletion, personal data is overwritten; audit records are kept without your name (compliance requirement).',
+        dsar_btn: '📦 Download my data',
+        dsar_done: 'Your data has been downloaded as JSON',
+        dsar_failed: 'Export failed:',
+        erasure_btn: '🗑 Delete my account',
+        erasure_confirm_1: 'Are you sure you want to delete your account? This cannot be undone. Personal data will be anonymized; audit records will be kept without your name.',
+        erasure_confirm_2: 'Type DELETE in capitals to confirm:',
+        erasure_done: 'Your account has been deleted. Logging you out...',
+        erasure_failed: 'Deletion failed:',
       },
       de: {
         dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
@@ -3321,6 +3371,23 @@
         start_cluster: '▶️ Cluster starten',
         cluster_afronden: '✓ Cluster abschließen',
         nog_geen_meldingen: 'Noch keine Meldungen',
+        // Compliance dashboard UI — GDPR Art.15+17 + audit export (i18n added 2026-05-09)
+        alle_acties: 'Alle Aktionen',
+        vernieuwen: '↻ Aktualisieren',
+        export_csv: '📥 CSV exportieren',
+        csv_export_done: 'Audit-Log als CSV heruntergeladen',
+        csv_export_failed: 'CSV-Export fehlgeschlagen:',
+        privacy_gdpr_header: '🔒 Datenschutz & meine Daten',
+        privacy_gdpr_intro: 'Nach der DSGVO haben Sie das Recht auf Auskunft (Artikel 15) und das Recht auf Vergessenwerden (Artikel 17).',
+        privacy_gdpr_footnote: 'Bei der Löschung werden personenbezogene Daten überschrieben; Audit-Datensätze werden ohne Ihren Namen aufbewahrt (Compliance-Anforderung).',
+        dsar_btn: '📦 Meine Daten herunterladen',
+        dsar_done: 'Ihre Daten wurden als JSON heruntergeladen',
+        dsar_failed: 'Export fehlgeschlagen:',
+        erasure_btn: '🗑 Mein Konto löschen',
+        erasure_confirm_1: 'Möchten Sie Ihr Konto wirklich löschen? Dies kann nicht rückgängig gemacht werden. Persönliche Daten werden anonymisiert; Audit-Datensätze bleiben ohne Ihren Namen erhalten.',
+        erasure_confirm_2: 'Geben Sie LOESCHEN in Großbuchstaben ein, um zu bestätigen:',
+        erasure_done: 'Ihr Konto wurde gelöscht. Sie werden abgemeldet...',
+        erasure_failed: 'Löschen fehlgeschlagen:',
       },
       fr: {
         dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
@@ -3524,6 +3591,23 @@
         start_cluster: '▶️ Démarrer le cluster',
         cluster_afronden: '✓ Terminer le cluster',
         nog_geen_meldingen: 'Pas encore de signalements',
+        // Compliance dashboard UI — GDPR Art.15+17 + audit export (i18n added 2026-05-09)
+        alle_acties: 'Toutes les actions',
+        vernieuwen: '↻ Actualiser',
+        export_csv: '📥 Exporter CSV',
+        csv_export_done: 'Journal d\'audit téléchargé en CSV',
+        csv_export_failed: 'Échec de l\'export CSV :',
+        privacy_gdpr_header: '🔒 Confidentialité & mes données',
+        privacy_gdpr_intro: 'Selon le RGPD, vous avez le droit d\'accès à vos données personnelles (Article 15) et le droit à l\'oubli (Article 17).',
+        privacy_gdpr_footnote: 'Lors de la suppression, les données personnelles sont écrasées ; les enregistrements d\'audit sont conservés sans votre nom (exigence de conformité).',
+        dsar_btn: '📦 Télécharger mes données',
+        dsar_done: 'Vos données ont été téléchargées en JSON',
+        dsar_failed: 'Échec de l\'export :',
+        erasure_btn: '🗑 Supprimer mon compte',
+        erasure_confirm_1: 'Voulez-vous vraiment supprimer votre compte ? Cette action est irréversible. Les données personnelles seront anonymisées ; les enregistrements d\'audit seront conservés sans votre nom.',
+        erasure_confirm_2: 'Tapez SUPPRIMER en majuscules pour confirmer :',
+        erasure_done: 'Votre compte a été supprimé. Déconnexion en cours...',
+        erasure_failed: 'Échec de la suppression :',
       },
       tr: {
         dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
@@ -3727,6 +3811,23 @@
         start_cluster: '▶️ Kümeyi başlat',
         cluster_afronden: '✓ Kümeyi tamamla',
         nog_geen_meldingen: 'Henüz bildirim yok',
+        // Compliance dashboard UI — GDPR Art.15+17 + audit export (i18n added 2026-05-09)
+        alle_acties: 'Tüm eylemler',
+        vernieuwen: '↻ Yenile',
+        export_csv: '📥 CSV dışa aktar',
+        csv_export_done: 'Denetim günlüğü CSV olarak indirildi',
+        csv_export_failed: 'CSV dışa aktarma başarısız:',
+        privacy_gdpr_header: '🔒 Gizlilik ve verilerim',
+        privacy_gdpr_intro: 'GDPR kapsamında kişisel verilerinize erişim hakkınız (Madde 15) ve unutulma hakkınız (Madde 17) vardır.',
+        privacy_gdpr_footnote: 'Silme işleminde kişisel veriler üzerine yazılır; denetim kayıtları adınız olmadan saklanır (uyumluluk gereği).',
+        dsar_btn: '📦 Verilerimi indir',
+        dsar_done: 'Verileriniz JSON olarak indirildi',
+        dsar_failed: 'Dışa aktarma başarısız:',
+        erasure_btn: '🗑 Hesabımı sil',
+        erasure_confirm_1: 'Hesabınızı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz. Kişisel veriler anonimleştirilecek; denetim kayıtları adınız olmadan saklanacaktır.',
+        erasure_confirm_2: 'Onaylamak için büyük harflerle SIL yazın:',
+        erasure_done: 'Hesabınız silindi. Çıkış yapılıyor...',
+        erasure_failed: 'Silme başarısız:',
       }
     };
 
@@ -8494,6 +8595,68 @@
     }
 
     // ── Audit-log viewer ──
+
+    function exportAuditLogCsv() {
+      // Hergebruik de actieve filter zodat de export = wat de admin op scherm ziet.
+      var qs = [];
+      var act = document.getElementById('auditFilterAction');
+      if (act && act.value) qs.push('action=' + encodeURIComponent(act.value));
+      var url = API_URL + '/api/audit/logs/export.csv' + (qs.length ? '?' + qs.join('&') : '');
+      // Fetch met Authorization header (CSV endpoint vereist JWT) en trigger download
+      fetch(url, { headers: { 'Authorization': 'Bearer ' + token } }).then(function(res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.blob();
+      }).then(function(blob) {
+        var dlUrl = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = dlUrl;
+        a.download = 'fieldops-auditlog-' + new Date().toISOString().slice(0,10) + '.csv';
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(dlUrl);
+        showToast(t('csv_export_done'), 'success');
+      }).catch(function(err) {
+        showToast(t('csv_export_failed') + ' ' + (err.message || ''), 'error');
+      });
+    }
+
+    // ── GDPR Article 15 — Right of access (DSAR) ──
+    function dsarSelfExport() {
+      api('GET', '/api/users/me/export').then(function(data) {
+        if (!data) return;
+        var json = JSON.stringify(data, null, 2);
+        var blob = new Blob([json], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'mijn-gegevens-' + new Date().toISOString().slice(0,10) + '.json';
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+        showToast(t('dsar_done'), 'success');
+      }).catch(function(err) {
+        showToast(t('dsar_failed') + ' ' + (err.message || ''), 'error');
+      });
+    }
+
+    // ── GDPR Article 17 — Right to erasure ──
+    function confirmSelfErasure() {
+      // Twee-staps confirm: woord intypen voorkomt accidental click.
+      var ok = confirm(t('erasure_confirm_1'));
+      if (!ok) return;
+      var typed = prompt(t('erasure_confirm_2'));
+      if (!typed || typed.trim().toUpperCase() !== 'WIS') return;
+      api('DELETE', '/api/users/me/anonymize').then(function() {
+        // Account is geanonymiseerd — token werkt nog tot expiry, maar
+        // is_active=false dus next request gaat al falen. Direct uitloggen.
+        showToast(t('erasure_done'), 'success');
+        setTimeout(function() {
+          localStorage.removeItem('fieldops_token');
+          localStorage.removeItem('fieldops_user');
+          window.location.href = 'https://fieldopsapp.nl';
+        }, 2000);
+      }).catch(function(err) {
+        showToast(t('erasure_failed') + ' ' + (err.message || ''), 'error');
+      });
+    }
 
     function loadAuditActions() {
       var sel = document.getElementById('auditFilterAction');
