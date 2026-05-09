@@ -71,6 +71,14 @@ def _to_response(asset: Asset, *, open_meldingen: int = 0, children: int = 0) ->
         "updated_at": asset.updated_at,
         "open_meldingen_count": open_meldingen,
         "children_count": children,
+        # NWB-Wegvakken (sinds v3.4)
+        "geometry_geojson": asset.geometry_geojson,
+        "length_m": asset.length_m,
+        "is_segment": getattr(asset, "is_segment", False),
+        "nwb_wvk_id": asset.nwb_wvk_id,
+        "nwb_wvk_begdat": asset.nwb_wvk_begdat,
+        "nwb_jte_id_beg": asset.nwb_jte_id_beg,
+        "nwb_jte_id_end": asset.nwb_jte_id_end,
     }
 
 
@@ -164,6 +172,58 @@ def list_asset_types(
           .group_by(Asset.asset_type).all()
     )
     return [{"asset_type": t, "count": c} for t, c in rows]
+
+
+@router.get("/map")
+def list_assets_for_map(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    project_id: Optional[str] = Query(None, description="Filter op project"),
+    only_segments: bool = Query(True, description="True (default) = alleen wegvakken; False = alle assets met geometry"),
+):
+    """Lichtgewicht endpoint voor map-rendering.
+
+    Geeft alleen de velden die nodig zijn om wegvakken te tekenen + kleuren:
+    `id`, `code`, `name`, `asset_type`, `condition_score`, `geometry_geojson`,
+    `length_m`, `nwb_wvk_id`, `nwb_wvk_begdat`, `project_id`, `parent_asset_id`,
+    `open_meldingen_count`. Latency-vriendelijk bij 1000+ wegvakken.
+    """
+    q = db.query(Asset).filter(
+        Asset.organization_id == current_user.organization_id,
+        Asset.archived_at.is_(None),
+        Asset.geometry_geojson.isnot(None),
+    )
+    if only_segments:
+        q = q.filter(Asset.is_segment == True)  # noqa: E712 - SQLAlchemy boolean compare
+    if project_id:
+        q = q.filter(Asset.project_id == project_id)
+
+    assets = q.all()
+    if not assets:
+        return []
+
+    ids = [a.id for a in assets]
+    open_counts = dict(
+        db.query(Melding.asset_id, func.count(Melding.id))
+          .filter(Melding.asset_id.in_(ids), Melding.status != "afgerond")
+          .group_by(Melding.asset_id).all()
+    )
+
+    return [{
+        "id": a.id,
+        "code": a.code,
+        "name": a.name,
+        "asset_type": a.asset_type,
+        "condition_score": a.condition_score,
+        "geometry_geojson": a.geometry_geojson,
+        "length_m": a.length_m,
+        "is_segment": getattr(a, "is_segment", False),
+        "nwb_wvk_id": a.nwb_wvk_id,
+        "nwb_wvk_begdat": a.nwb_wvk_begdat,
+        "project_id": a.project_id,
+        "parent_asset_id": a.parent_asset_id,
+        "open_meldingen_count": open_counts.get(a.id, 0),
+    } for a in assets]
 
 
 @router.get("/tree")

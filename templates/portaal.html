@@ -8691,15 +8691,31 @@
       );
     }
 
+    // Wegvak-layers — separaat van project/melding-layers, met conditie-kleuring
+    var assetWegvakLayers = {};
+    var assetWegvakAlertRings = {};   // wvk_id -> halo-layer (open meldingen)
+    var _wegvakBandActive = { good: true, medium: true, bad: true, critical: true, unknown: true };
+    var _wegvakLegendControl = null;
+    var _kaartFilterProjectId = '';   // current project-filter (leeg = alle)
+
     function loadMapData() {
       if (!map) return;
 
       // Clear existing
       Object.keys(projectLayers).forEach(function(k) { map.removeLayer(projectLayers[k]); });
       projectLayers = {};
+      Object.keys(assetWegvakLayers).forEach(function(k) { map.removeLayer(assetWegvakLayers[k]); });
+      assetWegvakLayers = {};
       meldingMarkers.forEach(function(m) { map.removeLayer(m); });
       meldingMarkers = [];
       if (drawnItems) drawnItems.clearLayers();
+
+      // Load wegvak-assets parallel met projects (conditie-kleuren).
+      // Lichtgewicht endpoint — alleen geometry + condition + counts.
+      var assetUrl = '/api/assets/map' + (_kaartFilterProjectId ? ('?project_id=' + encodeURIComponent(_kaartFilterProjectId)) : '');
+      api('GET', assetUrl).then(function(assets) {
+        renderWegvakkenOnMap(assets || []);
+      }).catch(function(){});
 
       // Load projects first, then meldingen (so project names are available for popups)
       api('GET', '/api/projects/').then(function(projects) {
@@ -8761,27 +8777,251 @@
           }
         });
 
-        // Auto-zoom to fit all content
-        var allBounds = [];
-        Object.keys(projectLayers).forEach(function(k) {
-          try { allBounds.push(projectLayers[k].getBounds()); } catch(e) {}
-        });
-        meldingMarkers.forEach(function(m) {
-          allBounds.push(m.getLatLng());
-        });
-        if (allBounds.length > 0) {
-          var group = new L.featureGroup(
-            Object.values(projectLayers).concat(meldingMarkers)
-          );
-          try { map.fitBounds(group.getBounds(), { padding: [40, 40], maxZoom: 14 }); } catch(e) {}
-        }
+        _fitAllVisibleLayers();
       }).catch(function(err) {
         console.error('Error loading map data:', err);
       });
     }
 
+    function _fitAllVisibleLayers() {
+      if (!map) return;
+      var layers = []
+        .concat(Object.values(projectLayers))
+        .concat(Object.values(assetWegvakLayers).filter(function(l) { return map.hasLayer(l); }))
+        .concat(meldingMarkers);
+      if (!layers.length) return;
+      try {
+        var group = L.featureGroup(layers);
+        var b = group.getBounds();
+        if (b && b.isValid()) map.fitBounds(b, { padding: [40, 40], maxZoom: 14 });
+      } catch (e) { /* skip */ }
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Wegvak-rendering met conditie-kleuren (NEN 2767-2 schaal 1-5)
+    // ──────────────────────────────────────────────────────────────────
+
+    function _wegvakColor(asset) {
+      // Pak de meest urgente kleur op basis van condition_score (1-5).
+      // 1=als-nieuw → groen, 5=zeer slecht → rood. Geen score → grijs.
+      var s = asset.condition_score;
+      if (!s) return { color: '#94a3b8', label: 'Onbekend', band: 'unknown' };
+      if (s <= 2) return { color: '#16a34a', label: 'Goed (NEN ' + s + ')', band: 'good' };
+      if (s === 3) return { color: '#f59e0b', label: 'Matig (NEN 3)', band: 'medium' };
+      if (s === 4) return { color: '#ea580c', label: 'Slecht (NEN 4)', band: 'bad' };
+      return { color: '#dc2626', label: 'Zeer slecht (NEN 5)', band: 'critical' };
+    }
+
+    function _wegvakCenterCoord(geom) {
+      try {
+        var coords = geom.coordinates;
+        if (geom.type === 'LineString' && coords && coords.length) {
+          var m = coords[Math.floor(coords.length / 2)];
+          return { lat: m[1], lng: m[0] };
+        }
+        if (geom.type === 'MultiLineString' && coords && coords.length && coords[0] && coords[0].length) {
+          var first = coords[0];
+          var m2 = first[Math.floor(first.length / 2)];
+          return { lat: m2[1], lng: m2[0] };
+        }
+      } catch (e) { /* skip */ }
+      return null;
+    }
+
+    function renderWegvakkenOnMap(assets) {
+      var wegvakken = (assets || []).filter(function(a) {
+        return a.geometry_geojson && a.is_segment;
+      });
+
+      var bandCounts = { good: 0, medium: 0, bad: 0, critical: 0, unknown: 0 };
+
+      wegvakken.forEach(function(a) {
+        var geom;
+        try { geom = JSON.parse(a.geometry_geojson); } catch (e) { return; }
+        if (!geom || !geom.coordinates) return;
+
+        var meta = _wegvakColor(a);
+        bandCounts[meta.band] = (bandCounts[meta.band] || 0) + 1;
+
+        // Center-coord voor melding-pre-fill
+        var center = _wegvakCenterCoord(geom);
+        if (center) { a._centerLat = center.lat; a._centerLng = center.lng; }
+
+        try {
+          // Alert-halo voor wegvakken met open meldingen — subtle witte ring eronder.
+          // interactive:false op top-level (Leaflet Path-option) zodat de halo geen
+          // clicks onderschept; de gekleurde wegvak-laag blijft clickable.
+          if (a.open_meldingen_count > 0) {
+            var halo = L.geoJSON(geom, {
+              interactive: false,
+              style: { color: '#ffffff', weight: 12, opacity: 0.55, lineCap: 'round' }
+            });
+            if (_wegvakBandActive[meta.band]) halo.addTo(map);
+            assetWegvakAlertRings[a.id] = halo;
+          }
+
+          var layer = L.geoJSON(geom, {
+            style: { color: meta.color, weight: 5, opacity: 0.85, lineCap: 'round' }
+          }).bindPopup(_wegvakPopupHtml(a, meta));
+
+          layer._wegvakBand = meta.band;
+
+          layer.on('mouseover', function() { layer.setStyle({ weight: 8, opacity: 1.0 }); });
+          layer.on('mouseout',  function() { layer.setStyle({ weight: 5, opacity: 0.85 }); });
+
+          if (_wegvakBandActive[meta.band]) layer.addTo(map);
+          assetWegvakLayers[a.id] = layer;
+        } catch (e) { /* skip invalid geom */ }
+      });
+
+      _renderWegvakLegend(wegvakken.length, bandCounts);
+      _fitAllVisibleLayers();
+    }
+
+    function _applyWegvakBandFilter() {
+      if (!map) return;
+      Object.keys(assetWegvakLayers).forEach(function(id) {
+        var layer = assetWegvakLayers[id];
+        var halo = assetWegvakAlertRings[id];
+        var band = layer._wegvakBand || 'unknown';
+        if (_wegvakBandActive[band]) {
+          if (halo && !map.hasLayer(halo)) halo.addTo(map);
+          if (!map.hasLayer(layer)) layer.addTo(map);
+        } else {
+          if (halo && map.hasLayer(halo)) map.removeLayer(halo);
+          if (map.hasLayer(layer)) map.removeLayer(layer);
+        }
+      });
+    }
+
+    // Globale handler — wordt aangeroepen door checkboxes in de legend-control
+    window.toggleWegvakBand = function(band, checked) {
+      _wegvakBandActive[band] = !!checked;
+      _applyWegvakBandFilter();
+    };
+
+    function _wegvakPopupHtml(a, meta) {
+      var lengthTxt = a.length_m ? Math.round(a.length_m) + ' m' : '?';
+      var nwbTxt = a.nwb_wvk_id ? 'WVK ' + a.nwb_wvk_id : '';
+      var begdat = a.nwb_wvk_begdat ? new Date(a.nwb_wvk_begdat).toLocaleDateString('nl-NL') : '';
+      var conditieBadge = '<span style="display:inline-block;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:700;background:' + meta.color + '22;color:' + meta.color + ';font-family:JetBrains Mono,monospace;">' + meta.label + '</span>';
+
+      // Pre-fill args voor "+ Melding"-knop. Strings via JSON-encode om quotes te escapen.
+      var pid = a.project_id ? JSON.stringify(a.project_id) : 'null';
+      var aid = JSON.stringify(a.id);
+      var lat = (a._centerLat != null) ? a._centerLat : 'null';
+      var lng = (a._centerLng != null) ? a._centerLng : 'null';
+      var meldingArgs = aid + ',' + pid + ',' + lat + ',' + lng;
+
+      return ''
+        + '<div style="min-width:240px;font-family:DM Sans,sans-serif;">'
+        + '<div style="font-size:11px;color:#94a3b8;font-family:JetBrains Mono,monospace;letter-spacing:.05em;margin-bottom:4px;">' + nwbTxt + (begdat ? ' · ' + begdat : '') + '</div>'
+        + '<strong style="font-size:14px;">' + (a.name || a.code) + '</strong>'
+        + '<div style="font-size:12px;color:#64748b;margin-top:4px;">' + lengthTxt + ' · ' + (a.asset_type || 'wegdek') + '</div>'
+        + '<div style="margin-top:8px;">' + conditieBadge + '</div>'
+        + (a.open_meldingen_count ? '<div style="margin-top:6px;font-size:11px;color:#dc2626;font-weight:600;">⚠ ' + a.open_meldingen_count + ' open melding(en)</div>' : '')
+        + '<div style="display:flex;gap:6px;margin-top:10px;">'
+        +   '<button onclick="openMeldingForWegvak(' + meldingArgs + ')" style="flex:1;padding:7px 10px;background:#dc2626;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">+ Melding hier</button>'
+        +   '<button onclick="openAssetDetailFromMap(' + aid + ')" style="flex:1;padding:7px 10px;background:#0284c7;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">Bekijk asset</button>'
+        + '</div>'
+        + '</div>';
+    }
+
+    // Pre-fill melding-modal vanuit een wegvak-popup. Project-select en asset-select
+    // zijn afhankelijk van de project-API-call binnen openMeldingModal — vandaar de
+    // gestapelde setTimeouts (350ms voor projecten, 700ms voor assets).
+    window.openMeldingForWegvak = function(assetId, projectId, lat, lng) {
+      if (typeof openMeldingModal !== 'function') return;
+      openMeldingModal();
+
+      setTimeout(function() {
+        if (lat != null && lng != null) {
+          var latField = document.getElementById('meldingLat');
+          var lngField = document.getElementById('meldingLng');
+          if (latField) latField.value = lat;
+          if (lngField) lngField.value = lng;
+        }
+        if (!projectId) return;
+
+        var projSel = document.getElementById('meldingProject');
+        if (projSel) {
+          projSel.value = projectId;
+          if (typeof onMeldingProjectChange === 'function') {
+            onMeldingProjectChange();
+          } else if (typeof loadAssetsForMelding === 'function') {
+            loadAssetsForMelding();
+          }
+        }
+        setTimeout(function() {
+          var assetSel = document.getElementById('meldingAsset');
+          if (assetSel) {
+            assetSel.value = assetId;
+            if (typeof onMeldingAssetChange === 'function') onMeldingAssetChange();
+          }
+        }, 700);
+      }, 350);
+    };
+
+    function _renderWegvakLegend(total, counts) {
+      if (!map) return;
+      if (_wegvakLegendControl) {
+        try { map.removeControl(_wegvakLegendControl); } catch (e) {}
+        _wegvakLegendControl = null;
+      }
+      if (!total) return;
+
+      var bands = [
+        { id: 'good',     color: '#16a34a', label: 'NEN 1-2 · Goed' },
+        { id: 'medium',   color: '#f59e0b', label: 'NEN 3 · Matig' },
+        { id: 'bad',      color: '#ea580c', label: 'NEN 4 · Slecht' },
+        { id: 'critical', color: '#dc2626', label: 'NEN 5 · Zeer slecht' },
+        { id: 'unknown',  color: '#94a3b8', label: 'Onbekend' }
+      ];
+
+      var Ctrl = L.Control.extend({
+        options: { position: 'bottomright' },
+        onAdd: function() {
+          var div = L.DomUtil.create('div', 'wegvak-legend-control');
+          div.style.cssText = 'background:rgba(255,255,255,0.95);border:1px solid #e2e8f0;border-radius:10px;padding:10px 14px;font-family:DM Sans,sans-serif;font-size:12px;backdrop-filter:blur(8px);box-shadow:0 4px 16px rgba(0,0,0,0.10);min-width:180px;';
+          var rows = bands.map(function(b) { return _legendRow(b, counts[b.id] || 0); }).join('');
+          div.innerHTML = ''
+            + '<div style="font-weight:700;font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px;">Wegvakken (' + total + ')</div>'
+            + rows;
+          // Voorkom dat klik/scroll op de legend de map verplaatst
+          L.DomEvent.disableClickPropagation(div);
+          L.DomEvent.disableScrollPropagation(div);
+          return div;
+        }
+      });
+      _wegvakLegendControl = new Ctrl();
+      _wegvakLegendControl.addTo(map);
+    }
+
+    function _legendRow(band, count) {
+      var checked = _wegvakBandActive[band.id] ? 'checked' : '';
+      var muted = count === 0 ? 'opacity:0.45;' : '';
+      return ''
+        + '<label style="display:flex;align-items:center;gap:8px;margin-bottom:5px;cursor:pointer;' + muted + '">'
+        + '<input type="checkbox" ' + checked + ' onchange="toggleWegvakBand(\'' + band.id + '\', this.checked)" style="margin:0;cursor:pointer;">'
+        + '<span style="width:18px;height:4px;background:' + band.color + ';border-radius:2px;display:inline-block;flex-shrink:0;"></span>'
+        + '<span style="color:#1e293b;flex:1;">' + band.label + '</span>'
+        + '<span style="color:#64748b;font-family:JetBrains Mono,monospace;font-size:11px;">' + count + '</span>'
+        + '</label>';
+    }
+
+    function openAssetDetailFromMap(assetId) {
+      // Spring naar Assets pagina + open dat asset
+      navigateTo('assets');
+      setTimeout(function() {
+        if (typeof openAssetDetail === 'function') openAssetDetail(assetId);
+      }, 300);
+    }
+
     function filterKaart() {
       var projectId = document.getElementById('kaartProjectFilter').value;
+      _kaartFilterProjectId = projectId || '';
+
+      // Meldingen-markers tonen/verbergen
       meldingMarkers.forEach(function(m) {
         if (!projectId || (m._meldingData && m._meldingData.project_id === projectId)) {
           m.addTo(map);
@@ -8789,9 +9029,25 @@
           map.removeLayer(m);
         }
       });
-      // Zoom to project boundary
+
+      // Wegvakken: serverside filteren via /api/assets/map?project_id=...
+      Object.keys(assetWegvakLayers).forEach(function(k) {
+        if (assetWegvakLayers[k]) map.removeLayer(assetWegvakLayers[k]);
+      });
+      Object.keys(assetWegvakAlertRings).forEach(function(k) {
+        if (assetWegvakAlertRings[k]) map.removeLayer(assetWegvakAlertRings[k]);
+      });
+      assetWegvakLayers = {};
+      assetWegvakAlertRings = {};
+
+      var url = '/api/assets/map' + (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : '');
+      api('GET', url).then(function(assets) {
+        renderWegvakkenOnMap(assets || []);
+      }).catch(function(){});
+
+      // Zoom to project boundary indien aanwezig
       if (projectId && projectLayers[projectId]) {
-        map.fitBounds(projectLayers[projectId].getBounds(), { padding: [50, 50] });
+        try { map.fitBounds(projectLayers[projectId].getBounds(), { padding: [50, 50] }); } catch (e) {}
       }
     }
 
