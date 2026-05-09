@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -237,6 +237,38 @@ def root():
         "docs": "/docs",
         "status": "online",
     }
+
+
+@app.get("/whitepaper")
+@app.get("/whitepaper.pdf")
+def whitepaper_download(request: Request):
+    """
+    Lead-magnet: serveert de FieldOps whitepaper-PDF met een nette filename
+    en optionele tracking. Gebruik vanaf de landingpage:
+      <a href="https://portaal.fieldopsapp.nl/whitepaper">Download whitepaper</a>
+    """
+    pdf_path = STATIC_DIR / "downloads" / "fieldops-whitepaper-2026.pdf"
+    if not pdf_path.exists():
+        raise HTTPException(status_code=404, detail="Whitepaper not found")
+
+    # Lichte tracking — log de download voor analytics later
+    try:
+        ua = request.headers.get("user-agent", "")[:200]
+        ref = request.headers.get("referer", "")[:200]
+        ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (request.client.host if request.client else "")
+        print(f"[whitepaper-download] ua={ua!r} ref={ref!r} ip={ip!r}")
+    except Exception:
+        pass
+
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename="FieldOps-Whitepaper-2026.pdf",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Disposition": 'attachment; filename="FieldOps-Whitepaper-2026.pdf"',
+        },
+    )
 
 
 class ContactRequest(BaseModel):
