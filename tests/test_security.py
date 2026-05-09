@@ -214,3 +214,61 @@ def test_admin_update_user_accepts_strong_password(client, admin_user, viewer_us
                    headers=auth(admin_user),
                    json={"password": "Brand-NewPw1"})
     assert r.status_code == 200, r.text
+
+
+# ─── Security response headers ────────────────────────────────────────────────
+
+def test_security_headers_present_on_health(client):
+    r = client.get("/api/health")
+    assert r.status_code == 200
+    h = r.headers
+    assert h.get("x-frame-options") == "DENY"
+    assert h.get("x-content-type-options") == "nosniff"
+    assert h.get("referrer-policy") == "strict-origin-when-cross-origin"
+    assert "camera=()" in h.get("permissions-policy", "")
+    assert h.get("cross-origin-opener-policy") == "same-origin"
+
+
+def test_hsts_absent_outside_production(client):
+    """HSTS mag niet op dev/test — anders cachen browsers de policy ook
+    voor localhost en dev-certs gaan kapot."""
+    r = client.get("/api/health")
+    # In tests is RENDER env niet gezet, dus HSTS hoort er niet te zijn.
+    assert "strict-transport-security" not in {k.lower() for k in r.headers.keys()}
+
+
+# ─── Password reset rate limiting ─────────────────────────────────────────────
+
+def test_password_reset_rate_limit_per_email(client, admin_user):
+    from auth import PASSWORD_RESET_PER_EMAIL
+
+    # PASSWORD_RESET_PER_EMAIL aanvragen mag — daarna throttled
+    for _ in range(PASSWORD_RESET_PER_EMAIL):
+        r = client.post("/api/auth/reset-password-request",
+                        json={"email": admin_user.email})
+        assert r.status_code == 200, r.text
+
+    # N+1 → 429
+    r = client.post("/api/auth/reset-password-request",
+                    json={"email": admin_user.email})
+    assert r.status_code == 429
+    assert "reset-aanvragen" in r.json()["detail"]
+
+
+def test_password_reset_rate_limit_unknown_email_does_not_create_dos(client):
+    """Onbekende emails moeten ook gerate-limit worden (per-IP), anders kan
+    je via een fake-email een 'er is geen rate limit'-channel openhouden."""
+    from auth import PASSWORD_RESET_PER_IP
+
+    for _ in range(PASSWORD_RESET_PER_IP):
+        r = client.post(
+            "/api/auth/reset-password-request",
+            headers={"X-Forwarded-For": "5.5.5.5"},
+            json={"email": "ghost@example.nl"})
+        assert r.status_code == 200, r.text
+
+    r = client.post(
+        "/api/auth/reset-password-request",
+        headers={"X-Forwarded-For": "5.5.5.5"},
+        json={"email": "ghost@example.nl"})
+    assert r.status_code == 429

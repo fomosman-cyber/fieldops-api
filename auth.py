@@ -131,6 +131,47 @@ def check_login_rate_limit(db: Session, email: str, request=None) -> None:
             )
 
 
+# Reset-token spam — voorkomt dat iemand de inbox van een gebruiker volgooit
+# of het email-quotum opbrandt door eindeloos reset-mails te triggeren.
+PASSWORD_RESET_WINDOW_MIN = 60
+PASSWORD_RESET_PER_EMAIL = 3
+PASSWORD_RESET_PER_IP = 10
+
+
+def check_password_reset_rate_limit(db: Session, email: str, request=None) -> None:
+    """Raise 429 als deze email of IP recent te veel reset-aanvragen deed."""
+    from datetime import datetime, timezone, timedelta
+    from models import AuditLog
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=PASSWORD_RESET_WINDOW_MIN)
+    action = "auth.password.reset_requested"
+
+    if email:
+        per_email = db.query(AuditLog).filter(
+            AuditLog.action == action,
+            AuditLog.user_email == email,
+            AuditLog.created_at >= cutoff,
+        ).count()
+        if per_email >= PASSWORD_RESET_PER_EMAIL:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Te veel reset-aanvragen voor dit account. Probeer over {PASSWORD_RESET_WINDOW_MIN} minuten opnieuw.",
+            )
+
+    ip_address = _extract_client_ip(request)
+    if ip_address:
+        per_ip = db.query(AuditLog).filter(
+            AuditLog.action == action,
+            AuditLog.ip_address == ip_address,
+            AuditLog.created_at >= cutoff,
+        ).count()
+        if per_ip >= PASSWORD_RESET_PER_IP:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Te veel reset-aanvragen vanaf dit netwerk. Probeer over {PASSWORD_RESET_WINDOW_MIN} minuten opnieuw.",
+            )
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))

@@ -7,7 +7,7 @@ import secrets
 from database import get_db
 from models import User, PasswordResetToken
 from schemas import LoginRequest, TokenResponse, UserResponse, PasswordResetRequest, PasswordResetConfirm
-from auth import verify_password, create_access_token, get_current_user, hash_password, validate_password_strength, check_login_rate_limit
+from auth import verify_password, create_access_token, get_current_user, hash_password, validate_password_strength, check_login_rate_limit, check_password_reset_rate_limit
 from email_service import send_password_reset_email
 from audit import log_action, ACTION
 
@@ -75,6 +75,12 @@ def reset_password_request(payload: PasswordResetRequest, http_request: Request,
     - Antwoord is altijd hetzelfde (voorkomt email enumeration)
     """
     success_msg = {"message": "Als dit e-mailadres bij ons bekend is, ontvangt u een reset-link."}
+
+    # Rate-limit vóór de DB-lookup zodat we niet onnodig DB-werk doen voor
+    # spam. Werpt 429 zodat een aanvaller weet dat er een limiet is — dat
+    # is acceptable; de timing-side-channel die anti-enumeration beschermt
+    # blijft intact bij rate-limit hits.
+    check_password_reset_rate_limit(db, payload.email, http_request)
 
     user = db.query(User).filter(User.email == payload.email).first()
     if not user:

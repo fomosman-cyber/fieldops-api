@@ -399,6 +399,33 @@ async def request_id_middleware(request, call_next):
     response.headers["X-Request-Id"] = rid
     return response
 
+
+# Security response headers — Mozilla Observatory / securityheaders.com baseline.
+# CSP bewust niet meegenomen: portaal.html heeft 200+ inline handlers + 5 CDN's.
+# Een strict CSP vereist aparte refactor en zou de portal breken.
+_PERMISSIONS_POLICY = (
+    "camera=(), microphone=(), geolocation=(self), payment=(), "
+    "usb=(), magnetometer=(), gyroscope=(), accelerometer=(), "
+    "fullscreen=(self)"
+)
+_IS_PRODUCTION = bool(os.environ.get("RENDER")) or os.environ.get("ENV") == "production"
+
+
+@app.middleware("http")
+async def security_headers_middleware(request, call_next):
+    response = await call_next(request)
+    # HSTS — alleen op productie (Render serveert TLS); zet niet op localhost
+    # want dat zou je dev-cert in browser cachen voor een jaar.
+    if _IS_PRODUCTION:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = _PERMISSIONS_POLICY
+    # Cross-Origin-Opener-Policy: voorkom dat externe popups window.opener krijgen
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    return response
+
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
 
