@@ -73,12 +73,24 @@ def _xml_escape(value: str) -> str:
 
 
 def _eq_filter(prop: str, val: str) -> str:
-    """Bouw <PropertyIsEqualTo> XML."""
+    """Bouw <PropertyIsEqualTo> XML — case-sensitive exact match."""
     return (
         f'<PropertyIsEqualTo>'
         f'<PropertyName>{prop}</PropertyName>'
         f'<Literal>{_xml_escape(val)}</Literal>'
         f'</PropertyIsEqualTo>'
+    )
+
+
+def _like_filter(prop: str, val: str, *, match_case: bool = False) -> str:
+    """Bouw <PropertyIsLike> — case-insensitive default. Wildcard '*' werkt
+    in `val` (bv. 'verdi*' matcht 'Verdilaan' en 'Verdilaanstraat')."""
+    case = "true" if match_case else "false"
+    return (
+        f'<PropertyIsLike wildCard="*" singleChar="?" escapeChar="!" matchCase="{case}">'
+        f'<PropertyName>{prop}</PropertyName>'
+        f'<Literal>{_xml_escape(val)}</Literal>'
+        f'</PropertyIsLike>'
     )
 
 
@@ -94,24 +106,54 @@ def _filter_doc(inner: str) -> str:
 
 def search_by_street_and_gemeente(straatnaam: str, gemeente: str,
                                   *, max_features: int = 50) -> list[dict]:
-    """Zoek wegvakken op straatnaam + gemeente."""
+    """Zoek wegvakken op straatnaam + gemeente.
+
+    Case-insensitive exact-match. Als 0 resultaten: probeer trailing wildcard
+    (bv. 'verdi' matcht ook 'Verdilaanstraat'). NWB-data heeft Title-Case
+    schrijfwijze, dus user input mag in om-het-even-welke case zijn.
+    """
+    straat = straatnaam.strip()
+    gem = gemeente.strip()
+    # Pass 1: exact (case-insensitive)
     f = _filter_doc(_and_filter(
-        _eq_filter("sttNaam", straatnaam.strip()),
-        _eq_filter("gmeNaam", gemeente.strip()),
+        _like_filter("sttNaam", straat),
+        _like_filter("gmeNaam", gem),
     ))
     data = _wfs_request(f, max_features=max_features)
-    return [_simplify_feature(feat) for feat in data.get("features", [])]
+    feats = data.get("features", [])
+    if feats:
+        return [_simplify_feature(feat) for feat in feats]
+    # Pass 2: trailing wildcard fallback (alleen als geen wildcard al in input)
+    if "*" not in straat:
+        f2 = _filter_doc(_and_filter(
+            _like_filter("sttNaam", straat + "*"),
+            _like_filter("gmeNaam", gem),
+        ))
+        data2 = _wfs_request(f2, max_features=max_features)
+        return [_simplify_feature(feat) for feat in data2.get("features", [])]
+    return []
 
 
 def search_by_street_anywhere(straatnaam: str, *, max_features: int = 50) -> list[dict]:
-    """Zoek wegvakken op straatnaam, in heel NL (geen gemeente-filter)."""
-    f = _filter_doc(_eq_filter("sttNaam", straatnaam.strip()))
+    """Zoek wegvakken op straatnaam, in heel NL (geen gemeente-filter).
+
+    Case-insensitive met wildcard-fallback — zie `search_by_street_and_gemeente`.
+    """
+    straat = straatnaam.strip()
+    f = _filter_doc(_like_filter("sttNaam", straat))
     data = _wfs_request(f, max_features=max_features)
-    return [_simplify_feature(feat) for feat in data.get("features", [])]
+    feats = data.get("features", [])
+    if feats:
+        return [_simplify_feature(feat) for feat in feats]
+    if "*" not in straat:
+        f2 = _filter_doc(_like_filter("sttNaam", straat + "*"))
+        data2 = _wfs_request(f2, max_features=max_features)
+        return [_simplify_feature(feat) for feat in data2.get("features", [])]
+    return []
 
 
 def get_wegvak_by_id(wvk_id: str) -> Optional[dict]:
-    """Haal één specifiek wegvak op via WVK_ID."""
+    """Haal één specifiek wegvak op via WVK_ID — case-sensitive exact match."""
     f = _filter_doc(_eq_filter("wvkId", str(wvk_id)))
     data = _wfs_request(f, max_features=1)
     feats = data.get("features", [])

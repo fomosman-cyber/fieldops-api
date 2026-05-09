@@ -244,3 +244,92 @@ def test_calc_length_handles_invalid_geom():
     assert nwb._calc_length_meters(None) is None
     assert nwb._calc_length_meters({}) is None
     assert nwb._calc_length_meters({"type": "Point", "coordinates": [4, 52]}) is None
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Case-insensitive search + wildcard-fallback
+# ─────────────────────────────────────────────────────────────────────
+
+def test_like_filter_default_is_case_insensitive():
+    f = nwb._like_filter("sttNaam", "verdilaan")
+    assert 'matchCase="false"' in f
+    assert 'PropertyIsLike' in f
+    assert '<Literal>verdilaan</Literal>' in f
+
+
+def test_like_filter_can_force_case_sensitive():
+    f = nwb._like_filter("sttNaam", "Verdilaan", match_case=True)
+    assert 'matchCase="true"' in f
+
+
+def test_search_by_street_uses_like_filter(monkeypatch):
+    """Spy op _wfs_request — verifieer dat we PropertyIsLike sturen, niet IsEqualTo."""
+    captured = {}
+    def fake_wfs(filter_xml, max_features=50, srs="EPSG:4326"):
+        captured["filter"] = filter_xml
+        return {"features": []}   # forceer fallback-pad ook
+    monkeypatch.setattr(nwb, "_wfs_request", fake_wfs)
+
+    nwb.search_by_street_anywhere("verdilaan")
+    assert "PropertyIsLike" in captured["filter"]
+    assert "PropertyIsEqualTo" not in captured["filter"]
+    assert 'matchCase="false"' in captured["filter"]
+
+
+def test_search_falls_back_to_wildcard_when_zero_results(monkeypatch):
+    """Eerste pass 0 hits → tweede pass met trailing '*' moet getriggerd worden."""
+    calls = []
+    def fake_wfs(filter_xml, max_features=50, srs="EPSG:4326"):
+        calls.append(filter_xml)
+        # Eerste call: 0 results. Tweede call: doe alsof we hits hebben.
+        if len(calls) == 1:
+            return {"features": []}
+        return {"features": [{
+            "properties": {"wvkId": "999", "sttNaam": "Verdilaanstraat", "gmeNaam": "Test"},
+            "geometry": {"type": "LineString", "coordinates": [[4, 52], [4, 52.001]]},
+        }]}
+    monkeypatch.setattr(nwb, "_wfs_request", fake_wfs)
+
+    results = nwb.search_by_street_anywhere("verdi")
+    assert len(calls) == 2, "Verwacht: 1e exact-match call, 2e wildcard-fallback call"
+    assert "<Literal>verdi</Literal>" in calls[0]
+    assert "<Literal>verdi*</Literal>" in calls[1]
+    assert len(results) == 1
+    assert results[0]["straatnaam"] == "Verdilaanstraat"
+
+
+def test_search_skips_fallback_when_input_already_has_wildcard(monkeypatch):
+    """Als user zelf '*' typt, geen 2e poging doen — zou oneindige loop kunnen geven."""
+    calls = []
+    def fake_wfs(filter_xml, max_features=50, srs="EPSG:4326"):
+        calls.append(filter_xml)
+        return {"features": []}
+    monkeypatch.setattr(nwb, "_wfs_request", fake_wfs)
+
+    nwb.search_by_street_anywhere("verdi*")
+    assert len(calls) == 1   # Geen fallback
+
+
+def test_search_with_gemeente_uses_like_for_both(monkeypatch):
+    captured = {}
+    def fake_wfs(filter_xml, max_features=50, srs="EPSG:4326"):
+        captured["filter"] = filter_xml
+        return {"features": [{"properties": {"wvkId": "1"}, "geometry": {"type": "LineString", "coordinates": [[4, 52], [4, 52.01]]}}]}
+    monkeypatch.setattr(nwb, "_wfs_request", fake_wfs)
+
+    nwb.search_by_street_and_gemeente("verdilaan", "westland")
+    assert captured["filter"].count("<PropertyIsLike") == 2   # straat + gemeente
+    assert "PropertyIsEqualTo" not in captured["filter"]
+
+
+def test_get_wegvak_by_id_still_uses_eq_filter(monkeypatch):
+    """WVK_ID is een numeric stable identifier — exact match is correct."""
+    captured = {}
+    def fake_wfs(filter_xml, max_features=50, srs="EPSG:4326"):
+        captured["filter"] = filter_xml
+        return {"features": []}
+    monkeypatch.setattr(nwb, "_wfs_request", fake_wfs)
+
+    nwb.get_wegvak_by_id("12345")
+    assert "PropertyIsEqualTo" in captured["filter"]
+    assert "<Literal>12345</Literal>" in captured["filter"]
