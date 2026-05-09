@@ -382,3 +382,130 @@ def test_dsar_admin_export_blocks_non_admin(client, viewer_user, admin_user):
     r = client.get(f"/api/users/{admin_user.id}/export",
                    headers=auth(viewer_user))
     assert r.status_code == 403
+
+
+# ─── GDPR Article 17 — Right to erasure (anonymisatie) ────────────────────────
+
+def test_erasure_self_anonymizes_profile(client, viewer_user):
+    original_email = viewer_user.email
+    r = client.delete("/api/users/me/anonymize", headers=auth(viewer_user))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "geanonimiseerd" in body["message"]
+    assert body["summary"]["redacted_email"].endswith("@deleted.invalid")
+
+    db = SessionLocal()
+    try:
+        from models import User
+        u = db.query(User).filter(User.id == viewer_user.id).first()
+        assert u is not None  # rij bestaat nog
+        assert u.email != original_email
+        assert u.email.endswith("@deleted.invalid")
+        assert u.first_name == "Verwijderd"
+        assert u.last_name == ""
+        assert u.is_active is False
+        # Login is nu onmogelijk: hash matcht niets
+        from auth import verify_password
+        assert verify_password("test1234", u.hashed_password) is False
+    finally:
+        db.close()
+
+
+def test_erasure_self_redacts_audit_email(client, viewer_user):
+    # Trigger een audit-event (login) zodat user_email gevuld is
+    client.post("/api/auth/login", json={
+        "email": viewer_user.email, "password": "test1234"})
+    original_email = viewer_user.email
+
+    r = client.delete("/api/users/me/anonymize", headers=auth(viewer_user))
+    assert r.status_code == 200
+
+    db = SessionLocal()
+    try:
+        # Geen enkele audit-rij mag de oorspronkelijke email nog bevatten
+        leaks = db.query(AuditLog).filter(
+            AuditLog.user_email == original_email).count()
+        assert leaks == 0
+    finally:
+        db.close()
+
+
+def test_erasure_self_deletes_oauth_and_push(client, viewer_user):
+    from models import GoogleOAuthToken, PushSubscription
+    db = SessionLocal()
+    try:
+        db.add(GoogleOAuthToken(
+            user_id=viewer_user.id,
+            organization_id=viewer_user.organization_id,
+            access_token="leak-me-not", scope="profile",
+        ))
+        db.add(PushSubscription(
+            user_id=viewer_user.id,
+            organization_id=viewer_user.organization_id,
+            endpoint="https://push.example/sub", p256dh="x", auth="y",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    client.delete("/api/users/me/anonymize", headers=auth(viewer_user))
+
+    db = SessionLocal()
+    try:
+        assert db.query(GoogleOAuthToken).filter(
+            GoogleOAuthToken.user_id == viewer_user.id).count() == 0
+        assert db.query(PushSubscription).filter(
+            PushSubscription.user_id == viewer_user.id).count() == 0
+    finally:
+        db.close()
+
+
+def test_erasure_self_blocks_subsequent_login(client, viewer_user):
+    original_email = viewer_user.email
+    client.delete("/api/users/me/anonymize", headers=auth(viewer_user))
+
+    r = client.post("/api/auth/login", json={
+        "email": original_email, "password": "test1234"})
+    assert r.status_code == 401  # email bestaat niet meer in db
+
+
+def test_erasure_admin_for_other_user(client, admin_user, viewer_user):
+    target_id = viewer_user.id
+    r = client.delete(f"/api/users/{target_id}/anonymize",
+                      headers=auth(admin_user))
+    assert r.status_code == 200, r.text
+
+    db = SessionLocal()
+    try:
+        from models import User
+        u = db.query(User).filter(User.id == target_id).first()
+        assert u.first_name == "Verwijderd"
+    finally:
+        db.close()
+
+
+def test_erasure_admin_blocks_self_anonymize_via_admin_route(client, admin_user):
+    """Click-shield: admin mag z'n eigen account niet via deze route wissen.
+    Moet via /me/anonymize zodat het bewust is."""
+    r = client.delete(f"/api/users/{admin_user.id}/anonymize",
+                      headers=auth(admin_user))
+    assert r.status_code == 400
+
+
+def test_erasure_admin_blocks_non_admin(client, viewer_user, admin_user):
+    """Niet-admin mag een andere user niet wissen."""
+    r = client.delete(f"/api/users/{admin_user.id}/anonymize",
+                      headers=auth(viewer_user))
+    assert r.status_code == 403
+
+
+def test_erasure_logs_audit_event(client, viewer_user):
+    client.delete("/api/users/me/anonymize", headers=auth(viewer_user))
+    db = SessionLocal()
+    try:
+        events = db.query(AuditLog).filter(
+            AuditLog.action == "user.anonymize.self").all()
+        assert len(events) >= 1
+        assert events[0].entity_id == viewer_user.id
+    finally:
+        db.close()

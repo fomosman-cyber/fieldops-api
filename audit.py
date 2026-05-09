@@ -90,9 +90,11 @@ class ACTION:
     AI_ANALYSIS_REJECT  = "ai.analysis.reject"
 
     # Compliance / GDPR
-    AUDIT_EXPORT        = "audit.export.csv"     # admin downloadt audit-log
+    AUDIT_EXPORT        = "audit.export.csv"       # admin downloadt audit-log
     DATA_EXPORT_SELF    = "user.data.export.self"  # GDPR Art.15 — DSAR door betrokkene
-    DATA_EXPORT_ADMIN   = "user.data.export.admin"  # admin draait DSAR namens klant
+    DATA_EXPORT_ADMIN   = "user.data.export.admin" # admin draait DSAR namens klant
+    USER_ANONYMIZE_SELF = "user.anonymize.self"    # GDPR Art.17 — door betrokkene
+    USER_ANONYMIZE_ADMIN = "user.anonymize.admin"  # admin verwerkt erasure-verzoek
 
 
 def _safe_json(obj: Any) -> Optional[str]:

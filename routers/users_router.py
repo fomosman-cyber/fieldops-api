@@ -198,6 +198,156 @@ def export_user_data_admin(
     return payload
 
 
+# ─── GDPR Article 17 — Right to erasure ──────────────────────────────────────
+# Anonymisatie i.p.v. harde delete: business-records (meldingen, AI-analyses,
+# audit-log) blijven, maar persoonsgegevens worden overschreven. Dit is
+# GDPR-conform én bewaart de audit-trail die voor andere wetgeving (NEN7510,
+# Archiefwet) juist verplicht is.
+#
+# Wat wel blijft:  meldingen, ai_analyses (auteurs-id wordt geanonimiseerde
+#                  user-rij), audit-events (user_id blijft, user_email wordt
+#                  overschreven met geredacteerd-id zodat sortering werkt).
+# Wat wordt geredigeerd: email, voornaam, achternaam, telefoon, password-hash,
+#                  must_change_password, last_login.
+# Wat wordt verwijderd: OAuth-tokens, push-subscriptions, password-reset-tokens,
+#                  user_skills, calendar-koppelingen.
+
+ANONYMIZED_EMAIL_DOMAIN = "deleted.invalid"  # RFC 6761 reserved TLD
+
+
+def _anonymize_user(db: Session, user: User) -> dict:
+    """Voer de anonymisatie uit. Geeft een summary terug van wat er gebeurde."""
+    from models import (
+        PushSubscription, PasswordResetToken,
+        GoogleOAuthToken, MicrosoftOAuthToken, UserSkill,
+        CalendarLink, MicrosoftCalendarLink, AuditLog,
+    )
+
+    redacted_id = f"redacted-{user.id[:8]}"
+    redacted_email = f"{redacted_id}@{ANONYMIZED_EMAIL_DOMAIN}"
+
+    summary = {
+        "user_id": user.id,
+        "redacted_email": redacted_email,
+        "deleted": {},
+        "redacted_audit_rows": 0,
+    }
+
+    # 1. Hard-delete aan-user-gekoppelde records die GEEN compliance-waarde hebben
+    for model, label in [
+        (GoogleOAuthToken, "google_oauth_tokens"),
+        (MicrosoftOAuthToken, "microsoft_oauth_tokens"),
+        (PushSubscription, "push_subscriptions"),
+        (PasswordResetToken, "password_reset_tokens"),
+        (UserSkill, "user_skills"),
+        (CalendarLink, "calendar_links"),
+        (MicrosoftCalendarLink, "microsoft_calendar_links"),
+    ]:
+        n = db.query(model).filter(model.user_id == user.id).delete(
+            synchronize_session=False)
+        summary["deleted"][label] = n
+
+    # 2. Audit-log: user_email overschrijven met redacted_email, user_id BEHOUDEN
+    #    (die is alleen DB-id, geen PII). Op die manier blijft het spoor leesbaar
+    #    en koppelbaar maar zonder persoonsgegevens. Idem voor entity_id-rijen
+    #    waar deze user het onderwerp was.
+    actor_rows = db.query(AuditLog).filter(AuditLog.user_id == user.id).all()
+    for r in actor_rows:
+        r.user_email = redacted_email
+    about_rows = db.query(AuditLog).filter(
+        AuditLog.entity_type == "user", AuditLog.entity_id == user.id,
+    ).all()
+    summary["redacted_audit_rows"] = len(actor_rows) + len(about_rows)
+    # entity_id (user.id) blijft staan — anders kun je entity-historie niet
+    # meer reconstrueren. user.id zelf is geen PII.
+
+    # 3. User-record zelf overschrijven en deactiveren
+    user.email = redacted_email
+    user.first_name = "Verwijderd"
+    user.last_name = ""
+    user.phone = ""
+    # Onbruikbare hash zodat login onmogelijk is, maar de NOT NULL kolom-eis
+    # niet schendt. bcrypt-formaat — onmogelijk om matching plaintext te vinden.
+    user.hashed_password = "$2b$12$" + ("a" * 53)
+    user.is_active = False
+    user.is_org_admin = False
+    user.must_change_password = False
+    user.last_login = None
+
+    db.commit()
+    return summary
+
+
+@router.delete("/me/anonymize")
+def erase_my_account(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """GDPR Article 17 — Right to erasure ('vergetelheidsrecht').
+
+    Voert anonymisatie uit op het eigen account. Audit-log + business-records
+    blijven, persoonsgegevens worden geredacteerd. Het account wordt
+    gedeactiveerd; nieuwe login is onmogelijk.
+    """
+    user_id = current_user.id
+    org_id = current_user.organization_id
+    original_email = current_user.email
+    summary = _anonymize_user(db, current_user)
+    # Loggen ZONDER user — anders gaat het rate-limit-spoor terug naar
+    # de zojuist geanonimiseerde rij (en de log-event krijgt de redacted
+    # email). We loggen extra={"by"} apart.
+    log_action(db, request, None,
+               action=ACTION.USER_ANONYMIZE_SELF,
+               entity_type="user", entity_id=user_id,
+               extra={"organization_id": org_id,
+                      "original_email_redacted": True,
+                      "summary": summary})
+    return {
+        "message": "Uw account is geanonimiseerd. Persoonsgegevens zijn verwijderd; audit-records zijn bewaard zonder persoonsgegevens.",
+        "summary": summary,
+    }
+
+
+@router.delete("/{user_id}/anonymize")
+def erase_user_account_admin(
+    user_id: str,
+    request: Request,
+    current_user: User = Depends(require_org_admin),
+    db: Session = Depends(get_db),
+):
+    """Admin verwerkt een Article 17-verzoek namens de tenant.
+
+    Alleen binnen eigen organisatie; platform-eigenaar mag cross-org.
+    Een admin kan zichzelf NIET via dit endpoint anonymiseren — gebruik
+    DELETE /api/users/me daarvoor (preventie tegen 'click sluit account').
+    """
+    if user_id == current_user.id:
+        raise HTTPException(
+            status_code=400,
+            detail="Gebruik DELETE /api/users/me om uw eigen account te wissen.",
+        )
+    target = db.query(User).filter(User.id == user_id).first()
+    if not target:
+        raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
+    is_platform_owner = (current_user.is_org_admin and current_user.organization
+                         and current_user.organization.name == "FieldOps")
+    if (not is_platform_owner and
+            target.organization_id != current_user.organization_id):
+        raise HTTPException(status_code=403, detail="Geen toegang tot deze gebruiker")
+
+    target_id = target.id
+    summary = _anonymize_user(db, target)
+    log_action(db, request, current_user,
+               action=ACTION.USER_ANONYMIZE_ADMIN,
+               entity_type="user", entity_id=target_id,
+               extra={"summary": summary})
+    return {
+        "message": "Account is geanonimiseerd. Audit-records zijn bewaard zonder persoonsgegevens.",
+        "summary": summary,
+    }
+
+
 @router.get("/", response_model=list[UserResponse])
 def list_users(
     current_user: User = Depends(get_current_user),
