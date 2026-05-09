@@ -2139,6 +2139,72 @@
             <option value="kritiek">Kritiek — Direct actie vereist</option>
           </select>
         </div>
+
+        <!-- CROW 146 classificatie (uitklapbaar) -->
+        <div class="form-group" style="border:1px solid var(--border);border-radius:10px;padding:0;background:rgba(2,132,199,0.03);">
+          <button type="button" id="crowToggleBtn" onclick="toggleCrowSection()" style="width:100%;border:none;background:transparent;padding:12px 14px;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;color:var(--text);">
+            <span>🇳🇱 CROW-classificatie <span style="font-weight:400;color:var(--text-dim);font-size:11px;">— optioneel, voor wegen/elementen</span></span>
+            <span id="crowToggleIcon" style="font-size:14px;color:var(--text-dim);">▾</span>
+          </button>
+          <div id="crowSection" style="display:none;padding:0 14px 14px;border-top:1px solid var(--border);">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+              <div>
+                <label style="font-size:11px;color:var(--text-muted);">Schadegroep</label>
+                <select id="crowSchadegroep" onchange="onCrowSchadegroepChange()" style="width:100%;">
+                  <option value="">— Kies groep —</option>
+                  <option value="samenhang">Samenhang (scheurvorming)</option>
+                  <option value="textuur">Textuur (rafeling)</option>
+                  <option value="vlakheid">Vlakheid (spoor / oneven)</option>
+                  <option value="voegen">Voegen</option>
+                  <option value="watergevoeligheid">Watergevoeligheid</option>
+                  <option value="stenen">Stenen (elementen)</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-muted);">Schadebeeld</label>
+                <select id="crowSchadebeeld" style="width:100%;" onchange="updateCrowKlasse()">
+                  <option value="">— Kies eerst groep —</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px;">
+              <div>
+                <label style="font-size:11px;color:var(--text-muted);">Ernst (CROW)</label>
+                <select id="crowErnst" onchange="updateCrowKlasse()" style="width:100%;">
+                  <option value="">—</option>
+                  <option value="L">L — Licht</option>
+                  <option value="M">M — Matig</option>
+                  <option value="E">E — Ernstig</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-muted);">Omvang</label>
+                <select id="crowOmvang" onchange="updateCrowKlasse()" style="width:100%;">
+                  <option value="">—</option>
+                  <option value="1">1 — Gering</option>
+                  <option value="2">2 — Matig</option>
+                  <option value="3">3 — Groot</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-muted);">NEN-2767 conditie</label>
+                <select id="crowNenConditie" style="width:100%;">
+                  <option value="">—</option>
+                  <option value="1">1 — Als nieuw</option>
+                  <option value="2">2 — Goed</option>
+                  <option value="3">3 — Redelijk</option>
+                  <option value="4">4 — Matig</option>
+                  <option value="5">5 — Slecht</option>
+                </select>
+              </div>
+            </div>
+            <div id="crowAdvies" style="display:none;margin-top:12px;padding:10px 12px;border-radius:8px;background:rgba(2,132,199,0.08);border:1px solid rgba(2,132,199,0.2);font-size:12px;">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">Auto-advies</div>
+              <div id="crowAdviesText" style="color:var(--text);line-height:1.6;"></div>
+            </div>
+          </div>
+        </div>
+
         <div class="form-group">
           <label>Locatie</label>
           <input type="text" id="meldingPlaceSearch" placeholder="🔍 Zoek adres of plek..." autocomplete="off" style="margin-bottom:6px;">
@@ -5873,6 +5939,99 @@
       });
     }
 
+    // ══════════════════════════════════════
+    // ── CROW 146 + GWWkosten lookup (mirror van crow_kosten.py) ──
+    // ══════════════════════════════════════
+    var CROW_SCHADEBEELDEN = {
+      samenhang:        ['scheurvorming-langs','scheurvorming-dwars','scheurvorming-kruis','scheurvorming-rand','scheurvorming-groep'],
+      textuur:          ['rafeling','spaltverlies'],
+      vlakheid:         ['spoorvorming','oneffenheden','kuilen','deformatie','verzakking'],
+      voegen:           ['voegwijdte','voegvulling-gebrek'],
+      watergevoeligheid:['bitumen-uittreden'],
+      stenen:           ['gebroken-stenen','ontbrekende-stenen','los-liggend'],
+    };
+    var CROW_LOOKUP = {
+      'scheurvorming-langs|M1':  {categorie:'KO', maatregel:'Vullen polymeer', gw_term:'Vullen polymeer (cold-pour)', kosten_orde:'€5–10 / m¹', termijn:52},
+      'scheurvorming-langs|M2':  {categorie:'KO', maatregel:'Vullen polymeer', gw_term:'Vullen polymeer (cold-pour)', kosten_orde:'€8–15 / m¹', termijn:24},
+      'scheurvorming-langs|M3':  {categorie:'GO', maatregel:'Oppervlaktebehandeling', gw_term:'Oppervlaktebehandeling DGAD', kosten_orde:'€15–25 / m²', termijn:18},
+      'scheurvorming-langs|E1':  {categorie:'GO', maatregel:'Pleksgewijze reparatie', gw_term:'Pleksgewijze frees-vul', kosten_orde:'€150–400 / plek', termijn:12},
+      'scheurvorming-langs|E2':  {categorie:'GO', maatregel:'Deklaag vervangen', gw_term:'Aanbrengen dicht asfaltbeton', kosten_orde:'€20–40 / m²', termijn:8},
+      'scheurvorming-langs|E3':  {categorie:'acuut', maatregel:'Tussen+deklaag vervangen', gw_term:'Aanbrengen tussen- en deklaag', kosten_orde:'€30–50 / m²', termijn:1},
+      'scheurvorming-dwars|M2':  {categorie:'KO', maatregel:'Vullen polymeer', gw_term:'Vullen polymeer', kosten_orde:'€8–15 / m¹', termijn:24},
+      'scheurvorming-dwars|M3':  {categorie:'GO', maatregel:'Oppervlaktebehandeling', gw_term:'Oppervlaktebehandeling DGAD', kosten_orde:'€15–25 / m²', termijn:18},
+      'scheurvorming-kruis|M2':  {categorie:'KO', maatregel:'Slembehandeling', gw_term:'Slembehandeling', kosten_orde:'€10–18 / m²', termijn:24},
+      'scheurvorming-kruis|E2':  {categorie:'GO', maatregel:'Tussen+deklaag vervangen', gw_term:'Tussen- en deklaag asfaltbeton', kosten_orde:'€30–50 / m²', termijn:8},
+      'rafeling|M1':             {categorie:'KO', maatregel:'Slembehandeling', gw_term:'Slembehandeling', kosten_orde:'€8–15 / m²', termijn:52},
+      'rafeling|M2':             {categorie:'KO', maatregel:'Slembehandeling', gw_term:'Slembehandeling', kosten_orde:'€10–18 / m²', termijn:24},
+      'rafeling|M3':             {categorie:'GO', maatregel:'Oppervlaktebehandeling', gw_term:'Oppervlaktebehandeling DGAD', kosten_orde:'€15–25 / m²', termijn:18},
+      'rafeling|E1':             {categorie:'GO', maatregel:'Deklaag vervangen', gw_term:'Aanbrengen dicht asfaltbeton', kosten_orde:'€20–40 / m²', termijn:12},
+      'spoorvorming|M2':         {categorie:'KO', maatregel:'Profielcorrectie SMA', gw_term:'Profielcorrectie SMA', kosten_orde:'€15–30 / m²', termijn:24},
+      'spoorvorming|M3':         {categorie:'GO', maatregel:'Deklaag vervangen', gw_term:'Deklaag asfaltbeton', kosten_orde:'€25–45 / m²', termijn:18},
+      'verzakking|M2':           {categorie:'KO', maatregel:'Klinker-herstraten', gw_term:'Herstraten elementen', kosten_orde:'€30–50 / m²', termijn:24},
+      'voegwijdte|M2':           {categorie:'KO', maatregel:'Voegen invegen', gw_term:'Voegen invegen', kosten_orde:'€3–8 / m²', termijn:24},
+      'gebroken-stenen|M2':      {categorie:'KO', maatregel:'Stenen vervangen', gw_term:'Stenen vervangen', kosten_orde:'€8–15 / steen', termijn:24},
+    };
+    var GENERIC_PER_CAT = {
+      observatie: {categorie:'observatie', maatregel:'Observatie', gw_term:'—', kosten_orde:'€0', termijn:null},
+      KO:         {categorie:'KO', maatregel:'Klein onderhoud (techniek nader te bepalen)', gw_term:'Klein onderhoud — overig', kosten_orde:'€5–50 / m²', termijn:24},
+      GO:         {categorie:'GO', maatregel:'Groot onderhoud', gw_term:'Groot onderhoud asfalt', kosten_orde:'€15–150 / m²', termijn:18},
+      acuut:      {categorie:'acuut', maatregel:'Acuut: veiligheidsmaatregel + spoed-GO', gw_term:'Acuut onderhoud', kosten_orde:'€150+ / m²', termijn:1},
+    };
+    var KLASSE_CAT = {
+      L1:'observatie',L2:'observatie',L3:'observatie',
+      M1:'KO',M2:'KO',M3:'GO',
+      E1:'GO',E2:'GO',E3:'acuut'
+    };
+    function lookupCrowAdvies(schadebeeld, klasse){
+      if (!klasse) return null;
+      var key = (schadebeeld||'') + '|' + klasse;
+      var v = CROW_LOOKUP[key];
+      if (!v) {
+        var cat = KLASSE_CAT[klasse] || 'observatie';
+        v = Object.assign({}, GENERIC_PER_CAT[cat]);
+        v.categorie = cat;
+      }
+      return v;
+    }
+    function toggleCrowSection(){
+      var sec = document.getElementById('crowSection');
+      var icon = document.getElementById('crowToggleIcon');
+      if (sec.style.display === 'none' || !sec.style.display) {
+        sec.style.display = 'block'; if (icon) icon.textContent = '▴';
+      } else {
+        sec.style.display = 'none'; if (icon) icon.textContent = '▾';
+      }
+    }
+    function onCrowSchadegroepChange(){
+      var groep = document.getElementById('crowSchadegroep').value;
+      var sel = document.getElementById('crowSchadebeeld');
+      sel.innerHTML = '<option value="">— Kies eerst groep —</option>';
+      if (!groep) return;
+      var beelden = CROW_SCHADEBEELDEN[groep] || [];
+      sel.innerHTML = '<option value="">— Kies schadebeeld —</option>' +
+        beelden.map(function(b){ return '<option value="'+b+'">'+b+'</option>'; }).join('');
+      updateCrowKlasse();
+    }
+    function updateCrowKlasse(){
+      var ernst = document.getElementById('crowErnst').value;
+      var omvang = document.getElementById('crowOmvang').value;
+      var schadebeeld = document.getElementById('crowSchadebeeld').value;
+      var advies = document.getElementById('crowAdvies');
+      var text = document.getElementById('crowAdviesText');
+      if (!ernst || !omvang) { advies.style.display = 'none'; return; }
+      var klasse = ernst + omvang;
+      var info = lookupCrowAdvies(schadebeeld, klasse);
+      var catColor = {KO:'#ea580c', GO:'#dc2626', acuut:'#dc2626', observatie:'#16a34a'}[info.categorie] || '#64748b';
+      var termijnText = info.termijn ? '· binnen <strong>' + info.termijn + ' weken</strong>' : '';
+      text.innerHTML =
+        '<strong style="font-size:14px;color:var(--text);">' + klasse + '</strong> ' +
+        '→ <strong style="color:' + catColor + ';">' + info.categorie + '</strong> ' +
+        (info.maatregel ? '· <span>' + info.maatregel + '</span>' : '') +
+        (info.gw_term && info.gw_term !== info.maatregel && info.gw_term !== '—' ? '<br><span style="font-size:11px;color:var(--text-dim);font-family:JetBrains Mono,monospace;">CROW-RAW: ' + info.gw_term + '</span>' : '') +
+        '<br>' + (info.kosten_orde ? '<strong style="font-family:JetBrains Mono,monospace;">' + info.kosten_orde + '</strong> ' : '') + termijnText;
+      advies.style.display = 'block';
+    }
+
     function createMelding(e) {
       e.preventDefault();
       var btn = document.getElementById('meldingSubmitBtn');
@@ -5882,13 +6041,33 @@
       var lng = parseFloat(document.getElementById('meldingLng').value) || null;
       var projId = document.getElementById('meldingProject').value || null;
       var assetId = document.getElementById('meldingAsset').value || null;
+      // CROW-classificatie velden (optioneel)
+      var crowSchadegroep = document.getElementById('crowSchadegroep')?.value || null;
+      var crowSchadebeeld = document.getElementById('crowSchadebeeld')?.value || null;
+      var crowErnst       = document.getElementById('crowErnst')?.value || null;
+      var crowOmvang      = document.getElementById('crowOmvang')?.value || null;
+      var nenConditie     = document.getElementById('crowNenConditie')?.value || null;
+      var crowKlasse = (crowErnst && crowOmvang) ? (crowErnst + crowOmvang) : null;
+      var crowAdvies = crowKlasse ? lookupCrowAdvies(crowSchadebeeld, crowKlasse) : null;
+
       var payload = {
         title: document.getElementById('meldingTitle').value,
         description: document.getElementById('meldingDesc').value || null,
         category: document.getElementById('meldingCategory').value,
         priority: document.getElementById('meldingPriority').value,
         lat: lat, lng: lng,
-        project_id: projId, asset_id: assetId
+        project_id: projId, asset_id: assetId,
+        // CROW 146 + GWWkosten classificatie
+        crow_schadegroep: crowSchadegroep,
+        crow_schadebeeld: crowSchadebeeld,
+        crow_ernst: crowErnst,
+        crow_omvang: crowOmvang,
+        crow_klasse: crowKlasse,
+        nen_2767_conditie: nenConditie ? parseInt(nenConditie) : null,
+        onderhoud_categorie: crowAdvies?.categorie || null,
+        gw_maatregel: crowAdvies?.maatregel || null,
+        gw_term: crowAdvies?.gw_term || null,
+        gw_kosten_orde: crowAdvies?.kosten_orde || null,
       };
 
       function resetForm() {
@@ -5899,6 +6078,11 @@
         document.getElementById('meldingLng').value = '';
         var assetSel = document.getElementById('meldingAsset');
         if (assetSel) assetSel.value = '';
+        // Reset CROW velden
+        ['crowSchadegroep','crowSchadebeeld','crowErnst','crowOmvang','crowNenConditie'].forEach(function(id){
+          var el = document.getElementById(id); if (el) el.value = '';
+        });
+        var advies = document.getElementById('crowAdvies'); if (advies) advies.style.display = 'none';
         resetMeldingPhotoState();
       }
 

@@ -178,6 +178,18 @@ class Melding(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    # CROW 146 classificatie — sinds v2.0-crow
+    crow_schadegroep = Column(String(40), nullable=True)         # samenhang/textuur/vlakheid/voegen/...
+    crow_schadebeeld = Column(String(60), nullable=True)         # scheurvorming-langs/rafeling/spoorvorming/...
+    crow_ernst = Column(String(2), nullable=True)                # L/M/E
+    crow_omvang = Column(String(2), nullable=True)               # 1/2/3
+    crow_klasse = Column(String(4), nullable=True, index=True)   # L1..E3 — index voor predictive
+    nen_2767_conditie = Column(Integer, nullable=True)           # 1-5 conditie-schaal
+    onderhoud_categorie = Column(String(20), nullable=True, index=True)  # observatie/KO/GO/acuut
+    gw_maatregel = Column(String(120), nullable=True)            # bv "Vullen polymeer"
+    gw_term = Column(String(160), nullable=True)                 # CROW-RAW formele term voor bestek
+    gw_kosten_orde = Column(String(40), nullable=True)           # "€5–15 / m¹"
+
     project = relationship("Project")
     asset = relationship("Asset", back_populates="meldingen", foreign_keys=[asset_id])
     organization = relationship("Organization")
@@ -231,6 +243,19 @@ class AIAnalysis(Base):
     bevindingen_json = Column(Text, nullable=True)               # ["string", "string"]
     confidence = Column(Float, nullable=True)                    # 0.0 - 1.0
     raw_response = Column(Text, nullable=True)                   # complete API-response voor traceability
+
+    # CROW 146 classificatie + GWWkosten (sinds v2.0-crow)
+    crow_schadegroep = Column(String(40), nullable=True)
+    crow_schadebeeld = Column(String(60), nullable=True)
+    crow_ernst = Column(String(2), nullable=True)
+    crow_omvang = Column(String(2), nullable=True)
+    crow_klasse = Column(String(4), nullable=True, index=True)
+    nen_2767_conditie = Column(Integer, nullable=True)
+    onderhoud_categorie = Column(String(20), nullable=True, index=True)
+    gw_maatregel = Column(String(120), nullable=True)
+    gw_term = Column(String(160), nullable=True)
+    gw_kosten_orde = Column(String(40), nullable=True)
+    termijn_weken = Column(Integer, nullable=True)
 
     # Mens-in-de-loop
     accepted_at = Column(DateTime, nullable=True)

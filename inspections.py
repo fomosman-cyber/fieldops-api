@@ -25,26 +25,41 @@ from typing import Any, Optional
 
 import httpx
 
-PROMPT_VERSION = "v1.0"
+PROMPT_VERSION = "v2.0-crow"
 DEFAULT_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
 
 # Geldige enum-waarden — server valideert AI-output hierop
 ERNST_LEVELS = {"geen", "licht", "matig", "ernstig", "kritiek"}
 KOSTEN_KLASSE = {"<€500", "€500-2.500", "€2.500-10.000", ">€10.000", None}
 
+# CROW 146 — geldige enum waarden
+CROW_ERNST = {"L", "M", "E", None}
+CROW_OMVANG = {"1", "2", "3", None}
+CROW_SCHADEGROEPEN = {
+    "samenhang", "textuur", "vlakheid", "voegen", "watergevoeligheid",
+    "stenen", None,
+}
+CROW_KLASSEN = {
+    "L1", "L2", "L3",
+    "M1", "M2", "M3",
+    "E1", "E2", "E3",
+    None,
+}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Prompts
 # ─────────────────────────────────────────────────────────────────────────────
 
-_BASE_PROMPT = """Je bent een gespecialiseerde infrastructuur-inspectie-AI voor de Nederlandse wegen- en waterbouw. Je analyseert foto's van objecten in het veld en geeft een gestructureerde schade-rapportage in het Nederlands.
+_BASE_PROMPT = """Je bent een gespecialiseerde infrastructuur-inspectie-AI voor de Nederlandse wegen- en waterbouw. Je analyseert foto's van objecten in het veld en geeft een gestructureerde schade-rapportage volgens CROW 146 (visuele inspectie wegen) + NEN 2767 (conditiemeting infra).
 
 Werkwijze:
 1. Bekijk de foto zorgvuldig
-2. Identificeer eventuele schade, slijtage, vervuiling of afwijkingen
-3. Beoordeel de ernst conform NEN 2767-conditiemeting (1=nieuw, 5=zeer slecht)
-4. Geef een geschatte kosten-klasse voor herstel
-5. Formuleer een aanbevolen vervolgactie
+2. Identificeer schade volgens CROW-schadebeelden (scheurvorming, rafeling, oneffenheden, etc.)
+3. Classificeer volgens CROW-klasse: ernst (L/M/E) × omvang (1/2/3) → bv L1, M2, E3
+4. Vertaal naar NEN 2767-conditie (1-5 schaal)
+5. Bepaal onderhouds-categorie (observatie / KO / GO / acuut)
+6. Formuleer een aanbevolen vervolgactie
 
 Reageer ALLEEN met geldige JSON in dit exacte format (geen backticks, geen uitleg eromheen):
 {
@@ -55,15 +70,33 @@ Reageer ALLEEN met geldige JSON in dit exacte format (geen backticks, geen uitle
   "bevindingen": ["korte observatie", "korte observatie"],
   "aanbevolen_actie": "één zin met concrete vervolgactie",
   "confidence": 0.0 tot 1.0,
-  "asset_zichtbaar": true/false
+  "asset_zichtbaar": true/false,
+
+  "crow_schadegroep": "samenhang" | "textuur" | "vlakheid" | "voegen" | "watergevoeligheid" | "stenen" | null,
+  "crow_schadebeeld": "scheurvorming-langs" | "scheurvorming-dwars" | "scheurvorming-kruis" | "scheurvorming-rand" | "scheurvorming-groep" | "rafeling" | "spoorvorming" | "oneffenheden" | "kuilen" | "deformatie" | "verzakking" | "voegwijdte" | "gebroken-stenen" | "ontbrekende-stenen" | null,
+  "crow_ernst": "L" | "M" | "E" | null,
+  "crow_omvang": "1" | "2" | "3" | null,
+  "crow_klasse": "L1" | "L2" | "L3" | "M1" | "M2" | "M3" | "E1" | "E2" | "E3" | null,
+  "nen_2767_conditie": 1 | 2 | 3 | 4 | 5 | null
 }
 
 Belangrijke regels:
 - "asset_zichtbaar": false → de foto is onbruikbaar (vaag, verkeerd object, te donker). Andere velden mogen dan null zijn.
-- Wees voorzichtig met "kritiek" — alleen bij directe veiligheidsdreiging.
+- Wees voorzichtig met "kritiek" / E3 — alleen bij directe veiligheidsdreiging.
+- CROW-classificatie alleen invullen als de foto een verharding (asfalt, klinker, beton) toont. Bij andere asset-types (verkeer, groen, riolering) mag het null zijn.
+- "crow_klasse" moet consistent zijn met "crow_ernst" + "crow_omvang" (bv ernst=M + omvang=2 → klasse=M2).
+- CROW-schadebeeld notatie:
+  * Asfalt samenhang: scheurvorming-langs/dwars/kruis/rand/groep
+  * Asfalt textuur: rafeling
+  * Asfalt vlakheid: spoorvorming, oneffenheden, kuilen, deformatie
+  * Elementen vlakheid: verzakking
+  * Elementen voegen: voegwijdte
+  * Elementen stenen: gebroken-stenen, ontbrekende-stenen
 - "bevindingen" bevat 1-5 korte observaties (max 100 tekens elk), feitelijk.
 - "confidence" reflecteert hoe zeker je bent over de hele beoordeling.
 - Speculeer NIET over wat niet zichtbaar is. Geen aannames.
+
+Mens-in-de-loop: deze output is een SUGGESTIE voor de inspecteur. De inspecteur kan elke veld aanpassen vóór accepteren.
 """
 
 _ASSET_SPECIFIC = {
@@ -157,7 +190,12 @@ def _coerce_result(raw_text: str) -> dict:
 
 def _validate(result: dict) -> dict:
     """Valideer en normaliseer de schade-rapportage. Onbekende velden worden
-    weggegooid; ontbrekende velden krijgen None."""
+    weggegooid; ontbrekende velden krijgen None.
+
+    Sinds v2.0-crow voegt deze ook CROW 146-classificatie toe (schadegroep,
+    schadebeeld, ernst, omvang, klasse) + NEN 2767 conditie + maatregel-advies
+    via crow_kosten lookup.
+    """
     out = {
         "schade_aanwezig": bool(result.get("schade_aanwezig")) if result.get("schade_aanwezig") is not None else None,
         "schade_type": result.get("schade_type") or None,
@@ -179,6 +217,72 @@ def _validate(result: dict) -> dict:
             out["confidence"] = c
     except (TypeError, ValueError):
         pass
+
+    # ─── CROW 146 classificatie (nieuw in v2.0) ───
+    crow_ernst = result.get("crow_ernst")
+    crow_omvang = result.get("crow_omvang")
+    crow_klasse = result.get("crow_klasse")
+
+    # Normaliseer ernst/omvang
+    if crow_ernst and isinstance(crow_ernst, str):
+        crow_ernst = crow_ernst.strip().upper()[:1]
+        if crow_ernst not in ("L", "M", "E"):
+            crow_ernst = None
+    else:
+        crow_ernst = None
+
+    if crow_omvang is not None:
+        s = str(crow_omvang).strip()[:1]
+        if s in ("1", "2", "3"):
+            crow_omvang = s
+        else:
+            crow_omvang = None
+
+    # Reconstrueer klasse uit ernst+omvang als nodig
+    if crow_ernst and crow_omvang and not crow_klasse:
+        crow_klasse = f"{crow_ernst}{crow_omvang}"
+    elif crow_klasse and isinstance(crow_klasse, str):
+        crow_klasse = crow_klasse.strip().upper()
+        if crow_klasse not in CROW_KLASSEN or not crow_klasse:
+            crow_klasse = None
+
+    out["crow_schadegroep"] = result.get("crow_schadegroep") if result.get("crow_schadegroep") in CROW_SCHADEGROEPEN else None
+    out["crow_schadebeeld"] = (result.get("crow_schadebeeld") or "").strip().lower() or None
+    out["crow_ernst"] = crow_ernst
+    out["crow_omvang"] = crow_omvang
+    out["crow_klasse"] = crow_klasse
+
+    # NEN 2767 conditie 1-5
+    nen = result.get("nen_2767_conditie")
+    try:
+        nen_i = int(nen) if nen is not None else None
+        out["nen_2767_conditie"] = nen_i if nen_i and 1 <= nen_i <= 5 else None
+    except (TypeError, ValueError):
+        out["nen_2767_conditie"] = None
+
+    # Verrijk met onderhouds-categorie + GWWkosten-koppeling
+    if crow_klasse:
+        try:
+            from crow_kosten import lookup_maatregel
+            advies = lookup_maatregel(
+                schadebeeld=out["crow_schadebeeld"] or "",
+                klasse=crow_klasse,
+                schadegroep=out["crow_schadegroep"],
+            )
+            out["onderhoud_categorie"] = advies["categorie"]  # observatie/KO/GO/acuut
+            out["gw_maatregel"] = advies["maatregel"]
+            out["gw_term"] = advies["gw_term"]
+            out["gw_kosten_orde"] = advies["kosten_orde"]
+            out["gw_eenheid"] = advies["eenheid"]
+            out["termijn_weken"] = advies["termijn_weken"]
+        except Exception:
+            # Lookup-fout mag de validatie nooit breken
+            out["onderhoud_categorie"] = None
+            out["gw_maatregel"] = None
+    else:
+        out["onderhoud_categorie"] = None
+        out["gw_maatregel"] = None
+
     return out
 
 
@@ -210,6 +314,13 @@ def _stub_result(asset_type: Optional[str]) -> InspectionResult:
         "aanbevolen_actie": "Inplannen voor reparatie binnen 4-6 weken; monitor uitbreiding",
         "confidence": 0.78,
         "asset_zichtbaar": True,
+        # CROW 146 classificatie (stub)
+        "crow_schadegroep": "samenhang",
+        "crow_schadebeeld": "scheurvorming-langs",
+        "crow_ernst": "M",
+        "crow_omvang": "2",
+        "crow_klasse": "M2",
+        "nen_2767_conditie": 3,
     })
     out["_model_id"] = "stub-no-api-key"
     out["_prompt_version"] = PROMPT_VERSION

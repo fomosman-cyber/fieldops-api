@@ -159,6 +159,18 @@ class MeldingCreate(BaseModel):
     photo_url: Optional[str] = None
     photo_after_url: Optional[str] = None
     project_id: Optional[str] = None
+    asset_id: Optional[str] = None
+    # CROW 146 + GWWkosten classificatie (optioneel)
+    crow_schadegroep: Optional[str] = None
+    crow_schadebeeld: Optional[str] = None
+    crow_ernst: Optional[str] = None
+    crow_omvang: Optional[str] = None
+    crow_klasse: Optional[str] = None
+    nen_2767_conditie: Optional[int] = None
+    onderhoud_categorie: Optional[str] = None
+    gw_maatregel: Optional[str] = None
+    gw_term: Optional[str] = None
+    gw_kosten_orde: Optional[str] = None
 
 
 class MeldingResponse(BaseModel):
@@ -278,6 +290,19 @@ class InspectionResponse(BaseModel):
     rejected_at: Optional[datetime]
     rejection_reason: Optional[str]
     created_at: datetime
+
+    # CROW 146 + GWWkosten classificatie (v2.0-crow)
+    crow_schadegroep: Optional[str] = None
+    crow_schadebeeld: Optional[str] = None
+    crow_ernst: Optional[str] = None
+    crow_omvang: Optional[str] = None
+    crow_klasse: Optional[str] = None
+    nen_2767_conditie: Optional[int] = None
+    onderhoud_categorie: Optional[str] = None
+    gw_maatregel: Optional[str] = None
+    gw_term: Optional[str] = None
+    gw_kosten_orde: Optional[str] = None
+    termijn_weken: Optional[int] = None
 
     model_config = {"from_attributes": True}
 

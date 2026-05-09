@@ -72,8 +72,20 @@ def create_melding(
         photo_url=data.photo_url,
         photo_after_url=data.photo_after_url,
         project_id=data.project_id,
+        asset_id=getattr(data, "asset_id", None),
         organization_id=current_user.organization_id,
         created_by=current_user.id,
+        # CROW 146 + GWWkosten classificatie (optioneel)
+        crow_schadegroep=getattr(data, "crow_schadegroep", None),
+        crow_schadebeeld=getattr(data, "crow_schadebeeld", None),
+        crow_ernst=getattr(data, "crow_ernst", None),
+        crow_omvang=getattr(data, "crow_omvang", None),
+        crow_klasse=getattr(data, "crow_klasse", None),
+        nen_2767_conditie=getattr(data, "nen_2767_conditie", None),
+        onderhoud_categorie=getattr(data, "onderhoud_categorie", None),
+        gw_maatregel=getattr(data, "gw_maatregel", None),
+        gw_term=getattr(data, "gw_term", None),
+        gw_kosten_orde=getattr(data, "gw_kosten_orde", None),
     )
     db.add(melding)
     db.commit()
@@ -82,7 +94,9 @@ def create_melding(
                action=ACTION.MELDING_CREATE,
                entity_type="melding", entity_id=melding.id,
                after={"title": melding.title, "category": melding.category,
-                      "priority": melding.priority, "project_id": melding.project_id})
+                      "priority": melding.priority, "project_id": melding.project_id,
+                      "crow_klasse": melding.crow_klasse,
+                      "onderhoud_categorie": melding.onderhoud_categorie})
     return _melding_to_response(melding)
 
 

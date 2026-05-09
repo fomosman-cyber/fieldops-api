@@ -56,6 +56,57 @@ def _run_migrations():
                     conn.execute(text("ALTER TABLE meldingen ADD COLUMN asset_id VARCHAR"))
                     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_asset_id ON meldingen(asset_id)"))
                 print("[migration] meldingen.asset_id toegevoegd.")
+
+            # CROW 146 classificatie + GWWkosten-koppeling (v2.0-crow, mei 2026)
+            crow_cols = {
+                "crow_schadegroep":     "VARCHAR(40)",
+                "crow_schadebeeld":     "VARCHAR(60)",
+                "crow_ernst":           "VARCHAR(2)",
+                "crow_omvang":          "VARCHAR(2)",
+                "crow_klasse":          "VARCHAR(4)",
+                "nen_2767_conditie":    "INTEGER",
+                "onderhoud_categorie":  "VARCHAR(20)",
+                "gw_maatregel":         "VARCHAR(120)",
+                "gw_term":              "VARCHAR(160)",
+                "gw_kosten_orde":       "VARCHAR(40)",
+            }
+            mcols = [c["name"] for c in insp.get_columns("meldingen")]  # refresh
+            missing = [c for c in crow_cols if c not in mcols]
+            if missing:
+                print(f"[migration] meldingen CROW-kolommen toevoegen: {missing}")
+                with engine.begin() as conn:
+                    for col in missing:
+                        conn.execute(text(f"ALTER TABLE meldingen ADD COLUMN {col} {crow_cols[col]}"))
+                    # Indexen voor predictive + filtering
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_crow_klasse ON meldingen(crow_klasse)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_onderhoud_cat ON meldingen(onderhoud_categorie)"))
+                print("[migration] meldingen CROW-kolommen toegevoegd.")
+
+        # ai_analyses — zelfde CROW-kolommen + termijn (v2.0-crow)
+        if "ai_analyses" in insp.get_table_names():
+            ai_crow_cols = {
+                "crow_schadegroep":     "VARCHAR(40)",
+                "crow_schadebeeld":     "VARCHAR(60)",
+                "crow_ernst":           "VARCHAR(2)",
+                "crow_omvang":          "VARCHAR(2)",
+                "crow_klasse":          "VARCHAR(4)",
+                "nen_2767_conditie":    "INTEGER",
+                "onderhoud_categorie":  "VARCHAR(20)",
+                "gw_maatregel":         "VARCHAR(120)",
+                "gw_term":              "VARCHAR(160)",
+                "gw_kosten_orde":       "VARCHAR(40)",
+                "termijn_weken":        "INTEGER",
+            }
+            acols = [c["name"] for c in insp.get_columns("ai_analyses")]
+            ai_missing = [c for c in ai_crow_cols if c not in acols]
+            if ai_missing:
+                print(f"[migration] ai_analyses CROW-kolommen toevoegen: {ai_missing}")
+                with engine.begin() as conn:
+                    for col in ai_missing:
+                        conn.execute(text(f"ALTER TABLE ai_analyses ADD COLUMN {col} {ai_crow_cols[col]}"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ai_analyses_crow_klasse ON ai_analyses(crow_klasse)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ai_analyses_onderhoud ON ai_analyses(onderhoud_categorie)"))
+                print("[migration] ai_analyses CROW-kolommen toegevoegd.")
     except Exception as e:
         print(f"[migration] Waarschuwing: {e}")
 

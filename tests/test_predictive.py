@@ -46,8 +46,9 @@ def test_risk_high_for_old_bad_condition(org, admin_user):
         r = compute_asset_risk(db, a)
     finally:
         db.close()
-    # 90% leeftijd + conditie 5 = duidelijk in matig-of-hoog band
-    assert r["score"] >= 50
+    # v2.0-crow: 90% leeftijd + conditie 5 zonder CROW-meldingen = matig band
+    # (CROW-factor = 0 zonder geclassificeerde meldingen — door ontwerp)
+    assert r["score"] >= 35
     assert r["band"] in ("matig", "hoog")
 
 
@@ -97,7 +98,9 @@ def test_summary_with_assets(client, admin_user, org):
 def test_at_risk_endpoint_threshold(client, admin_user, org):
     _make_asset_in_db(org, admin_user, code="LOW", installed_years_ago=0, lifespan=30, condition=1)
     _make_asset_in_db(org, admin_user, code="HIGH", installed_years_ago=25, lifespan=20, condition=5)
-    r = client.get("/api/predictive/at-risk?min_score=50", headers=auth(admin_user))
+    # v2.0-crow: zonder CROW-meldingen kan score max 70 (zonder W_CROW factor 30).
+    # Threshold 40 vangt nog steeds een 25-jaar oude asset met conditie 5 (~46pt).
+    r = client.get("/api/predictive/at-risk?min_score=40", headers=auth(admin_user))
     items = r.json()
     codes = [i["asset_code"] for i in items]
     assert "HIGH" in codes
@@ -107,3 +110,53 @@ def test_at_risk_endpoint_threshold(client, admin_user, org):
 def test_asset_risk_404(client, admin_user):
     r = client.get("/api/predictive/asset/does-not-exist", headers=auth(admin_user))
     assert r.status_code == 404
+
+
+def test_crow_klasse_drives_risk_score(org, admin_user):
+    """CROW E3 op een melding moet score significant verhogen via W_CROW (30 pt)."""
+    from models import Melding
+    from datetime import datetime, timezone
+
+    a = _make_asset_in_db(org, admin_user, code="CROW-E3", installed_years_ago=5,
+                          lifespan=20, condition=2)
+    db = SessionLocal()
+    try:
+        # Baseline zonder CROW-meldingen
+        baseline = compute_asset_risk(db, a)
+        # Voeg melding toe met E3-classificatie
+        m = Melding(
+            title="E3 test", organization_id=org.id, created_by=admin_user.id,
+            asset_id=a.id, priority="kritiek",
+            crow_klasse="E3", crow_ernst="E", crow_omvang="3",
+            crow_schadebeeld="kuilen",
+            onderhoud_categorie="acuut",
+        )
+        db.add(m); db.commit()
+        with_crow = compute_asset_risk(db, a)
+    finally:
+        db.close()
+    # E3 voegt ~30 punten toe via W_CROW
+    assert with_crow["score"] > baseline["score"] + 20
+    assert with_crow["worst_crow_klasse"] == "E3"
+    assert with_crow["components"]["crow"] >= 25  # bijna max W_CROW (30)
+
+
+def test_crow_klasse_lookup_KO_GO():
+    """Sanity check op crow_kosten lookup-module."""
+    from crow_kosten import (
+        lookup_maatregel, klasse_to_categorie, klasse_to_termijn,
+        klasse_to_risk_points,
+    )
+    # M2 → KO
+    assert klasse_to_categorie("M2") == "KO"
+    advies = lookup_maatregel("scheurvorming-langs", "M2", "samenhang")
+    assert advies["categorie"] == "KO"
+    assert "polymeer" in advies["maatregel"].lower() or "Vullen" in advies["maatregel"]
+    assert advies["termijn_weken"] == 24
+    # E3 → acuut
+    assert klasse_to_categorie("E3") == "acuut"
+    # L1 → observatie
+    assert klasse_to_categorie("L1") == "observatie"
+    # Risk points moeten oplopen met severity
+    assert klasse_to_risk_points("L1") < klasse_to_risk_points("M2")
+    assert klasse_to_risk_points("M2") < klasse_to_risk_points("E3")

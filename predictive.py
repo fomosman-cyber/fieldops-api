@@ -1,15 +1,13 @@
-"""Predictive Maintenance v0 — regelgebaseerde risicoscore per asset.
+"""Predictive Maintenance v2 — regelgebaseerde risicoscore per asset, met CROW.
 
 Output: integer 0-100 + "rationale" — een lijstje feiten die de score onderbouwen.
-Bewust regelgebaseerd in v0: een controllable, uitlegbare baseline. Als er
-voldoende data is wordt dit later vervangen door een ML-model dat met dezelfde
-features traint (asset.installed_at, expected_lifespan_years, condition_score,
-recent_meldingen, severity-mix).
+Bewust regelgebaseerd in v0: een controllable, uitlegbare baseline.
 
-Drie factoren, gewogen naar 100:
-- leeftijd-fractie van verwachte levensduur (max 35 punten)
-- condition_score (1-5, lager = beter); 5 → 35 punten, 1 → 0 punten (max 35)
-- meldingen-historie laatste 12 maanden (max 30 punten)
+Vier factoren in v2.0-crow, gewogen naar 100:
+- leeftijd-fractie van verwachte levensduur (max 25 punten)
+- NEN-conditiescore 1-5 (max 25 punten)
+- ergste CROW-klasse (L1..E3) op recente meldingen (max 30 punten)
+- meldingen-historie laatste 12 maanden (max 20 punten)
 
 Compliance/transparantie: rationale is een list[str] met menselijke regels —
 direct toonbaar in de UI naast de score.
@@ -22,13 +20,16 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 
 from models import Asset, Melding
+from crow_kosten import klasse_to_risk_points, KLASSE_RISK_POINTS
 
 
-SCORE_VERSION = "v1.0"
+SCORE_VERSION = "v2.0-crow"
 
-W_AGE = 35
-W_CONDITION = 35
-W_MELDINGEN = 30
+# Wegingen 100 totaal
+W_AGE = 25
+W_CONDITION = 25
+W_CROW = 30
+W_MELDINGEN = 20
 
 
 def _age_fraction(asset: Asset, now: datetime) -> Optional[float]:
@@ -65,10 +66,37 @@ def _melding_count_recent(db: Session, asset_id: str, since: datetime) -> tuple[
 
 
 def _melding_points(total: int, hoog_kritiek: int) -> int:
-    """3+ meldingen = max; bij meerdere kritiek/hoog harder ophogen."""
-    base = min(W_MELDINGEN, total * 8)              # 0/1/2/3+ → 0/8/16/24, capped 30
-    bonus = min(W_MELDINGEN - base, hoog_kritiek * 6)  # extra punten voor severe
+    """Max W_MELDINGEN (20). 3+ meldingen → cap; severe ↑."""
+    base = min(W_MELDINGEN, total * 6)
+    bonus = min(W_MELDINGEN - base, hoog_kritiek * 4)
     return int(min(W_MELDINGEN, base + bonus))
+
+
+def _worst_crow_klasse(db: Session, asset_id: str, since: datetime) -> Optional[str]:
+    """Geef de ergste CROW-klasse terug van meldingen in de afgelopen periode.
+    Ranking: E3 > E2 > E1 > M3 > M2 > M1 > L3 > L2 > L1.
+    """
+    klassen = (db.query(Melding.crow_klasse)
+                 .filter(Melding.asset_id == asset_id,
+                         Melding.created_at >= since,
+                         Melding.crow_klasse.isnot(None))
+                 .all())
+    if not klassen:
+        return None
+    # Sorteer op risk-points (hoogst eerst)
+    valid = [k[0] for k in klassen if k[0] in KLASSE_RISK_POINTS]
+    if not valid:
+        return None
+    return max(valid, key=klasse_to_risk_points)
+
+
+def _crow_points(klasse: Optional[str]) -> int:
+    """L1..E3 → punten gewogen naar W_CROW (30)."""
+    if not klasse:
+        return 0
+    raw = klasse_to_risk_points(klasse)  # 0-48 op de raw schaal
+    # Schaal naar W_CROW (30): max raw 48 → 30 punten
+    return int(round(raw / 48 * W_CROW))
 
 
 def compute_asset_risk(db: Session, asset: Asset) -> dict:
@@ -100,8 +128,20 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
     else:
         rationale.append(f"NEN-conditiescore {asset.condition_score} (1=als-nieuw, 5=zeer slecht) — +{cond_pts} pt.")
 
-    # Meldingen
+    # Ergste CROW-klasse op recente meldingen (nieuw in v2.0)
     one_year_ago = now - timedelta(days=365)
+    worst_klasse = _worst_crow_klasse(db, asset.id, one_year_ago)
+    crow_pts = _crow_points(worst_klasse)
+    if worst_klasse:
+        cat_map = {"L": "observatie", "M": "klein onderhoud", "E": "groot onderhoud"}
+        ernst_letter = worst_klasse[0]
+        rationale.append(
+            f"Ergste CROW-klasse op recente meldingen: {worst_klasse} ({cat_map.get(ernst_letter, '')}) — +{crow_pts} pt."
+        )
+    else:
+        rationale.append("Geen CROW-classificatie op recente meldingen — CROW-factor 0.")
+
+    # Meldingen-aantal
     total_m, severe_m = _melding_count_recent(db, asset.id, one_year_ago)
     mel_pts = _melding_points(total_m, severe_m)
     if total_m == 0:
@@ -110,18 +150,19 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
         sev = f", waarvan {severe_m} hoog/kritiek" if severe_m else ""
         rationale.append(f"{total_m} meldingen in afgelopen 12 mnd{sev} — +{mel_pts} pt.")
 
-    score = age_pts + cond_pts + mel_pts
+    score = age_pts + cond_pts + crow_pts + mel_pts
     score = max(0, min(100, score))
 
-    if score >= 70:
+    # Bandbepaling — drempels iets aangescherpt voor CROW-aware schaal
+    if score >= 65:
         band = "hoog"
         recommendation = "Plan inspectie of preventief onderhoud binnen 4 weken."
-    elif score >= 40:
+    elif score >= 35:
         band = "matig"
-        recommendation = "Overweeg inspectie binnen 3 maanden."
+        recommendation = "Overweeg inspectie binnen 3 maanden — check op LVO-kandidaat."
     else:
         band = "laag"
-        recommendation = "Geen acute actie nodig; volg reguliere onderhoudscyclus."
+        recommendation = "Geen acute actie nodig; volg reguliere CROW-jaarcyclus."
 
     return {
         "asset_id": asset.id,
@@ -132,8 +173,10 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
         "components": {
             "age": age_pts,
             "condition": cond_pts,
+            "crow": crow_pts,
             "meldingen": mel_pts,
         },
+        "worst_crow_klasse": worst_klasse,
         "rationale": rationale,
         "recommendation": recommendation,
         "score_version": SCORE_VERSION,

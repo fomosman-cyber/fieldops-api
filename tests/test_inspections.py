@@ -19,9 +19,15 @@ def test_stub_mode_returns_deterministic(client, admin_user):
     assert r.status_code == 200, r.text
     res = r.json()
     assert res["model_id"] == "stub-no-api-key"
-    assert res["prompt_version"] == "v1.0"
+    # v2.0-crow voegt CROW 146 classificatie toe
+    assert res["prompt_version"].startswith("v2."), res["prompt_version"]
     assert res["schade_type"] == "scheur"
     assert res["confidence"] is not None
+    # CROW-velden moeten in stub aanwezig zijn
+    assert res.get("crow_klasse") == "M2"
+    assert res.get("crow_schadebeeld") == "scheurvorming-langs"
+    assert res.get("onderhoud_categorie") == "KO"
+    assert res.get("gw_maatregel") == "Vullen polymeer"
 
 
 def test_viewer_cannot_run_inspection(client, viewer_user):

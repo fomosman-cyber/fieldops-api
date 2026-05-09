@@ -63,6 +63,18 @@ def _serialize(a: AIAnalysis) -> dict:
         "rejected_at": a.rejected_at,
         "rejection_reason": a.rejection_reason,
         "created_at": a.created_at,
+        # CROW 146 + GWWkosten classificatie (v2.0)
+        "crow_schadegroep": getattr(a, "crow_schadegroep", None),
+        "crow_schadebeeld": getattr(a, "crow_schadebeeld", None),
+        "crow_ernst": getattr(a, "crow_ernst", None),
+        "crow_omvang": getattr(a, "crow_omvang", None),
+        "crow_klasse": getattr(a, "crow_klasse", None),
+        "nen_2767_conditie": getattr(a, "nen_2767_conditie", None),
+        "onderhoud_categorie": getattr(a, "onderhoud_categorie", None),
+        "gw_maatregel": getattr(a, "gw_maatregel", None),
+        "gw_term": getattr(a, "gw_term", None),
+        "gw_kosten_orde": getattr(a, "gw_kosten_orde", None),
+        "termijn_weken": getattr(a, "termijn_weken", None),
     }
 
 
@@ -105,6 +117,18 @@ def _persist(
         raw_response=result.get("_raw_response"),
         organization_id=current_user.organization_id,
         created_by=current_user.id,
+        # CROW 146 + GWWkosten persisten voor compliance/audit
+        crow_schadegroep=result.get("crow_schadegroep"),
+        crow_schadebeeld=result.get("crow_schadebeeld"),
+        crow_ernst=result.get("crow_ernst"),
+        crow_omvang=result.get("crow_omvang"),
+        crow_klasse=result.get("crow_klasse"),
+        nen_2767_conditie=result.get("nen_2767_conditie"),
+        onderhoud_categorie=result.get("onderhoud_categorie"),
+        gw_maatregel=result.get("gw_maatregel"),
+        gw_term=result.get("gw_term"),
+        gw_kosten_orde=result.get("gw_kosten_orde"),
+        termijn_weken=result.get("termijn_weken"),
     )
     db.add(rec); db.commit(); db.refresh(rec)
     return rec
