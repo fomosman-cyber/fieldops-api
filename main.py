@@ -11,7 +11,7 @@ import os
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router
 from audit import assign_request_id
 
 # Maak alle tabellen aan
@@ -387,6 +387,7 @@ app.include_router(google_router.router)
 app.include_router(microsoft_router.router)
 app.include_router(orchestration_router.router)
 app.include_router(nwb_router.router)
+app.include_router(integrations_router.router)
 
 
 # Request-ID middleware — koppelt elke request aan een correlatie-ID dat
@@ -414,6 +415,21 @@ def manifest():
         media_type="application/manifest+json",
         headers={"Cache-Control": "public, max-age=3600"},
     )
+
+
+@app.get("/{doc}.md")
+def serve_setup_doc(doc: str):
+    """Serveer whitelisted setup-docs (GOOGLE-SETUP, MICROSOFT-SETUP, ...) als
+    plain markdown. Toegankelijk vanuit de portaal-UI als CTA voor admins."""
+    allowed = {"GOOGLE-SETUP", "MICROSOFT-SETUP", "RENDER-SETUP", "DEPLOYMENT", "IOS_BUILD_GUIDE"}
+    if doc not in allowed:
+        from fastapi import HTTPException as _HE
+        raise _HE(status_code=404, detail="Document niet gevonden")
+    file_path = Path(__file__).parent / f"{doc}.md"
+    if not file_path.exists():
+        from fastapi import HTTPException as _HE
+        raise _HE(status_code=404, detail="Document niet gevonden")
+    return FileResponse(file_path, media_type="text/markdown; charset=utf-8")
 
 
 @app.get("/service-worker.js")

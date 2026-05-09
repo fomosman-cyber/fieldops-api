@@ -7600,6 +7600,49 @@
     // ── GOOGLE WORKSPACE: OAUTH + CALENDAR ──
     // ══════════════════════════════════════
 
+    // Actie-gerichte UI voor "niet-geconfigureerd"-state. Toont admin-only setup-CTA's
+    // (link naar setup-doc + cloud-console + Render dashboard) of voor non-admins een
+    // beschaafde "ping je beheerder"-tekst met copy-paste-bericht.
+    function _renderUnconfiguredIntegration(opts) {
+      var isAdmin = !!(window.currentUser && window.currentUser.is_org_admin);
+      var envList = opts.envVars.map(function(v) { return '<code style="background:rgba(0,0,0,0.06);padding:1px 6px;border-radius:4px;font-family:JetBrains Mono,monospace;font-size:11px;">' + v + '</code>'; }).join(' ');
+
+      if (isAdmin) {
+        return ''
+          + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+          +   '<span style="font-size:18px;">⚠️</span>'
+          +   '<strong style="color:var(--text);">' + opts.label + ' nog niet geconfigureerd op de server</strong>'
+          + '</div>'
+          + '<p style="color:var(--text-muted);font-size:13px;margin:0 0 12px;">'
+          +   'Eenmalige setup (~' + opts.estMin + ' min): registreer een OAuth-app in de cloud-console, voeg ' + opts.envVars.length + ' env-vars toe in Render, en de koppeling werkt voor <strong>iedere gebruiker</strong>.'
+          + '</p>'
+          + '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">'
+          +   '<a href="/' + opts.setupDoc + '" target="_blank" rel="noopener" class="btn-primary" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:7px 14px;">📖 Setup-handleiding openen</a>'
+          +   '<a href="' + opts.consoleUrl + '" target="_blank" rel="noopener" class="btn-secondary" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:7px 14px;">↗ Cloud console</a>'
+          +   '<a href="https://dashboard.render.com" target="_blank" rel="noopener" class="btn-secondary" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:7px 14px;">↗ Render dashboard</a>'
+          + '</div>'
+          + '<div style="font-size:11px;color:var(--text-dim);">Benodigde env-vars: ' + envList + '</div>';
+      }
+
+      // Niet-admin: beschaafde melding + copy-paste-bericht
+      var subject = encodeURIComponent('FieldOps: ' + opts.label + ' koppeling activeren');
+      var body = encodeURIComponent(
+        'Hoi,\n\n' +
+        'Kun je de ' + opts.label + ' integratie activeren in FieldOps? ' +
+        'Setup is ~' + opts.estMin + ' min via de handleiding op /' + opts.setupDoc + '.\n\n' +
+        'Daarna kan iedereen z\'n eigen account koppelen via Instellingen.\n\nDank!'
+      );
+      return ''
+        + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">'
+        +   '<span style="font-size:16px;">⚠️</span>'
+        +   '<span style="color:var(--text);font-weight:600;">' + opts.label + ' is nog niet ingesteld door een beheerder.</span>'
+        + '</div>'
+        + '<p style="color:var(--text-muted);font-size:13px;margin:0 0 10px;">'
+        +   'Vraag de eigenaar van je organisatie om de eenmalige setup te doen — duurt ~' + opts.estMin + ' min.'
+        + '</p>'
+        + '<a href="mailto:?subject=' + subject + '&body=' + body + '" class="btn-secondary" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:6px 12px;">✉ Stuur reminder</a>';
+    }
+
     function refreshGoogleStatus() {
       var box = document.getElementById('googleStatusText');
       var connectBtn = document.getElementById('googleConnectBtn');
@@ -7608,7 +7651,13 @@
       if (!box) return;
       api('GET', '/api/google/status').then(function(s) {
         if (!s.configured) {
-          box.innerHTML = '⚠️ Google integratie nog niet geconfigureerd op de server. Vraag een beheerder om <code>GOOGLE_OAUTH_CLIENT_ID/SECRET</code> in te stellen.';
+          box.innerHTML = _renderUnconfiguredIntegration({
+            label: 'Google Workspace',
+            envVars: ['GOOGLE_OAUTH_CLIENT_ID', 'GOOGLE_OAUTH_CLIENT_SECRET', 'GOOGLE_OAUTH_REDIRECT_URI'],
+            setupDoc: 'GOOGLE-SETUP.md',
+            consoleUrl: 'https://console.cloud.google.com',
+            estMin: 20,
+          });
           if (connectBtn) connectBtn.style.display = 'none';
           if (testBtn) testBtn.style.display = 'none';
           if (dcBtn) dcBtn.style.display = 'none';
@@ -7666,7 +7715,13 @@
       if (!box) return;
       api('GET', '/api/microsoft/status').then(function(s) {
         if (!s.configured) {
-          box.innerHTML = '<span style="color:var(--text-dim);">⚠️ Microsoft OAuth niet geconfigureerd op de server. Vraag admin om <code>MS_OAUTH_CLIENT_ID</code> + <code>MS_OAUTH_CLIENT_SECRET</code> in Render env-vars te zetten.</span>';
+          box.innerHTML = _renderUnconfiguredIntegration({
+            label: 'Microsoft 365',
+            envVars: ['MS_OAUTH_CLIENT_ID', 'MS_OAUTH_CLIENT_SECRET', 'MS_OAUTH_REDIRECT_URI', 'MS_OAUTH_TENANT'],
+            setupDoc: 'MICROSOFT-SETUP.md',
+            consoleUrl: 'https://portal.azure.com',
+            estMin: 15,
+          });
           if (connectBtn) connectBtn.style.display = 'none';
           if (disconnectBtn) disconnectBtn.style.display = 'none';
           return;

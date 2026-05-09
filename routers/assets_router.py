@@ -664,13 +664,18 @@ def merge_wegvakken(
     if len(payload.asset_ids) < 2:
         raise HTTPException(status_code=400, detail="Geef minimaal 2 wegvak-IDs op")
 
-    assets = db.query(Asset).filter(
+    fetched = db.query(Asset).filter(
         Asset.id.in_(payload.asset_ids),
         Asset.organization_id == current_user.organization_id,
         Asset.archived_at.is_(None),
     ).all()
-    if len(assets) != len(payload.asset_ids):
+    if len(fetched) != len(payload.asset_ids):
         raise HTTPException(status_code=404, detail="Een of meer wegvakken niet gevonden")
+
+    # Sorteer in de volgorde van input — DB-query heeft geen stabiele orde,
+    # maar de user verwacht dat z'n selectie-volgorde het merge-resultaat bepaalt.
+    by_id = {a.id: a for a in fetched}
+    assets = [by_id[aid] for aid in payload.asset_ids]
 
     linestrings: List[List[List[float]]] = []
     for a in assets:
