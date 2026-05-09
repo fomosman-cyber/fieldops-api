@@ -272,3 +272,113 @@ def test_password_reset_rate_limit_unknown_email_does_not_create_dos(client):
         headers={"X-Forwarded-For": "5.5.5.5"},
         json={"email": "ghost@example.nl"})
     assert r.status_code == 429
+
+
+# ─── Audit-log CSV export ─────────────────────────────────────────────────────
+
+def test_audit_csv_export_admin_only(client, admin_user, viewer_user):
+    """Niet-admins mogen de export niet."""
+    r = client.get("/api/audit/logs/export.csv", headers=auth(viewer_user))
+    assert r.status_code == 403
+
+
+def test_audit_csv_export_returns_csv(client, admin_user):
+    # Seed wat events
+    client.get("/api/auth/me", headers=auth(admin_user))  # genereert geen audit
+    client.post("/api/auth/login", json={
+        "email": admin_user.email, "password": "test1234"})
+
+    r = client.get("/api/audit/logs/export.csv", headers=auth(admin_user))
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/csv")
+    assert "attachment; filename=" in r.headers["content-disposition"]
+    # CSV-headers
+    body = r.content.decode("utf-8-sig")  # strip BOM
+    first_line = body.splitlines()[0]
+    assert first_line.startswith("id,created_at_utc,organization_id")
+
+
+def test_audit_csv_export_logs_itself(client, admin_user):
+    """De export wordt zelf gelogd — meta-audit."""
+    client.get("/api/audit/logs/export.csv", headers=auth(admin_user))
+
+    db = SessionLocal()
+    try:
+        export_logs = db.query(AuditLog).filter(
+            AuditLog.action == "audit.export.csv").all()
+        assert len(export_logs) >= 1
+        assert export_logs[0].user_email == admin_user.email
+    finally:
+        db.close()
+
+
+# ─── DSAR — GDPR Article 15 ──────────────────────────────────────────────────
+
+def test_dsar_self_export_returns_profile(client, admin_user):
+    r = client.get("/api/users/me/export", headers=auth(admin_user))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["schema_version"] == "1"
+    assert body["subject"]["user_id"] == admin_user.id
+    assert body["subject"]["email"] == admin_user.email
+    assert body["profile"]["email"] == admin_user.email
+    # Password-hash mag NOOIT in DSAR-output
+    assert "hashed_password" not in body["profile"]
+    # Lijsten zijn aanwezig (ook al leeg)
+    for key in ("meldingen_created", "audit_actor", "audit_about_me",
+                "push_subscriptions", "oauth_google_metadata"):
+        assert key in body
+        assert isinstance(body[key], list)
+
+
+def test_dsar_self_export_redacts_oauth_tokens(client, admin_user):
+    """OAuth tokens (google + microsoft) mogen NOOIT in de DSAR-output."""
+    from models import GoogleOAuthToken
+    db = SessionLocal()
+    try:
+        tok = GoogleOAuthToken(
+            user_id=admin_user.id,
+            organization_id=admin_user.organization_id,
+            access_token="SECRET-NEVER-LEAK",
+            refresh_token="SECRET-REFRESH",
+            scope="profile email",
+            google_email="admin@gmail.com",
+        )
+        db.add(tok); db.commit()
+    finally:
+        db.close()
+
+    r = client.get("/api/users/me/export", headers=auth(admin_user))
+    assert r.status_code == 200
+    body_str = r.text
+    assert "SECRET-NEVER-LEAK" not in body_str
+    assert "SECRET-REFRESH" not in body_str
+    # Maar metadata is wel aanwezig
+    assert len(r.json()["oauth_google_metadata"]) == 1
+
+
+def test_dsar_self_export_logs_audit_event(client, admin_user):
+    client.get("/api/users/me/export", headers=auth(admin_user))
+    db = SessionLocal()
+    try:
+        events = db.query(AuditLog).filter(
+            AuditLog.action == "user.data.export.self").all()
+        assert len(events) >= 1
+        assert events[0].user_email == admin_user.email
+    finally:
+        db.close()
+
+
+def test_dsar_admin_export_for_other_user(client, admin_user, viewer_user):
+    r = client.get(f"/api/users/{viewer_user.id}/export",
+                   headers=auth(admin_user))
+    assert r.status_code == 200
+    body = r.json()
+    assert body["subject"]["user_id"] == viewer_user.id
+
+
+def test_dsar_admin_export_blocks_non_admin(client, viewer_user, admin_user):
+    """Niet-admin mag geen DSAR voor andermans data trekken."""
+    r = client.get(f"/api/users/{admin_user.id}/export",
+                   headers=auth(viewer_user))
+    assert r.status_code == 403

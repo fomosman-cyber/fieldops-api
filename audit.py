@@ -89,6 +89,11 @@ class ACTION:
     AI_ANALYSIS_ACCEPT  = "ai.analysis.accept"
     AI_ANALYSIS_REJECT  = "ai.analysis.reject"
 
+    # Compliance / GDPR
+    AUDIT_EXPORT        = "audit.export.csv"     # admin downloadt audit-log
+    DATA_EXPORT_SELF    = "user.data.export.self"  # GDPR Art.15 — DSAR door betrokkene
+    DATA_EXPORT_ADMIN   = "user.data.export.admin"  # admin draait DSAR namens klant
+
 
 def _safe_json(obj: Any) -> Optional[str]:
     """Serialiseer naar JSON; bij gekke types (bv. datetime) val terug op default=str."""
