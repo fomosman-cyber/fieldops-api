@@ -47,6 +47,14 @@ def _run_migrations():
                     conn.execute(text("ALTER TABLE users ADD COLUMN must_change_password BOOLEAN DEFAULT FALSE NOT NULL"))
                 print("[migration] users.must_change_password toegevoegd.")
 
+            # users.tokens_invalidated_at — JWT-revocation bij anonymisatie /
+            # password-change / admin-deactivatie (sessie-hardening v3.4)
+            if "tokens_invalidated_at" not in user_cols:
+                print("[migration] users.tokens_invalidated_at kolom toevoegen...")
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN tokens_invalidated_at TIMESTAMP"))
+                print("[migration] users.tokens_invalidated_at toegevoegd.")
+
         # meldingen.asset_id (toegevoegd voor asset-management koppeling)
         if "meldingen" in insp.get_table_names():
             mcols = [c["name"] for c in insp.get_columns("meldingen")]

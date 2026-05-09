@@ -8,7 +8,7 @@ from schemas import (
     UserResponse, UserUpdate, InvitationCreate, InvitationResponse,
     AcceptInvitationRequest,
 )
-from auth import get_current_user, hash_password, validate_password_strength
+from auth import get_current_user, hash_password, validate_password_strength, invalidate_user_sessions
 from permissions import require_org_admin, list_assignable_roles
 from email_service import send_invitation_email, send_welcome_email
 from audit import log_action, ACTION
@@ -273,6 +273,10 @@ def _anonymize_user(db: Session, user: User) -> dict:
     user.is_org_admin = False
     user.must_change_password = False
     user.last_login = None
+    # 4. Direct alle uitstaande JWTs revoken — voorkomt dat de oude session
+    # nog 24u na "vergetelheidsverzoek" data kan inzien (GDPR Art.17 vereist
+    # onmiddellijke effectiviteit).
+    invalidate_user_sessions(user)
 
     db.commit()
     return summary
@@ -391,6 +395,10 @@ def update_user(
         new_pw = update_data.pop("password")
         validate_password_strength(new_pw)
         user.hashed_password = hash_password(new_pw)
+        # Bij wachtwoordwijziging: revoke alle bestaande JWTs van deze user.
+        # Voorkomt dat een gestolen token nog 24u na een reset-actie blijft
+        # werken (best practice — Devise/Auth0 doen dit ook).
+        invalidate_user_sessions(user)
     # Snapshot before/after voor de overige velden
     before = {k: getattr(user, k) for k in update_data.keys()
               if k not in ("password",)}
@@ -446,6 +454,9 @@ def deactivate_user(
         raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
 
     user.is_active = False
+    # Revoke uitstaande tokens: gedeactiveerde users moeten direct uit kunnen
+    # loggen, niet pas na 24u JWT-TTL.
+    invalidate_user_sessions(user)
     db.commit()
     log_action(db, request, current_user,
                action=ACTION.USER_DEACTIVATE, entity_type="user", entity_id=user.id,

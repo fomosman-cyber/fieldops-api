@@ -509,3 +509,77 @@ def test_erasure_logs_audit_event(client, viewer_user):
         assert events[0].entity_id == viewer_user.id
     finally:
         db.close()
+
+
+# ─── JWT revocation / session invalidation ───────────────────────────────────
+
+def test_jwt_revoked_after_anonymize(client, viewer_user):
+    """Article 17 vereist onmiddellijke effectiviteit: JWT moet meteen 401-en."""
+    headers = auth(viewer_user)
+    # Anonymize — same JWT
+    r = client.delete("/api/users/me/anonymize", headers=headers)
+    assert r.status_code == 200
+    # Same JWT used again -> must be 401
+    r2 = client.get("/api/auth/me", headers=headers)
+    assert r2.status_code == 401, r2.text
+
+
+def test_jwt_revoked_after_password_change(client, admin_user, viewer_user):
+    """Bij password reset door admin: oude tokens van die user worden ongeldig."""
+    viewer_token = auth(viewer_user)
+    # Admin reset het wachtwoord van viewer
+    r = client.put(f"/api/users/{viewer_user.id}",
+                   headers=auth(admin_user),
+                   json={"password": "Brand-NewPw1"})
+    assert r.status_code == 200
+    # Oude viewer-token moet nu falen
+    r2 = client.get("/api/auth/me", headers=viewer_token)
+    assert r2.status_code == 401
+
+
+def test_jwt_revoked_after_deactivate(client, admin_user, viewer_user):
+    viewer_token = auth(viewer_user)
+    r = client.delete(f"/api/users/{viewer_user.id}", headers=auth(admin_user))
+    assert r.status_code == 200
+    r2 = client.get("/api/auth/me", headers=viewer_token)
+    # Either 401 (token revoked) or 403 (account deactivated) is acceptable
+    assert r2.status_code in (401, 403)
+
+
+def test_fresh_login_after_revocation_works(client, admin_user, viewer_user):
+    """Na revocation moet een nieuwe login wel weer een werkend token geven."""
+    import time
+    # First revoke via password change
+    client.put(f"/api/users/{viewer_user.id}",
+               headers=auth(admin_user),
+               json={"password": "Brand-NewPw1"})
+    # JWT iat is second-precision — invalidate_user_sessions ceilt naar volgende
+    # seconde zodat oude tokens revoked blijven. Nieuwe login moet >1s wachten
+    # voordat z'n iat na invalidated_at valt. Productie-UI kost al >1s; in test
+    # forceren we het.
+    time.sleep(1.1)
+    # New login with new password
+    r = client.post("/api/auth/login", json={
+        "email": viewer_user.email, "password": "Brand-NewPw1",
+    })
+    assert r.status_code == 200, r.text
+    new_token = r.json()["access_token"]
+    # Use the new token
+    r2 = client.get("/api/auth/me",
+                    headers={"Authorization": "Bearer " + new_token})
+    assert r2.status_code == 200
+
+
+def test_jwt_iat_claim_present(client, admin_user):
+    """Sanity: nieuwe tokens bevatten iat-claim."""
+    r = client.post("/api/auth/login", json={
+        "email": admin_user.email, "password": "test1234",
+    })
+    assert r.status_code == 200
+    token = r.json()["access_token"]
+    from jose import jwt
+    import os
+    payload = jwt.decode(token, os.environ["SECRET_KEY"],
+                         algorithms=["HS256"])
+    assert "iat" in payload
+    assert "exp" in payload

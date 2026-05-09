@@ -181,8 +181,11 @@ def check_password_reset_rate_limit(db: Session, email: str, request=None) -> No
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    # iat (issued-at) — gebruikt door get_current_user om tokens te
+    # revokken die zijn uitgegeven vóór tokens_invalidated_at op de user.
+    to_encode.update({"exp": expire, "iat": now})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -202,9 +205,55 @@ def get_current_user(
     user = db.query(User).filter(User.id == user_id).first()
     if user is None:
         raise HTTPException(status_code=401, detail="Gebruiker niet gevonden")
+
+    # Token-revocation: als de user na uitgifte van dit token z'n sessies
+    # heeft geïnvalideerd (anonymisatie / password change / deactivatie),
+    # is dit token niet meer geldig. Check vóór is_active zodat we het
+    # juiste signaal teruggeven (401 invalid token, niet 403 deactivated).
+    # iat ontbreekt op pre-3.4-tokens; dan blijft het oude gedrag (TTL als
+    # enige check) — die expireren binnen 24u.
+    invalidated_at = getattr(user, "tokens_invalidated_at", None)
+    iat_ts = payload.get("iat")
+    if invalidated_at is not None and iat_ts is not None:
+        try:
+            iat_dt = datetime.fromtimestamp(int(iat_ts), tz=timezone.utc)
+        except (TypeError, ValueError):
+            iat_dt = None
+        if iat_dt is not None:
+            inv_dt = invalidated_at
+            if inv_dt.tzinfo is None:
+                inv_dt = inv_dt.replace(tzinfo=timezone.utc)
+            if iat_dt < inv_dt:
+                raise HTTPException(status_code=401,
+                    detail="Sessie is ongeldig — log opnieuw in.")
+
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is gedeactiveerd")
     return user
+
+
+def invalidate_user_sessions(user: User) -> None:
+    """Markeer alle uitstaande JWTs van deze user als ongeldig.
+
+    Aanroepen bij wachtwoordwijziging, account-anonymisatie en admin-
+    deactivatie. De caller moet zelf db.commit() doen — wij muteren alleen
+    het user-object zodat de mutatie in de bestaande transactie zit.
+
+    Implementatie-detail: JWT iat heeft seconde-precisie. We zetten
+    tokens_invalidated_at op het einde van de huidige seconde (now ceiled
+    naar volgende seconde) zodat:
+      - alle bestaande tokens (iat = vorige seconde of eerder) revoked zijn;
+      - nieuwe logins vanaf de volgende seconde direct geldig zijn.
+    Het gevolg is een ~1-seconde window waarin een nieuwe login direct na
+    revocation alsnog faalt — irrelevant in productie (UI-redirect duurt
+    langer dan dat) maar tests moeten een sleep(1.1) toevoegen.
+    """
+    now = datetime.now(timezone.utc)
+    if now.microsecond == 0:
+        ceil = now + timedelta(seconds=1)
+    else:
+        ceil = now.replace(microsecond=0) + timedelta(seconds=1)
+    user.tokens_invalidated_at = ceil
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:

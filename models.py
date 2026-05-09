@@ -60,6 +60,10 @@ class User(Base):
     is_active = Column(Boolean, default=True)
     is_org_admin = Column(Boolean, default=False)
     must_change_password = Column(Boolean, default=False, nullable=False)
+    # Tijdstempel waarop alle uitstaande JWT-tokens van deze user als ongeldig
+    # gelden. Wordt gezet bij anonymisatie (Art.17), wachtwoordwijziging en
+    # admin-deactivatie. JWT.iat < tokens_invalidated_at -> 401.
+    tokens_invalidated_at = Column(DateTime, nullable=True)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = Column(DateTime, nullable=True)
