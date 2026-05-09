@@ -213,11 +213,14 @@ def create_test_event(
     access = gi.ensure_fresh_token(db, rec)
     if not access:
         raise HTTPException(status_code=400, detail="Niet verbonden met Google. Verbind eerst.")
-    today = datetime.now(timezone.utc).date().isoformat()
+    today_dt = datetime.now(timezone.utc).date()
+    today = today_dt.isoformat()
+    tomorrow = (today_dt + timedelta(days=1)).isoformat()
     payload = {
         "summary": "FieldOps: testkoppeling werkt",
         "description": "Dit event is automatisch aangemaakt vanuit FieldOps om de Google-Calendar-integratie te testen. Veilig om te verwijderen.",
-        "start": {"date": today}, "end": {"date": today},
+        # Google Calendar all-day events: end.date is exclusive en moet strikt > start.date
+        "start": {"date": today}, "end": {"date": tomorrow},
     }
     try:
         ev = gi.calendar_create_event(access, rec.default_calendar_id or "primary", payload)

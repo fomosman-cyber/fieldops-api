@@ -183,14 +183,19 @@ def build_melding_event(melding, asset=None, project=None) -> dict:
     if project: desc_parts.append(f"Project: {project.name}")
     desc_parts.append(f"Open in FieldOps: https://portaal.fieldopsapp.nl/portaal#melding={melding.id}")
 
-    # Standaard: hele dag op de creatie-datum, anders op streefdatum
-    start_date = (melding.created_at or datetime.now(timezone.utc)).date().isoformat()
+    # Standaard: hele dag op de creatie-datum, anders op streefdatum.
+    # Google Calendar: bij all-day events is end.date exclusive — moet strikt
+    # > start.date zijn, anders wordt het een 0-duration event dat niet zichtbaar
+    # is in de UI.
+    start_dt = (melding.created_at or datetime.now(timezone.utc)).date()
+    start_date = start_dt.isoformat()
+    end_date = (start_dt + timedelta(days=1)).isoformat()
 
     event = {
         "summary": title[:255],
         "description": "\n\n".join(desc_parts)[:8000],
         "start": {"date": start_date},
-        "end": {"date": start_date},
+        "end": {"date": end_date},
         "extendedProperties": {
             "private": {
                 "fieldops_melding_id": melding.id,
