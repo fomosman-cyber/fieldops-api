@@ -312,9 +312,14 @@ def my_clusters(db: Session, user_id: str) -> list[JobCluster]:
               .all())
 
 
-def cluster_summary(jc: JobCluster) -> dict:
-    """Serialiseer een cluster naar dict voor API."""
-    return {
+def cluster_summary(jc: JobCluster, *, include_meldingen: bool = False, db: Optional[Session] = None) -> dict:
+    """Serialiseer een cluster naar dict voor API.
+
+    Met include_meldingen=True wordt de bijbehorende melding-lijst
+    embedded in het response — voor mobile day-planner zodat alle
+    context in één API-call beschikbaar is.
+    """
+    out = {
         "id": jc.id,
         "gw_term": jc.gw_term,
         "skill_code": jc.skill_code,
@@ -332,9 +337,75 @@ def cluster_summary(jc: JobCluster) -> dict:
             "lat_min": jc.geo_lat_min, "lat_max": jc.geo_lat_max,
             "lng_min": jc.geo_lng_min, "lng_max": jc.geo_lng_max,
         } if jc.geo_lat_min is not None else None,
+        "geo_centroid": _geo_centroid(jc),
         "planned_date": jc.planned_date.isoformat() if jc.planned_date else None,
         "assigned_to": jc.assigned_to,
         "assignee_name": jc.assignee.email if jc.assignee else None,
         "status": jc.status,
         "created_at": jc.created_at.isoformat() if jc.created_at else None,
     }
+    if include_meldingen and db is not None:
+        meldingen = (db.query(Melding)
+                       .filter(Melding.job_cluster_id == jc.id)
+                       .order_by(Melding.priority.desc())
+                       .all())
+        # Greedy route-order: start vanuit cluster-centroid, dan steeds dichtstbijzijnde
+        ordered = _greedy_route_order(meldingen, start_lat=out["geo_centroid"][0] if out["geo_centroid"] else None,
+                                      start_lng=out["geo_centroid"][1] if out["geo_centroid"] else None)
+        out["meldingen"] = [{
+            "id": m.id,
+            "title": m.title,
+            "description": m.description,
+            "lat": m.lat, "lng": m.lng,
+            "priority": m.priority,
+            "status": m.status,
+            "crow_klasse": m.crow_klasse,
+            "gw_term": m.gw_term,
+            "gw_kosten_orde": m.gw_kosten_orde,
+            "photo_url": m.photo_url,
+            "asset_id": m.asset_id,
+            "maps_url": (f"https://maps.google.com/?q={m.lat},{m.lng}" if m.lat and m.lng else None),
+        } for m in ordered]
+    return out
+
+
+def _geo_centroid(jc: JobCluster) -> Optional[tuple[float, float]]:
+    """Geef centroid (gemiddeld punt) van cluster-bbox."""
+    if jc.geo_lat_min is None or jc.geo_lng_min is None:
+        return None
+    return (
+        (jc.geo_lat_min + jc.geo_lat_max) / 2,
+        (jc.geo_lng_min + jc.geo_lng_max) / 2,
+    )
+
+
+def _greedy_route_order(
+    meldingen: list[Melding],
+    start_lat: Optional[float] = None,
+    start_lng: Optional[float] = None,
+) -> list[Melding]:
+    """Sorteer meldingen op nearest-neighbor (greedy TSP) vanaf start-punt.
+
+    Meldingen zonder GPS belanden achteraan, in originele volgorde.
+    """
+    with_geo = [m for m in meldingen if m.lat is not None and m.lng is not None]
+    no_geo = [m for m in meldingen if m.lat is None or m.lng is None]
+
+    if not with_geo:
+        return list(meldingen)
+
+    if start_lat is None or start_lng is None:
+        # Begin bij de eerste melding, dan greedy verder
+        ordered = [with_geo.pop(0)]
+        current = (ordered[0].lat, ordered[0].lng)
+    else:
+        ordered = []
+        current = (start_lat, start_lng)
+
+    while with_geo:
+        nxt = min(with_geo, key=lambda m: haversine_km(current[0], current[1], m.lat, m.lng))
+        ordered.append(nxt)
+        current = (nxt.lat, nxt.lng)
+        with_geo.remove(nxt)
+
+    return ordered + no_geo

@@ -236,12 +236,60 @@ def delete_cluster(
 
 @router.get("/users/me/clusters")
 def my_assigned_clusters(
+    include_meldingen: bool = True,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Mijn toegewezen clusters — voor mobile day-planner van uitvoerders."""
+    """Mijn toegewezen clusters — voor mobile day-planner van uitvoerders.
+
+    Met include_meldingen (default: true) embedded de complete melding-lijst
+    per cluster, in greedy route-order vanaf cluster-centroid. Eén API-call
+    geeft alle context die de mobile dag-planner nodig heeft.
+    """
     clusters = my_clusters(db, current_user.id)
-    return [cluster_summary(c) for c in clusters]
+    return [cluster_summary(c, include_meldingen=include_meldingen, db=db) for c in clusters]
+
+
+@router.patch("/clusters/{cluster_id}/meldingen/{melding_id}/status")
+def update_melding_status_in_cluster(
+    cluster_id: str,
+    melding_id: str,
+    payload: dict,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Update status van een melding binnen een cluster (voor mobile day-planner).
+
+    Statussen: open / in_behandeling / afgerond. Inspector/contractor mogen
+    statussen wijzigen voor meldingen in clusters die aan hen zijn toegewezen.
+    """
+    from models import Melding
+    new_status = payload.get("status")
+    if new_status not in ("open", "in_behandeling", "afgerond"):
+        raise HTTPException(status_code=400, detail="Ongeldige status")
+
+    m = db.query(Melding).filter(
+        Melding.id == melding_id,
+        Melding.job_cluster_id == cluster_id,
+        Melding.organization_id == current_user.organization_id,
+    ).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Melding niet gevonden in deze cluster")
+
+    # Permissie: assignee zelf, OF admin/manager/contractor
+    if (m.assigned_to != current_user.id and
+        current_user.role not in (UserRole.ADMIN, UserRole.MANAGER, UserRole.CONTRACTOR)):
+        raise HTTPException(status_code=403, detail="Geen rechten voor deze melding")
+
+    old_status = m.status
+    m.status = new_status
+    db.commit()
+    log_action(db, request, current_user,
+               action=ACTION.MELDING_STATUS,
+               entity_type="melding", entity_id=melding_id,
+               extra={"from": old_status, "to": new_status, "via": "day-planner"})
+    return {"id": m.id, "status": m.status}
 
 
 @router.get("/users/me/skills")

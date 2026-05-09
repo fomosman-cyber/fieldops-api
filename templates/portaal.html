@@ -956,6 +956,7 @@
         <a data-page="projecten" onclick="navigateTo('projecten')">Projecten</a>
         <a data-page="assets" onclick="navigateTo('assets')">Assets</a>
         <a data-page="meldingen" onclick="navigateTo('meldingen')">Meldingen</a>
+        <a data-page="mijn-dag" onclick="navigateTo('mijn-dag')" id="topNavMijnDag">Mijn dag</a>
         <a data-page="predictive" onclick="navigateTo('predictive')">Voorspeller</a>
         <a data-page="clusters" onclick="navigateTo('clusters')">Clusters</a>
         <a data-page="kaart" onclick="navigateTo('kaart')">Kaart</a>
@@ -1000,6 +1001,9 @@
         </a>
         <a data-page="meldingen" onclick="navigateTo('meldingen')">
           <span class="icon">&#128276;</span> Meldingen
+        </a>
+        <a data-page="mijn-dag" onclick="navigateTo('mijn-dag')" id="sideNavMijnDag">
+          <span class="icon">&#128338;</span> Mijn dag <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:700;letter-spacing:.05em;">NIEUW</span>
         </a>
         <a data-page="predictive" onclick="navigateTo('predictive')">
           <span class="icon">&#128202;</span> Voorspeller
@@ -1552,6 +1556,143 @@
             <button type="submit" class="btn-primary" id="assetSubmitBtn">Asset aanmaken</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- ═══ MIJN DAG (Mobile Day-Planner v3.1) ═══ -->
+    <div class="page-section" id="page-mijn-dag">
+      <style>
+        /* Mobile-first day-planner styles */
+        #page-mijn-dag .day-header {
+          background: linear-gradient(135deg, #0284c7 0%, #075985 100%);
+          color: #fff;
+          padding: 24px 28px;
+          border-radius: 16px;
+          margin-bottom: 16px;
+          position: relative;
+          overflow: hidden;
+        }
+        #page-mijn-dag .day-header::before {
+          content: '';
+          position: absolute;
+          top: -100px; right: -100px;
+          width: 280px; height: 280px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(255,255,255,.10), transparent 60%);
+          pointer-events: none;
+        }
+        #page-mijn-dag .day-greeting { font-size: 13px; color: rgba(255,255,255,.75); margin-bottom: 4px; font-family: 'JetBrains Mono', monospace; letter-spacing: .12em; text-transform: uppercase; position:relative; z-index:1; }
+        #page-mijn-dag .day-name { font-size: 26px; font-weight: 800; margin-bottom: 14px; letter-spacing: -0.02em; position:relative; z-index:1; }
+        #page-mijn-dag .day-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; position: relative; z-index: 1; }
+        #page-mijn-dag .day-stat { background: rgba(255,255,255,.08); border-radius: 10px; padding: 10px 14px; backdrop-filter: blur(8px); }
+        #page-mijn-dag .day-stat .num { font-size: 22px; font-weight: 800; line-height: 1; margin-bottom: 4px; }
+        #page-mijn-dag .day-stat .lbl { font-size: 11px; opacity: 0.85; }
+
+        #page-mijn-dag .cluster-card {
+          background: var(--card-bg);
+          border: 1px solid var(--border);
+          border-radius: 14px;
+          margin-bottom: 14px;
+          overflow: hidden;
+          box-shadow: 0 1px 3px rgba(0,0,0,.04);
+        }
+        #page-mijn-dag .cluster-head {
+          padding: 16px 18px;
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 12px;
+          cursor: pointer;
+          transition: background .15s;
+        }
+        #page-mijn-dag .cluster-head:active { background: var(--rule-soft, #f1f5f9); }
+        #page-mijn-dag .cluster-title-line { font-weight: 700; font-size: 16px; color: var(--text); line-height: 1.3; }
+        #page-mijn-dag .cluster-skill { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        #page-mijn-dag .cluster-meta { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+        #page-mijn-dag .cluster-meta strong { color: var(--text); }
+        #page-mijn-dag .cluster-status-pill {
+          font-size: 10px; font-weight: 700; padding: 4px 10px; border-radius: 100px;
+          letter-spacing: .05em; text-transform: uppercase; flex-shrink: 0;
+          font-family: 'JetBrains Mono', monospace;
+        }
+        #page-mijn-dag .cluster-meldingen { display: none; padding: 0 18px 14px; border-top: 1px solid var(--rule-soft, #f1f5f9); }
+        #page-mijn-dag .cluster-card.expanded .cluster-meldingen { display: block; }
+        #page-mijn-dag .cluster-card.expanded .toggle-icon { transform: rotate(180deg); }
+        #page-mijn-dag .toggle-icon { transition: transform .2s; flex-shrink: 0; opacity: .6; }
+
+        #page-mijn-dag .melding-row {
+          display: grid;
+          grid-template-columns: 28px 1fr auto;
+          gap: 12px;
+          align-items: center;
+          padding: 14px 0;
+          border-bottom: 1px solid var(--rule-soft, #f1f5f9);
+        }
+        #page-mijn-dag .melding-row:last-child { border-bottom: none; }
+        #page-mijn-dag .melding-num {
+          width: 28px; height: 28px; border-radius: 50%;
+          background: var(--blue-light, #e0f2fe); color: var(--blue, #0284c7);
+          display: flex; align-items: center; justify-content: center;
+          font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700;
+        }
+        #page-mijn-dag .melding-row.done .melding-num { background: var(--green-light, #dcfce7); color: var(--green, #16a34a); }
+        #page-mijn-dag .melding-row.in_behandeling .melding-num { background: #fef3c7; color: #92400e; }
+        #page-mijn-dag .melding-info { min-width: 0; }
+        #page-mijn-dag .melding-title { font-size: 14px; font-weight: 600; color: var(--text); line-height: 1.3; }
+        #page-mijn-dag .melding-row.done .melding-title { text-decoration: line-through; color: var(--text-muted); }
+        #page-mijn-dag .melding-meta { font-size: 11px; color: var(--text-muted); margin-top: 2px; font-family: 'JetBrains Mono', monospace; }
+        #page-mijn-dag .melding-actions { display: flex; gap: 6px; flex-shrink: 0; }
+        #page-mijn-dag .melding-actions .icon-btn {
+          width: 36px; height: 36px; border-radius: 50%;
+          border: 1px solid var(--border); background: var(--card-bg);
+          display: inline-flex; align-items: center; justify-content: center;
+          cursor: pointer; transition: all .15s; font-size: 16px;
+        }
+        #page-mijn-dag .melding-actions .icon-btn:active { transform: scale(0.94); }
+        #page-mijn-dag .melding-actions .icon-btn.primary { background: var(--blue, #0284c7); color: #fff; border-color: var(--blue, #0284c7); }
+        #page-mijn-dag .melding-actions .icon-btn.success { background: var(--green, #16a34a); color: #fff; border-color: var(--green, #16a34a); }
+
+        #page-mijn-dag .cluster-actions { display: flex; gap: 8px; padding: 12px 18px; background: var(--rule-soft, #f8fafc); border-top: 1px solid var(--border); }
+        #page-mijn-dag .cluster-actions button { flex: 1; padding: 10px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); }
+        #page-mijn-dag .cluster-actions button.primary { background: var(--blue, #0284c7); color: #fff; border-color: var(--blue, #0284c7); }
+        #page-mijn-dag .cluster-actions button.success { background: var(--green, #16a34a); color: #fff; border-color: var(--green, #16a34a); }
+
+        #page-mijn-dag .empty-state { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+        #page-mijn-dag .empty-state .icon { font-size: 56px; margin-bottom: 12px; opacity: .6; }
+        #page-mijn-dag .empty-state .title { font-size: 17px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+
+        @media (max-width: 720px) {
+          #page-mijn-dag .day-stats { grid-template-columns: 1fr 1fr; }
+          #page-mijn-dag .day-stats .day-stat:nth-child(3) { grid-column: span 2; }
+          #page-mijn-dag .cluster-actions { flex-direction: column; }
+        }
+      </style>
+
+      <div class="day-header">
+        <div class="day-greeting" id="dayGreeting">VANDAAG</div>
+        <div class="day-name" id="dayName">Goedemorgen</div>
+        <div class="day-stats">
+          <div class="day-stat">
+            <div class="num" id="myDayClusters">—</div>
+            <div class="lbl">clusters voor jou</div>
+          </div>
+          <div class="day-stat">
+            <div class="num" id="myDayMeldingen">—</div>
+            <div class="lbl">meldingen totaal</div>
+          </div>
+          <div class="day-stat">
+            <div class="num" id="myDayHours">—</div>
+            <div class="lbl">geschatte werktijd</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="myClustersList"></div>
+
+      <div id="myDayEmpty" class="empty-state" style="display:none;">
+        <div class="icon">🛠️</div>
+        <div class="title">Geen werk voor vandaag</div>
+        <div style="font-size:14px;line-height:1.5;max-width:340px;margin:0 auto;">Zodra een projectleider een cluster aan je toewijst, verschijnt het hier — geoptimaliseerd op route en gebundeld op maatregel.</div>
       </div>
     </div>
 
@@ -4010,6 +4151,7 @@
       if (page === 'assets') loadAssets();
       if (page === 'predictive') loadPredictive();
       if (page === 'clusters') loadClusters();
+      if (page === 'mijn-dag') loadMijnDag();
       if (page === 'dashboard') loadDashboardPredictiveWidget();
       if (page === 'integraties') loadIntegrations();
       if (page === 'instellingen') refreshGoogleStatus();
@@ -6497,6 +6639,152 @@
       html += '<div class="form-actions"><button class="btn-primary" onclick="document.getElementById(\'csvErrorModal\').remove()">Sluiten</button></div>' +
         '</div></div>';
       document.body.insertAdjacentHTML('beforeend', html);
+    }
+
+    // ══════════════════════════════════════
+    // ── MIJN DAG (Mobile Day-Planner v3.1) ──
+    // ══════════════════════════════════════
+
+    function loadMijnDag() {
+      // Greeting + datum
+      var now = new Date();
+      var hours = now.getHours();
+      var greet = hours < 12 ? 'Goedemorgen' : hours < 18 ? 'Goedemiddag' : 'Goedenavond';
+      var firstName = (window.currentUser?.email || '').split('@')[0].split('.')[0];
+      if (firstName) firstName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+      document.getElementById('dayName').textContent = greet + (firstName ? ', ' + firstName : '');
+      var weekDays = ['zondag','maandag','dinsdag','woensdag','donderdag','vrijdag','zaterdag'];
+      var months = ['jan','feb','mrt','apr','mei','jun','jul','aug','sep','okt','nov','dec'];
+      document.getElementById('dayGreeting').textContent =
+        weekDays[now.getDay()] + ' ' + now.getDate() + ' ' + months[now.getMonth()] + ' · vandaag';
+
+      api('GET', '/api/users/me/clusters?include_meldingen=true').then(function(clusters){
+        var list = document.getElementById('myClustersList');
+        var empty = document.getElementById('myDayEmpty');
+        if (!clusters || !clusters.length) {
+          list.innerHTML = '';
+          empty.style.display = 'block';
+          document.getElementById('myDayClusters').textContent = '0';
+          document.getElementById('myDayMeldingen').textContent = '0';
+          document.getElementById('myDayHours').textContent = '0u';
+          return;
+        }
+        empty.style.display = 'none';
+        var totalMeldingen = clusters.reduce(function(s,c){ return s + (c.melding_count || 0); }, 0);
+        var totalHours = clusters.reduce(function(s,c){ return s + (c.estimated_hours || 0); }, 0);
+        document.getElementById('myDayClusters').textContent = clusters.length;
+        document.getElementById('myDayMeldingen').textContent = totalMeldingen;
+        document.getElementById('myDayHours').textContent = totalHours.toFixed(1) + 'u';
+
+        list.innerHTML = clusters.map(renderMyClusterCard).join('');
+      }).catch(function(err){
+        showToast('Fout bij laden Mijn dag: ' + err.message, 'error');
+      });
+    }
+
+    function renderMyClusterCard(c) {
+      var statusColors = {
+        proposed:    {bg:'#e0f2fe', color:'#0369a1', label:'Voorgesteld'},
+        assigned:    {bg:'#dbeafe', color:'#1e40af', label:'Toegewezen'},
+        in_progress: {bg:'#fef3c7', color:'#92400e', label:'Bezig'},
+        done:        {bg:'#dcfce7', color:'#166534', label:'Klaar'},
+      };
+      var s = statusColors[c.status] || statusColors.assigned;
+
+      var meldingenRows = (c.meldingen || []).map(function(m, idx){
+        var rowClass = 'melding-row ' + (m.status === 'afgerond' ? 'done' : (m.status === 'in_behandeling' ? 'in_behandeling' : ''));
+        var checkmark = m.status === 'afgerond' ? '✓' : String(idx + 1);
+        var doneBtn = m.status === 'afgerond'
+          ? '<button class="icon-btn" onclick="markMeldingStatus(\'' + c.id + '\',\'' + m.id + '\',\'open\', event)" title="Heropen">↺</button>'
+          : '<button class="icon-btn success" onclick="markMeldingStatus(\'' + c.id + '\',\'' + m.id + '\',\'afgerond\', event)" title="Afgerond markeren">✓</button>';
+        var mapsBtn = m.maps_url
+          ? '<a class="icon-btn" href="' + m.maps_url + '" target="_blank" rel="noopener" title="Open in Maps" onclick="event.stopPropagation()">📍</a>'
+          : '';
+        var crowTag = m.crow_klasse
+          ? '<span style="background:var(--blue-light, #e0f2fe);color:var(--blue, #0284c7);padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600;font-family:JetBrains Mono,monospace;margin-right:6px;">' + m.crow_klasse + '</span>'
+          : '';
+        return '<div class="' + rowClass + '">'
+          + '<div class="melding-num">' + checkmark + '</div>'
+          + '<div class="melding-info">'
+            + '<div class="melding-title">' + escapeHtml(m.title) + '</div>'
+            + '<div class="melding-meta">' + crowTag + (m.lat && m.lng ? m.lat.toFixed(4) + ', ' + m.lng.toFixed(4) : 'geen GPS') + '</div>'
+          + '</div>'
+          + '<div class="melding-actions">' + mapsBtn + doneBtn + '</div>'
+        + '</div>';
+      }).join('');
+
+      var openMaps = (c.geo_centroid && c.geo_centroid[0])
+        ? '<a class="icon-btn" href="https://maps.google.com/?q=' + c.geo_centroid[0] + ',' + c.geo_centroid[1] + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Centrum in Maps">🗺️</a>'
+        : '';
+
+      var clusterActions = '';
+      if (c.status === 'assigned') {
+        clusterActions = '<div class="cluster-actions">'
+          + '<button class="primary" onclick="setClusterStatus(\'' + c.id + '\',\'in_progress\')">▶️ Start cluster</button>'
+          + '</div>';
+      } else if (c.status === 'in_progress') {
+        clusterActions = '<div class="cluster-actions">'
+          + '<button onclick="setClusterStatus(\'' + c.id + '\',\'assigned\')">⏸️ Pauze</button>'
+          + '<button class="success" onclick="setClusterStatus(\'' + c.id + '\',\'done\')">✓ Cluster afronden</button>'
+          + '</div>';
+      }
+
+      return '<div class="cluster-card" id="cluster-' + c.id + '">'
+        + '<div class="cluster-head" onclick="toggleClusterCard(\'' + c.id + '\')">'
+          + '<div style="flex:1;min-width:0;">'
+            + '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">'
+              + '<span class="cluster-status-pill" style="background:' + s.bg + ';color:' + s.color + ';">' + s.label + '</span>'
+              + (c.savings_hours ? '<span style="font-size:10px;color:var(--green,#16a34a);font-weight:600;">+' + c.savings_hours + 'u bespaard</span>' : '')
+            + '</div>'
+            + '<div class="cluster-title-line">' + escapeHtml(c.gw_term) + '</div>'
+            + '<div class="cluster-skill">' + escapeHtml(c.skill_name || c.skill_code || '') + '</div>'
+            + '<div class="cluster-meta">'
+              + '<span><strong>' + (c.melding_count || 0) + '</strong> meldingen</span>'
+              + (c.estimated_hours ? '<span>~<strong>' + c.estimated_hours + 'u</strong> werk</span>' : '')
+              + (c.geo_label ? '<span>📍 ' + escapeHtml(c.geo_label) + '</span>' : '')
+            + '</div>'
+          + '</div>'
+          + '<div style="display:flex;align-items:center;gap:8px;">' + openMaps + '<span class="toggle-icon">▾</span></div>'
+        + '</div>'
+        + '<div class="cluster-meldingen">' + meldingenRows + '</div>'
+        + clusterActions
+      + '</div>';
+    }
+
+    function toggleClusterCard(clusterId) {
+      var el = document.getElementById('cluster-' + clusterId);
+      if (el) el.classList.toggle('expanded');
+    }
+
+    function markMeldingStatus(clusterId, meldingId, newStatus, evt) {
+      if (evt) evt.stopPropagation();
+      api('PATCH', '/api/clusters/' + clusterId + '/meldingen/' + meldingId + '/status',
+          { status: newStatus }).then(function(){
+        showToast(newStatus === 'afgerond' ? 'Melding afgerond ✓' : 'Status bijgewerkt', 'success');
+        loadMijnDag();
+      }).catch(function(err){
+        showToast('Fout: ' + err.message, 'error');
+      });
+    }
+
+    function setClusterStatus(clusterId, newStatus) {
+      api('PATCH', '/api/clusters/' + clusterId + '/status',
+          { status: newStatus }).then(function(){
+        var msg = {in_progress:'Cluster gestart 🚀', done:'Cluster afgerond ✓', assigned:'Cluster gepauzeerd'}[newStatus] || 'Bijgewerkt';
+        showToast(msg, 'success');
+        loadMijnDag();
+      }).catch(function(err){
+        showToast('Fout: ' + err.message, 'error');
+      });
+    }
+
+    // Op startup: toon "Mijn dag" alleen voor inspector/contractor/technician (niet admin/manager)
+    function applyMijnDagVisibility(role) {
+      var topNav = document.getElementById('topNavMijnDag');
+      var sideNav = document.getElementById('sideNavMijnDag');
+      // Iedereen mag het zien (admins/managers willen ook hun eigen dag bekijken)
+      // Maar geen NIEUW-badge meer na eerste view (cosmetisch)
+      // Voor nu: gewoon altijd tonen
     }
 
     // ══════════════════════════════════════
