@@ -145,6 +145,59 @@ PASSWORD_RESET_PER_EMAIL = 3
 PASSWORD_RESET_PER_IP = 10
 
 
+def check_public_post_rate_limit(
+    db: Session,
+    *,
+    action: str,
+    request=None,
+    email: Optional[str] = None,
+    per_email: int = 3,
+    per_ip: int = 10,
+    window_min: int = 60,
+) -> None:
+    """Generic anti-spam rate-limit voor publieke POST endpoints.
+
+    Telt audit-events met deze action-code in een rolling window. Bedoeld
+    voor /api/contact, /api/demo/request en vergelijkbare onbeschermde
+    endpoints die mail of DB-rijen genereren.
+
+    Caller is zelf verantwoordelijk om de event te loggen na succesvolle
+    submit (anders telt er niets en zit er geen rem op).
+    """
+    from datetime import datetime, timezone, timedelta
+    from models import AuditLog
+
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=window_min)
+
+    if email:
+        # AuditLog.user_email is per design gedenormaliseerd zodat ook public
+        # submits (waar er geen User-record is) toch op email gefilterd kunnen
+        # worden. We loggen die email als user_email bij de submit.
+        per_email_count = db.query(AuditLog).filter(
+            AuditLog.action == action,
+            AuditLog.user_email == email,
+            AuditLog.created_at >= cutoff,
+        ).count()
+        if per_email_count >= per_email:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Te veel inzendingen voor dit e-mailadres. Probeer over {window_min} minuten opnieuw.",
+            )
+
+    ip_address = _extract_client_ip(request)
+    if ip_address:
+        per_ip_count = db.query(AuditLog).filter(
+            AuditLog.action == action,
+            AuditLog.ip_address == ip_address,
+            AuditLog.created_at >= cutoff,
+        ).count()
+        if per_ip_count >= per_ip:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Te veel inzendingen vanaf dit netwerk. Probeer over {window_min} minuten opnieuw.",
+            )
+
+
 def check_password_reset_rate_limit(db: Session, email: str, request=None) -> None:
     """Raise 429 als deze email of IP recent te veel reset-aanvragen deed."""
     from datetime import datetime, timezone, timedelta

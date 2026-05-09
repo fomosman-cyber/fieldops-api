@@ -96,6 +96,10 @@ class ACTION:
     USER_ANONYMIZE_SELF = "user.anonymize.self"    # GDPR Art.17 — door betrokkene
     USER_ANONYMIZE_ADMIN = "user.anonymize.admin"  # admin verwerkt erasure-verzoek
 
+    # Public form submits — gebruikt voor rate-limit + analytics
+    CONTACT_SUBMIT      = "public.contact.submit"
+    DEMO_REQUEST_SUBMIT = "public.demo.request.submit"
+
 
 def _safe_json(obj: Any) -> Optional[str]:
     """Serialiseer naar JSON; bij gekke types (bv. datetime) val terug op default=str."""

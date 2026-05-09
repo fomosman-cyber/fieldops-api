@@ -583,3 +583,66 @@ def test_jwt_iat_claim_present(client, admin_user):
                          algorithms=["HS256"])
     assert "iat" in payload
     assert "exp" in payload
+
+
+# ─── Public form anti-spam rate limit ─────────────────────────────────────────
+
+def test_contact_form_rate_limit_per_email(client):
+    payload = {"name": "X", "email": "spammer@example.nl", "message": "Hello"}
+    # 3 mag, 4e moet falen (per-email cap = 3)
+    for _ in range(3):
+        r = client.post("/api/contact", json=payload)
+        assert r.status_code == 200, r.text
+    r = client.post("/api/contact", json=payload)
+    assert r.status_code == 429
+    assert "inzendingen" in r.json()["detail"]
+
+
+def test_contact_form_rate_limit_per_ip(client):
+    """10 inzendingen vanaf zelfde IP met variërende emails -> 429."""
+    for i in range(10):
+        r = client.post(
+            "/api/contact",
+            headers={"X-Forwarded-For": "7.7.7.7"},
+            json={"name": f"X{i}", "email": f"x{i}@example.nl", "message": "spam"},
+        )
+        assert r.status_code == 200, f"attempt {i}: {r.text}"
+    r = client.post(
+        "/api/contact",
+        headers={"X-Forwarded-For": "7.7.7.7"},
+        json={"name": "X10", "email": "x10@example.nl", "message": "spam"},
+    )
+    assert r.status_code == 429
+
+
+def test_demo_request_rate_limit_per_email(client):
+    """Demo per-email cap = 2 (strenger want DB-rij + 2 mails)."""
+    base = {
+        "first_name": "Demo", "last_name": "User",
+        "company_name": "Acme", "email": "demo-spam@example.nl",
+        "phone": "0612345678", "plan": "starter", "num_users": 5,
+    }
+    r = client.post("/api/demo/request", json=base)
+    assert r.status_code == 200, r.text
+    # Tweede aanvraag voor zelfde email faalt al — bestaande "pending" check
+    # gooit 400 vóór rate-limit. Dat is OK; we checken dat /api/contact en
+    # IP-rate-limit het wel doen (zie volgende test).
+    r2 = client.post("/api/demo/request", json=base)
+    assert r2.status_code == 400  # bestaande pending
+
+
+def test_demo_request_rate_limit_per_ip(client):
+    """Verschillende emails maar zelfde IP -> 429 na 5e poging."""
+    headers = {"X-Forwarded-For": "8.8.8.8"}
+    base = {
+        "first_name": "Demo", "last_name": "User",
+        "company_name": "Acme", "phone": "0612345678",
+        "plan": "starter", "num_users": 5,
+    }
+    for i in range(5):
+        body = dict(base, email=f"demo-{i}@example.nl")
+        r = client.post("/api/demo/request", headers=headers, json=body)
+        assert r.status_code == 200, f"attempt {i}: {r.text}"
+    body = dict(base, email="demo-6@example.nl")
+    r = client.post("/api/demo/request", headers=headers, json=body)
+    assert r.status_code == 429

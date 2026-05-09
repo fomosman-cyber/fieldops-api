@@ -1,19 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from database import get_db
-from models import DemoRequest, User
+from models import DemoRequest, User, AuditLog
 from schemas import DemoRequestCreate, DemoRequestResponse
-from auth import require_admin
+from auth import require_admin, check_public_post_rate_limit
+from audit import ACTION
 
 router = APIRouter(prefix="/api/demo", tags=["Demo Aanvragen"])
 
 
 @router.post("/request", response_model=dict)
-def create_demo_request(request: DemoRequestCreate, db: Session = Depends(get_db)):
+def create_demo_request(request: DemoRequestCreate, http_request: Request, db: Session = Depends(get_db)):
     """Demo aanvraag opslaan als 'pending' en notificaties versturen.
 
     Admin moet handmatig goedkeuren via het portaal voordat er een account wordt aangemaakt.
     """
+    # Anti-spam: 2 aanvragen per email of 5 per IP per uur. Strenger dan
+    # /api/contact omdat een aanvraag een DB-rij + 2 emails genereert.
+    check_public_post_rate_limit(
+        db, action=ACTION.DEMO_REQUEST_SUBMIT, request=http_request,
+        email=request.email, per_email=2, per_ip=5, window_min=60,
+    )
 
     # Check of email al een account heeft
     existing_user = db.query(User).filter(User.email == request.email).first()
@@ -50,6 +57,20 @@ def create_demo_request(request: DemoRequestCreate, db: Session = Depends(get_db
     db.add(demo)
     db.commit()
     db.refresh(demo)
+
+    # Audit-event voor rate-limit-telling + analytics. Email gedenormaliseerd
+    # zodat per-email rate-check werkt op publieke (user-loze) submits.
+    xff = http_request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+    ip_addr = xff or (http_request.client.host if http_request.client else None)
+    db.add(AuditLog(
+        user_email=request.email,
+        action=ACTION.DEMO_REQUEST_SUBMIT,
+        entity_type="demo_request",
+        entity_id=demo.id,
+        ip_address=ip_addr,
+        user_agent=(http_request.headers.get("user-agent") or "")[:512],
+    ))
+    db.commit()
 
     # Verstuur emails (best effort, errors blokkeren submit niet) - met uitgebreide logging
     import traceback

@@ -770,8 +770,33 @@ class ContactRequest(BaseModel):
 
 
 @app.post("/api/contact")
-def contact_form(req: ContactRequest):
+def contact_form(req: ContactRequest, request: Request):
     """Ontvang contactformulier en stuur notificatie email."""
+    from auth import check_public_post_rate_limit
+    from audit import log_action, ACTION
+    from models import AuditLog
+    from datetime import datetime, timezone
+
+    # Anti-spam: 3 per email of 10 per IP per uur. Voorkomt mailbom + quota-uit.
+    db = SessionLocal()
+    try:
+        check_public_post_rate_limit(
+            db, action=ACTION.CONTACT_SUBMIT, request=request,
+            email=req.email, per_email=3, per_ip=10, window_min=60,
+        )
+        # Log eerst — anders telt deze submit niet voor de volgende rate-check
+        rec = AuditLog(
+            user_email=req.email,
+            action=ACTION.CONTACT_SUBMIT,
+            ip_address=request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+                       or (request.client.host if request.client else None),
+            user_agent=(request.headers.get("user-agent") or "")[:512],
+            details=None,
+        )
+        db.add(rec); db.commit()
+    finally:
+        db.close()
+
     from email_service import send_email, _base_template
     content = f"""
 <h2 style="color:#1e293b;font-size:22px;margin:0 0 8px;">Nieuw contactbericht</h2>
