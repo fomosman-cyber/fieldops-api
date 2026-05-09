@@ -5295,22 +5295,31 @@
 
     function getDetailMeldingLocation() {
       if (!navigator.geolocation) { showToast(t('gps_niet_beschikbaar'), 'error'); return; }
-      navigator.geolocation.getCurrentPosition(function(pos) {
+      showToast('GPS ophalen...', 'info');
+      var applyFix = function(pos, isFinal) {
         var lat = pos.coords.latitude.toFixed(6);
         var lng = pos.coords.longitude.toFixed(6);
         document.getElementById('detailLat').value = lat;
         document.getElementById('detailLng').value = lng;
         document.getElementById('detailLocationLink').innerHTML = '<a href="https://maps.google.com/?q='+lat+','+lng+'" target="_blank" style="color:var(--accent);text-decoration:none;">Bekijk op Google Maps</a>';
-        if (currentDetailMeldingId) {
+        if (isFinal && currentDetailMeldingId) {
           api('PUT', '/api/meldingen/' + currentDetailMeldingId, { lat: parseFloat(lat), lng: parseFloat(lng) }).then(function() {
             showToast(t('locatie_vastgelegd'), 'success');
             loadMeldingen();
             if (map) loadMapData();
           }).catch(function(err) { showToast(t('fout_laden') + ': ' + err.message, 'error'); });
         }
+      };
+      // Stage 1: snelle lage-precisie fix (cached / WiFi, ~1 sec)
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        applyFix(pos, false);
+        // Stage 2: precieze GPS op de achtergrond (vervangt + saved)
+        navigator.geolocation.getCurrentPosition(function(pos2) {
+          applyFix(pos2, true);
+        }, function() { applyFix(pos, true); /* fallback: save met low-accuracy */ }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
       }, function(err) {
         showToast(t('kan_locatie_niet_ophalen') + ': ' + err.message, 'error');
-      }, { enableHighAccuracy: true, timeout: 10000 });
+      }, { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 });
     }
 
     function saveDetailLocation() {
@@ -5949,14 +5958,20 @@
 
     function getMeldingLocation() {
       if (!navigator.geolocation) { showToast(t('gps_niet_beschikbaar'), 'error'); return; }
-      showToast(t('locatie_vastgelegd') + '...', 'info');
+      showToast('GPS ophalen...', 'info');
+      // Stage 1: snelle lage-precisie fix (~1 sec) zodat de gebruiker direct iets ziet
       navigator.geolocation.getCurrentPosition(function(pos) {
         document.getElementById('meldingLat').value = pos.coords.latitude.toFixed(6);
         document.getElementById('meldingLng').value = pos.coords.longitude.toFixed(6);
-        showToast(t('locatie_vastgelegd'), 'success');
+        showToast(t('locatie_vastgelegd') + ' (verfijnen…)', 'success');
+        // Stage 2: precieze GPS-fix op de achtergrond
+        navigator.geolocation.getCurrentPosition(function(pos2) {
+          document.getElementById('meldingLat').value = pos2.coords.latitude.toFixed(6);
+          document.getElementById('meldingLng').value = pos2.coords.longitude.toFixed(6);
+        }, function(){}, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
       }, function(err) {
         showToast(t('kan_locatie_niet_ophalen') + ': ' + err.message, 'error');
-      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+      }, { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 });
     }
 
     // ══════════════════════════════════════
@@ -6103,10 +6118,17 @@
 
     function getAssetLocation() {
       if (!navigator.geolocation) { showToast('GPS niet beschikbaar', 'error'); return; }
+      showToast('GPS ophalen...', 'info');
+      // Stage 1: snelle lage-precisie fix (~1 sec)
       navigator.geolocation.getCurrentPosition(function(pos){
         document.getElementById('assetLat').value = pos.coords.latitude.toFixed(6);
         document.getElementById('assetLng').value = pos.coords.longitude.toFixed(6);
-      }, function(err){ showToast('GPS fout: '+err.message, 'error'); }, { enableHighAccuracy: true, timeout: 10000 });
+        // Stage 2: precieze GPS op de achtergrond
+        navigator.geolocation.getCurrentPosition(function(pos2){
+          document.getElementById('assetLat').value = pos2.coords.latitude.toFixed(6);
+          document.getElementById('assetLng').value = pos2.coords.longitude.toFixed(6);
+        }, function(){}, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+      }, function(err){ showToast('GPS fout: '+err.message, 'error'); }, { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 });
     }
 
     function submitAsset(e) {
