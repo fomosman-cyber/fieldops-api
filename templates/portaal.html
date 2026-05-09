@@ -1664,6 +1664,22 @@
           </div>
         </div>
       </div>
+
+      <!-- Google integratie -->
+      <div class="card" style="max-width: 600px; margin-top: 20px;">
+        <div class="card-header"><h3>📅 Google Workspace</h3></div>
+        <p style="color:var(--text-muted);font-size:14px;margin:0 0 16px;">
+          Koppel je Google account zodat nieuwe meldingen automatisch in je agenda verschijnen.
+        </p>
+        <div id="googleStatusBox" style="padding:14px;border-radius:10px;background:var(--card-bg-hover);margin-bottom:16px;">
+          <div id="googleStatusText" style="color:var(--text-muted);font-size:13px;">Status laden...</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="googleConnectBtn" class="btn-primary" onclick="connectGoogle()" style="display:none;">Verbind Google account</button>
+          <button id="googleTestBtn" class="btn-secondary" onclick="testGoogleEvent()" style="display:none;">Test event in agenda</button>
+          <button id="googleDisconnectBtn" class="btn-secondary" onclick="disconnectGoogle()" style="display:none;color:#dc2626;">Verbinding verbreken</button>
+        </div>
+      </div>
     </div>
 
     <!-- ═══ ADMIN (eigenaar) ═══ -->
@@ -3853,6 +3869,7 @@
       if (page === 'predictive') loadPredictive();
       if (page === 'dashboard') loadDashboardPredictiveWidget();
       if (page === 'integraties') loadIntegrations();
+      if (page === 'instellingen') refreshGoogleStatus();
     }
 
     // ── Load Users ──
@@ -6273,6 +6290,81 @@
         widget.style.display = 'none';
       });
     }
+
+    // ══════════════════════════════════════
+    // ── GOOGLE WORKSPACE: OAUTH + CALENDAR ──
+    // ══════════════════════════════════════
+
+    function refreshGoogleStatus() {
+      var box = document.getElementById('googleStatusText');
+      var connectBtn = document.getElementById('googleConnectBtn');
+      var testBtn = document.getElementById('googleTestBtn');
+      var dcBtn = document.getElementById('googleDisconnectBtn');
+      if (!box) return;
+      api('GET', '/api/google/status').then(function(s) {
+        if (!s.configured) {
+          box.innerHTML = '⚠️ Google integratie nog niet geconfigureerd op de server. Vraag een beheerder om <code>GOOGLE_OAUTH_CLIENT_ID/SECRET</code> in te stellen.';
+          if (connectBtn) connectBtn.style.display = 'none';
+          if (testBtn) testBtn.style.display = 'none';
+          if (dcBtn) dcBtn.style.display = 'none';
+          return;
+        }
+        if (!s.connected) {
+          box.innerHTML = 'Niet verbonden. Klik op de knop om je Google-account te koppelen.';
+          if (connectBtn) connectBtn.style.display = '';
+          if (testBtn) testBtn.style.display = 'none';
+          if (dcBtn) dcBtn.style.display = 'none';
+          return;
+        }
+        box.innerHTML = '✅ Verbonden als <strong>' + escapeHtml(s.google_email || 'Google-gebruiker') + '</strong><br>' +
+          '<span style="color:var(--text-dim);font-size:12px;">Standaard agenda: ' + escapeHtml(s.default_calendar_id || 'primary') + '</span>';
+        if (connectBtn) connectBtn.style.display = 'none';
+        if (testBtn) testBtn.style.display = '';
+        if (dcBtn) dcBtn.style.display = '';
+      }).catch(function(err) {
+        box.innerHTML = '<span style="color:#dc2626;">Fout bij ophalen status: ' + escapeHtml(err.message||'') + '</span>';
+      });
+    }
+
+    function connectGoogle() {
+      api('GET', '/api/google/oauth/start').then(function(res) {
+        if (res.auth_url) {
+          window.location.href = res.auth_url;
+        } else {
+          showToast('Geen auth-URL ontvangen', 'error');
+        }
+      }).catch(function(err) {
+        showToast('Google verbinden mislukt: ' + (err.message||''), 'error');
+      });
+    }
+
+    function disconnectGoogle() {
+      if (!confirm('Google-verbinding verbreken? Bestaande agenda-events blijven staan.')) return;
+      api('POST', '/api/google/disconnect', {}).then(function() {
+        showToast('Verbinding verbroken', 'info');
+        refreshGoogleStatus();
+      }).catch(function(err) { showToast(err.message, 'error'); });
+    }
+
+    function testGoogleEvent() {
+      api('POST', '/api/google/test-event', {}).then(function(res) {
+        showToast('✓ Test-event aangemaakt! Open je agenda om te zien.', 'success');
+        if (res.html_link) window.open(res.html_link, '_blank', 'noopener');
+      }).catch(function(err) { showToast('Fout: '+err.message, 'error'); });
+    }
+
+    // Detecteer ?google=connected in URL na callback
+    (function() {
+      try {
+        var p = new URLSearchParams(window.location.search);
+        if (p.get('google') === 'connected') {
+          showToast && showToast('🎉 Google-account verbonden!', 'success');
+          // URL opschonen
+          var clean = window.location.pathname;
+          window.history.replaceState({}, '', clean);
+        }
+      } catch {}
+    })();
 
     // ══════════════════════════════════════
     // ── GOOGLE MAPS PLACES + STREET VIEW ──

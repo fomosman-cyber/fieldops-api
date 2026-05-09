@@ -307,6 +307,54 @@ class WebhookDelivery(Base):
     endpoint = relationship("WebhookEndpoint")
 
 
+class GoogleOAuthToken(Base):
+    """OAuth2-tokens per user voor Google services (Calendar + Drive).
+
+    Refresh-token blijft geldig tot user actively revokes; access-token wordt
+    automatisch ververst door onze Google-helper voor elke API-call.
+    """
+    __tablename__ = "google_oauth_tokens"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
+
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    scope = Column(Text, nullable=True)            # space-separated lijst van scopes
+    google_email = Column(String(255), nullable=True)
+
+    # Default-doelen (voor Calendar/Drive sync)
+    default_calendar_id = Column(String(255), nullable=True, default="primary")
+    default_drive_folder_id = Column(String(255), nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+    organization = relationship("Organization", foreign_keys=[organization_id])
+
+
+class CalendarLink(Base):
+    """Koppeling tussen FieldOps-entity (melding/asset) en Google Calendar event.
+    Uniek per (user, entity_type, entity_id) zodat dezelfde melding niet
+    twee events oplevert."""
+    __tablename__ = "calendar_links"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    entity_type = Column(String(32), nullable=False, index=True)   # 'melding' | 'asset_inspection'
+    entity_id = Column(String(64), nullable=False, index=True)
+    google_event_id = Column(String(255), nullable=False)
+    calendar_id = Column(String(255), nullable=False, default="primary")
+
+    last_synced_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
 class PushSubscription(Base):
     """Web Push-subscription per gebruiker per device.
 

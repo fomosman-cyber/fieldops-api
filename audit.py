@@ -196,6 +196,13 @@ def log_action(
             except Exception as e:
                 print(f"[audit] WARN: push '{action}' faalde: {e}")
 
+        # Google Calendar sync voor de gebruiker die de melding aanmaakte
+        if action == "melding.create" and entity_type == "melding":
+            try:
+                _sync_melding_to_calendar(db, user, entity_id)
+            except Exception as e:
+                print(f"[audit] WARN: calendar-sync '{action}' faalde: {e}")
+
 
 def _send_push_for_event(db, org_id: str, action: str, payload: dict) -> None:
     """Stuur push naar alle org-leden behalve de actor zelf."""
@@ -243,6 +250,46 @@ def _send_push_for_event(db, org_id: str, action: str, payload: dict) -> None:
         db.commit()
     except Exception:
         db.rollback()
+
+
+def _sync_melding_to_calendar(db, user, melding_id: Optional[str]) -> None:
+    """Maak een Google Calendar-event voor deze melding als de user verbonden is."""
+    if not melding_id:
+        return
+    from models import GoogleOAuthToken, CalendarLink, Melding, Asset, Project
+    import google_integration as gi
+    if not gi.is_configured():
+        return
+    tok = db.query(GoogleOAuthToken).filter(GoogleOAuthToken.user_id == user.id).first()
+    if not tok or tok.revoked_at:
+        return
+    access = gi.ensure_fresh_token(db, tok)
+    if not access:
+        return
+    melding = db.query(Melding).filter(Melding.id == melding_id).first()
+    if not melding:
+        return
+    # Dedup: als er al een link bestaat → niets doen
+    existing = db.query(CalendarLink).filter(
+        CalendarLink.user_id == user.id,
+        CalendarLink.entity_type == "melding",
+        CalendarLink.entity_id == melding_id,
+    ).first()
+    if existing:
+        return
+    asset = db.query(Asset).filter(Asset.id == melding.asset_id).first() if melding.asset_id else None
+    project = db.query(Project).filter(Project.id == melding.project_id).first() if melding.project_id else None
+    payload = gi.build_melding_event(melding, asset=asset, project=project)
+    try:
+        ev = gi.calendar_create_event(access, tok.default_calendar_id or "primary", payload)
+    except Exception as e:
+        print(f"[calendar] event-create faalde: {e}")
+        return
+    db.add(CalendarLink(
+        user_id=user.id, entity_type="melding", entity_id=melding_id,
+        google_event_id=ev.get("id", ""), calendar_id=tok.default_calendar_id or "primary",
+    ))
+    db.commit()
 
 
 def assign_request_id(request: Request) -> str:
