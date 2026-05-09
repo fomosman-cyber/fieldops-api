@@ -8,7 +8,7 @@ from schemas import (
     UserResponse, UserUpdate, InvitationCreate, InvitationResponse,
     AcceptInvitationRequest,
 )
-from auth import get_current_user, hash_password
+from auth import get_current_user, hash_password, validate_password_strength
 from permissions import require_org_admin, list_assignable_roles
 from email_service import send_invitation_email, send_welcome_email
 from audit import log_action, ACTION
@@ -64,7 +64,9 @@ def update_user(
     # Handle password update separately (needs hashing) — niet in audit-log
     password_changed = "password" in update_data
     if password_changed:
-        user.hashed_password = hash_password(update_data.pop("password"))
+        new_pw = update_data.pop("password")
+        validate_password_strength(new_pw)
+        user.hashed_password = hash_password(new_pw)
     # Snapshot before/after voor de overige velden
     before = {k: getattr(user, k) for k in update_data.keys()
               if k not in ("password",)}
@@ -145,6 +147,7 @@ def admin_create_user(
     db: Session = Depends(get_db),
 ):
     """Direct een gebruiker aanmaken (alleen admin). Geen uitnodiging nodig."""
+    validate_password_strength(data.password)
     existing = db.query(User).filter(User.email == data.email).first()
     if existing:
         raise HTTPException(status_code=400, detail="Dit e-mailadres is al in gebruik")

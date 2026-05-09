@@ -6,7 +6,7 @@ import secrets
 import string
 from database import get_db
 from models import User, Organization, DemoRequest, Project, Melding, SubscriptionPlan, AccountStatus
-from auth import get_current_user, hash_password
+from auth import get_current_user, hash_password, validate_password_strength
 from audit import log_action, ACTION
 
 
@@ -138,6 +138,7 @@ def create_organization(
     db: Session = Depends(get_db),
 ):
     """Nieuwe organisatie aanmaken met een beheerder (alleen platform eigenaar)."""
+    validate_password_strength(data.admin_password)
     # Check of email al bestaat
     existing = db.query(User).filter(User.email == data.admin_email).first()
     if existing:
@@ -154,7 +155,9 @@ def create_organization(
     db.add(org)
     db.flush()  # Get org.id
 
-    # Maak admin gebruiker aan
+    # Maak admin gebruiker aan — must_change_password=True dwingt de admin
+    # om het door de platform-eigenaar gegenereerde wachtwoord direct te
+    # vervangen na eerste login.
     admin_user = User(
         email=data.admin_email,
         hashed_password=hash_password(data.admin_password),
@@ -163,6 +166,7 @@ def create_organization(
         phone=data.admin_phone or "",
         role="admin",
         is_org_admin=True,
+        must_change_password=True,
         organization_id=org.id,
     )
     db.add(admin_user)

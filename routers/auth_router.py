@@ -7,7 +7,7 @@ import secrets
 from database import get_db
 from models import User, PasswordResetToken
 from schemas import LoginRequest, TokenResponse, UserResponse, PasswordResetRequest, PasswordResetConfirm
-from auth import verify_password, create_access_token, get_current_user, hash_password
+from auth import verify_password, create_access_token, get_current_user, hash_password, validate_password_strength, check_login_rate_limit
 from email_service import send_password_reset_email
 from audit import log_action, ACTION
 
@@ -22,10 +22,15 @@ def _hash_token(token: str) -> str:
 
 @router.post("/login", response_model=TokenResponse)
 def login(payload: LoginRequest, http_request: Request, db: Session = Depends(get_db)):
+    # Brute-force gate: bevraagt audit_logs voor recent gefaalde pogingen.
+    # Werpt 429 zodat client weet dat het rate-limit is, niet credential-issue.
+    check_login_rate_limit(db, payload.email, http_request)
+
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.hashed_password):
-        # Log poging zonder user-binding zodat brute-force detecteerbaar is
-        log_action(db, http_request, None,
+        # user wordt meegegeven (kan None zijn): bij bestaande email vult dat
+        # user_email in op de audit-rij, zodat de rate-limit-query exact werkt.
+        log_action(db, http_request, user,
                    action=ACTION.LOGIN_FAILED,
                    entity_type="user", entity_id=user.id if user else None,
                    extra={"email": payload.email, "reason": "invalid_credentials"})
@@ -107,8 +112,7 @@ def reset_password_request(payload: PasswordResetRequest, http_request: Request,
 @router.post("/reset-password")
 def reset_password(payload: PasswordResetConfirm, http_request: Request, db: Session = Depends(get_db)):
     """Stel een nieuw wachtwoord in met een geldig reset-token."""
-    if len(payload.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Wachtwoord moet minimaal 8 tekens bevatten.")
+    validate_password_strength(payload.new_password)
 
     token_hash = _hash_token(payload.token)
     rec = db.query(PasswordResetToken).filter(PasswordResetToken.token_hash == token_hash).first()
