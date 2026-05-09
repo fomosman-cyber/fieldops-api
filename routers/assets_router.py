@@ -12,7 +12,7 @@ import csv
 import io
 import json
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from sqlalchemy.orm import Session
@@ -437,6 +437,332 @@ def delete_asset(
             "ai_analyses": aianalysis_count,
             "children": children_count,
         },
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Wegvak-override: split + merge (fase 4 NWB-architectuur)
+# ─────────────────────────────────────────────────────────────────────────────
+
+import wegvak_geometry as wgeom
+from pydantic import BaseModel, Field
+
+
+class SplitRequest(BaseModel):
+    split_points: List[List[float]] = Field(..., description="Lijst [lng, lat]-punten waar het wegvak gesplitst moet worden")
+    code_suffixes: Optional[List[str]] = Field(None, description="Optioneel: per stuk een code-suffix. Default: A, B, C…")
+
+
+class MergeRequest(BaseModel):
+    asset_ids: List[str] = Field(..., min_length=2, description="2+ wegvak-IDs om samen te voegen")
+    new_code: Optional[str] = None
+    new_name: Optional[str] = None
+    project_id: Optional[str] = None
+
+
+def _nearest_piece_idx(lat: Optional[float], lng: Optional[float],
+                       pieces: List[List[List[float]]]) -> int:
+    """Vind de index van het LineString-stuk dat het dichtst bij (lat,lng) ligt.
+
+    Gebruikt midden-coord van elk stuk als referentie. Bij ontbrekende coords
+    valt terug op stuk 0.
+    """
+    if lat is None or lng is None or not pieces:
+        return 0
+    best_idx, best_dist = 0, None
+    for i, piece in enumerate(pieces):
+        if not piece:
+            continue
+        mid = piece[len(piece) // 2]
+        d = wgeom.haversine_meters([lng, lat], mid)
+        if best_dist is None or d < best_dist:
+            best_dist, best_idx = d, i
+    return best_idx
+
+
+def _piece_center(piece: List[List[float]]) -> Tuple[Optional[float], Optional[float]]:
+    if not piece:
+        return None, None
+    mid = piece[len(piece) // 2]
+    return mid[1], mid[0]   # lat, lng
+
+
+def _default_suffixes(n: int) -> List[str]:
+    """A, B, C, ..., Z, AA, AB, …  Genoeg voor 26+ stukken."""
+    out = []
+    for i in range(n):
+        if i < 26:
+            out.append(chr(ord("A") + i))
+        else:
+            out.append(chr(ord("A") + (i // 26) - 1) + chr(ord("A") + (i % 26)))
+    return out
+
+
+@router.post("/{asset_id}/split")
+def split_wegvak(
+    asset_id: str,
+    payload: SplitRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Splits een wegvak op één of meer punten — fase 4 override.
+
+    Workflow:
+      1. Origineel wegvak wordt gearchiveerd (audit-traceable).
+      2. Per resulterend stuk komt een nieuwe Asset met sub-WVK_ID
+         (bv. `WVK-12345-A`) en eigen geometry + length_m.
+      3. Open meldingen worden verplaatst naar het dichtstbijzijnde nieuwe stuk
+         (op basis van melding-coords vs piece-center).
+      4. Children-assets idem — herkoppeld aan dichtstbijzijnde stuk.
+
+    Permissies: alleen admin/manager — splits zijn definitief.
+    """
+    if not can_manage_assets(current_user):
+        raise HTTPException(status_code=403, detail="Alleen admins/managers mogen wegvakken splitsen")
+
+    asset = db.query(Asset).filter(
+        Asset.id == asset_id,
+        Asset.organization_id == current_user.organization_id,
+        Asset.archived_at.is_(None),
+    ).first()
+    if not asset:
+        raise HTTPException(status_code=404, detail="Wegvak niet gevonden")
+    if not asset.geometry_geojson:
+        raise HTTPException(status_code=400, detail="Asset heeft geen geometry — splitsen niet mogelijk")
+    if not payload.split_points:
+        raise HTTPException(status_code=400, detail="Geef minimaal 1 split-punt op")
+
+    try:
+        geom = json.loads(asset.geometry_geojson)
+    except (json.JSONDecodeError, TypeError):
+        raise HTTPException(status_code=400, detail="Asset geometry is geen valide JSON")
+    if geom.get("type") != "LineString" or not geom.get("coordinates"):
+        raise HTTPException(status_code=400, detail="Splitsen werkt alleen op LineString-geometry")
+
+    try:
+        pieces = wgeom.split_linestring_at_points(geom["coordinates"], payload.split_points)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if len(pieces) < 2:
+        raise HTTPException(status_code=400, detail="Splits leverde geen meerdere stukken op")
+
+    # Bepaal suffixes
+    suffixes = payload.code_suffixes or _default_suffixes(len(pieces))
+    if len(suffixes) < len(pieces):
+        suffixes = suffixes + _default_suffixes(len(pieces) - len(suffixes))[len(suffixes):]
+
+    # Maak nieuwe assets
+    base_code = asset.code
+    base_wvk = asset.nwb_wvk_id or ""
+    new_assets: List[Asset] = []
+    for i, piece in enumerate(pieces):
+        suf = suffixes[i]
+        new_code = f"{base_code}-{suf}"
+        # Code-uniciteit
+        if db.query(Asset).filter(
+            Asset.organization_id == current_user.organization_id,
+            Asset.code == new_code,
+            Asset.archived_at.is_(None),
+        ).first():
+            new_code = f"{base_code}-{suf}-{i+1}"  # collision suffix
+
+        center_lat, center_lng = _piece_center(piece)
+        length_m = wgeom.linestring_length_m(piece)
+
+        child = Asset(
+            code=new_code,
+            name=(f"{asset.name} ({suf})" if asset.name else new_code),
+            asset_type=asset.asset_type,
+            organization_id=current_user.organization_id,
+            created_by=current_user.id,
+            project_id=asset.project_id,
+            parent_asset_id=asset.parent_asset_id,   # erft de parent — niet origineel zelf
+            lat=center_lat, lng=center_lng,
+            location_description=asset.location_description,
+            condition_score=asset.condition_score,
+            installed_at=asset.installed_at,
+            expected_lifespan_years=asset.expected_lifespan_years,
+            properties_json=asset.properties_json,
+            geometry_geojson=json.dumps({"type": "LineString", "coordinates": piece}, separators=(",", ":")),
+            length_m=length_m,
+            is_segment=True,
+            nwb_wvk_id=(f"{base_wvk}-{suf}" if base_wvk else None),
+            nwb_wvk_begdat=asset.nwb_wvk_begdat,
+            nwb_jte_id_beg=(asset.nwb_jte_id_beg if i == 0 else None),
+            nwb_jte_id_end=(asset.nwb_jte_id_end if i == len(pieces) - 1 else None),
+        )
+        db.add(child); db.flush()
+        new_assets.append(child)
+
+    # Migrate meldingen — elk naar dichtstbijzijnde piece
+    meldingen = db.query(Melding).filter(Melding.asset_id == asset_id).all()
+    melding_migrations = []
+    for m in meldingen:
+        idx = _nearest_piece_idx(m.lat, m.lng, pieces)
+        m.asset_id = new_assets[idx].id
+        melding_migrations.append({"melding_id": m.id, "→": new_assets[idx].id})
+
+    # Migrate child-assets — idem
+    child_assets = db.query(Asset).filter(
+        Asset.parent_asset_id == asset_id,
+        Asset.archived_at.is_(None),
+    ).all()
+    child_migrations = []
+    for c in child_assets:
+        idx = _nearest_piece_idx(c.lat, c.lng, pieces)
+        c.parent_asset_id = new_assets[idx].id
+        child_migrations.append({"child_asset_id": c.id, "→": new_assets[idx].id})
+
+    # Archive origineel
+    asset.archived_at = datetime.now(timezone.utc)
+
+    db.commit()
+    for a in new_assets:
+        db.refresh(a)
+
+    log_action(db, request, current_user,
+               action=ACTION.ASSET_SPLIT, entity_type="asset", entity_id=asset_id,
+               before={"code": base_code, "wvk_id": base_wvk},
+               extra={
+                   "pieces": len(pieces),
+                   "new_asset_ids": [a.id for a in new_assets],
+                   "meldingen_migrated": len(melding_migrations),
+                   "children_migrated": len(child_migrations),
+               })
+
+    return {
+        "archived_id": asset_id,
+        "created": [_to_response(a) for a in new_assets],
+        "meldingen_migrated": len(melding_migrations),
+        "children_migrated": len(child_migrations),
+    }
+
+
+@router.post("/merge")
+def merge_wegvakken(
+    payload: MergeRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Merge 2+ aangrenzende wegvakken tot één — fase 4 override.
+
+    Logica:
+      1. Valideer dat alle assets in dezelfde org zitten en LineString-geometry hebben.
+      2. Probeer de polylines greedy te ketenen (5m endpoint-tolerantie).
+      3. Maak een nieuw Asset met union-geometry + nieuwe code/naam.
+      4. Verplaats alle meldingen + children naar het nieuwe asset.
+      5. Archiveer de originelen.
+
+    Permissies: alleen admin/manager.
+    """
+    if not can_manage_assets(current_user):
+        raise HTTPException(status_code=403, detail="Alleen admins/managers mogen wegvakken mergen")
+
+    if len(payload.asset_ids) < 2:
+        raise HTTPException(status_code=400, detail="Geef minimaal 2 wegvak-IDs op")
+
+    assets = db.query(Asset).filter(
+        Asset.id.in_(payload.asset_ids),
+        Asset.organization_id == current_user.organization_id,
+        Asset.archived_at.is_(None),
+    ).all()
+    if len(assets) != len(payload.asset_ids):
+        raise HTTPException(status_code=404, detail="Een of meer wegvakken niet gevonden")
+
+    linestrings: List[List[List[float]]] = []
+    for a in assets:
+        if not a.geometry_geojson:
+            raise HTTPException(status_code=400, detail=f"Asset {a.code} heeft geen geometry")
+        try:
+            g = json.loads(a.geometry_geojson)
+        except (json.JSONDecodeError, TypeError):
+            raise HTTPException(status_code=400, detail=f"Asset {a.code} heeft invalide geometry")
+        if g.get("type") != "LineString" or not g.get("coordinates"):
+            raise HTTPException(status_code=400, detail=f"Asset {a.code} is geen LineString")
+        linestrings.append(g["coordinates"])
+
+    try:
+        merged_coords = wgeom.merge_linestrings(linestrings)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Nieuwe asset bouwen
+    proto = assets[0]
+    base_codes = [a.code for a in assets]
+    base_wvks = [a.nwb_wvk_id for a in assets if a.nwb_wvk_id]
+
+    new_code = payload.new_code or ("MERGE-" + "+".join(base_wvks)) if base_wvks else (payload.new_code or "+".join(base_codes))
+    # Code-uniciteit
+    if db.query(Asset).filter(
+        Asset.organization_id == current_user.organization_id,
+        Asset.code == new_code,
+        Asset.archived_at.is_(None),
+    ).first():
+        # collision suffix met asset_ids hash
+        new_code = f"{new_code}-{abs(hash(tuple(payload.asset_ids))) % 10000}"
+
+    length_m = wgeom.linestring_length_m(merged_coords)
+    center_lat, center_lng = _piece_center(merged_coords)
+
+    # Conditie-score: de slechtste (hoogste) van de samenvoegers — meest urgente onderhoud wint
+    cond_scores = [a.condition_score for a in assets if a.condition_score is not None]
+    new_cond = max(cond_scores) if cond_scores else None
+
+    new_asset = Asset(
+        code=new_code,
+        name=payload.new_name or proto.name,
+        asset_type=proto.asset_type,
+        organization_id=current_user.organization_id,
+        created_by=current_user.id,
+        project_id=payload.project_id or proto.project_id,
+        parent_asset_id=proto.parent_asset_id,
+        lat=center_lat, lng=center_lng,
+        location_description=proto.location_description,
+        condition_score=new_cond,
+        geometry_geojson=json.dumps({"type": "LineString", "coordinates": merged_coords}, separators=(",", ":")),
+        length_m=length_m,
+        is_segment=True,
+        nwb_wvk_id=("+".join(base_wvks) if base_wvks else None),
+    )
+    db.add(new_asset); db.flush()
+
+    # Migrate meldingen
+    asset_ids = [a.id for a in assets]
+    melding_migrated = (db.query(Melding)
+                          .filter(Melding.asset_id.in_(asset_ids))
+                          .update({Melding.asset_id: new_asset.id}, synchronize_session=False))
+
+    # Migrate child-assets (children van de oude assets)
+    children_migrated = (db.query(Asset)
+                            .filter(Asset.parent_asset_id.in_(asset_ids),
+                                    Asset.archived_at.is_(None),
+                                    Asset.id != new_asset.id)
+                            .update({Asset.parent_asset_id: new_asset.id}, synchronize_session=False))
+
+    # Archive originelen
+    archived_at = datetime.now(timezone.utc)
+    for a in assets:
+        a.archived_at = archived_at
+
+    db.commit(); db.refresh(new_asset)
+
+    log_action(db, request, current_user,
+               action=ACTION.ASSET_MERGE, entity_type="asset", entity_id=new_asset.id,
+               extra={
+                   "merged_from": asset_ids,
+                   "merged_codes": base_codes,
+                   "meldingen_migrated": melding_migrated,
+                   "children_migrated": children_migrated,
+               })
+
+    return {
+        "created": _to_response(new_asset),
+        "archived_ids": asset_ids,
+        "meldingen_migrated": melding_migrated,
+        "children_migrated": children_migrated,
     }
 
 

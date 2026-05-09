@@ -81,6 +81,8 @@ class ACTION:
     PROJECT_DELETE      = "project.delete"
     ASSET_BULK_IMPORT   = "asset.bulk_import"
     ASSET_INSPECTION    = "asset.inspection_logged"
+    ASSET_SPLIT         = "asset.wegvak.split"
+    ASSET_MERGE         = "asset.wegvak.merge"
 
     # AI Inspecties
     AI_ANALYSIS_RUN     = "ai.analysis.run"
