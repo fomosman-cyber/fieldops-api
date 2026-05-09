@@ -1,10 +1,11 @@
 import json
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from database import get_db
-from models import Project, User
+from models import Project, User, Melding
 from schemas import ProjectCreate, ProjectResponse, ProjectUpdate
 from auth import get_current_user, require_admin
+from audit import log_action, ACTION
 
 router = APIRouter(prefix="/api/projects", tags=["Projecten"])
 
@@ -118,12 +119,19 @@ def update_project(
 
 
 @router.delete("/{project_id}")
-def archive_project(
+def delete_project(
     project_id: str,
+    request: Request,
+    hard: bool = Query(False, description="True = permanent verwijderen. False = archiveren (default, soft)."),
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Project archiveren (alleen admin)."""
+    """Verwijder project. Default = soft-archive. Met `?hard=true` permanent.
+
+    Bij hard-delete worden meldingen ge-orphand (project_id wordt null);
+    de meldingen blijven bestaan voor audit + historie.
+    De audit-log entry blijft permanent — alleen de project-row verdwijnt.
+    """
     project = db.query(Project).filter(
         Project.id == project_id,
         Project.organization_id == current_user.organization_id,
@@ -131,6 +139,32 @@ def archive_project(
     if not project:
         raise HTTPException(status_code=404, detail="Project niet gevonden")
 
-    project.status = "archived"
+    snapshot = {"name": project.name, "description": project.description, "status": project.status}
+
+    if not hard:
+        # Soft archive (existing behavior)
+        if project.status == "archived":
+            return {"message": "Reeds gearchiveerd", "deleted": False}
+        project.status = "archived"
+        db.commit()
+        log_action(db, request, current_user,
+                   action="project.archive", entity_type="project", entity_id=project.id,
+                   before=snapshot)
+        return {"message": f"Project '{project.name}' is gearchiveerd", "deleted": False}
+
+    # HARD DELETE — cascade-orphan
+    melding_count = (db.query(Melding)
+                       .filter(Melding.project_id == project_id)
+                       .update({Melding.project_id: None}, synchronize_session=False))
+    db.delete(project)
     db.commit()
-    return {"message": f"Project '{project.name}' is gearchiveerd"}
+
+    log_action(db, request, current_user,
+               action=ACTION.PROJECT_DELETE, entity_type="project", entity_id=project_id,
+               before=snapshot,
+               extra={"orphaned_meldingen": melding_count})
+    return {
+        "message": f"Project '{snapshot['name']}' permanent verwijderd",
+        "deleted": True,
+        "orphaned": {"meldingen": melding_count},
+    }

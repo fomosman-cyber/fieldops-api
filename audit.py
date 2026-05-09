@@ -77,6 +77,8 @@ class ACTION:
     ASSET_CREATE        = "asset.create"
     ASSET_UPDATE        = "asset.update"
     ASSET_ARCHIVE       = "asset.archive"
+    ASSET_DELETE        = "asset.delete"
+    PROJECT_DELETE      = "project.delete"
     ASSET_BULK_IMPORT   = "asset.bulk_import"
     ASSET_INSPECTION    = "asset.inspection_logged"
 

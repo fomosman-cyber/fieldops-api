@@ -1378,7 +1378,7 @@
         <div class="card" style="overflow-x:auto;">
           <table class="data-table">
             <thead>
-              <tr><th style="width:32px;"><input type="checkbox" id="selectAllMeldingen" onchange="toggleAllMeldingen(this)"></th><th>Titel</th><th>Categorie</th><th>Prioriteit</th><th>Status</th><th>Project</th><th>Datum</th></tr>
+              <tr><th style="width:32px;"><input type="checkbox" id="selectAllMeldingen" onchange="toggleAllMeldingen(this)"></th><th>Titel</th><th>Categorie</th><th>Prioriteit</th><th>Status</th><th>Project</th><th>Datum</th><th style="width:48px;text-align:right;"></th></tr>
             </thead>
             <tbody id="meldingenBody"></tbody>
           </table>
@@ -4706,9 +4706,11 @@
             '<span style="color:var(--text-dim);font-size:12px;">'+date+'</span>' +
             hasBoundary +
             '</div>' +
-            '<div style="display:flex;gap:8px;margin-top:12px;">' +
-            '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;flex:1;" onclick="event.stopPropagation();openProjectDetail(\''+p.id+'\')">'+t('bekijken')+'</button>' +
+            '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">' +
+            '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;flex:1;min-width:100px;" onclick="event.stopPropagation();openProjectDetail(\''+p.id+'\')">'+t('bekijken')+'</button>' +
             '<button class="btn-secondary" style="font-size:12px;padding:6px 14px;" onclick="event.stopPropagation();viewProjectOnMap(\''+p.id+'\')">'+t('op_kaart')+'</button>' +
+            '<button class="btn-secondary" style="font-size:12px;padding:6px 10px;" onclick="event.stopPropagation();archiveProject(\''+p.id+'\')" title="Archiveren (soft)">📦</button>' +
+            '<button class="btn-secondary" style="font-size:12px;padding:6px 10px;color:#dc2626;border-color:#fee2e2;" onclick="event.stopPropagation();deleteProjectHard(\''+p.id+'\',\''+(p.name||'').replace(/\'/g,"\\'")+'\')" title="Permanent verwijderen">🗑️</button>' +
             '</div>' +
             '</div>';
         }).join('');
@@ -5417,7 +5419,7 @@
       var list = document.getElementById('meldingenList');
       empty.style.display = 'none';
       list.style.display = 'block';
-      document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="7"><div class="loading-spinner">'+t('meldingen_laden')+'</div></td></tr>';
+      document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="8"><div class="loading-spinner">'+t('meldingen_laden')+'</div></td></tr>';
       api('GET', '/api/meldingen/').then(function(meldingen) {
         allMeldingen = meldingen || [];
         var tbody = document.getElementById('meldingenBody');
@@ -5446,12 +5448,15 @@
               (statusLabels[m.status]||m.status)+'</span></td>' +
             '<td onclick="openMeldingDetail(\''+m.id+'\')">'+projectName+'</td>' +
             '<td onclick="openMeldingDetail(\''+m.id+'\')" style="color:var(--text-dim);">'+date+'</td>' +
+            '<td onclick="event.stopPropagation()" style="text-align:right;">'
+              + '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fee2e2;" onclick="event.stopPropagation();deleteMeldingFromList(\''+m.id+'\',\''+(m.title||'').replace(/\'/g,"\\'")+'\')" title="Permanent verwijderen">🗑️</button>'
+            + '</td>' +
             '</tr>';
         }).join('');
         document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
       }).catch(function(err) {
         console.error('Meldingen laden mislukt:', err);
-        document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="7"><div class="error-state"><h3>'+t('laden_mislukt')+'</h3><p>'+err.message+'</p><button class="btn-secondary" onclick="loadMeldingen()">'+t('opnieuw_proberen')+'</button></div></td></tr>';
+        document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="8"><div class="error-state"><h3>'+t('laden_mislukt')+'</h3><p>'+err.message+'</p><button class="btn-secondary" onclick="loadMeldingen()">'+t('opnieuw_proberen')+'</button></div></td></tr>';
       });
     }
 
@@ -5698,6 +5703,17 @@
         closeMeldingDetail();
         loadMeldingen();
       }).catch(function(err) { showToast(t('verwijderen_mislukt') + ': ' + err.message, 'error'); });
+    }
+
+    function deleteMeldingFromList(id, title) {
+      if (!confirm('Permanent verwijderen: melding "' + title + '"?\n\nDit is onomkeerbaar.')) return;
+      api('DELETE', '/api/meldingen/' + id).then(function() {
+        showToast('Melding verwijderd', 'success');
+        loadMeldingen();
+        loadDashboardStats && loadDashboardStats();
+      }).catch(function(err) {
+        showToast('Verwijderen mislukt: ' + err.message, 'error');
+      });
     }
 
     // ══════════════════════════════════════
@@ -6460,7 +6476,10 @@
           '<td style="text-align:center;">'+nen+'</td>' +
           '<td style="text-align:center;">'+open+'</td>' +
           '<td style="text-align:center;" id="riskCell-'+a.id+'"><span style="color:var(--text-dim);font-size:11px;">—</span></td>' +
-          '<td style="text-align:right;"><button class="btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="event.stopPropagation();archiveAsset(\''+a.id+'\')">Archiveren</button></td>';
+          '<td style="text-align:right;white-space:nowrap;">'
+            + '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;margin-right:4px;" onclick="event.stopPropagation();archiveAsset(\''+a.id+'\')" title="Archiveren (soft)">📦</button>'
+            + '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fee2e2;" onclick="event.stopPropagation();deleteAssetHard(\''+a.id+'\',\''+escapeHtml(a.code).replace(/\'/g,"\\'")+'\')" title="Permanent verwijderen">🗑️</button>'
+          + '</td>';
         tbody.appendChild(tr);
       });
       // Lazy: vraag risk-scores op (top 50 zichtbare)
@@ -6566,9 +6585,51 @@
     }
 
     function archiveAsset(id) {
-      if (!confirm('Asset archiveren? (terug te halen via beheer)')) return;
+      if (!confirm('Asset archiveren? (soft — terug te halen via beheer)')) return;
       api('DELETE', '/api/assets/'+id).then(function(){
         showToast('Asset gearchiveerd', 'success'); loadAssets();
+      }).catch(function(err){ showToast(err.message, 'error'); });
+    }
+
+    function deleteAssetHard(id, code) {
+      var confirm1 = confirm('PERMANENT verwijderen: asset "' + code + '"?\n\nDit is onomkeerbaar. Meldingen + AI-analyses + child-assets worden ge-orphand (referenties losgekoppeld, records blijven bestaan).');
+      if (!confirm1) return;
+      var typed = prompt('Typ "VERWIJDER" om te bevestigen:');
+      if (typed !== 'VERWIJDER') {
+        showToast('Annuleerd', 'info');
+        return;
+      }
+      api('DELETE', '/api/assets/'+id+'?hard=true').then(function(r){
+        var orphan = r.orphaned || {};
+        var orphanMsg = '';
+        if (orphan.meldingen || orphan.ai_analyses || orphan.children) {
+          orphanMsg = ' · ge-orphand: ' + (orphan.meldingen||0) + ' meldingen, ' + (orphan.ai_analyses||0) + ' AI-analyses, ' + (orphan.children||0) + ' children';
+        }
+        showToast('Asset verwijderd' + orphanMsg, 'success');
+        loadAssets();
+      }).catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+    }
+
+    function deleteProjectHard(id, name) {
+      var confirm1 = confirm('PERMANENT verwijderen: project "' + name + '"?\n\nDit is onomkeerbaar. Meldingen die aan dit project hangen worden ge-orphand (project_id wordt null, melding zelf blijft bestaan).');
+      if (!confirm1) return;
+      var typed = prompt('Typ "VERWIJDER" om te bevestigen:');
+      if (typed !== 'VERWIJDER') {
+        showToast('Annuleerd', 'info');
+        return;
+      }
+      api('DELETE', '/api/projects/'+id+'?hard=true').then(function(r){
+        var orphan = r.orphaned || {};
+        var orphanMsg = orphan.meldingen ? ' · ' + orphan.meldingen + ' meldingen ge-orphand' : '';
+        showToast('Project verwijderd' + orphanMsg, 'success');
+        loadProjects();
+      }).catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+    }
+
+    function archiveProject(id) {
+      if (!confirm('Project archiveren? (soft — terug te halen)')) return;
+      api('DELETE', '/api/projects/'+id).then(function(){
+        showToast('Project gearchiveerd', 'success'); loadProjects();
       }).catch(function(err){ showToast(err.message, 'error'); });
     }
 

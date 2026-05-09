@@ -307,28 +307,77 @@ def update_asset(
 
 
 @router.delete("/{asset_id}")
-def archive_asset(
+def delete_asset(
     asset_id: str,
     request: Request,
+    hard: bool = Query(False, description="True = permanent verwijderen. False = archiveren (default, soft)."),
     current_user: User = Depends(require_org_admin),
     db: Session = Depends(get_db),
 ):
-    """Soft-delete: zet `archived_at`. Behoudt history voor audit."""
+    """Verwijder asset. Default = soft-archive. Met `?hard=true` permanent.
+
+    Bij hard-delete worden referenties safe ge-orphand:
+    - Meldingen: asset_id wordt null (melding zelf blijft bestaan voor audit)
+    - AI-analyses: asset_id wordt null (analyse-record blijft)
+    - Child-assets: parent_asset_id wordt null
+    - JobCluster relaties: niet getroffen (link via melding)
+    De audit-log entry blijft permanent — alleen de asset-row verdwijnt.
+    """
     asset = db.query(Asset).filter(
         Asset.id == asset_id,
         Asset.organization_id == current_user.organization_id,
     ).first()
     if not asset:
         raise HTTPException(status_code=404, detail="Asset niet gevonden")
-    if asset.archived_at:
-        return {"message": "Reeds gearchiveerd"}
 
-    asset.archived_at = datetime.now(timezone.utc)
+    snapshot = {
+        "code": asset.code, "asset_type": asset.asset_type,
+        "name": asset.name, "lat": asset.lat, "lng": asset.lng,
+        "condition_score": asset.condition_score,
+    }
+
+    if not hard:
+        # Soft archive (existing behavior)
+        if asset.archived_at:
+            return {"message": "Reeds gearchiveerd", "deleted": False}
+        asset.archived_at = datetime.now(timezone.utc)
+        db.commit()
+        log_action(db, request, current_user,
+                   action=ACTION.ASSET_ARCHIVE, entity_type="asset", entity_id=asset.id,
+                   before=snapshot)
+        return {"message": f"Asset '{asset.code}' gearchiveerd", "deleted": False}
+
+    # HARD DELETE — cascade-orphan
+    from models import Melding, AIAnalysis
+    melding_count = (db.query(Melding)
+                       .filter(Melding.asset_id == asset_id)
+                       .update({Melding.asset_id: None}, synchronize_session=False))
+    aianalysis_count = (db.query(AIAnalysis)
+                          .filter(AIAnalysis.asset_id == asset_id)
+                          .update({AIAnalysis.asset_id: None}, synchronize_session=False))
+    children_count = (db.query(Asset)
+                        .filter(Asset.parent_asset_id == asset_id)
+                        .update({Asset.parent_asset_id: None}, synchronize_session=False))
+    db.delete(asset)
     db.commit()
+
     log_action(db, request, current_user,
-               action=ACTION.ASSET_ARCHIVE, entity_type="asset", entity_id=asset.id,
-               before={"code": asset.code, "asset_type": asset.asset_type})
-    return {"message": f"Asset '{asset.code}' gearchiveerd"}
+               action=ACTION.ASSET_DELETE, entity_type="asset", entity_id=asset_id,
+               before=snapshot,
+               extra={
+                   "orphaned_meldingen": melding_count,
+                   "orphaned_ai_analyses": aianalysis_count,
+                   "orphaned_children": children_count,
+               })
+    return {
+        "message": f"Asset '{snapshot['code']}' permanent verwijderd",
+        "deleted": True,
+        "orphaned": {
+            "meldingen": melding_count,
+            "ai_analyses": aianalysis_count,
+            "children": children_count,
+        },
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
