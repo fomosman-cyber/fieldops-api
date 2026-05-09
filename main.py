@@ -11,7 +11,7 @@ import os
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router
 from audit import assign_request_id
 
 # Maak alle tabellen aan
@@ -81,6 +81,36 @@ def _run_migrations():
                     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_crow_klasse ON meldingen(crow_klasse)"))
                     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_onderhoud_cat ON meldingen(onderhoud_categorie)"))
                 print("[migration] meldingen CROW-kolommen toegevoegd.")
+
+        # NWB-Wegvakken architectuur — assets uitgebreid met geometry + WVK_ID (v3.4)
+        if "assets" in insp.get_table_names():
+            acols = [c["name"] for c in insp.get_columns("assets")]
+            nwb_cols = {
+                "geometry_geojson":   "TEXT",
+                "length_m":           "FLOAT",
+                "is_segment":         "BOOLEAN DEFAULT 0 NOT NULL",
+                "nwb_wvk_id":         "VARCHAR(32)",
+                "nwb_wvk_begdat":     "TIMESTAMP",
+                "nwb_jte_id_beg":     "VARCHAR(32)",
+                "nwb_jte_id_end":     "VARCHAR(32)",
+            }
+            nwb_missing = [c for c in nwb_cols if c not in acols]
+            if nwb_missing:
+                print(f"[migration] assets NWB-kolommen toevoegen: {nwb_missing}")
+                with engine.begin() as conn:
+                    for col in nwb_missing:
+                        # PostgreSQL: BOOLEAN DEFAULT FALSE NOT NULL syntax verschilt — handmatig
+                        if col == "is_segment":
+                            try:
+                                conn.execute(text("ALTER TABLE assets ADD COLUMN is_segment BOOLEAN DEFAULT FALSE NOT NULL"))
+                            except Exception:
+                                # SQLite fallback
+                                conn.execute(text("ALTER TABLE assets ADD COLUMN is_segment BOOLEAN DEFAULT 0 NOT NULL"))
+                        else:
+                            conn.execute(text(f"ALTER TABLE assets ADD COLUMN {col} {nwb_cols[col]}"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_nwb_wvk_id ON assets(nwb_wvk_id)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_is_segment ON assets(is_segment)"))
+                print("[migration] assets NWB-kolommen toegevoegd.")
 
         # Job Orchestration Engine — assigned_to + job_cluster_id op meldingen (v3.0)
         if "meldingen" in insp.get_table_names():
@@ -270,6 +300,7 @@ _OPENAPI_TAGS = [
     {"name": "Audit-log",              "description": "Onveranderlijk audit-log met norm-versie + IP + actor + before/after-snapshots. Procurement-grade onderbouwing voor Rekenkamer."},
     {"name": "Realtime",               "description": "WebSocket-events per organisatie voor live dashboard-updates · 3-fold fanout (DB + webhook + WebSocket + push)."},
     {"name": "Push notifications",     "description": "VAPID Web Push voor mobile + skill-based notification-routing — alleen specialisten + admins/managers krijgen relevante meldingen."},
+    {"name": "NWB-Wegvakken",          "description": "Officiële NL wegvak-data via PDOK (Rijkswaterstaat). Zoek + bulk-import wegvakken met stabiele WVK_ID + LineString-geometry + lengte. Audit-grade voor aanbestedingen."},
     {"name": "Google",                 "description": "OAuth 2.0 (Workspace) + Calendar v3 + Drive API + Maps Places + Street View deeplinks."},
     {"name": "Microsoft",              "description": "OAuth 2.0 (Entra ID) + Microsoft Graph API · Outlook Calendar · OneDrive/SharePoint upload."},
     {"name": "Demo Aanvragen",         "description": "Public demo-aanvraag flow voor sales-leads."},
@@ -355,6 +386,7 @@ app.include_router(config_router.router)
 app.include_router(google_router.router)
 app.include_router(microsoft_router.router)
 app.include_router(orchestration_router.router)
+app.include_router(nwb_router.router)
 
 
 # Request-ID middleware — koppelt elke request aan een correlatie-ID dat

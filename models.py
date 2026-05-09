@@ -143,6 +143,15 @@ class Asset(Base):
     # Vrije eigenschappen per asset-type (JSON-string)
     properties_json = Column(Text, nullable=True)
 
+    # Geometry & NWB-koppeling (sinds v3.4 — wegvak-architectuur)
+    geometry_geojson = Column(Text, nullable=True)            # LineString voor wegvakken, Point voor andere assets (later)
+    length_m = Column(Float, nullable=True)                   # Berekend uit geometry — voor predictive + offerte
+    is_segment = Column(Boolean, default=False, nullable=False)  # True = wegvak (child); False = parent-weg of standalone
+    nwb_wvk_id = Column(String(32), nullable=True, index=True) # NWB Wegvak-ID — stabiel over jaren
+    nwb_wvk_begdat = Column(DateTime, nullable=True)          # NWB versie-datum (audit-traceability)
+    nwb_jte_id_beg = Column(String(32), nullable=True)        # Junction-ID begin
+    nwb_jte_id_end = Column(String(32), nullable=True)        # Junction-ID einde
+
     # Audit
     created_by = Column(String, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
