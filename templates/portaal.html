@@ -1393,9 +1393,10 @@
           <h1>Assets</h1>
           <p>Beheer je infrastructuur — lantaarnpalen, putten, wegvakken, kunstwerken.</p>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="document.getElementById('assetCsvInput').click()">CSV importeren</button>
           <input type="file" id="assetCsvInput" accept=".csv" style="display:none;" onchange="importAssetsCsv(event)">
+          <button class="btn-secondary" onclick="openNwbZoekModal()" style="display:inline-flex;align-items:center;gap:6px;">🛣️ Wegvakken uit NWB <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.05em;">NIEUW</span></button>
           <button class="btn-primary" onclick="openAssetModal()">+ Nieuw Asset</button>
         </div>
       </div>
@@ -2324,6 +2325,65 @@
         <!-- Right: mini map for boundary -->
         <div style="flex:1;min-width:320px;min-height:450px;position:relative;">
           <div id="projectMap" style="width:100%;height:100%;min-height:450px;background:#1a1a2e;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════ NWB-WEGVAKKEN ZOEK MODAL ═══════ -->
+  <div class="modal-overlay" id="nwbZoekModal" style="display:none;">
+    <div class="modal" style="max-width:920px;width:96vw;padding:0;overflow:hidden;border-radius:18px;max-height:92vh;display:flex;flex-direction:column;">
+      <div style="background:linear-gradient(135deg,#0a0f1e 0%,#075985 100%);color:#fff;padding:22px 28px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+        <div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:.18em;margin-bottom:6px;">PDOK · Nationaal Wegen Bestand · Rijkswaterstaat</div>
+          <h2 style="color:#fff;font-size:20px;font-weight:700;margin:0;">Wegvakken zoeken in NWB</h2>
+        </div>
+        <button onclick="closeNwbZoekModal()" style="background:rgba(255,255,255,0.10);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+      </div>
+
+      <div style="padding:22px 28px;border-bottom:1px solid var(--border);background:var(--card-bg-hover);flex-shrink:0;">
+        <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;align-items:end;">
+          <div>
+            <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;font-weight:600;">Straatnaam</label>
+            <input id="nwbStraat" type="text" placeholder="bv. Verdilaan" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;" onkeydown="if(event.key==='Enter'){event.preventDefault();searchNwbWegvakken();}">
+          </div>
+          <div>
+            <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px;font-weight:600;">Gemeente</label>
+            <input id="nwbGemeente" type="text" placeholder="bv. Westland" style="width:100%;padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;" onkeydown="if(event.key==='Enter'){event.preventDefault();searchNwbWegvakken();}">
+          </div>
+          <button class="btn-primary" onclick="searchNwbWegvakken()" id="nwbSearchBtn" style="white-space:nowrap;">🔍 Zoeken</button>
+        </div>
+        <div style="margin-top:8px;font-size:11px;color:var(--text-dim);">
+          Tip: laat gemeente leeg om in heel NL te zoeken. Wegvakken worden direct getoond met geometry + lengte.
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;flex:1;min-height:340px;overflow:hidden;">
+        <!-- Wegvakken-lijst -->
+        <div style="padding:18px 20px;overflow-y:auto;border-right:1px solid var(--border);">
+          <div id="nwbResultsHeader" style="font-size:13px;color:var(--text-muted);margin-bottom:12px;">Voer een straatnaam in om te beginnen.</div>
+          <div id="nwbResultsList" style="display:flex;flex-direction:column;gap:8px;"></div>
+        </div>
+        <!-- Mini-kaart -->
+        <div style="position:relative;background:#e0f2fe;">
+          <div id="nwbMiniMap" style="position:absolute;inset:0;"></div>
+          <div id="nwbMapHint" style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text-muted);font-size:13px;text-align:center;pointer-events:none;background:rgba(255,255,255,0.85);padding:12px 18px;border-radius:10px;backdrop-filter:blur(8px);">
+            🗺️ Wegvakken verschijnen hier op de kaart na zoeken.
+          </div>
+        </div>
+      </div>
+
+      <div style="padding:16px 22px;background:var(--card-bg-hover);border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;flex-shrink:0;">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <select id="nwbProjectSel" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;min-width:200px;">
+            <option value="">— geen project —</option>
+          </select>
+          <button class="btn-secondary" onclick="toggleNwbSelectAll()" id="nwbToggleAllBtn" style="font-size:12px;padding:8px 12px;display:none;">Selecteer alles</button>
+          <span id="nwbSelectedCount" style="font-size:12px;color:var(--text-muted);"></span>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn-secondary" onclick="closeNwbZoekModal()">Annuleren</button>
+          <button class="btn-primary" onclick="importSelectedWegvakken()" id="nwbImportBtn" disabled style="opacity:0.5;cursor:not-allowed;">Importeren</button>
         </div>
       </div>
     </div>
@@ -6792,6 +6852,283 @@
             showToast('Project gearchiveerd', 'success'); loadProjects();
           }).catch(function(err){ showToast(err.message, 'error'); });
         }
+      });
+    }
+
+    // ══════════════════════════════════════
+    // ── NWB-WEGVAKKEN UI (Fase 2) ──
+    // ══════════════════════════════════════
+
+    var _nwbResults = [];           // laatst opgehaalde wegvak-lijst
+    var _nwbSelected = new Set();   // wvk_ids die de user heeft aangevinkt
+    var _nwbMap = null;             // Leaflet map instance
+    var _nwbLayers = {};            // wvk_id -> Leaflet polyline layer
+    var _nwbAllSelected = false;
+
+    function openNwbZoekModal() {
+      var modal = document.getElementById('nwbZoekModal');
+      modal.style.display = 'flex';
+      modal.classList.add('active');
+      // Reset state
+      document.getElementById('nwbStraat').value = '';
+      document.getElementById('nwbGemeente').value = '';
+      document.getElementById('nwbResultsList').innerHTML = '';
+      document.getElementById('nwbResultsHeader').textContent = 'Voer een straatnaam in om te beginnen.';
+      document.getElementById('nwbMapHint').style.display = 'block';
+      document.getElementById('nwbToggleAllBtn').style.display = 'none';
+      document.getElementById('nwbSelectedCount').textContent = '';
+      _nwbResults = [];
+      _nwbSelected.clear();
+      _nwbAllSelected = false;
+      updateNwbImportBtn();
+
+      // Project-dropdown vullen
+      var sel = document.getElementById('nwbProjectSel');
+      sel.innerHTML = '<option value="">— geen project —</option>';
+      (allProjects || []).forEach(function(p) {
+        if (p.status === 'archived') return;
+        var opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+
+      // Auto-focus op straatnaam
+      setTimeout(function(){ document.getElementById('nwbStraat').focus(); }, 80);
+
+      // Init Leaflet kaart (1× per page-load)
+      setTimeout(initNwbMap, 100);
+    }
+
+    function closeNwbZoekModal() {
+      var modal = document.getElementById('nwbZoekModal');
+      modal.style.display = 'none';
+      modal.classList.remove('active');
+    }
+
+    function initNwbMap() {
+      if (_nwbMap || typeof L === 'undefined') return;
+      var el = document.getElementById('nwbMiniMap');
+      if (!el) return;
+      _nwbMap = L.map(el, { zoomControl: true, attributionControl: false }).setView([52.075, 4.30], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+      }).addTo(_nwbMap);
+      // Resize na het tonen — Leaflet heeft size-invalidate nodig in flex-context
+      setTimeout(function(){ if (_nwbMap) _nwbMap.invalidateSize(); }, 200);
+    }
+
+    function searchNwbWegvakken() {
+      var straat = document.getElementById('nwbStraat').value.trim();
+      var gemeente = document.getElementById('nwbGemeente').value.trim();
+      if (!straat) { showToast('Voer een straatnaam in', 'warning'); return; }
+
+      var btn = document.getElementById('nwbSearchBtn');
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Zoeken...';
+      var url = '/api/nwb/zoek?straat=' + encodeURIComponent(straat) + (gemeente ? '&gemeente=' + encodeURIComponent(gemeente) : '');
+      api('GET', url).then(function(res) {
+        _nwbResults = res.wegvakken || [];
+        _nwbSelected.clear();
+        _nwbAllSelected = false;
+        renderNwbResults();
+        renderNwbMap();
+      }).catch(function(err) {
+        showToast('Fout bij zoeken: ' + err.message, 'error');
+      }).finally(function() {
+        btn.disabled = false;
+        btn.innerHTML = '🔍 Zoeken';
+      });
+    }
+
+    function renderNwbResults() {
+      var list = document.getElementById('nwbResultsList');
+      var hdr = document.getElementById('nwbResultsHeader');
+      var toggleBtn = document.getElementById('nwbToggleAllBtn');
+
+      if (!_nwbResults.length) {
+        list.innerHTML = '<div style="padding:30px 20px;text-align:center;color:var(--text-muted);font-size:13px;background:var(--card-bg-hover);border-radius:10px;">Geen wegvakken gevonden voor deze zoekopdracht. Probeer een andere spelling of vul een gemeente in.</div>';
+        hdr.textContent = '0 wegvakken';
+        toggleBtn.style.display = 'none';
+        return;
+      }
+
+      hdr.textContent = _nwbResults.length + ' wegvak' + (_nwbResults.length === 1 ? '' : 'ken') + ' gevonden';
+      toggleBtn.style.display = 'inline-block';
+
+      list.innerHTML = _nwbResults.map(function(w, idx) {
+        var existing = w.existing_asset;
+        var isExisting = !!existing && !existing.archived;
+        var checked = _nwbSelected.has(w.wvk_id);
+        var disabled = isExisting ? 'disabled' : '';
+        var rowStyle = isExisting
+          ? 'background:var(--card-bg-hover);opacity:0.65;cursor:not-allowed;border:1px solid var(--border);'
+          : (checked ? 'background:rgba(2,132,199,0.08);border:1px solid rgba(2,132,199,0.30);' : 'background:var(--card-bg);border:1px solid var(--border);');
+        var existingTag = isExisting
+          ? '<span style="background:#fef3c7;color:#92400e;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:600;font-family:JetBrains Mono,monospace;">REEDS GEÏMPORTEERD</span>'
+          : '';
+        var lengthTag = w.length_m
+          ? '<span style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text);background:var(--card-bg-hover);padding:2px 8px;border-radius:6px;">' + Math.round(w.length_m) + ' m</span>'
+          : '';
+        return ''
+          + '<label data-wvk="' + w.wvk_id + '" style="display:flex;gap:10px;padding:10px 12px;border-radius:10px;cursor:' + (isExisting ? 'not-allowed' : 'pointer') + ';transition:background .12s;' + rowStyle + '" '
+            + 'onmouseenter="if(!this.querySelector(\'input\').disabled){highlightWegvakOnMap(\'' + w.wvk_id + '\',true)}" '
+            + 'onmouseleave="highlightWegvakOnMap(\'' + w.wvk_id + '\',false)">'
+          + '<input type="checkbox" ' + (checked ? 'checked' : '') + ' ' + disabled + ' onchange="toggleNwbWegvak(\'' + w.wvk_id + '\', this.checked)" style="margin-top:3px;">'
+          + '<div style="flex:1;min-width:0;">'
+            + '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">'
+              + '<div style="font-weight:600;font-size:13px;color:var(--text);">' + escapeHtml(w.straatnaam || 'Onbekend') + '</div>'
+              + lengthTag
+            + '</div>'
+            + '<div style="font-size:11px;color:var(--text-muted);font-family:JetBrains Mono,monospace;margin-top:3px;">'
+              + 'WVK ' + escapeHtml(w.wvk_id || '?') + ' · ' + escapeHtml(w.gemeente || '?') + (w.wegnummer ? ' · ' + escapeHtml(w.wegnummer) : '') + ' · ' + (w.wvk_begdat || '?')
+            + '</div>'
+            + (existingTag ? '<div style="margin-top:6px;">' + existingTag + '</div>' : '')
+          + '</div>'
+          + '</label>';
+      }).join('');
+      updateNwbImportBtn();
+    }
+
+    function renderNwbMap() {
+      if (!_nwbMap) initNwbMap();
+      if (!_nwbMap) return;
+      // Clear oude polylines
+      Object.values(_nwbLayers).forEach(function(l) { _nwbMap.removeLayer(l); });
+      _nwbLayers = {};
+
+      var hint = document.getElementById('nwbMapHint');
+      if (!_nwbResults.length) { if (hint) hint.style.display = 'block'; return; }
+      if (hint) hint.style.display = 'none';
+
+      var bounds = [];
+      _nwbResults.forEach(function(w) {
+        if (!w.geometry || !w.geometry.coordinates) return;
+        var existing = w.existing_asset && !w.existing_asset.archived;
+        var color = existing ? '#a16207' : '#0284c7';
+        var weight = 4;
+        var opacity = existing ? 0.5 : 0.85;
+        try {
+          var layer = L.geoJSON(w.geometry, {
+            style: { color: color, weight: weight, opacity: opacity }
+          }).addTo(_nwbMap);
+          layer.eachLayer(function(sublayer) {
+            sublayer.on('click', function() {
+              if (existing) return;
+              var checked = !_nwbSelected.has(w.wvk_id);
+              toggleNwbWegvak(w.wvk_id, checked);
+              renderNwbResults();
+            });
+          });
+          _nwbLayers[w.wvk_id] = layer;
+          var b = layer.getBounds();
+          if (b.isValid()) bounds.push(b);
+        } catch (e) { /* skip invalid */ }
+      });
+
+      if (bounds.length) {
+        var combined = bounds.reduce(function(acc, b) { return acc ? acc.extend(b) : b; }, null);
+        if (combined && combined.isValid()) {
+          _nwbMap.fitBounds(combined, { padding: [22, 22] });
+        }
+      }
+      setTimeout(function(){ if (_nwbMap) _nwbMap.invalidateSize(); }, 50);
+    }
+
+    function highlightWegvakOnMap(wvkId, on) {
+      var layer = _nwbLayers[wvkId];
+      if (!layer) return;
+      layer.setStyle({
+        weight: on ? 7 : 4,
+        color: on ? '#16a34a' : (_nwbSelected.has(wvkId) ? '#0369a1' : '#0284c7'),
+      });
+    }
+
+    function toggleNwbWegvak(wvkId, checked) {
+      if (checked) _nwbSelected.add(wvkId);
+      else _nwbSelected.delete(wvkId);
+      // Style update op kaart
+      var layer = _nwbLayers[wvkId];
+      if (layer) {
+        layer.setStyle({ color: checked ? '#0369a1' : '#0284c7', weight: checked ? 5 : 4, opacity: 0.9 });
+      }
+      updateNwbImportBtn();
+    }
+
+    function toggleNwbSelectAll() {
+      _nwbAllSelected = !_nwbAllSelected;
+      var btn = document.getElementById('nwbToggleAllBtn');
+      btn.textContent = _nwbAllSelected ? 'Selectie wissen' : 'Selecteer alles';
+      _nwbSelected.clear();
+      if (_nwbAllSelected) {
+        _nwbResults.forEach(function(w) {
+          var ex = w.existing_asset && !w.existing_asset.archived;
+          if (!ex) _nwbSelected.add(w.wvk_id);
+        });
+      }
+      renderNwbResults();
+      // Update map-styles
+      Object.entries(_nwbLayers).forEach(function([id, layer]) {
+        layer.setStyle({ color: _nwbSelected.has(id) ? '#0369a1' : '#0284c7', weight: _nwbSelected.has(id) ? 5 : 4 });
+      });
+    }
+
+    function updateNwbImportBtn() {
+      var btn = document.getElementById('nwbImportBtn');
+      var count = _nwbSelected.size;
+      var countSpan = document.getElementById('nwbSelectedCount');
+      countSpan.textContent = count > 0 ? (count + ' geselecteerd') : '';
+      if (count > 0) {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+        btn.textContent = 'Importeer ' + count + ' wegvak' + (count === 1 ? '' : 'ken');
+      } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+        btn.textContent = 'Importeren';
+      }
+    }
+
+    function importSelectedWegvakken() {
+      if (_nwbSelected.size === 0) return;
+      var btn = document.getElementById('nwbImportBtn');
+      btn.disabled = true;
+      btn.textContent = 'Bezig...';
+
+      var projectId = document.getElementById('nwbProjectSel').value || null;
+      var items = _nwbResults
+        .filter(function(w) { return _nwbSelected.has(w.wvk_id); })
+        .map(function(w) {
+          return {
+            wvk_id: w.wvk_id,
+            straatnaam: w.straatnaam,
+            gemeente: w.gemeente,
+            wegnummer: w.wegnummer,
+            wvk_begdat: w.wvk_begdat,
+            jte_id_beg: w.jte_id_beg,
+            jte_id_end: w.jte_id_end,
+            geometry: w.geometry,
+            length_m: w.length_m,
+          };
+        });
+
+      api('POST', '/api/nwb/import-wegvakken', {
+        project_id: projectId,
+        asset_type: 'wegdek',
+        items: items,
+      }).then(function(res) {
+        var msg = res.imported + ' wegvakken aangemaakt';
+        if (res.skipped) msg += ' · ' + res.skipped + ' overgeslagen';
+        if (res.errors) msg += ' · ' + res.errors + ' fouten';
+        showToast(msg, res.errors > 0 ? 'warning' : 'success');
+        closeNwbZoekModal();
+        loadAssets();
+      }).catch(function(err) {
+        showToast('Import mislukt: ' + err.message, 'error');
+      }).finally(function() {
+        updateNwbImportBtn();
       });
     }
 
