@@ -970,7 +970,8 @@
         <option value="fr">🇫🇷 FR</option>
         <option value="tr">🇹🇷 TR</option>
       </select>
-      <button class="notif-btn" aria-label="Meldingen">&#128276;</button>
+      <button class="notif-btn" id="pushBtn" aria-label="Push notificaties" onclick="togglePushNotifications()" title="Push notificaties aan/uit">🔔</button>
+      <span id="syncStatusBadge" style="display:none;font-size:11px;padding:3px 8px;border-radius:10px;background:#fbbf24;color:#78350f;font-weight:600;cursor:pointer;" onclick="syncQueueRetry()" title="Klik om opnieuw te proberen">⏳ <span id="syncStatusCount">0</span></span>
       <div class="user-pill">
         <div class="user-avatar" id="userAvatar">U</div>
         <span class="user-name" id="userName">Gebruiker</span>
@@ -5852,17 +5853,16 @@
       var lng = parseFloat(document.getElementById('meldingLng').value) || null;
       var projId = document.getElementById('meldingProject').value || null;
       var assetId = document.getElementById('meldingAsset').value || null;
-      api('POST', '/api/meldingen/', {
+      var payload = {
         title: document.getElementById('meldingTitle').value,
         description: document.getElementById('meldingDesc').value || null,
         category: document.getElementById('meldingCategory').value,
         priority: document.getElementById('meldingPriority').value,
-        lat: lat,
-        lng: lng,
-        project_id: projId,
-        asset_id: assetId
-      }).then(function(melding) {
-        showToast(t('melding_aangemaakt'), 'success');
+        lat: lat, lng: lng,
+        project_id: projId, asset_id: assetId
+      };
+
+      function resetForm() {
         closeMeldingModal();
         document.getElementById('meldingTitle').value = '';
         document.getElementById('meldingDesc').value = '';
@@ -5871,11 +5871,38 @@
         var assetSel = document.getElementById('meldingAsset');
         if (assetSel) assetSel.value = '';
         resetMeldingPhotoState();
+      }
+
+      // Offline? → direct in IndexedDB-queue, sync zodra online
+      if (!navigator.onLine) {
+        queueRequest('POST', '/api/meldingen/', payload).then(function() {
+          showToast('📥 Offline — melding bewaard, syncen zodra je online bent', 'warning');
+          resetForm();
+        }).catch(function(err) {
+          showToast('Queue-fout: '+err.message, 'error');
+        }).finally(function() {
+          btn.textContent = t('melding_aanmaken');
+          btn.disabled = false;
+        });
+        return;
+      }
+
+      api('POST', '/api/meldingen/', payload).then(function(melding) {
+        showToast(t('melding_aangemaakt'), 'success');
+        resetForm();
         loadMeldingen();
         loadDashboardStats();
         if (map) loadMapData();
       }).catch(function(err) {
-        showToast(err.message, 'error');
+        // Network-error → fallback queue
+        if (err.message && /network|fetch|failed/i.test(err.message)) {
+          queueRequest('POST', '/api/meldingen/', payload).then(function() {
+            showToast('📥 Verbinding verloren — melding bewaard voor latere sync', 'warning');
+            resetForm();
+          });
+        } else {
+          showToast(err.message, 'error');
+        }
       }).finally(function() {
         btn.textContent = t('melding_aanmaken');
         btn.disabled = false;
@@ -6243,6 +6270,202 @@
         widget.style.display = 'none';
       });
     }
+
+    // ══════════════════════════════════════
+    // ── PWA: PUSH NOTIFICATIONS ──
+    // ══════════════════════════════════════
+
+    function urlBase64ToUint8Array(base64String) {
+      const padding = '='.repeat((4 - base64String.length % 4) % 4);
+      const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+      const raw = atob(base64);
+      const out = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; ++i) out[i] = raw.charCodeAt(i);
+      return out;
+    }
+
+    async function togglePushNotifications() {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        showToast('Browser ondersteunt geen push notificaties', 'error');
+        return;
+      }
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        let sub = await reg.pushManager.getSubscription();
+
+        // Already subscribed? → unsubscribe
+        if (sub) {
+          if (!confirm('Push notificaties uitschakelen?')) return;
+          const endpoint = sub.endpoint;
+          const keys = sub.toJSON().keys;
+          await sub.unsubscribe();
+          await api('POST', '/api/push/unsubscribe', { endpoint, keys, user_agent: navigator.userAgent });
+          showToast('Push notificaties uit', 'info');
+          updatePushButton(false);
+          return;
+        }
+
+        // Subscribe
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') {
+          showToast('Toestemming geweigerd', 'error');
+          return;
+        }
+        const keyResp = await api('GET', '/api/push/public-key');
+        if (!keyResp.public_key || !keyResp.configured) {
+          showToast('Push nog niet geconfigureerd op de server (VAPID-keys ontbreken)', 'error');
+          return;
+        }
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(keyResp.public_key),
+        });
+        const subJson = sub.toJSON();
+        await api('POST', '/api/push/subscribe', {
+          endpoint: subJson.endpoint, keys: subJson.keys, user_agent: navigator.userAgent,
+        });
+        showToast('🔔 Push notificaties aan!', 'success');
+        updatePushButton(true);
+      } catch (err) {
+        console.error('push subscribe error:', err);
+        showToast('Push subscribe fout: ' + err.message, 'error');
+      }
+    }
+
+    function updatePushButton(active) {
+      var btn = document.getElementById('pushBtn');
+      if (!btn) return;
+      btn.style.color = active ? 'var(--accent)' : '';
+      btn.title = active ? 'Push aan — klik om uit te schakelen' : 'Push uit — klik om aan te zetten';
+    }
+
+    async function refreshPushStatus() {
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        updatePushButton(!!sub);
+      } catch {}
+    }
+
+    // ══════════════════════════════════════
+    // ── PWA: OFFLINE SYNC QUEUE ──
+    // ══════════════════════════════════════
+
+    var SYNC_DB_NAME = 'fieldops-sync';
+    var SYNC_STORE = 'queue';
+
+    function openSyncDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(SYNC_DB_NAME, 1);
+        req.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(SYNC_STORE)) {
+            db.createObjectStore(SYNC_STORE, { keyPath: 'id', autoIncrement: true });
+          }
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function queueRequest(method, path, body) {
+      const db = await openSyncDB();
+      const tx = db.transaction(SYNC_STORE, 'readwrite');
+      tx.objectStore(SYNC_STORE).add({
+        method, path, body,
+        token: localStorage.getItem('fieldops_token') || '',
+        created_at: new Date().toISOString(),
+      });
+      await new Promise((r, rj) => { tx.oncomplete = r; tx.onerror = () => rj(tx.error); });
+      db.close();
+      updateSyncBadge();
+    }
+
+    async function syncQueueCount() {
+      try {
+        const db = await openSyncDB();
+        const cnt = await new Promise((r, rj) => {
+          const tx = db.transaction(SYNC_STORE, 'readonly');
+          const req = tx.objectStore(SYNC_STORE).count();
+          req.onsuccess = () => r(req.result); req.onerror = () => rj(req.error);
+        });
+        db.close();
+        return cnt;
+      } catch { return 0; }
+    }
+
+    async function updateSyncBadge() {
+      const cnt = await syncQueueCount();
+      const badge = document.getElementById('syncStatusBadge');
+      const cntEl = document.getElementById('syncStatusCount');
+      if (cnt > 0) {
+        if (badge) badge.style.display = '';
+        if (cntEl) cntEl.textContent = cnt;
+      } else {
+        if (badge) badge.style.display = 'none';
+      }
+    }
+
+    async function syncQueueRetry() {
+      if (!navigator.onLine) {
+        showToast('Nog offline — wachten op verbinding', 'info');
+        return;
+      }
+      const db = await openSyncDB();
+      const items = await new Promise((r, rj) => {
+        const tx = db.transaction(SYNC_STORE, 'readonly');
+        const req = tx.objectStore(SYNC_STORE).getAll();
+        req.onsuccess = () => r(req.result); req.onerror = () => rj(req.error);
+      });
+      db.close();
+      if (items.length === 0) return;
+      showToast(`Synchroniseren: ${items.length} item${items.length>1?'s':''}...`, 'info');
+      let synced = 0, failed = 0;
+      for (const it of items) {
+        try {
+          const r = await fetch(it.path, {
+            method: it.method,
+            headers: { 'Content-Type': 'application/json',
+                       'Authorization': it.token ? 'Bearer ' + it.token : '' },
+            body: it.body ? JSON.stringify(it.body) : null,
+          });
+          if (r.ok) {
+            // Verwijder uit queue
+            const db2 = await openSyncDB();
+            const tx = db2.transaction(SYNC_STORE, 'readwrite');
+            tx.objectStore(SYNC_STORE).delete(it.id);
+            await new Promise((rr) => { tx.oncomplete = rr; });
+            db2.close();
+            synced++;
+          } else {
+            failed++;
+          }
+        } catch {
+          failed++;
+        }
+      }
+      updateSyncBadge();
+      if (synced > 0) {
+        showToast(`✓ ${synced} gesynchroniseerd${failed?`, ${failed} gefaald`:''}`, failed?'warning':'success');
+        loadMeldingen && loadMeldingen();
+        loadDashboardStats && loadDashboardStats();
+      }
+    }
+
+    // Auto-sync wanneer connectiviteit terugkomt
+    window.addEventListener('online', () => {
+      showToast('Online! Bezig met synchroniseren...', 'info');
+      syncQueueRetry();
+    });
+    window.addEventListener('offline', () => {
+      showToast('Offline — meldingen worden bewaard en straks gesynchroniseerd', 'warning');
+    });
+
+    // Bij portaal-load: badge bijwerken + push-status
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => { updateSyncBadge(); refreshPushStatus(); }, 500);
+    });
 
     // ══════════════════════════════════════
     // ── INTEGRATIES PAGINA ──

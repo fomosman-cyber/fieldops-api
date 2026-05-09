@@ -187,6 +187,63 @@ def log_action(
         except Exception as e:
             print(f"[audit] WARN: realtime broadcast '{action}' faalde: {e}")
 
+        # Push-notifications voor user-relevante events binnen de organisatie.
+        # Lichte filter: alleen melding.create/status/assign en ai-bevindingen
+        # — anders explodeert de notification-volume.
+        if action in ("melding.create", "melding.status_change", "ai.analysis.run"):
+            try:
+                _send_push_for_event(db, user.organization_id, action, event_payload)
+            except Exception as e:
+                print(f"[audit] WARN: push '{action}' faalde: {e}")
+
+
+def _send_push_for_event(db, org_id: str, action: str, payload: dict) -> None:
+    """Stuur push naar alle org-leden behalve de actor zelf."""
+    from models import PushSubscription
+    from push import send_push, is_configured
+    from datetime import datetime, timezone
+    if not is_configured():
+        return
+    actor_id = payload.get("user_id")
+    subs = db.query(PushSubscription).filter(
+        PushSubscription.organization_id == org_id,
+        PushSubscription.user_id != actor_id,
+    ).all()
+    if not subs:
+        return
+
+    titles = {
+        "melding.create": "Nieuwe melding",
+        "melding.status_change": "Status gewijzigd",
+        "ai.analysis.run": "AI-analyse uitgevoerd",
+    }
+    title = titles.get(action, "FieldOps")
+    actor = payload.get("user_email") or "een collega"
+    details = payload.get("details") or {}
+    after = details.get("after") if isinstance(details, dict) else None
+    snippet = ""
+    if isinstance(after, dict):
+        snippet = after.get("title") or after.get("ernst") or ""
+    body = f"{actor}{' · ' + snippet if snippet else ''}".strip()
+
+    for s in subs:
+        ok, status, _err = send_push(
+            {"endpoint": s.endpoint, "keys": {"p256dh": s.p256dh, "auth": s.auth}},
+            title=title, body=body[:120], url="/portaal", tag=action,
+            extra={"entity_id": payload.get("entity_id"), "action": action},
+        )
+        if ok:
+            s.last_used_at = datetime.now(timezone.utc)
+            s.failure_count = 0
+        else:
+            s.failure_count = (s.failure_count or 0) + 1
+            if status in (404, 410):
+                db.delete(s)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
 
 def assign_request_id(request: Request) -> str:
     """Hang een request_id aan request.state. Aanroepbaar uit middleware."""

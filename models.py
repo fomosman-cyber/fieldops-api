@@ -307,6 +307,36 @@ class WebhookDelivery(Base):
     endpoint = relationship("WebhookEndpoint")
 
 
+class PushSubscription(Base):
+    """Web Push-subscription per gebruiker per device.
+
+    Browser/PWA roept `pushManager.subscribe()` aan en stuurt het resultaat hier
+    naartoe. Server gebruikt deze data om met VAPID-signed POST naar de browser-
+    leverancier (FCM/APNs/Mozilla) push-meldingen te sturen.
+
+    Eén user kan meerdere subscriptions hebben (telefoon + laptop + tablet).
+    Endpoint+p256dh+auth zijn samen uniek per device.
+    """
+    __tablename__ = "push_subscriptions"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    endpoint = Column(String(2048), unique=True, nullable=False)
+    p256dh = Column(String(255), nullable=False)
+    auth = Column(String(255), nullable=False)
+    user_agent = Column(String(512), nullable=True)
+
+    last_used_at = Column(DateTime, nullable=True)
+    failure_count = Column(Integer, nullable=False, default=0)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    user = relationship("User", foreign_keys=[user_id])
+    organization = relationship("Organization", foreign_keys=[organization_id])
+
+
 class IncomingWebhook(Base):
     """Inkomend webhook-token voor IoT-sensoren e.d. Sensoren POSTen JSON
     naar `/api/incoming/{token}`, server maakt een melding aan in de gekoppelde
