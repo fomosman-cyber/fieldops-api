@@ -14,7 +14,7 @@ from database import SessionLocal
 from models import User
 from realtime import bus
 
-router = APIRouter()
+router = APIRouter(tags=["Realtime"])
 
 
 def _user_from_token(token: str):

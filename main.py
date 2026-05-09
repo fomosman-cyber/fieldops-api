@@ -192,11 +192,125 @@ async def lifespan(app: FastAPI):
     ping_task.cancel()
 
 
+_OPENAPI_DESCRIPTION = """\
+**FieldOps API — Compliance-Native Infrastructure OS**
+
+API voor Nederlandse gemeenten, aannemers en waterschappen om infra-veldwerk
+te orchestreren met audit-bound AI, CROW/NEN-conformiteit en open integraties.
+
+---
+
+## 🔑 Authenticatie
+
+Alle endpoints (behalve `/api/auth/login` en publieke OAuth-callbacks) vereisen
+een Bearer token in de `Authorization` header:
+
+```
+Authorization: Bearer <jwt-token>
+```
+
+JWT verkrijgen via `POST /api/auth/login` met email + password.
+Token TTL standaard 24u — refresh via re-login.
+
+## 🏗️ Drie-lagen architectuur
+
+| Layer | Endpoints | Doel |
+|---|---|---|
+| **Field Layer** | `/api/meldingen` · `/api/assets` · `/api/inspecties` | Veldwerk capture |
+| **Compliance Layer** | `/api/audit` · `/api/predictive` · `/api/clusters` | AI-governance + orchestration |
+| **Integration Fabric** | `/api/webhooks` · `/api/google` · `/api/microsoft` · `/api/incoming` | OAuth + events + IoT |
+
+## 🇳🇱 Norm-conformiteit (live)
+
+- **CROW 146a/b** — schadebeeld-classificatie + maatregeltabel
+- **NEN 2767-2** — algemene conditiemeting (1-5 schaal)
+- **GWWkosten-RAW** — formele maatregel-namen voor bestek
+
+Roadmap (Q3-Q4 2026): NEN 3399 (riool) · NEN 2767-4 (kunstwerken) · VTA · EN 1176
+
+## 🤖 Audit-Bound AI™
+
+Elke AI-output wordt gelogd met `prompt_version`, `model_id`, `confidence` en
+mens-acceptatie-state. Onveranderlijke audit-trail per organisatie.
+
+## 🔒 Compliance & data-soevereiniteit
+
+- EU-region hosting (Render Frankfurt)
+- AVG/GDPR-compliant audit-log per organisatie + per persoon
+- Append-only audit-events met IP + actor + before/after
+- Encryption at rest + in transit (TLS 1.3)
+
+## 📚 Meer
+
+- **Whitepaper:** [De toekomst van infra-IT](https://portaal.fieldopsapp.nl/whitepaper)
+- **Setup-gidsen:** RENDER-SETUP.md · MICROSOFT-SETUP.md
+- **Status & support:** info@fieldopsapp.nl
+
+---
+
+**Categorie:** Compliance-Native Infrastructure OS
+**Versie:** v3.3 (Microsoft 365 + Job Orchestration)
+**Productie:** https://portaal.fieldopsapp.nl
+"""
+
+# OpenAPI tag-metadata — exact aligned op router-tag-namen.
+# Volgorde bepaalt UI-display in /docs (FastAPI sorteert binnen tag op alpha).
+_OPENAPI_TAGS = [
+    {"name": "Authenticatie",          "description": "Login · password-reset · JWT-issuance · session-management."},
+    {"name": "Gebruikers",             "description": "User-CRUD · rollen (8 archetypes) · must-change-password flow · skills."},
+    {"name": "Organisatie",            "description": "Multi-tenant organisatie-beheer + sub-resources."},
+    {"name": "Projecten",              "description": "Projecten — soft archive (default) + hard delete (?hard=true) met cascade-orphan."},
+    {"name": "Assets",                 "description": "Asset-register · CSV-import met MOR+ alias-mapping · cascade-orphan delete · NEN 2767 conditie-veld."},
+    {"name": "Meldingen",              "description": "Field-events met CROW 146 + NEN 2767 + GWWkosten-koppeling per record. Cluster-koppeling voor orchestration."},
+    {"name": "AI-inspecties",          "description": "Audit-Bound AI™ vision-analyses · Claude vision · norm-bound prompts (CROW 146a v1.2) · mens-in-de-loop accept-flow."},
+    {"name": "Predictive Maintenance", "description": "Risk-Based Operations Model (4-factor): leeftijd × CROW-klasse × NEN-conditie × meldingen-historie."},
+    {"name": "Job Orchestration",      "description": "Clustering van homogene maatregelen op gw_term + geo-proximity + skill-based assignment + productiviteit-savings dashboard."},
+    {"name": "Webhooks",               "description": "HMAC-SHA256-signed webhook-out (Slack/Teams/eigen ERPs) + delivery-history + retry-mechanisme."},
+    {"name": "IoT-incoming",           "description": "Inkomende events — IoT-sensoren · externe meldsystemen · MOR+ updates · drempelregel-builder (roadmap Q3)."},
+    {"name": "Audit-log",              "description": "Onveranderlijk audit-log met norm-versie + IP + actor + before/after-snapshots. Procurement-grade onderbouwing voor Rekenkamer."},
+    {"name": "Realtime",               "description": "WebSocket-events per organisatie voor live dashboard-updates · 3-fold fanout (DB + webhook + WebSocket + push)."},
+    {"name": "Push notifications",     "description": "VAPID Web Push voor mobile + skill-based notification-routing — alleen specialisten + admins/managers krijgen relevante meldingen."},
+    {"name": "Google",                 "description": "OAuth 2.0 (Workspace) + Calendar v3 + Drive API + Maps Places + Street View deeplinks."},
+    {"name": "Microsoft",              "description": "OAuth 2.0 (Entra ID) + Microsoft Graph API · Outlook Calendar · OneDrive/SharePoint upload."},
+    {"name": "Demo Aanvragen",         "description": "Public demo-aanvraag flow voor sales-leads."},
+    {"name": "Admin",                  "description": "Platform-owner endpoints (cross-organisatie management)."},
+    {"name": "Shopify Integratie",     "description": "Shopify cross-subdomain login-handoff voor www.fieldopsapp.nl ↔ portaal.fieldopsapp.nl."},
+    {"name": "Config",                 "description": "Publieke configuratie (Google Maps key, feature flags) voor frontend."},
+]
+
+
 app = FastAPI(
     title="FieldOps API",
-    description="Backend API voor FieldOps - Veldregistratie platform",
-    version="1.0.0",
+    description=_OPENAPI_DESCRIPTION,
+    version="3.3.0",
     lifespan=lifespan,
+    openapi_tags=_OPENAPI_TAGS,
+    contact={
+        "name": "Faris Osman — FieldOps",
+        "email": "info@fieldopsapp.nl",
+        "url": "https://fieldopsapp.nl",
+    },
+    license_info={
+        "name": "Proprietary — © 2026 FieldOps",
+        "url": "https://fieldopsapp.nl/terms",
+    },
+    servers=[
+        {"url": "https://portaal.fieldopsapp.nl", "description": "Production (EU-region)"},
+        {"url": "http://localhost:8001", "description": "Local development"},
+    ],
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    swagger_ui_parameters={
+        "syntaxHighlight.theme": "monokai",
+        "docExpansion": "none",       # collapsed by default — sneller scrollen
+        "filter": True,                # zoekbalk voor endpoints
+        "displayRequestDuration": True,
+        "tryItOutEnabled": True,
+        "persistAuthorization": True,  # JWT blijft bewaard tijdens sessie
+        "tagsSorter": "alpha",
+        "operationsSorter": "alpha",
+    },
 )
 
 # CORS — alleen vertrouwde origins. CORS_ORIGINS env voegt extras toe aan de default-lijst.
@@ -301,12 +415,237 @@ def favicon():
 
 @app.get("/")
 def root():
+    """API root — geeft platform-info + links naar documentatie."""
     return {
         "app": "FieldOps API",
-        "version": "1.0.0",
-        "docs": "/docs",
+        "category": "Compliance-Native Infrastructure OS",
+        "version": "3.3.0",
         "status": "online",
+        "region": "EU-Frankfurt",
+        "documentation": {
+            "swagger_ui": "/docs",
+            "redoc": "/redoc",
+            "openapi_json": "/openapi.json",
+            "developer_portal": "/developers",
+            "whitepaper": "/whitepaper",
+        },
+        "compliance": {
+            "norms_live": ["CROW 146a", "CROW 146b", "NEN 2767-2"],
+            "norms_roadmap": ["NEN 3399", "NEN 2767-4", "VTA", "EN 1176", "ROVL"],
+            "data_residency": "EU only",
+            "audit_log": "append-only with IP + actor + before/after",
+            "ai_governance": "Audit-Bound AI™ — prompt-version + model-id per record",
+        },
+        "integrations": {
+            "live": ["Slack", "Teams", "Google Workspace", "Microsoft 365",
+                     "Web Push (VAPID)", "WebSocket", "Webhook (HMAC-SHA256)",
+                     "IoT inbound", "Anthropic Claude vision"],
+        },
+        "contact": "info@fieldopsapp.nl",
     }
+
+
+@app.get("/developers", response_class=HTMLResponse)
+def developer_portal():
+    """Public developer portal — enterprise-grade landing voor API-docs."""
+    return """<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<title>FieldOps API — Developers</title>
+<meta name="description" content="OpenAPI documentation, integration guides, and reference architecture for FieldOps Compliance-Native Infrastructure OS.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0f1e; --card:#0f172a; --border:#1e293b;
+  --text:#f1f5f9; --text-muted:#94a3b8; --text-dim:#64748b;
+  --blue:#0284c7; --blue-light:#38bdf8; --blue-bg:rgba(2,132,199,0.1);
+  --green:#16a34a;
+  --gradient:linear-gradient(135deg,#0284c7 0%,#16a34a 100%);
+}
+body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;-webkit-font-smoothing:antialiased;min-height:100vh}
+a{color:var(--blue-light);text-decoration:none}
+a:hover{color:#7dd3fc;text-decoration:underline}
+code,pre{font-family:'JetBrains Mono',ui-monospace,monospace}
+
+.container{max-width:1100px;margin:0 auto;padding:60px 32px}
+.hero{padding:60px 0 40px;border-bottom:1px solid var(--border);margin-bottom:60px;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-100px;right:-100px;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(2,132,199,0.15),transparent 65%);pointer-events:none}
+.hero > *{position:relative;z-index:1}
+.eyebrow{font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--blue-light);text-transform:uppercase;letter-spacing:0.18em;font-weight:600;margin-bottom:18px;display:inline-flex;align-items:center;gap:10px;background:var(--blue-bg);padding:8px 18px;border-radius:100px;border:1px solid rgba(2,132,199,0.3)}
+.eyebrow .dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+h1{font-size:clamp(40px,5vw,64px);font-weight:800;line-height:1.05;letter-spacing:-0.025em;margin-bottom:20px;max-width:18ch}
+h1 .grad{background:var(--gradient);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.subtitle{font-size:20px;color:var(--text-muted);max-width:600px;line-height:1.5;margin-bottom:32px}
+
+.cta-row{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+.btn{display:inline-flex;align-items:center;gap:10px;padding:14px 26px;border-radius:12px;font-size:15px;font-weight:600;transition:all 0.15s;text-decoration:none}
+.btn-primary{background:var(--gradient);color:#fff;box-shadow:0 4px 18px rgba(2,132,199,0.30)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(2,132,199,0.45);text-decoration:none}
+.btn-secondary{background:rgba(255,255,255,0.06);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--blue-light);background:rgba(2,132,199,0.08);text-decoration:none}
+
+h2{font-size:32px;font-weight:700;margin:60px 0 20px;letter-spacing:-0.02em}
+.section-eyebrow{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--blue-light);text-transform:uppercase;letter-spacing:0.18em;font-weight:600;margin-bottom:8px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin-bottom:32px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px;transition:border-color 0.15s}
+.card:hover{border-color:var(--blue)}
+.card h3{font-size:18px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:10px}
+.card h3 .icon{font-size:22px}
+.card p{font-size:14px;color:var(--text-muted);line-height:1.6}
+.card .endpoint{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--blue-light);background:rgba(2,132,199,0.08);padding:3px 10px;border-radius:6px;display:inline-block;margin-top:10px}
+
+.code-block{background:#020617;border:1px solid var(--border);border-radius:10px;padding:18px 22px;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);margin:18px 0;overflow-x:auto}
+.code-block .key{color:#7dd3fc}
+.code-block .str{color:#86efac}
+.code-block .comment{color:var(--text-dim)}
+
+.badges{display:flex;gap:10px;flex-wrap:wrap;margin:20px 0}
+.badge{font-family:'JetBrains Mono',monospace;font-size:11px;padding:5px 12px;border-radius:100px;background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text-muted);font-weight:500}
+.badge.green{background:rgba(22,163,74,0.10);color:#86efac;border-color:rgba(22,163,74,0.30)}
+.badge.blue{background:rgba(2,132,199,0.10);color:var(--blue-light);border-color:rgba(2,132,199,0.30)}
+
+footer{margin-top:80px;padding-top:30px;border-top:1px solid var(--border);color:var(--text-dim);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px}
+footer a{color:var(--text-muted)}
+</style>
+</head>
+<body>
+<div class="container">
+
+<div class="hero">
+  <div class="eyebrow"><span class="dot"></span> API · v3.3 · production · EU-region</div>
+  <h1>De <span class="grad">FieldOps API</span> — voor wie integreert</h1>
+  <p class="subtitle">REST-API voor Nederlandse infra-organisaties. CROW-conform · audit-bound · open standards.</p>
+  <div class="cta-row">
+    <a href="/docs" class="btn btn-primary">📖 Swagger UI</a>
+    <a href="/redoc" class="btn btn-secondary">ReDoc</a>
+    <a href="/openapi.json" class="btn btn-secondary">OpenAPI 3.1 JSON</a>
+    <a href="/whitepaper" class="btn btn-secondary">📄 Whitepaper</a>
+  </div>
+  <div class="badges">
+    <span class="badge green">95+ endpoints</span>
+    <span class="badge green">120+ tests passing</span>
+    <span class="badge blue">OAuth 2.0 (Google + Microsoft)</span>
+    <span class="badge blue">HMAC-SHA256 webhooks</span>
+    <span class="badge blue">WebSocket realtime</span>
+    <span class="badge">JWT auth (24h TTL)</span>
+  </div>
+</div>
+
+<div class="section-eyebrow">Quick Start</div>
+<h2>Authenticatie in 3 stappen</h2>
+<div class="code-block">
+<span class="comment"># 1. Login → JWT-token</span>
+curl -X POST https://portaal.fieldopsapp.nl/api/auth/login \\
+  -H "Content-Type: application/json" \\
+  -d '{"email":"<span class="str">jij@bedrijf.nl</span>","password":"<span class="str">...</span>"}'
+
+<span class="comment"># Response: { "access_token": "eyJ...", "token_type": "bearer" }</span>
+
+<span class="comment"># 2. Authorize alle vervolg-calls</span>
+curl https://portaal.fieldopsapp.nl/api/meldingen/ \\
+  -H "Authorization: <span class="str">Bearer eyJ...</span>"
+
+<span class="comment"># 3. Of: probeer 't direct in Swagger UI</span>
+<span class="key">→</span> <a href="/docs">https://portaal.fieldopsapp.nl/docs</a>
+</div>
+
+<div class="section-eyebrow">Drie-lagen Architectuur</div>
+<h2>API ingedeeld per laag</h2>
+<div class="grid">
+  <div class="card">
+    <h3><span class="icon">📱</span> Field Layer</h3>
+    <p>Veldwerk capture vanaf mobiel: meldingen, assets, AI-inspecties met foto-upload.</p>
+    <span class="endpoint">/api/meldingen · /api/assets · /api/inspecties</span>
+  </div>
+  <div class="card">
+    <h3><span class="icon">🏛️</span> Compliance Layer</h3>
+    <p>Audit-Bound AI™, predictive maintenance, job orchestration, onveranderlijk audit-log.</p>
+    <span class="endpoint">/api/audit · /api/predictive · /api/clusters</span>
+  </div>
+  <div class="card">
+    <h3><span class="icon">🔗</span> Integration Fabric</h3>
+    <p>OAuth 2.0 (Google + Microsoft), HMAC-webhooks, WebSocket events, IoT-bridges.</p>
+    <span class="endpoint">/api/google · /api/microsoft · /api/webhooks</span>
+  </div>
+</div>
+
+<div class="section-eyebrow">Compliance & Governance</div>
+<h2>Wat onder elke API-call ligt</h2>
+<div class="grid">
+  <div class="card">
+    <h3>🇳🇱 Norm-conformiteit</h3>
+    <p><strong>Live:</strong> CROW 146a/b · NEN 2767-2 · GWWkosten-RAW maatregel-namen.<br><strong>Roadmap Q3-Q4:</strong> NEN 3399 · NEN 2767-4 · VTA · EN 1176 · ROVL.</p>
+  </div>
+  <div class="card">
+    <h3>🔐 Audit-Bound AI™</h3>
+    <p>Elke AI-output: <code>prompt_version</code>, <code>model_id</code>, <code>confidence</code>, mens-acceptatie. Onveranderlijk in audit-log.</p>
+  </div>
+  <div class="card">
+    <h3>🏛️ Append-only audit-log</h3>
+    <p>Per-event <code>request_id</code>, IP, actor, before/after-snapshot. Procurement-grade onderbouwing voor Rekenkamer.</p>
+  </div>
+  <div class="card">
+    <h3>🇪🇺 EU data-soevereiniteit</h3>
+    <p>Alle data EU-Frankfurt hosting. Sub-processors gepubliceerd. AVG/GDPR-DPA template beschikbaar.</p>
+  </div>
+</div>
+
+<div class="section-eyebrow">Integraties (live)</div>
+<h2>Open standards, geen ommuurde tuin</h2>
+<div class="badges">
+  <span class="badge green">Slack (HMAC-webhook)</span>
+  <span class="badge green">Microsoft Teams (HMAC-webhook)</span>
+  <span class="badge green">Google Calendar v3</span>
+  <span class="badge green">Google Drive v3</span>
+  <span class="badge green">Microsoft Outlook (Graph)</span>
+  <span class="badge green">OneDrive (Graph)</span>
+  <span class="badge green">Web Push (VAPID)</span>
+  <span class="badge green">WebSocket realtime</span>
+  <span class="badge green">IoT webhook in</span>
+  <span class="badge green">Anthropic Claude vision</span>
+  <span class="badge green">CSV/MOR+ import</span>
+</div>
+
+<div class="section-eyebrow">Voorbeeld</div>
+<h2>AI-melding aanmaken via API</h2>
+<div class="code-block">
+<span class="comment"># Upload foto + krijg CROW-classificatie</span>
+curl -X POST https://portaal.fieldopsapp.nl/api/inspecties/analyse-foto \\
+  -H "Authorization: Bearer eyJ..." \\
+  -F "file=@<span class="str">scheur.jpg</span>" \\
+  -F "asset_type=wegdek"
+
+<span class="comment"># Response (uitgekort):</span>
+{
+  <span class="key">"crow_klasse"</span>: <span class="str">"M2"</span>,
+  <span class="key">"crow_schadebeeld"</span>: <span class="str">"scheurvorming-langs"</span>,
+  <span class="key">"onderhoud_categorie"</span>: <span class="str">"KO"</span>,
+  <span class="key">"gw_maatregel"</span>: <span class="str">"Vullen polymeer"</span>,
+  <span class="key">"gw_kosten_orde"</span>: <span class="str">"€8–15 / m¹"</span>,
+  <span class="key">"termijn_weken"</span>: 24,
+  <span class="key">"prompt_version"</span>: <span class="str">"v2.0-crow"</span>,
+  <span class="key">"model_id"</span>: <span class="str">"claude-sonnet-4-6"</span>,
+  <span class="key">"confidence"</span>: 0.91
+}
+</div>
+
+<footer>
+  <div>© 2026 FieldOps · Compliance-Native Infrastructure OS</div>
+  <div>
+    <a href="https://fieldopsapp.nl">Website</a> ·
+    <a href="/whitepaper">Whitepaper</a> ·
+    <a href="mailto:info@fieldopsapp.nl">Contact</a>
+  </div>
+</footer>
+
+</div>
+</body>
+</html>"""
 
 
 @app.get("/whitepaper")
