@@ -2329,6 +2329,32 @@
     </div>
   </div>
 
+  <!-- ═══════ CONFIRM MODAL (vervangt confirm()/prompt() popups) ═══════ -->
+  <div class="modal-overlay" id="confirmModal" style="display:none;">
+    <div class="modal" style="max-width:440px;padding:0;overflow:hidden;border-radius:18px;">
+      <div id="confirmIconBar" style="background:#fee2e2;padding:24px 28px 18px;text-align:center;">
+        <div id="confirmIcon" style="width:56px;height:56px;border-radius:50%;background:#dc2626;color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto;box-shadow:0 4px 12px rgba(220,38,38,0.25);">🗑️</div>
+      </div>
+      <div style="padding:24px 28px 26px;text-align:center;">
+        <h3 id="confirmTitle" style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:8px;letter-spacing:-0.01em;">Verwijderen?</h3>
+        <p id="confirmMessage" style="font-size:14px;color:var(--text-muted);line-height:1.5;margin-bottom:18px;">Weet je het zeker?</p>
+        <div id="confirmExtraInfo" style="display:none;font-size:12px;color:var(--text-dim);background:var(--card-bg-hover);padding:10px 14px;border-radius:8px;margin-bottom:18px;text-align:left;line-height:1.5;"></div>
+        <div style="display:flex;gap:8px;flex-direction:row-reverse;">
+          <button id="confirmActionBtn" type="button" style="flex:1;background:#dc2626;color:#fff;border:none;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.15s;box-shadow:0 2px 6px rgba(220,38,38,0.20);">Verwijderen</button>
+          <button id="confirmCancelBtn" type="button" style="flex:1;background:var(--card-bg-hover);color:var(--text);border:1px solid var(--border);padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;transition:all 0.15s;">Annuleren</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <style>
+    #confirmModal { animation: none; }
+    #confirmModal.active .modal { animation: confirmSlideIn 0.18s ease-out; }
+    @keyframes confirmSlideIn { from { opacity:0; transform:scale(0.94) translateY(8px); } to { opacity:1; transform:scale(1) translateY(0); } }
+    #confirmActionBtn:hover { background: #b91c1c !important; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(220,38,38,0.30) !important; }
+    #confirmActionBtn:active { transform: translateY(0); }
+    #confirmCancelBtn:hover { background: var(--border) !important; }
+  </style>
+
   <!-- ═══════ MELDING MODAL ═══════ -->
   <div class="modal-overlay" id="meldingModal">
     <div class="modal">
@@ -5712,22 +5738,37 @@
 
     function deleteMeldingFromDetail() {
       if (!currentDetailMeldingId) return;
-      if (!confirm(t('bevestig_verwijderen'))) return;
-      api('DELETE', '/api/meldingen/' + currentDetailMeldingId).then(function() {
-        showToast(t('melding_verwijderd'));
-        closeMeldingDetail();
-        loadMeldingen();
-      }).catch(function(err) { showToast(t('verwijderen_mislukt') + ': ' + err.message, 'error'); });
+      var title = (document.getElementById('detailTitle')?.textContent || '').trim();
+      showConfirm({
+        title: 'Melding verwijderen?',
+        message: title ? '"' + title + '" wordt definitief verwijderd.' : 'Deze melding wordt definitief verwijderd.',
+        actionLabel: 'Verwijder melding',
+        icon: '🗑️',
+        onConfirm: function() {
+          api('DELETE', '/api/meldingen/' + currentDetailMeldingId).then(function() {
+            showToast('Melding verwijderd', 'success');
+            closeMeldingDetail();
+            loadMeldingen();
+          }).catch(function(err) { showToast('Verwijderen mislukt: ' + err.message, 'error'); });
+        }
+      });
     }
 
     function deleteMeldingFromList(id, title) {
-      if (!confirm('Permanent verwijderen: melding "' + title + '"?\n\nDit is onomkeerbaar.')) return;
-      api('DELETE', '/api/meldingen/' + id).then(function() {
-        showToast('Melding verwijderd', 'success');
-        loadMeldingen();
-        loadDashboardStats && loadDashboardStats();
-      }).catch(function(err) {
-        showToast('Verwijderen mislukt: ' + err.message, 'error');
+      showConfirm({
+        title: 'Melding verwijderen?',
+        message: '"' + title + '" wordt definitief verwijderd. Dit kan niet ongedaan worden gemaakt.',
+        actionLabel: 'Verwijder melding',
+        icon: '🗑️',
+        onConfirm: function() {
+          api('DELETE', '/api/meldingen/' + id).then(function() {
+            showToast('Melding verwijderd', 'success');
+            loadMeldingen();
+            loadDashboardStats && loadDashboardStats();
+          }).catch(function(err) {
+            showToast('Verwijderen mislukt: ' + err.message, 'error');
+          });
+        }
       });
     }
 
@@ -6599,53 +6640,159 @@
       });
     }
 
+    // ═══ Universele confirm-modal (vervangt browser confirm/prompt) ═══
+    var _confirmHandler = null;
+    var _confirmKeyHandler = null;
+
+    function showConfirm(opts) {
+      // opts: {title, message, extraInfo, actionLabel, actionColor, icon, onConfirm, danger}
+      opts = opts || {};
+      var modal = document.getElementById('confirmModal');
+      var iconBar = document.getElementById('confirmIconBar');
+      var icon = document.getElementById('confirmIcon');
+      var titleEl = document.getElementById('confirmTitle');
+      var msgEl = document.getElementById('confirmMessage');
+      var extraEl = document.getElementById('confirmExtraInfo');
+      var actionBtn = document.getElementById('confirmActionBtn');
+      var cancelBtn = document.getElementById('confirmCancelBtn');
+
+      // Theme: danger (red) of info (blue)
+      var isDanger = opts.danger !== false;
+      var color = isDanger ? '#dc2626' : '#0284c7';
+      var bgColor = isDanger ? '#fee2e2' : '#dbeafe';
+      iconBar.style.background = bgColor;
+      icon.style.background = color;
+      icon.style.boxShadow = '0 4px 12px ' + color + '40';
+      icon.textContent = opts.icon || (isDanger ? '🗑️' : 'ℹ️');
+      actionBtn.style.background = color;
+      actionBtn.style.boxShadow = '0 2px 6px ' + color + '33';
+
+      titleEl.textContent = opts.title || 'Weet je het zeker?';
+      msgEl.textContent = opts.message || '';
+
+      if (opts.extraInfo) {
+        extraEl.innerHTML = opts.extraInfo;
+        extraEl.style.display = 'block';
+      } else {
+        extraEl.style.display = 'none';
+      }
+
+      actionBtn.textContent = opts.actionLabel || 'Verwijderen';
+
+      // Cleanup oude handler
+      if (_confirmHandler) actionBtn.removeEventListener('click', _confirmHandler);
+      if (_confirmKeyHandler) document.removeEventListener('keydown', _confirmKeyHandler);
+
+      // Close-functie
+      function closeModal() {
+        modal.classList.remove('active');
+        modal.style.display = 'none';
+        if (_confirmKeyHandler) {
+          document.removeEventListener('keydown', _confirmKeyHandler);
+          _confirmKeyHandler = null;
+        }
+      }
+
+      // Confirm-handler
+      _confirmHandler = function() {
+        closeModal();
+        if (typeof opts.onConfirm === 'function') opts.onConfirm();
+      };
+      actionBtn.addEventListener('click', _confirmHandler, { once: true });
+
+      // Cancel-handler (eenmalig)
+      cancelBtn.onclick = closeModal;
+
+      // Backdrop = cancel
+      modal.onclick = function(e) {
+        if (e.target === modal) closeModal();
+      };
+
+      // Keyboard: Esc = cancel, Enter = confirm
+      _confirmKeyHandler = function(e) {
+        if (e.key === 'Escape') closeModal();
+        else if (e.key === 'Enter' && !e.target.matches('input,textarea,select')) {
+          e.preventDefault();
+          actionBtn.click();
+        }
+      };
+      document.addEventListener('keydown', _confirmKeyHandler);
+
+      modal.style.display = 'flex';
+      modal.classList.add('active');
+      // Focus de cancel-knop standaard (veilige default)
+      setTimeout(function() { cancelBtn.focus(); }, 50);
+    }
+
     function archiveAsset(id) {
-      if (!confirm('Asset archiveren? (soft — terug te halen via beheer)')) return;
-      api('DELETE', '/api/assets/'+id).then(function(){
-        showToast('Asset gearchiveerd', 'success'); loadAssets();
-      }).catch(function(err){ showToast(err.message, 'error'); });
+      showConfirm({
+        title: 'Asset archiveren?',
+        message: 'De asset wordt verborgen maar blijft bewaard. Later terug te halen via Beheer.',
+        actionLabel: 'Archiveren',
+        icon: '📦',
+        danger: false,
+        onConfirm: function() {
+          api('DELETE', '/api/assets/'+id).then(function(){
+            showToast('Asset gearchiveerd', 'success'); loadAssets();
+          }).catch(function(err){ showToast(err.message, 'error'); });
+        }
+      });
     }
 
     function deleteAssetHard(id, code) {
-      var confirm1 = confirm('PERMANENT verwijderen: asset "' + code + '"?\n\nDit is onomkeerbaar. Meldingen + AI-analyses + child-assets worden ge-orphand (referenties losgekoppeld, records blijven bestaan).');
-      if (!confirm1) return;
-      var typed = prompt('Typ "VERWIJDER" om te bevestigen:');
-      if (typed !== 'VERWIJDER') {
-        showToast('Annuleerd', 'info');
-        return;
-      }
-      api('DELETE', '/api/assets/'+id+'?hard=true').then(function(r){
-        var orphan = r.orphaned || {};
-        var orphanMsg = '';
-        if (orphan.meldingen || orphan.ai_analyses || orphan.children) {
-          orphanMsg = ' · ge-orphand: ' + (orphan.meldingen||0) + ' meldingen, ' + (orphan.ai_analyses||0) + ' AI-analyses, ' + (orphan.children||0) + ' children';
+      showConfirm({
+        title: 'Asset permanent verwijderen?',
+        message: 'Asset "' + code + '" wordt definitief verwijderd. Dit kan niet ongedaan worden gemaakt.',
+        extraInfo: 'Eventuele meldingen, AI-analyses en child-assets worden losgekoppeld (records zelf blijven bestaan voor audit).',
+        actionLabel: 'Verwijder asset',
+        icon: '🗑️',
+        onConfirm: function() {
+          api('DELETE', '/api/assets/'+id+'?hard=true').then(function(r){
+            var orphan = r.orphaned || {};
+            var orphanMsg = '';
+            if (orphan.meldingen || orphan.ai_analyses || orphan.children) {
+              orphanMsg = ' · losgekoppeld: ' + (orphan.meldingen||0) + ' meldingen';
+              if (orphan.ai_analyses) orphanMsg += ', ' + orphan.ai_analyses + ' AI-analyses';
+              if (orphan.children) orphanMsg += ', ' + orphan.children + ' children';
+            }
+            showToast('Asset verwijderd' + orphanMsg, 'success');
+            loadAssets();
+          }).catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
         }
-        showToast('Asset verwijderd' + orphanMsg, 'success');
-        loadAssets();
-      }).catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+      });
     }
 
     function deleteProjectHard(id, name) {
-      var confirm1 = confirm('PERMANENT verwijderen: project "' + name + '"?\n\nDit is onomkeerbaar. Meldingen die aan dit project hangen worden ge-orphand (project_id wordt null, melding zelf blijft bestaan).');
-      if (!confirm1) return;
-      var typed = prompt('Typ "VERWIJDER" om te bevestigen:');
-      if (typed !== 'VERWIJDER') {
-        showToast('Annuleerd', 'info');
-        return;
-      }
-      api('DELETE', '/api/projects/'+id+'?hard=true').then(function(r){
-        var orphan = r.orphaned || {};
-        var orphanMsg = orphan.meldingen ? ' · ' + orphan.meldingen + ' meldingen ge-orphand' : '';
-        showToast('Project verwijderd' + orphanMsg, 'success');
-        loadProjects();
-      }).catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+      showConfirm({
+        title: 'Project permanent verwijderen?',
+        message: 'Project "' + name + '" wordt definitief verwijderd. Dit kan niet ongedaan worden gemaakt.',
+        extraInfo: 'Eventuele meldingen die aan dit project hangen worden losgekoppeld (de meldingen zelf blijven bestaan).',
+        actionLabel: 'Verwijder project',
+        icon: '🗑️',
+        onConfirm: function() {
+          api('DELETE', '/api/projects/'+id+'?hard=true').then(function(r){
+            var orphan = r.orphaned || {};
+            var orphanMsg = orphan.meldingen ? ' · ' + orphan.meldingen + ' meldingen losgekoppeld' : '';
+            showToast('Project verwijderd' + orphanMsg, 'success');
+            loadProjects();
+          }).catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+        }
+      });
     }
 
     function archiveProject(id) {
-      if (!confirm('Project archiveren? (soft — terug te halen)')) return;
-      api('DELETE', '/api/projects/'+id).then(function(){
-        showToast('Project gearchiveerd', 'success'); loadProjects();
-      }).catch(function(err){ showToast(err.message, 'error'); });
+      showConfirm({
+        title: 'Project archiveren?',
+        message: 'Project wordt verborgen maar blijft bewaard. Later terug te halen.',
+        actionLabel: 'Archiveren',
+        icon: '📦',
+        danger: false,
+        onConfirm: function() {
+          api('DELETE', '/api/projects/'+id).then(function(){
+            showToast('Project gearchiveerd', 'success'); loadProjects();
+          }).catch(function(err){ showToast(err.message, 'error'); });
+        }
+      });
     }
 
     function importAssetsCsv(event) {
