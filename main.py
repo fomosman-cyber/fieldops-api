@@ -11,7 +11,7 @@ import os
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router
 from audit import assign_request_id
 
 # Maak alle tabellen aan
@@ -81,6 +81,23 @@ def _run_migrations():
                     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_crow_klasse ON meldingen(crow_klasse)"))
                     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_onderhoud_cat ON meldingen(onderhoud_categorie)"))
                 print("[migration] meldingen CROW-kolommen toegevoegd.")
+
+        # Job Orchestration Engine — assigned_to + job_cluster_id op meldingen (v3.0)
+        if "meldingen" in insp.get_table_names():
+            mcols = [c["name"] for c in insp.get_columns("meldingen")]
+            orch_cols = {
+                "assigned_to":      "VARCHAR",
+                "job_cluster_id":   "VARCHAR",
+            }
+            orch_missing = [c for c in orch_cols if c not in mcols]
+            if orch_missing:
+                print(f"[migration] meldingen orchestration-kolommen toevoegen: {orch_missing}")
+                with engine.begin() as conn:
+                    for col in orch_missing:
+                        conn.execute(text(f"ALTER TABLE meldingen ADD COLUMN {col} {orch_cols[col]}"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_assigned_to ON meldingen(assigned_to)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_job_cluster_id ON meldingen(job_cluster_id)"))
+                print("[migration] meldingen orchestration-kolommen toegevoegd.")
 
         # ai_analyses — zelfde CROW-kolommen + termijn (v2.0-crow)
         if "ai_analyses" in insp.get_table_names():
@@ -222,6 +239,7 @@ app.include_router(realtime_router.router)
 app.include_router(push_router.router)
 app.include_router(config_router.router)
 app.include_router(google_router.router)
+app.include_router(orchestration_router.router)
 
 
 # Request-ID middleware — koppelt elke request aan een correlatie-ID dat

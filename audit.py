@@ -205,32 +205,77 @@ def log_action(
 
 
 def _send_push_for_event(db, org_id: str, action: str, payload: dict) -> None:
-    """Stuur push naar alle org-leden behalve de actor zelf."""
-    from models import PushSubscription
+    """Stuur push naar org-leden, met skill-based routing voor melding.create.
+
+    v3.0 — Job Orchestration: bij een melding met gw_maatregel wordt de
+    notificatie alleen naar specialisten + projectleiders/admins gestuurd,
+    in plaats van broadcast naar iedereen. Voor andere events blijft de
+    broadcast naar iedereen behalve actor.
+    """
+    from models import PushSubscription, User
     from push import send_push, is_configured
     from datetime import datetime, timezone
     if not is_configured():
         return
     actor_id = payload.get("user_id")
-    subs = db.query(PushSubscription).filter(
+
+    # Skill-based filter voor melding.create met maatregel
+    target_user_ids: Optional[set[str]] = None  # None = broadcast (default)
+    details = payload.get("details") or {}
+    after = details.get("after") if isinstance(details, dict) else None
+
+    if action == "melding.create" and isinstance(after, dict):
+        gw_maatregel = after.get("gw_maatregel")
+        if gw_maatregel:
+            try:
+                from orchestration import maatregel_specialists
+                # Specialisten met de juiste skill
+                specialists = maatregel_specialists(db, org_id, gw_maatregel,
+                                                    exclude_user_id=actor_id)
+                target_ids = {u.id for u in specialists}
+                # Plus alle managers/admins/contractors (zij zien altijd alles)
+                from permissions import UserRole
+                managers = db.query(User).filter(
+                    User.organization_id == org_id,
+                    User.id != actor_id,
+                    User.role.in_([UserRole.ADMIN, UserRole.MANAGER, UserRole.CONTRACTOR]),
+                ).all()
+                target_ids.update({u.id for u in managers})
+                target_user_ids = target_ids
+            except Exception as e:
+                print(f"[push] skill-routing fallback (broadcast): {e}")
+                target_user_ids = None
+
+    # Bouw de subscription-query
+    q = db.query(PushSubscription).filter(
         PushSubscription.organization_id == org_id,
         PushSubscription.user_id != actor_id,
-    ).all()
+    )
+    if target_user_ids is not None:
+        if not target_user_ids:
+            # Geen specialisten + geen managers? Stuur naar admins als laatste vangnet
+            return
+        q = q.filter(PushSubscription.user_id.in_(target_user_ids))
+    subs = q.all()
     if not subs:
         return
 
     titles = {
-        "melding.create": "Nieuwe melding",
+        "melding.create": "Nieuwe melding voor jou",
         "melding.status_change": "Status gewijzigd",
         "ai.analysis.run": "AI-analyse uitgevoerd",
     }
     title = titles.get(action, "FieldOps")
     actor = payload.get("user_email") or "een collega"
-    details = payload.get("details") or {}
-    after = details.get("after") if isinstance(details, dict) else None
     snippet = ""
     if isinstance(after, dict):
-        snippet = after.get("title") or after.get("ernst") or ""
+        # Met skill-routing: voeg de maatregel toe aan body voor context
+        maatregel = after.get("gw_maatregel")
+        title_text = after.get("title") or after.get("ernst") or ""
+        if maatregel and target_user_ids is not None:
+            snippet = f"{maatregel} — {title_text}" if title_text else maatregel
+        else:
+            snippet = title_text
     body = f"{actor}{' · ' + snippet if snippet else ''}".strip()
 
     for s in subs:

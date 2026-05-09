@@ -190,7 +190,12 @@ class Melding(Base):
     gw_term = Column(String(160), nullable=True)                 # CROW-RAW formele term voor bestek
     gw_kosten_orde = Column(String(40), nullable=True)           # "€5–15 / m¹"
 
+    # Job Orchestration Engine — sinds v3.0
+    assigned_to = Column(String, ForeignKey("users.id"), nullable=True, index=True)  # specifieke uitvoerder
+    job_cluster_id = Column(String, ForeignKey("job_clusters.id"), nullable=True, index=True)  # batch-koppeling
+
     project = relationship("Project")
+    assignee = relationship("User", foreign_keys=[assigned_to])
     asset = relationship("Asset", back_populates="meldingen", foreign_keys=[asset_id])
     organization = relationship("Organization")
     creator = relationship("User", foreign_keys=[created_by])
@@ -272,6 +277,73 @@ class AIAnalysis(Base):
     melding = relationship("Melding", foreign_keys=[melding_id])
     creator = relationship("User", foreign_keys=[created_by])
     acceptor = relationship("User", foreign_keys=[accepted_by])
+
+
+# ════════════════════════════════════════════════════════════
+# Job Orchestration Engine — sinds v3.0 (mei 2026)
+# ════════════════════════════════════════════════════════════
+
+class UserSkill(Base):
+    """Skills per medewerker. Meerdere skills per user mogelijk.
+
+    Skill-codes komen uit crow_kosten.SKILL_CODES (b.v. VULLEN_POLYMEER,
+    VOEGVULLING, SLEMBEHANDELING, KLINKER_LEGGEN, ASFALT_DEKLAAG, ...).
+    Proficiency 1-5: 1=junior, 5=expert/lead.
+    """
+    __tablename__ = "user_skills"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    skill_code = Column(String(40), nullable=False, index=True)
+    proficiency = Column(Integer, default=3)  # 1-5
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    user = relationship("User", foreign_keys=[user_id])
+
+
+class JobCluster(Base):
+    """Geclusterde meldingen met identieke maatregel + nabije locatie.
+
+    Het orchestration-algoritme groepeert open meldingen op:
+    - zelfde gw_term (b.v. "Vullen polymeer (cold-pour)")
+    - geo-proximity (binnen X km of zelfde wegvak-segment)
+
+    Een cluster is auto-gegenereerd door /api/clusters/generate, daarna
+    handmatig toewijsbaar aan een medewerker met de juiste skill.
+    """
+    __tablename__ = "job_clusters"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    gw_term = Column(String(160), nullable=False, index=True)              # homogene maatregel
+    skill_code = Column(String(40), nullable=True)                         # vereist voor uitvoering
+    melding_count = Column(Integer, default=0)                             # aantal meldingen in cluster
+    estimated_hours = Column(Float, nullable=True)                         # geschatte werktijd
+    estimated_revenue = Column(Float, nullable=True)                       # bestek-waarde indicatie
+
+    # Geo-bounding box van het cluster
+    geo_lat_min = Column(Float, nullable=True)
+    geo_lat_max = Column(Float, nullable=True)
+    geo_lng_min = Column(Float, nullable=True)
+    geo_lng_max = Column(Float, nullable=True)
+    geo_label = Column(String(120), nullable=True)                         # b.v. "Zone Noord · A12 km 40-50"
+
+    # Planning
+    planned_date = Column(DateTime, nullable=True)
+    assigned_to = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    status = Column(String(20), default="proposed")  # proposed/assigned/in_progress/done/cancelled
+
+    # Productiviteit-tracking
+    productivity_baseline_hours = Column(Float, nullable=True)             # tijd zonder clustering
+    productivity_savings_hours = Column(Float, nullable=True)              # tijd-besparing door batching
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    organization = relationship("Organization")
+    assignee = relationship("User", foreign_keys=[assigned_to])
+    meldingen_in_cluster = relationship("Melding", foreign_keys="Melding.job_cluster_id")
 
 
 class WebhookEndpoint(Base):

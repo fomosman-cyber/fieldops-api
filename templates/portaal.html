@@ -957,6 +957,7 @@
         <a data-page="assets" onclick="navigateTo('assets')">Assets</a>
         <a data-page="meldingen" onclick="navigateTo('meldingen')">Meldingen</a>
         <a data-page="predictive" onclick="navigateTo('predictive')">Voorspeller</a>
+        <a data-page="clusters" onclick="navigateTo('clusters')">Clusters</a>
         <a data-page="kaart" onclick="navigateTo('kaart')">Kaart</a>
         <a data-page="gebruikers" onclick="navigateTo('gebruikers')">Gebruikers</a>
       </nav>
@@ -1002,6 +1003,9 @@
         </a>
         <a data-page="predictive" onclick="navigateTo('predictive')">
           <span class="icon">&#128202;</span> Voorspeller
+        </a>
+        <a data-page="clusters" onclick="navigateTo('clusters')">
+          <span class="icon">&#129520;</span> Clusters <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:700;letter-spacing:.05em;">NIEUW</span>
         </a>
         <a data-page="kaart" onclick="navigateTo('kaart')">
           <span class="icon">&#127758;</span> Kaart
@@ -1548,6 +1552,78 @@
             <button type="submit" class="btn-primary" id="assetSubmitBtn">Asset aanmaken</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- ═══ CLUSTERS (Job Orchestration Engine v3.0) ═══ -->
+    <div class="page-section" id="page-clusters">
+      <div class="page-header" style="margin-bottom:16px;">
+        <div>
+          <h1>Job-Clusters <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:11px;padding:3px 10px;border-radius:6px;font-weight:700;letter-spacing:.05em;vertical-align:middle;margin-left:8px;">NIEUW · v3.0</span></h1>
+          <p>Productiviteit-winst door homogene maatregelen samen te plannen — "scheurvulling hele dag" i.p.v. mixed werk met setup-omschakelingen.</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="openSkillsModal()">⚙️ Mijn skills</button>
+          <button class="btn-primary" onclick="generateClusters()">⚡ Genereer clusters</button>
+        </div>
+      </div>
+
+      <!-- Savings dashboard -->
+      <div id="savingsDashboard" style="display:none;background:linear-gradient(135deg,#0a0f1e 0%,#075985 100%);color:#fff;padding:24px 28px;border-radius:14px;margin-bottom:20px;box-shadow:0 8px 32px rgba(2,132,199,.20);">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,.6);letter-spacing:.18em;text-transform:uppercase;margin-bottom:8px;">PRODUCTIVITY SAVINGS · Live ROI</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;">
+          <div>
+            <div style="font-size:32px;font-weight:800;background:linear-gradient(135deg,#38bdf8,#7dd3fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;" id="sav_clusters">—</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px;">actieve clusters</div>
+          </div>
+          <div>
+            <div style="font-size:32px;font-weight:800;background:linear-gradient(135deg,#38bdf8,#7dd3fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;" id="sav_meldingen">—</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px;">meldingen geclusterd</div>
+          </div>
+          <div>
+            <div style="font-size:32px;font-weight:800;background:linear-gradient(135deg,#38bdf8,#7dd3fc);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;" id="sav_hours">—</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px;">uren bespaard</div>
+          </div>
+          <div>
+            <div style="font-size:32px;font-weight:800;background:linear-gradient(135deg,#16a34a,#4ade80);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;line-height:1;" id="sav_euro">—</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.7);margin-top:4px;">EUR-equivalent (€60/u)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filter bar -->
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+        <select id="clustersStatusFilter" class="btn-secondary" style="cursor:pointer;" onchange="loadClusters()">
+          <option value="">Alle statussen</option>
+          <option value="proposed" selected>Voorgesteld</option>
+          <option value="assigned">Toegewezen</option>
+          <option value="in_progress">Bezig</option>
+          <option value="done">Klaar</option>
+        </select>
+        <span id="clustersCount" style="color:var(--text-muted);font-size:13px;">—</span>
+      </div>
+
+      <!-- Clusters list -->
+      <div id="clustersList" style="display:flex;flex-direction:column;gap:12px;"></div>
+
+      <!-- Empty state -->
+      <div id="clustersEmpty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted);background:var(--card-bg);border:1px dashed var(--border);border-radius:12px;">
+        <div style="font-size:48px;margin-bottom:14px;">🧠</div>
+        <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px;">Nog geen clusters</div>
+        <div style="font-size:14px;line-height:1.5;max-width:480px;margin:0 auto;">Klik op <strong>⚡ Genereer clusters</strong> om open meldingen met dezelfde maatregel + nabije locatie automatisch te bundelen tot werkbare batches.<br><br>Bv: 12× "Vullen polymeer" binnen 5 km → één dag scheurvullen i.p.v. losse trips.</div>
+      </div>
+    </div>
+
+    <!-- ═══ SKILLS MODAL ═══ -->
+    <div class="modal-overlay" id="skillsModal">
+      <div class="modal" style="max-width:560px;">
+        <button class="modal-close" onclick="closeSkillsModal()">&times;</button>
+        <h2>Mijn skills</h2>
+        <p class="subtitle">Welke maatregelen kun jij uitvoeren? Zo kunnen we je relevante meldingen + clusters voorstellen.</p>
+        <div id="skillsCatalogList" style="display:flex;flex-direction:column;gap:8px;margin:16px 0;max-height:55vh;overflow-y:auto;"></div>
+        <div class="form-actions">
+          <button class="btn-primary" onclick="saveMySkills()" id="skillsSaveBtn">Opslaan</button>
+        </div>
       </div>
     </div>
 
@@ -3933,6 +4009,7 @@
       if (page === 'kaart') initMap();
       if (page === 'assets') loadAssets();
       if (page === 'predictive') loadPredictive();
+      if (page === 'clusters') loadClusters();
       if (page === 'dashboard') loadDashboardPredictiveWidget();
       if (page === 'integraties') loadIntegrations();
       if (page === 'instellingen') refreshGoogleStatus();
@@ -6420,6 +6497,172 @@
       html += '<div class="form-actions"><button class="btn-primary" onclick="document.getElementById(\'csvErrorModal\').remove()">Sluiten</button></div>' +
         '</div></div>';
       document.body.insertAdjacentHTML('beforeend', html);
+    }
+
+    // ══════════════════════════════════════
+    // ── JOB ORCHESTRATION (Clusters + Skills) — v3.0 ──
+    // ══════════════════════════════════════
+
+    var _skillsCatalog = [];
+    var _mySkills = [];
+
+    function loadClusters() {
+      var statusFilter = document.getElementById('clustersStatusFilter')?.value || '';
+      var url = '/api/clusters' + (statusFilter ? '?status=' + statusFilter : '');
+      api('GET', url).then(function(clusters){
+        var list = document.getElementById('clustersList');
+        var empty = document.getElementById('clustersEmpty');
+        var count = document.getElementById('clustersCount');
+        count.textContent = clusters.length + ' cluster' + (clusters.length === 1 ? '' : 's');
+        if (!clusters.length) {
+          list.innerHTML = '';
+          empty.style.display = 'block';
+          return;
+        }
+        empty.style.display = 'none';
+        list.innerHTML = clusters.map(renderClusterCard).join('');
+      }).catch(function(err){
+        showToast('Fout bij laden clusters: ' + err.message, 'error');
+      });
+      // Savings dashboard parallel
+      api('GET', '/api/orchestration/savings').then(function(s){
+        var dash = document.getElementById('savingsDashboard');
+        if (s.total_clusters > 0) {
+          dash.style.display = 'block';
+          document.getElementById('sav_clusters').textContent = s.total_clusters;
+          document.getElementById('sav_meldingen').textContent = s.total_meldingen_clustered;
+          document.getElementById('sav_hours').textContent = s.total_savings_hours + ' u';
+          document.getElementById('sav_euro').textContent = '€' + Math.round(s.total_savings_euro).toLocaleString('nl-NL');
+        } else {
+          dash.style.display = 'none';
+        }
+      }).catch(function(){ /* silent */ });
+    }
+
+    function renderClusterCard(c) {
+      var statusColors = {
+        proposed: {bg:'#e0f2fe', color:'#0369a1', label:'Voorgesteld'},
+        assigned: {bg:'#dbeafe', color:'#1e40af', label:'Toegewezen'},
+        in_progress: {bg:'#fef3c7', color:'#92400e', label:'Bezig'},
+        done: {bg:'#dcfce7', color:'#166534', label:'Klaar'},
+        cancelled: {bg:'#fee2e2', color:'#991b1b', label:'Geannuleerd'},
+      };
+      var s = statusColors[c.status] || statusColors.proposed;
+      var savingsBar = c.baseline_hours > 0
+        ? '<div style="margin-top:10px;background:rgba(2,132,199,.06);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--text);">'
+            + '<strong>+' + c.savings_hours + ' u bespaard</strong> '
+            + '(<span style="color:var(--text-muted);">' + c.savings_pct + '% efficiency-winst t.o.v. solo-jobs · €'
+            + Math.round(c.savings_hours * 60).toLocaleString('nl-NL') + ' equivalent</span>)'
+            + '</div>'
+        : '';
+      var assignBtn = c.status === 'proposed'
+        ? '<button class="btn-secondary" style="font-size:12px;padding:6px 12px;" onclick="openAssignDialog(\'' + c.id + '\')">👤 Toewijzen</button>'
+        : (c.assignee_name ? '<span style="font-size:12px;color:var(--text-muted);">→ ' + escapeHtml(c.assignee_name) + '</span>' : '');
+      return '<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:18px 20px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">'
+          + '<div style="flex:1;min-width:0;">'
+            + '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">'
+              + '<span style="background:' + s.bg + ';color:' + s.color + ';font-size:10px;padding:3px 10px;border-radius:100px;font-weight:700;letter-spacing:.05em;">' + s.label.toUpperCase() + '</span>'
+              + '<span style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-muted);">' + (c.skill_name || c.skill_code || 'Maatregel') + '</span>'
+            + '</div>'
+            + '<div style="font-weight:700;font-size:16px;color:var(--text);">' + escapeHtml(c.gw_term) + '</div>'
+            + '<div style="font-size:13px;color:var(--text-muted);margin-top:4px;">'
+              + '<strong>' + c.melding_count + '</strong> meldingen · ' + (c.geo_label || 'geen geo-data')
+              + (c.estimated_hours ? ' · ~' + c.estimated_hours + ' u werk' : '')
+            + '</div>'
+          + '</div>'
+          + '<div style="display:flex;gap:6px;flex-shrink:0;">' + assignBtn + '</div>'
+        + '</div>'
+        + savingsBar
+      + '</div>';
+    }
+
+    function generateClusters() {
+      if (!confirm('Genereer clusters op basis van open meldingen? Dit vervangt eerdere voorstellen.')) return;
+      showToast('Clusters genereren...', 'info');
+      api('POST', '/api/clusters/generate', { radius_km: 5.0, min_cluster_size: 2 }).then(function(r){
+        showToast(r.clusters_created + ' clusters gegenereerd · ' + r.total_savings_hours + ' u bespaard (' + r.savings_percentage + '%)', 'success');
+        loadClusters();
+      }).catch(function(err){
+        showToast('Fout: ' + err.message, 'error');
+      });
+    }
+
+    function openAssignDialog(clusterId) {
+      // Stap 1: haal users op van mijn org (gebruik bestaande users-call)
+      api('GET', '/api/users/').then(function(users){
+        var names = users.map(function(u){ return u.id + ' — ' + (u.email || u.id); }).join('\n');
+        var pick = prompt('Wijs cluster toe — kies een user-id:\n\n' + names + '\n\nPlak hier het user-id:');
+        if (!pick) return;
+        // Strip "id — email" voor het geval ze de hele regel plakken
+        pick = pick.split(/\s+—|\s+--/)[0].trim();
+        api('PATCH', '/api/clusters/' + clusterId + '/assign', { user_id: pick }).then(function(){
+          showToast('Cluster toegewezen', 'success');
+          loadClusters();
+        }).catch(function(err){
+          showToast('Fout: ' + err.message, 'error');
+        });
+      });
+    }
+
+    function openSkillsModal() {
+      Promise.all([
+        api('GET', '/api/skills/catalog'),
+        api('GET', '/api/users/me/skills'),
+      ]).then(function(results){
+        _skillsCatalog = results[0];
+        _mySkills = results[1];
+        var mySkillsByCode = {};
+        _mySkills.forEach(function(s){ mySkillsByCode[s.skill_code] = s.proficiency; });
+        var html = _skillsCatalog.map(function(s){
+          var proficiency = mySkillsByCode[s.code] || 0;
+          var checked = proficiency > 0 ? 'checked' : '';
+          return '<label style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;">'
+            + '<input type="checkbox" ' + checked + ' data-skill="' + s.code + '" onchange="toggleSkillRow(this)" style="width:18px;height:18px;cursor:pointer;flex-shrink:0;">'
+            + '<div style="flex:1;min-width:0;">'
+              + '<div style="font-weight:600;font-size:14px;color:var(--text);">' + escapeHtml(s.name) + '</div>'
+              + '<div style="font-family:JetBrains Mono,monospace;font-size:11px;color:var(--text-muted);">' + s.code + '</div>'
+            + '</div>'
+            + '<select data-prof="' + s.code + '" style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;background:var(--card-bg);" ' + (proficiency > 0 ? '' : 'disabled') + '>'
+              + [1,2,3,4,5].map(function(p){ return '<option value="'+p+'" ' + (p===proficiency?'selected':'') + '>★'.repeat(p) + '☆'.repeat(5-p) + '</option>'; }).join('')
+            + '</select>'
+          + '</label>';
+        }).join('');
+        document.getElementById('skillsCatalogList').innerHTML = html;
+        document.getElementById('skillsModal').classList.add('active');
+      }).catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+    }
+
+    function toggleSkillRow(cb) {
+      var sel = document.querySelector('select[data-prof="' + cb.dataset.skill + '"]');
+      if (sel) sel.disabled = !cb.checked;
+    }
+
+    function closeSkillsModal() {
+      document.getElementById('skillsModal').classList.remove('active');
+    }
+
+    function saveMySkills() {
+      var checkboxes = document.querySelectorAll('#skillsCatalogList input[type=checkbox]:checked');
+      var skills = Array.from(checkboxes).map(function(cb){
+        var sel = document.querySelector('select[data-prof="' + cb.dataset.skill + '"]');
+        return { skill_code: cb.dataset.skill, proficiency: parseInt(sel.value, 10) || 3 };
+      });
+      var btn = document.getElementById('skillsSaveBtn');
+      btn.disabled = true; btn.textContent = 'Opslaan...';
+      api('PUT', '/api/users/me/skills', { skills: skills }).then(function(){
+        showToast(skills.length + ' skills opgeslagen', 'success');
+        closeSkillsModal();
+      }).catch(function(err){
+        showToast('Fout: ' + err.message, 'error');
+      }).finally(function(){
+        btn.disabled = false; btn.textContent = 'Opslaan';
+      });
+    }
+
+    function escapeHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; });
     }
 
     // ══════════════════════════════════════

@@ -267,3 +267,100 @@ KLASSE_RISK_POINTS = {
 def klasse_to_risk_points(klasse: str) -> int:
     """L1..E3 → risk-score punten (0-48)."""
     return KLASSE_RISK_POINTS.get(klasse.strip().upper(), 0)
+
+
+# ════════════════════════════════════════════════════════════
+# Job Orchestration: maatregel → skill mapping (v3.0)
+# ════════════════════════════════════════════════════════════
+
+# Skill-codes — uniek per techniek, gebruikt voor skill-based assignment
+SKILL_CODES = {
+    "VULLEN_POLYMEER":      "Vullen polymeer (cold-pour scheurvulling)",
+    "SLEMBEHANDELING":      "Slembehandeling (slurry-seal)",
+    "VOEGVULLING":          "Voegvulling (lassen tussen banen)",
+    "PLEKSGEWIJZE":         "Pleksgewijze reparatie (frees-vul)",
+    "ASFALT_DEKLAAG":       "Aanbrengen dicht asfaltbeton (deklaag)",
+    "ASFALT_TUSSENDEKLAAG": "Tussen+deklaag asfaltbeton",
+    "ASFALT_PROFIELCORR":   "Profielcorrectie SMA",
+    "ASFALT_PROFIEL_VOL":   "Volledig profiel + fundering",
+    "ASFALT_RECONSTRUCTIE": "Reconstructie / full rebuild",
+    "OPPERVLAKTEBEHANDELING": "Oppervlaktebehandeling DGAD",
+    "KLINKER_HERSTRATEN":   "Klinker-herstraten",
+    "VOEGEN_INVEGEN":       "Voegen invegen elementen",
+    "STENEN_VERVANGEN":     "Stenen vervangen / aanleggen",
+    "SPOED_REPARATIE":      "Spoed-reparatie veiligheidsmaatregel",
+    "OBSERVATIE":           "Observatie / GVI (geen ingreep)",
+}
+
+# Maatregel-naam (zoals in MAATREGEL_LOOKUP) → skill-code
+MAATREGEL_TO_SKILL = {
+    "Vullen polymeer":                       "VULLEN_POLYMEER",
+    "Slembehandeling":                       "SLEMBEHANDELING",
+    "Voegvulling":                           "VOEGVULLING",
+    "Voegvulling + frees-vul":               "VOEGVULLING",
+    "Pleksgewijze reparatie":                "PLEKSGEWIJZE",
+    "Pleksgewijze reparatie + frees":        "PLEKSGEWIJZE",
+    "Oppervlaktebehandeling":                "OPPERVLAKTEBEHANDELING",
+    "Deklaag vervangen":                     "ASFALT_DEKLAAG",
+    "Tussen+deklaag vervangen":              "ASFALT_TUSSENDEKLAAG",
+    "Profielcorrectie SMA":                  "ASFALT_PROFIELCORR",
+    "Profielcorrectie":                      "ASFALT_PROFIELCORR",
+    "Volledig profiel":                      "ASFALT_PROFIEL_VOL",
+    "Reconstructie":                         "ASFALT_RECONSTRUCTIE",
+    "Klinker-herstraten":                    "KLINKER_HERSTRATEN",
+    "Klinker-herstraten + funderingscorrectie": "KLINKER_HERSTRATEN",
+    "Voegen invegen":                        "VOEGEN_INVEGEN",
+    "Stenen vervangen":                      "STENEN_VERVANGEN",
+    "Stenen vervangen + voegen invegen":     "STENEN_VERVANGEN",
+    "Spoed-reparatie":                       "SPOED_REPARATIE",
+    "Observatie":                            "OBSERVATIE",
+}
+
+
+def maatregel_to_skill(maatregel: str) -> str | None:
+    """Geef de skill-code terug die nodig is voor een maatregel.
+
+    Bv: 'Vullen polymeer' -> 'VULLEN_POLYMEER'
+    Onbekende maatregelen retourneren None (= geen skill-eis).
+    """
+    if not maatregel:
+        return None
+    return MAATREGEL_TO_SKILL.get(maatregel.strip())
+
+
+# ════════════════════════════════════════════════════════════
+# Productiviteit-baseline per skill (uren per eenheid)
+# ════════════════════════════════════════════════════════════
+
+# Realistische productiviteit per skill bij solo-job (zonder clustering)
+# Bron: branche-cijfers GWWkosten + ervaring NL aannemers, mei 2026
+PRODUCTIVITY_PER_SKILL = {
+    # (uren_per_eenheid, eenheid, setup_uren_per_dag)
+    "VULLEN_POLYMEER":      (0.025, "m¹", 1.0),   # 40 m¹/uur · 1u setup
+    "SLEMBEHANDELING":      (0.020, "m²", 1.5),   # 50 m²/uur · 1.5u setup
+    "VOEGVULLING":          (0.250, "voeg", 0.5),  # 4 voegen/uur
+    "PLEKSGEWIJZE":         (1.500, "plek", 0.5),  # 1.5u/plek
+    "OPPERVLAKTEBEHANDELING": (0.015, "m²", 2.0),  # 67 m²/uur · DGAD
+    "ASFALT_DEKLAAG":       (0.012, "m²", 2.0),    # 83 m²/uur
+    "ASFALT_TUSSENDEKLAAG": (0.020, "m²", 2.5),
+    "ASFALT_PROFIEL_VOL":   (0.040, "m²", 3.0),
+    "KLINKER_HERSTRATEN":   (0.080, "m²", 1.0),    # 12.5 m²/uur
+    "VOEGEN_INVEGEN":       (0.010, "m²", 0.5),
+    "STENEN_VERVANGEN":     (0.150, "steen", 0.5),
+}
+
+
+def estimate_cluster_hours(skill_code: str, total_units: float) -> tuple[float, float]:
+    """Geef (geclusterde uren, baseline uren) terug voor een job-cluster.
+
+    Geclusterd: 1× setup + N × productiviteit (efficiency-ideaal)
+    Baseline: per losse melding eigen setup → veel hoger
+    Verschil = productiviteit-winst van clustering.
+    """
+    if skill_code not in PRODUCTIVITY_PER_SKILL or total_units <= 0:
+        return (0.0, 0.0)
+    rate, _eenheid, setup = PRODUCTIVITY_PER_SKILL[skill_code]
+    clustered = setup + (total_units * rate)
+    # Baseline: assumes 4 trips per day = 4× setup-overhead vs clustered
+    baseline = (setup * 4) + (total_units * rate * 1.15)  # 15% extra door reizen
+    return (round(clustered, 1), round(baseline, 1))
