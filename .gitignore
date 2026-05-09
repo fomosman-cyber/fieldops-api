@@ -1,5 +1,46 @@
+# Database
 fieldops.db
+*.db-journal
+
+# Python
 __pycache__/
-.env
 *.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Eenmalige scripts
 create_owner.py
+
+# Secrets — NOOIT committen
+*.p8
+*.pem
+*.key
+*.pfx
+*.cer
+*_secret.json
+*_secret*.json
+client_secret*.json
+AuthKey_*.p8
+service-account*.json
+google-credentials*.json
+firebase-*.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/

@@ -164,6 +164,7 @@ def admin_create_user(
         role=role_enum,
         is_org_admin=(role_enum == UserRole.ADMIN),
         organization_id=current_user.organization_id,
+        must_change_password=True,
     )
     db.add(user)
     db.commit()
