@@ -11,7 +11,7 @@ import os
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router
 from audit import assign_request_id
 
 # Maak alle tabellen aan
@@ -239,6 +239,7 @@ app.include_router(realtime_router.router)
 app.include_router(push_router.router)
 app.include_router(config_router.router)
 app.include_router(google_router.router)
+app.include_router(microsoft_router.router)
 app.include_router(orchestration_router.router)
 
 

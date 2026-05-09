@@ -1897,6 +1897,21 @@
           <button id="googleDisconnectBtn" class="btn-secondary" onclick="disconnectGoogle()" style="display:none;color:#dc2626;">Verbinding verbreken</button>
         </div>
       </div>
+
+      <!-- Microsoft 365 integratie -->
+      <div class="card" style="max-width: 600px; margin-top: 20px;">
+        <div class="card-header"><h3>🪟 Microsoft 365</h3></div>
+        <p style="color:var(--text-muted);font-size:14px;margin:0 0 16px;">
+          Koppel je Microsoft 365 account voor Outlook Calendar-events + OneDrive/SharePoint upload van rapportages.
+        </p>
+        <div id="msStatusBox" style="padding:14px;border-radius:10px;background:var(--card-bg-hover);margin-bottom:16px;">
+          <div id="msStatusText" style="color:var(--text-muted);font-size:13px;">Status laden...</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="msConnectBtn" class="btn-primary" onclick="connectMicrosoft()" style="display:none;">Verbind Microsoft 365</button>
+          <button id="msDisconnectBtn" class="btn-secondary" onclick="disconnectMicrosoft()" style="display:none;color:#dc2626;">Verbinding verbreken</button>
+        </div>
+      </div>
     </div>
 
     <!-- ═══ ADMIN (eigenaar) ═══ -->
@@ -4154,7 +4169,7 @@
       if (page === 'mijn-dag') loadMijnDag();
       if (page === 'dashboard') loadDashboardPredictiveWidget();
       if (page === 'integraties') loadIntegrations();
-      if (page === 'instellingen') refreshGoogleStatus();
+      if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); }
     }
 
     // ── Load Users ──
@@ -7150,6 +7165,67 @@
         if (res.html_link) window.open(res.html_link, '_blank', 'noopener');
       }).catch(function(err) { showToast('Fout: '+err.message, 'error'); });
     }
+
+    // ── Microsoft 365 OAuth — gespiegeld op Google flow ──
+    function refreshMicrosoftStatus() {
+      var box = document.getElementById('msStatusText');
+      var connectBtn = document.getElementById('msConnectBtn');
+      var disconnectBtn = document.getElementById('msDisconnectBtn');
+      if (!box) return;
+      api('GET', '/api/microsoft/status').then(function(s) {
+        if (!s.configured) {
+          box.innerHTML = '<span style="color:var(--text-dim);">⚠️ Microsoft OAuth niet geconfigureerd op de server. Vraag admin om <code>MS_OAUTH_CLIENT_ID</code> + <code>MS_OAUTH_CLIENT_SECRET</code> in Render env-vars te zetten.</span>';
+          if (connectBtn) connectBtn.style.display = 'none';
+          if (disconnectBtn) disconnectBtn.style.display = 'none';
+          return;
+        }
+        if (s.connected) {
+          var scopes = s.scopes && s.scopes.length ? s.scopes.length + ' scopes' : '';
+          box.innerHTML = '<span style="color:var(--green);">✓ Verbonden als <strong>' + (s.ms_email || 'Microsoft 365') + '</strong></span>'
+            + (scopes ? '<br><span style="color:var(--text-dim);font-size:11px;">' + scopes + '</span>' : '');
+          if (connectBtn) connectBtn.style.display = 'none';
+          if (disconnectBtn) disconnectBtn.style.display = 'inline-block';
+        } else {
+          box.innerHTML = '<span style="color:var(--text-muted);">Nog niet verbonden. Klik op de knop hieronder om je Microsoft 365 account te koppelen.</span>';
+          if (connectBtn) connectBtn.style.display = 'inline-block';
+          if (disconnectBtn) disconnectBtn.style.display = 'none';
+        }
+      }).catch(function(err) {
+        box.innerHTML = '<span style="color:#dc2626;">Status laden mislukt: ' + (err.message||'') + '</span>';
+      });
+    }
+
+    function connectMicrosoft() {
+      api('GET', '/api/microsoft/oauth/start').then(function(res) {
+        if (res.auth_url) {
+          window.location.href = res.auth_url;
+        } else {
+          showToast('Geen auth-URL ontvangen', 'error');
+        }
+      }).catch(function(err) {
+        showToast('Microsoft verbinden mislukt: ' + (err.message||''), 'error');
+      });
+    }
+
+    function disconnectMicrosoft() {
+      if (!confirm('Microsoft-verbinding verbreken? Bestaande Outlook-events blijven staan.')) return;
+      api('POST', '/api/microsoft/disconnect', {}).then(function() {
+        showToast('Verbinding verbroken', 'info');
+        refreshMicrosoftStatus();
+      }).catch(function(err) { showToast(err.message, 'error'); });
+    }
+
+    // Detecteer ?microsoft=connected na callback
+    (function() {
+      try {
+        var p = new URLSearchParams(window.location.search);
+        if (p.get('microsoft') === 'connected') {
+          showToast && showToast('🎉 Microsoft 365 account verbonden!', 'success');
+          var clean = window.location.pathname;
+          if (window.history && history.replaceState) history.replaceState({}, '', clean);
+        }
+      } catch (e) {}
+    })();
 
     // Detecteer ?google=connected in URL na callback
     (function() {

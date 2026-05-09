@@ -452,6 +452,55 @@ class CalendarLink(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
+class MicrosoftOAuthToken(Base):
+    """OAuth2-tokens per user voor Microsoft Graph (Outlook Calendar + OneDrive/SharePoint + Teams).
+
+    Refresh-token blijft geldig tot user actively revokes (Microsoft Entra ID).
+    Access-token wordt automatisch ververst voor elke Graph API call.
+    """
+    __tablename__ = "microsoft_oauth_tokens"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
+
+    access_token = Column(Text, nullable=False)
+    refresh_token = Column(Text, nullable=True)
+    expires_at = Column(DateTime, nullable=True)
+    scope = Column(Text, nullable=True)
+    ms_email = Column(String(255), nullable=True)
+    ms_tenant_id = Column(String(64), nullable=True)         # Entra-tenant van de gebruiker
+    ms_user_id = Column(String(64), nullable=True)           # Graph user-id (UUID)
+
+    # Default-doelen
+    default_calendar_id = Column(String(255), nullable=True)         # null = primary
+    default_drive_folder_id = Column(String(255), nullable=True)     # OneDrive folder-id
+    default_sharepoint_site = Column(String(255), nullable=True)     # SharePoint site-url
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+    organization = relationship("Organization", foreign_keys=[organization_id])
+
+
+class MicrosoftCalendarLink(Base):
+    """Koppeling FieldOps-entity ↔ Microsoft Outlook Calendar event."""
+    __tablename__ = "microsoft_calendar_links"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    entity_type = Column(String(32), nullable=False, index=True)
+    entity_id = Column(String(64), nullable=False, index=True)
+    ms_event_id = Column(String(255), nullable=False)
+    calendar_id = Column(String(255), nullable=True)         # null = primary
+
+    last_synced_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
 class PushSubscription(Base):
     """Web Push-subscription per gebruiker per device.
 
