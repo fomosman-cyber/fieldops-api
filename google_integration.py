@@ -17,6 +17,7 @@ Setup eenmalig:
 """
 
 from __future__ import annotations
+import json
 import os
 import secrets
 from datetime import datetime, timezone, timedelta
@@ -36,6 +37,8 @@ AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 TOKEN_URL = "https://oauth2.googleapis.com/token"
 USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 CALENDAR_API = "https://www.googleapis.com/calendar/v3"
+DRIVE_API = "https://www.googleapis.com/drive/v3"
+DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3"
 
 
 def is_configured() -> bool:
@@ -200,3 +203,63 @@ def build_melding_event(melding, asset=None, project=None) -> dict:
                else f"{melding.lat},{melding.lng}")
         event["location"] = loc
     return event
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Drive helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def drive_ensure_folder(access_token: str, folder_name: str = "FieldOps Rapportages",
+                       parent_id: Optional[str] = None) -> str:
+    """Vind of maak een folder met deze naam. Returnt folder_id.
+
+    drive.file scope geeft alleen toegang tot bestanden/folders door deze app
+    aangemaakt — perfect voor onze use-case (geen toegang tot user's bestaande Drive).
+    """
+    # Zoek bestaande folder
+    q = f"mimeType='application/vnd.google-apps.folder' and name='{folder_name}' and trashed=false"
+    if parent_id:
+        q += f" and '{parent_id}' in parents"
+    with httpx.Client(timeout=15.0) as cli:
+        r = cli.get(f"{DRIVE_API}/files",
+                    params={"q": q, "fields": "files(id,name)"},
+                    headers={"Authorization": "Bearer " + access_token})
+        r.raise_for_status()
+        files = r.json().get("files", [])
+        if files:
+            return files[0]["id"]
+        # Niet gevonden → aanmaken
+        body = {"name": folder_name, "mimeType": "application/vnd.google-apps.folder"}
+        if parent_id:
+            body["parents"] = [parent_id]
+        cr = cli.post(f"{DRIVE_API}/files",
+                      json=body,
+                      headers={"Authorization": "Bearer " + access_token,
+                               "Content-Type": "application/json"})
+        cr.raise_for_status()
+        return cr.json()["id"]
+
+
+def drive_upload(access_token: str, filename: str, content: bytes, mime_type: str,
+                 folder_id: Optional[str] = None) -> dict:
+    """Upload een bestand. Gebruikt Drive's multipart-upload API."""
+    metadata = {"name": filename}
+    if folder_id:
+        metadata["parents"] = [folder_id]
+
+    boundary = "fieldops-multipart-" + secrets.token_hex(8)
+    body = (
+        f"--{boundary}\r\n"
+        "Content-Type: application/json; charset=UTF-8\r\n\r\n"
+        f"{json.dumps(metadata)}\r\n"
+        f"--{boundary}\r\n"
+        f"Content-Type: {mime_type}\r\n\r\n"
+    ).encode("utf-8") + content + f"\r\n--{boundary}--".encode("utf-8")
+
+    with httpx.Client(timeout=60.0) as cli:
+        r = cli.post(f"{DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id,name,webViewLink",
+                     content=body,
+                     headers={"Authorization": "Bearer " + access_token,
+                              "Content-Type": f"multipart/related; boundary={boundary}"})
+        r.raise_for_status()
+        return r.json()

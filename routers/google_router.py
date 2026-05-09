@@ -153,6 +153,55 @@ def disconnect(
     return {"connected": False}
 
 
+@router.post("/drive/upload")
+async def drive_upload(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Upload een PDF/blob naar de FieldOps-folder in user's Google Drive.
+
+    Body: multipart met 'file' veld. Returnt {file_id, web_view_link}.
+    """
+    from fastapi import UploadFile, File
+    form = await request.form()
+    f = form.get("file")
+    if f is None or not hasattr(f, "filename"):
+        raise HTTPException(status_code=400, detail="Geen file in multipart-payload")
+
+    rec = db.query(GoogleOAuthToken).filter(GoogleOAuthToken.user_id == current_user.id).first()
+    access = gi.ensure_fresh_token(db, rec)
+    if not access:
+        raise HTTPException(status_code=400, detail="Niet verbonden met Google. Verbind eerst.")
+
+    content = await f.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Leeg bestand")
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Bestand te groot (max 50 MB)")
+
+    try:
+        if not rec.default_drive_folder_id:
+            rec.default_drive_folder_id = gi.drive_ensure_folder(access)
+            db.commit()
+        result = gi.drive_upload(
+            access, f.filename or "fieldops-export.pdf",
+            content, f.content_type or "application/octet-stream",
+            folder_id=rec.default_drive_folder_id,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Drive-upload faalde: {e}")
+
+    log_action(db, request, current_user, action="google.drive.upload",
+               entity_type="drive_file", entity_id=result.get("id"),
+               extra={"filename": f.filename, "size": len(content)})
+    return {
+        "file_id": result.get("id"),
+        "name": result.get("name"),
+        "web_view_link": result.get("webViewLink"),
+    }
+
+
 @router.post("/test-event")
 def create_test_event(
     request: Request,
