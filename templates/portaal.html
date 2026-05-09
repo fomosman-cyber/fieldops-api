@@ -1191,7 +1191,7 @@
       <!-- Predictive Maintenance widget -->
       <div class="card animate-in" id="predictiveWidget" style="margin-bottom:20px;display:none;">
         <div class="card-header">
-          <h3>Voorspeller — assets met aandachtspunt</h3>
+          <h3 data-i18n="predictive_header">Voorspeller — assets met aandachtspunt</h3>
           <a onclick="navigateTo('predictive')" style="font-size:12px;color:var(--accent);cursor:pointer;">Volledig overzicht →</a>
         </div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
@@ -1242,7 +1242,7 @@
         <div class="empty-icon">&#128193;</div>
         <h3>Geen projecten</h3>
         <p>Je hebt nog geen projecten aangemaakt. Maak een nieuw project aan om te beginnen met registreren.</p>
-        <button class="btn-primary" onclick="openProjectModal()">+ Eerste project aanmaken</button>
+        <button class="btn-primary" onclick="openProjectModal()" data-i18n="eerste_project">+ Eerste project aanmaken</button>
       </div>
       <div id="projectenList" style="display:none;">
         <div class="stats-grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));" id="projectCards"></div>
@@ -1259,7 +1259,7 @@
           <!-- Info -->
           <div class="card">
             <div class="card-header"><h3>Projectgegevens</h3>
-              <button class="btn-secondary" onclick="editCurrentProject()" style="font-size:12px;padding:6px 12px;">Bewerken</button>
+              <button class="btn-secondary" onclick="editCurrentProject()" style="font-size:12px;padding:6px 12px;" data-i18n="bewerken">Bewerken</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:12px;">
               <div><label style="font-size:12px;color:var(--text-dim);">Omschrijving</label><div id="projectDetailDesc" style="font-size:14px;color:var(--text-muted);">-</div></div>
@@ -1370,9 +1370,9 @@
 
       <div id="meldingenEmpty" class="empty-state">
         <div class="empty-icon">&#128276;</div>
-        <h3>Nog geen meldingen</h3>
+        <h3 data-i18n="nog_geen_meldingen">Nog geen meldingen</h3>
         <p>Registreer je eerste melding vanuit het veld. Voeg foto's, GPS-locatie en schadecategorie toe.</p>
-        <button class="btn-primary" onclick="openMeldingModal()">+ Eerste melding aanmaken</button>
+        <button class="btn-primary" onclick="openMeldingModal()" data-i18n="eerste_melding">+ Eerste melding aanmaken</button>
       </div>
       <div id="meldingenList" style="display:none;">
         <div class="card" style="overflow-x:auto;">
@@ -1394,7 +1394,7 @@
           <p>Beheer je infrastructuur — lantaarnpalen, putten, wegvakken, kunstwerken.</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn-secondary" onclick="document.getElementById('assetCsvInput').click()">CSV importeren</button>
+          <button class="btn-secondary" onclick="document.getElementById('assetCsvInput').click()" data-i18n="csv_importeren">CSV importeren</button>
           <input type="file" id="assetCsvInput" accept=".csv" style="display:none;" onchange="importAssetsCsv(event)">
           <button class="btn-secondary" onclick="openNwbZoekModal()" style="display:inline-flex;align-items:center;gap:6px;">🛣️ Wegvakken uit NWB <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.05em;">NIEUW</span></button>
           <button class="btn-primary" onclick="openAssetModal()">+ Nieuw Asset</button>
@@ -1414,9 +1414,9 @@
       </div>
       <div id="assetsEmpty" class="empty-state" style="display:none;">
         <div class="empty-icon">&#128302;</div>
-        <h3>Geen assets</h3>
+        <h3 data-i18n="geen_assets">Geen assets</h3>
         <p>Voeg assets toe om meldingen aan fysieke objecten te koppelen — handmatig of via CSV-import.</p>
-        <button class="btn-primary" onclick="openAssetModal()">+ Eerste asset aanmaken</button>
+        <button class="btn-primary" onclick="openAssetModal()" data-i18n="eerste_asset">+ Eerste asset aanmaken</button>
       </div>
       <div id="assetsList" style="display:none;">
         <div class="card" style="overflow-x:auto;padding:0;">
@@ -1441,9 +1441,9 @@
       </div>
       <div id="predictiveEmpty" class="empty-state" style="display:none;">
         <div class="empty-icon">&#128202;</div>
-        <h3>Nog geen data</h3>
+        <h3 data-i18n="nog_geen_data">Nog geen data</h3>
         <p>Voeg eerst assets toe (met installatiedatum, levensduur en NEN-conditiescore) om voorspellingen te genereren.</p>
-        <button class="btn-primary" onclick="navigateTo('assets')">Naar Assets</button>
+        <button class="btn-primary" onclick="navigateTo('assets')" data-i18n="naar_assets">Naar Assets</button>
       </div>
       <div id="predictiveContent" style="display:none;">
         <div class="stats-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));margin-bottom:24px;">
@@ -1470,7 +1470,7 @@
         </div>
         <div class="card">
           <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
-            <h3>Top assets met aandachtspunt</h3>
+            <h3 data-i18n="top_assets_aandacht">Top assets met aandachtspunt</h3>
             <select id="predMinScore" onchange="loadPredictiveList()" style="padding:5px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;">
               <option value="60" selected>Score &ge; 60</option>
               <option value="40">Score &ge; 40</option>
@@ -1706,7 +1706,7 @@
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="openSkillsModal()">⚙️ Mijn skills</button>
-          <button class="btn-primary" onclick="generateClusters()">⚡ Genereer clusters</button>
+          <button class="btn-primary" onclick="generateClusters()" data-i18n="genereer_clusters">⚡ Genereer clusters</button>
         </div>
       </div>
 
@@ -2219,7 +2219,7 @@
           <div id="roleDescription" style="margin-top:8px;padding:10px 12px;background:rgba(0,0,0,0.02);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text-muted);line-height:1.5;"></div>
         </div>
         <div class="form-actions">
-          <button type="submit" class="btn-primary">Uitnodiging versturen</button>
+          <button type="submit" class="btn-primary" data-i18n="uitnodiging_versturen">Uitnodiging versturen</button>
         </div>
       </form>
     </div>
@@ -2265,15 +2265,15 @@
           <input type="email" id="orgAdminEmail" placeholder="jan@bedrijf.nl" required>
         </div>
         <div class="form-group">
-          <label>Eenmalig wachtwoord</label>
+          <label id="orgAdminPasswordLabel">Eenmalig wachtwoord</label>
           <div style="display:flex;gap:8px;">
             <input type="text" id="orgAdminPassword" required readonly style="flex:1;font-family:'JetBrains Mono',ui-monospace,monospace;letter-spacing:0.04em;">
-            <button type="button" onclick="document.getElementById('orgAdminPassword').value=_genStrongPassword();" style="padding:0 14px;border:1px solid var(--border);background:var(--card,#0f172a);color:var(--text,#fff);border-radius:8px;cursor:pointer;font-size:14px;" title="Nieuw wachtwoord genereren">🎲</button>
+            <button type="button" id="orgAdminPasswordRegen" onclick="document.getElementById('orgAdminPassword').value=_genStrongPassword();" style="padding:0 14px;border:1px solid var(--border);background:var(--card,#0f172a);color:var(--text,#fff);border-radius:8px;cursor:pointer;font-size:14px;" title="Nieuw wachtwoord genereren">🎲</button>
           </div>
-          <p style="font-size:11px;color:var(--text-dim);margin:6px 0 0;">Beheerder moet dit bij eerste login wijzigen.</p>
+          <p id="orgAdminPasswordHelp" style="font-size:11px;color:var(--text-dim);margin:6px 0 0;">Beheerder moet dit bij eerste login wijzigen.</p>
         </div>
         <div class="form-actions">
-          <button type="submit" class="btn-primary">Organisatie aanmaken</button>
+          <button type="submit" class="btn-primary" data-i18n="organisatie_aanmaken">Organisatie aanmaken</button>
         </div>
       </form>
     </div>
@@ -2348,7 +2348,7 @@
       <div style="background:linear-gradient(135deg,#0a0f1e 0%,#075985 100%);color:#fff;padding:22px 28px;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
         <div>
           <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:.18em;margin-bottom:6px;">PDOK · Nationaal Wegen Bestand · Rijkswaterstaat</div>
-          <h2 style="color:#fff;font-size:20px;font-weight:700;margin:0;">Wegvakken zoeken in NWB</h2>
+          <h2 style="color:#fff;font-size:20px;font-weight:700;margin:0;" data-i18n="wegvakken_zoeken_nwb">Wegvakken zoeken in NWB</h2>
         </div>
         <button onclick="closeNwbZoekModal()" style="background:rgba(255,255,255,0.10);border:none;color:#fff;width:32px;height:32px;border-radius:50%;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
       </div>
@@ -2892,6 +2892,29 @@
         admin_desc: 'Volledige toegang tot het platform. Gebruikers beheren, uitnodigen en verwijderen. Organisatie-instellingen en facturatie. Alleen voor platformbeheerders.',
         projectgebied_label: 'Projectgebied',
         project_modal_subtitle: 'Vul de gegevens in en teken het projectgebied op de kaart.',
+        // Security / password UI (i18n added 2026-05-09)
+        eenmalig_wachtwoord: 'Eenmalig wachtwoord',
+        must_change_helper: 'Beheerder moet dit bij eerste login wijzigen.',
+        genereer_pw_btn_title: 'Nieuw wachtwoord genereren',
+        adminreset_pw_prompt: 'Nieuw wachtwoord voor {name} (random gegenereerd, deel veilig):',
+        adminreset_pw_done: 'Wachtwoord gereset voor {name} — deel: {pw}',
+        invite_pw_prompt: 'Eenmalig wachtwoord (random gegenereerd — gebruiker moet dit bij eerste login wijzigen):',
+        // Feature labels — NWB / clusters / predictive (i18n added 2026-05-09)
+        predictive_header: 'Voorspeller — assets met aandachtspunt',
+        geen_assets: 'Geen assets',
+        eerste_asset: '+ Eerste asset aanmaken',
+        nog_geen_data: 'Nog geen data',
+        naar_assets: 'Naar Assets',
+        top_assets_aandacht: 'Top assets met aandachtspunt',
+        genereer_clusters: '⚡ Genereer clusters',
+        csv_importeren: 'CSV importeren',
+        asset_aanmaken: 'Asset aanmaken',
+        wegvakken_zoeken_nwb: 'Wegvakken zoeken in NWB',
+        selecteer_alles: 'Selecteer alles',
+        importeren: 'Importeren',
+        start_cluster: '▶️ Start cluster',
+        cluster_afronden: '✓ Cluster afronden',
+        nog_geen_meldingen: 'Nog geen meldingen',
       },
       en: {
         dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
@@ -3072,6 +3095,29 @@
         admin_desc: 'Full platform access. Manage, invite and remove users. Organization settings and billing. For platform administrators only.',
         projectgebied_label: 'Project area',
         project_modal_subtitle: 'Fill in the details and draw the project area on the map.',
+        // Security / password UI (i18n added 2026-05-09)
+        eenmalig_wachtwoord: 'One-time password',
+        must_change_helper: 'Administrator must change this at first login.',
+        genereer_pw_btn_title: 'Generate new password',
+        adminreset_pw_prompt: 'New password for {name} (randomly generated, share securely):',
+        adminreset_pw_done: 'Password reset for {name} — share: {pw}',
+        invite_pw_prompt: 'One-time password (randomly generated — user must change at first login):',
+        // Feature labels — NWB / clusters / predictive (i18n added 2026-05-09)
+        predictive_header: 'Predictive — assets needing attention',
+        geen_assets: 'No assets',
+        eerste_asset: '+ Create first asset',
+        nog_geen_data: 'No data yet',
+        naar_assets: 'To Assets',
+        top_assets_aandacht: 'Top assets needing attention',
+        genereer_clusters: '⚡ Generate clusters',
+        csv_importeren: 'Import CSV',
+        asset_aanmaken: 'Create asset',
+        wegvakken_zoeken_nwb: 'Search road segments in NWB',
+        selecteer_alles: 'Select all',
+        importeren: 'Import',
+        start_cluster: '▶️ Start cluster',
+        cluster_afronden: '✓ Complete cluster',
+        nog_geen_meldingen: 'No reports yet',
       },
       de: {
         dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
@@ -3252,6 +3298,29 @@
         admin_desc: 'Vollzugriff auf die Plattform. Benutzer verwalten, einladen und entfernen. Organisationseinstellungen und Abrechnung. Nur für Plattformadministratoren.',
         projectgebied_label: 'Projektgebiet',
         project_modal_subtitle: 'Füllen Sie die Daten aus und zeichnen Sie das Projektgebiet auf der Karte.',
+        // Security / password UI (i18n added 2026-05-09)
+        eenmalig_wachtwoord: 'Einmalpasswort',
+        must_change_helper: 'Administrator muss dies bei der ersten Anmeldung ändern.',
+        genereer_pw_btn_title: 'Neues Passwort generieren',
+        adminreset_pw_prompt: 'Neues Passwort für {name} (zufällig erzeugt, sicher teilen):',
+        adminreset_pw_done: 'Passwort zurückgesetzt für {name} — teilen: {pw}',
+        invite_pw_prompt: 'Einmalpasswort (zufällig erzeugt — Benutzer muss es bei der ersten Anmeldung ändern):',
+        // Feature labels — NWB / clusters / predictive (i18n added 2026-05-09)
+        predictive_header: 'Vorhersage — Assets mit Aufmerksamkeitsbedarf',
+        geen_assets: 'Keine Assets',
+        eerste_asset: '+ Ersten Asset anlegen',
+        nog_geen_data: 'Noch keine Daten',
+        naar_assets: 'Zu Assets',
+        top_assets_aandacht: 'Top-Assets mit Aufmerksamkeitsbedarf',
+        genereer_clusters: '⚡ Cluster generieren',
+        csv_importeren: 'CSV importieren',
+        asset_aanmaken: 'Asset anlegen',
+        wegvakken_zoeken_nwb: 'Straßenabschnitte in NWB suchen',
+        selecteer_alles: 'Alle auswählen',
+        importeren: 'Importieren',
+        start_cluster: '▶️ Cluster starten',
+        cluster_afronden: '✓ Cluster abschließen',
+        nog_geen_meldingen: 'Noch keine Meldungen',
       },
       fr: {
         dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
@@ -3432,6 +3501,29 @@
         admin_desc: 'Accès complet à la plateforme. Gérer, inviter et supprimer des utilisateurs. Paramètres d\'organisation et facturation. Réservé aux administrateurs.',
         projectgebied_label: 'Zone du projet',
         project_modal_subtitle: 'Remplissez les détails et dessinez la zone du projet sur la carte.',
+        // Security / password UI (i18n added 2026-05-09)
+        eenmalig_wachtwoord: 'Mot de passe à usage unique',
+        must_change_helper: 'L\'administrateur doit le modifier à la première connexion.',
+        genereer_pw_btn_title: 'Générer un nouveau mot de passe',
+        adminreset_pw_prompt: 'Nouveau mot de passe pour {name} (généré aléatoirement, partagez en sécurité) :',
+        adminreset_pw_done: 'Mot de passe réinitialisé pour {name} — partager : {pw}',
+        invite_pw_prompt: 'Mot de passe à usage unique (généré aléatoirement — l\'utilisateur doit le changer à la première connexion) :',
+        // Feature labels — NWB / clusters / predictive (i18n added 2026-05-09)
+        predictive_header: 'Prédictif — actifs nécessitant attention',
+        geen_assets: 'Aucun actif',
+        eerste_asset: '+ Créer le premier actif',
+        nog_geen_data: 'Pas encore de données',
+        naar_assets: 'Vers les actifs',
+        top_assets_aandacht: 'Top actifs nécessitant attention',
+        genereer_clusters: '⚡ Générer des clusters',
+        csv_importeren: 'Importer CSV',
+        asset_aanmaken: 'Créer un actif',
+        wegvakken_zoeken_nwb: 'Rechercher des tronçons dans NWB',
+        selecteer_alles: 'Tout sélectionner',
+        importeren: 'Importer',
+        start_cluster: '▶️ Démarrer le cluster',
+        cluster_afronden: '✓ Terminer le cluster',
+        nog_geen_meldingen: 'Pas encore de signalements',
       },
       tr: {
         dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
@@ -3612,6 +3704,29 @@
         admin_desc: 'Platforma tam erişim. Kullanıcı yönetimi, davet ve silme. Organizasyon ayarları ve faturalandırma. Sadece platform yöneticileri için.',
         projectgebied_label: 'Proje alanı',
         project_modal_subtitle: 'Bilgileri doldurun ve proje alanını haritada çizin.',
+        // Security / password UI (i18n added 2026-05-09)
+        eenmalig_wachtwoord: 'Tek kullanımlık parola',
+        must_change_helper: 'Yönetici bunu ilk girişte değiştirmelidir.',
+        genereer_pw_btn_title: 'Yeni parola oluştur',
+        adminreset_pw_prompt: '{name} için yeni parola (rastgele oluşturuldu, güvenli paylaşın):',
+        adminreset_pw_done: '{name} için parola sıfırlandı — paylaş: {pw}',
+        invite_pw_prompt: 'Tek kullanımlık parola (rastgele oluşturuldu — kullanıcı ilk girişte değiştirmelidir):',
+        // Feature labels — NWB / clusters / predictive (i18n added 2026-05-09)
+        predictive_header: 'Tahmin — dikkat gerektiren varlıklar',
+        geen_assets: 'Varlık yok',
+        eerste_asset: '+ İlk varlığı oluştur',
+        nog_geen_data: 'Henüz veri yok',
+        naar_assets: 'Varlıklara',
+        top_assets_aandacht: 'Dikkat gerektiren en üst varlıklar',
+        genereer_clusters: '⚡ Küme oluştur',
+        csv_importeren: 'CSV içe aktar',
+        asset_aanmaken: 'Varlık oluştur',
+        wegvakken_zoeken_nwb: 'NWB\'de yol bölümleri ara',
+        selecteer_alles: 'Tümünü seç',
+        importeren: 'İçe aktar',
+        start_cluster: '▶️ Kümeyi başlat',
+        cluster_afronden: '✓ Kümeyi tamamla',
+        nog_geen_meldingen: 'Henüz bildirim yok',
       }
     };
 
@@ -3633,6 +3748,25 @@
     }
 
     function translatePage() {
+      // ── Generic data-i18n resolver — schaalt voor nieuwe features zonder
+      //    handmatige querySelectors hieronder. Elke <X data-i18n="key"> krijgt
+      //    automatisch t(key) als textContent. Voor placeholder/title-attrs:
+      //    data-i18n-placeholder / data-i18n-title.
+      document.querySelectorAll('[data-i18n]').forEach(function(el) {
+        var key = el.getAttribute('data-i18n');
+        if (!key) return;
+        var val = t(key);
+        if (val !== key) el.textContent = val;
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el) {
+        var key = el.getAttribute('data-i18n-placeholder');
+        if (key) el.placeholder = t(key);
+      });
+      document.querySelectorAll('[data-i18n-title]').forEach(function(el) {
+        var key = el.getAttribute('data-i18n-title');
+        if (key) el.title = t(key);
+      });
+
       // ── Nav links (top + sidebar) ──
       document.querySelectorAll('[data-page="dashboard"]').forEach(function(el) {
         if (el.querySelector('.icon')) el.innerHTML = el.querySelector('.icon').outerHTML + ' ' + t('dashboard');
@@ -3676,6 +3810,14 @@
       // Sidebar loading text
       var sideLoad = document.getElementById('sidebarLoadingText');
       if (sideLoad && sideLoad.textContent.match(/laden/i)) sideLoad.textContent = t('laden');
+
+      // ── Create-organization modal: password fields ──
+      var orgPwLabel = document.getElementById('orgAdminPasswordLabel');
+      if (orgPwLabel) orgPwLabel.textContent = t('eenmalig_wachtwoord');
+      var orgPwHelp = document.getElementById('orgAdminPasswordHelp');
+      if (orgPwHelp) orgPwHelp.textContent = t('must_change_helper');
+      var orgPwRegen = document.getElementById('orgAdminPasswordRegen');
+      if (orgPwRegen) orgPwRegen.title = t('genereer_pw_btn_title');
 
       // ── Dashboard ──
       var dashSub = document.querySelector('#page-dashboard .page-header p');
@@ -4496,11 +4638,11 @@
     }
     async function adminResetPw(userId, userName) {
       var generated = _genStrongPassword();
-      var pw = prompt('Nieuw wachtwoord voor ' + userName + ' (random gegenereerd, deel veilig):', generated);
+      var pw = prompt(t('adminreset_pw_prompt').replace('{name}', userName), generated);
       if (!pw) return;
       try {
         await api('PUT', '/api/users/' + userId, { password: pw, must_change_password: true });
-        showToast('Wachtwoord gereset voor ' + userName + ' — deel: ' + pw, 'success');
+        showToast(t('adminreset_pw_done').replace('{name}', userName).replace('{pw}', pw), 'success');
       } catch(err) { showToast('Fout: ' + err.message, 'error'); }
     }
     async function adminDeleteUser(userId, userName) {
@@ -4646,7 +4788,7 @@
       if (!firstName) return;
       var lastName = prompt('Achternaam:', '');
       if (!lastName) return;
-      var password = prompt('Eenmalig wachtwoord (random gegenereerd — gebruiker moet dit bij eerste login wijzigen):', _genStrongPassword());
+      var password = prompt(t('invite_pw_prompt'), _genStrongPassword());
       if (!password) return;
 
       // Probeer eerst direct account aanmaken
@@ -7317,12 +7459,12 @@
       var clusterActions = '';
       if (c.status === 'assigned') {
         clusterActions = '<div class="cluster-actions">'
-          + '<button class="primary" onclick="setClusterStatus(\'' + c.id + '\',\'in_progress\')">▶️ Start cluster</button>'
+          + '<button class="primary" onclick="setClusterStatus(\'' + c.id + '\',\'in_progress\')">' + t('start_cluster') + '</button>'
           + '</div>';
       } else if (c.status === 'in_progress') {
         clusterActions = '<div class="cluster-actions">'
           + '<button onclick="setClusterStatus(\'' + c.id + '\',\'assigned\')">⏸️ Pauze</button>'
-          + '<button class="success" onclick="setClusterStatus(\'' + c.id + '\',\'done\')">✓ Cluster afronden</button>'
+          + '<button class="success" onclick="setClusterStatus(\'' + c.id + '\',\'done\')">' + t('cluster_afronden') + '</button>'
           + '</div>';
       }
 
