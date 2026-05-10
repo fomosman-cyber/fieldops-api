@@ -498,8 +498,15 @@ def favicon():
 
 
 @app.get("/")
-def root():
-    """API root — geeft platform-info + links naar documentatie."""
+def root(request: Request):
+    """API root — browsers worden naar /portaal gestuurd; API-clients
+    krijgen een JSON met platform-info + documentatie-links."""
+    # Browser detection via Accept-header: 'text/html' = een browser-tab,
+    # niet een API-call. Stuur ze door naar de portaal-UI.
+    accept = (request.headers.get("accept") or "").lower()
+    if "text/html" in accept:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/portaal", status_code=307)
     return {
         "app": "FieldOps API",
         "category": "Compliance-Native Infrastructure OS",
