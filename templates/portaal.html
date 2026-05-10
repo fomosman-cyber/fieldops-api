@@ -4564,9 +4564,11 @@
       var meldSubmitBtn = document.getElementById('meldingSubmitBtn');
       if (meldSubmitBtn) meldSubmitBtn.textContent = t('melding_aanmaken');
 
-      // Melding form labels
-      var meldFormLabels = document.querySelectorAll('#meldingModal .form-group label');
-      var meldLabelKeys = [t('project'), t('titel'), t('omschrijving'), t('categorie'), t('prioriteit'), t('locatie')];
+      // Melding form labels — array MOET dezelfde lengte+volgorde als labels in DOM
+      // hebben. Volgorde in modal: Project, Asset, Titel, Omschrijving, Categorie,
+      // Prioriteit, daarna CROW-section (eigen sub-labels). null = niet vertalen.
+      var meldFormLabels = document.querySelectorAll('#meldingModal > .modal > form > .form-group > label');
+      var meldLabelKeys = [t('project'), null, t('titel'), t('omschrijving'), t('categorie'), t('prioriteit')];
       meldFormLabels.forEach(function(lbl, i) { if (meldLabelKeys[i]) lbl.textContent = meldLabelKeys[i]; });
 
       // Melding form placeholders
@@ -6251,29 +6253,89 @@
       }
     }
 
-    function openMeldingModal() {
+    // Edit-mode tracker. Null = nieuwe melding (POST). String id = bestaande
+    // melding bewerken (PATCH). Het melding-modal gebruikt zelfde DOM voor beide.
+    var editingMeldingId = null;
+
+    function openMeldingModal(meldingId) {
+      // Reset of edit-pre-fill
+      var titleEl = document.querySelector('#meldingModal h2');
+      var submitBtn = document.getElementById('meldingSubmitBtn');
+      editingMeldingId = meldingId || null;
+      var isEdit = !!editingMeldingId;
+      if (titleEl) titleEl.textContent = isEdit ? 'Melding bewerken' : 'Nieuwe Melding';
+      if (submitBtn) submitBtn.textContent = isEdit ? 'Wijzigingen opslaan' : 'Melding aanmaken';
+
       document.getElementById('meldingModal').classList.add('active');
-      // Always refresh projects to ensure dropdown is filled
+
       api('GET', '/api/projects/').then(function(p) {
         allProjects = p || [];
         updateProjectFilter();
-        updateMeldingCategories();
-        // Assets opnieuw laden als er een project is geselecteerd
-        if (document.getElementById('meldingProject').value) loadAssetsForMelding();
+
+        if (isEdit) {
+          var m = (allMeldingen || []).find(function(x){ return x.id === meldingId; });
+          if (!m) return;
+          // Vul velden vanuit bestaande melding
+          document.getElementById('meldingTitle').value = m.title || '';
+          document.getElementById('meldingDesc').value = m.description || '';
+          document.getElementById('meldingProject').value = m.project_id || '';
+          document.getElementById('meldingPriority').value = m.priority || 'normaal';
+          document.getElementById('meldingLat').value = m.lat != null ? m.lat : '';
+          document.getElementById('meldingLng').value = m.lng != null ? m.lng : '';
+          updateMeldingCategories();
+          setTimeout(function(){
+            var catSel = document.getElementById('meldingCategory');
+            if (catSel && m.category) catSel.value = m.category;
+          }, 50);
+          if (m.project_id) loadAssetsForMelding(m.asset_id);
+          // CROW/NEN herstellen
+          var crowFields = {
+            crowSchadegroep: m.crow_schadegroep,
+            crowSchadebeeld: m.crow_schadebeeld,
+            crowErnst: m.crow_ernst,
+            crowOmvang: m.crow_omvang,
+            crowNenConditie: m.nen_2767_conditie,
+          };
+          if (crowFields.crowSchadegroep) {
+            var sg = document.getElementById('crowSchadegroep');
+            if (sg) { sg.value = crowFields.crowSchadegroep; onCrowSchadegroepChange(); }
+          }
+          setTimeout(function(){
+            Object.keys(crowFields).forEach(function(id){
+              var el = document.getElementById(id);
+              if (el && crowFields[id] != null) el.value = crowFields[id];
+            });
+            if (typeof updateCrowKlasse === 'function') updateCrowKlasse();
+          }, 60);
+        } else {
+          updateMeldingCategories();
+          if (document.getElementById('meldingProject').value) loadAssetsForMelding();
+        }
       }).catch(function(){});
-      // Foto / AI-state schoonmaken zodat een vorige sessie geen restjes laat staan
-      if (typeof resetMeldingPhotoState === 'function') resetMeldingPhotoState();
-      // Auto-fill GPS location immediately
-      autoFillGPS();
+
+      if (!isEdit) {
+        if (typeof resetMeldingPhotoState === 'function') resetMeldingPhotoState();
+        autoFillGPS();
+      }
     }
     function closeMeldingModal() {
       document.getElementById('meldingModal').classList.remove('active');
+      editingMeldingId = null;
     }
 
     // ── Melding Detail ──
     var currentDetailMeldingId = null;
 
     function openMeldingDetail(id) {
+      // Sinds 2026-05: gebruik de uitgebreide melding-modal (zelfde velden
+      // als bij nieuwe melding) ipv de oude beperkte detail-modal. Dit
+      // garandeert dat edit-form gelijk is aan create-form, inclusief CROW
+      // + NEN-2767 classificatie + asset-koppeling + auto-advies.
+      openMeldingModal(id);
+      return;
+    }
+
+    function _legacyOpenMeldingDetail(id) {
       currentDetailMeldingId = id;
       var m = allMeldingen.find(function(x){return x.id===id;});
       if (!m) { showToast(t('melding_niet_gevonden'),'error'); return; }
@@ -7179,29 +7241,34 @@
         resetMeldingPhotoState();
       }
 
+      // Edit-mode? -> PATCH bestaande melding. Anders POST nieuwe.
+      var isEdit = !!editingMeldingId;
+      var method = isEdit ? 'PATCH' : 'POST';
+      var url = isEdit ? ('/api/meldingen/' + editingMeldingId) : '/api/meldingen/';
+
       // Offline? → direct in IndexedDB-queue, sync zodra online
       if (!navigator.onLine) {
-        queueRequest('POST', '/api/meldingen/', payload).then(function() {
-          showToast('📥 Offline — melding bewaard, syncen zodra je online bent', 'warning');
+        queueRequest(method, url, payload).then(function() {
+          showToast('📥 Offline — wijziging bewaard, syncen zodra je online bent', 'warning');
           resetForm();
         }).catch(function(err) {
           showToast('Queue-fout: '+err.message, 'error');
         }).finally(function() {
-          btn.textContent = t('melding_aanmaken');
+          btn.textContent = isEdit ? 'Wijzigingen opslaan' : t('melding_aanmaken');
           btn.disabled = false;
         });
         return;
       }
 
-      api('POST', '/api/meldingen/', payload).then(function(melding) {
-        showToast(t('melding_aangemaakt'), 'success');
+      api(method, url, payload).then(function(melding) {
+        showToast(isEdit ? 'Melding bijgewerkt' : t('melding_aangemaakt'), 'success');
         resetForm();
         loadMeldingen();
         loadDashboardStats();
         if (map) loadMapData();
       }).catch(function(err) {
-        // Network-error → fallback queue
-        if (err.message && /network|fetch|failed/i.test(err.message)) {
+        // Network-error → fallback queue (alleen voor POST; PATCH is per-id risky)
+        if (err.message && /network|fetch|failed/i.test(err.message) && !isEdit) {
           queueRequest('POST', '/api/meldingen/', payload).then(function() {
             showToast('📥 Verbinding verloren — melding bewaard voor latere sync', 'warning');
             resetForm();
@@ -7210,7 +7277,7 @@
           showToast(err.message, 'error');
         }
       }).finally(function() {
-        btn.textContent = t('melding_aanmaken');
+        btn.textContent = isEdit ? 'Wijzigingen opslaan' : t('melding_aanmaken');
         btn.disabled = false;
       });
     }
