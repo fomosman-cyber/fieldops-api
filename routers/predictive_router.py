@@ -3,6 +3,7 @@
   GET /api/predictive/at-risk             top-N assets boven een drempel
   GET /api/predictive/asset/{asset_id}    risicoscore + rationale voor één asset
   GET /api/predictive/summary             distributie over band + asset-type
+  GET /api/predictive/clusters            geografische meldingen-clusters (wijk-alerts)
 """
 
 from typing import Optional
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Asset, User
 from auth import get_current_user
-from predictive import compute_asset_risk, list_at_risk
+from predictive import compute_asset_risk, list_at_risk, find_geo_clusters
 
 router = APIRouter(prefix="/api/predictive", tags=["Predictive Maintenance"])
 
@@ -65,3 +66,27 @@ def summary(
         "bands": bands,
         "by_asset_type": by_type,
     }
+
+
+@router.get("/clusters")
+def clusters(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    window_days: int = Query(30, ge=7, le=180),
+    radius_m: int = Query(200, ge=50, le=2000),
+    min_count: int = Query(3, ge=2, le=20),
+):
+    """Geografische meldingen-clusters in een tijdvenster.
+
+    Toont wijken/straten waar meerdere meldingen samenkomen — typisch een
+    signaal voor onderliggend infra-probleem (verzakking, slechte fundering,
+    mast-corrosie). Per-asset-scores missen dit type signaal omdat zij elk
+    afzonderlijk niet boven de drempel uitkomen.
+
+    Output gesorteerd op cluster-grootte (groot eerst) zodat het ergste
+    bovenaan staat in de dashboard-lijst.
+    """
+    return find_geo_clusters(
+        db, current_user.organization_id,
+        window_days=window_days, radius_m=radius_m, min_count=min_count,
+    )

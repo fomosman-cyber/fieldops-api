@@ -3,11 +3,16 @@
 Output: integer 0-100 + "rationale" — een lijstje feiten die de score onderbouwen.
 Bewust regelgebaseerd in v0: een controllable, uitlegbare baseline.
 
-Vier factoren in v2.0-crow, gewogen naar 100:
+Vier kerncomponenten (gewogen naar 100):
 - leeftijd-fractie van verwachte levensduur (max 25 punten)
 - NEN-conditiescore 1-5 (max 25 punten)
 - ergste CROW-klasse (L1..E3) op recente meldingen (max 30 punten)
 - meldingen-historie laatste 12 maanden (max 20 punten)
+
+v2.1-trend toevoegingen:
+- trend-bonus (max 10 punten, na cap) — meldingen-frequentie 90d vs voorgaand 90d
+- confidence (0.0-1.0) — gebaseerd op data-completeness, niet op modelvertrouwen
+- geo_cluster_signal — meldingen-density rond dit asset, voorzichtig signaleren
 
 Compliance/transparantie: rationale is een list[str] met menselijke regels —
 direct toonbaar in de UI naast de score.
@@ -16,6 +21,7 @@ direct toonbaar in de UI naast de score.
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
 from typing import Optional
+import math
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 
@@ -23,13 +29,18 @@ from models import Asset, Melding
 from crow_kosten import klasse_to_risk_points, KLASSE_RISK_POINTS
 
 
-SCORE_VERSION = "v2.0-crow"
+SCORE_VERSION = "v2.1-trend"
 
-# Wegingen 100 totaal
+# Basis-wegingen (totaal 100)
 W_AGE = 25
 W_CONDITION = 25
 W_CROW = 30
 W_MELDINGEN = 20
+
+# Trend-bonus — bovenop de basis 100, daarna gecapt op 100. Werkt als een
+# "amplifier" op assets die er al matig voor staan en een verslechterende
+# trend laten zien, zonder de schaal compleet te herwegen.
+W_TREND_MAX = 10
 
 
 def _age_fraction(asset: Asset, now: datetime) -> Optional[float]:
@@ -99,6 +110,127 @@ def _crow_points(klasse: Optional[str]) -> int:
     return int(round(raw / 48 * W_CROW))
 
 
+def _melding_trend(db: Session, asset_id: str, now: datetime) -> tuple[int, int, int]:
+    """Vergelijk meldingen-frequentie laatste 90d vs daarvoor 90d.
+
+    Return (recent_count, prior_count, trend_pts) — waar trend_pts 0..W_TREND_MAX is.
+
+    Logica: als recent significant hoger ligt dan prior (gebruiken een ratio),
+    dan is er een verslechterende trend. Een asset met 1→1 meldingen scoort 0;
+    een asset met 1→4 (4x) krijgt een paar punten; 0→3 ook (uit het niets).
+    """
+    cutoff_recent = now - timedelta(days=90)
+    cutoff_prior = now - timedelta(days=180)
+
+    recent = db.query(func.count(Melding.id)).filter(
+        Melding.asset_id == asset_id,
+        Melding.created_at >= cutoff_recent,
+    ).scalar() or 0
+    prior = db.query(func.count(Melding.id)).filter(
+        Melding.asset_id == asset_id,
+        Melding.created_at >= cutoff_prior,
+        Melding.created_at < cutoff_recent,
+    ).scalar() or 0
+
+    recent = int(recent)
+    prior = int(prior)
+
+    # Geen data — geen trend
+    if recent == 0:
+        return recent, prior, 0
+
+    # Uit-het-niets-uitbarsting: prior=0, recent>0 → schaal op recent
+    if prior == 0:
+        # 1 melding alleen is geen trend, 2+ wel
+        return recent, prior, min(W_TREND_MAX, max(0, (recent - 1) * 3))
+
+    # Ratio-gebaseerde stijging
+    ratio = recent / prior
+    if ratio <= 1.2:
+        return recent, prior, 0
+    if ratio <= 2.0:
+        return recent, prior, 4
+    if ratio <= 3.0:
+        return recent, prior, 7
+    return recent, prior, W_TREND_MAX
+
+
+def _confidence(asset: Asset, *, has_meldingen: bool, has_crow_classification: bool) -> float:
+    """Heuristische confidence — hoeveel van de 4 input-bronnen ingevuld zijn.
+
+    Dit is *data-completeness*, niet model-vertrouwen. Een score van 0.25 zegt:
+    "we hebben maar 1 van de 4 datapunten waar deze score op rust, neem 'm
+    met een korreltje zout." Helpt admins prioriteren waar ze data moeten
+    aanvullen.
+    """
+    parts = [
+        asset.installed_at is not None and asset.expected_lifespan_years is not None,
+        asset.condition_score is not None,
+        has_meldingen,
+        has_crow_classification,
+    ]
+    return round(sum(1 for p in parts if p) / len(parts), 2)
+
+
+def _geo_cluster_signal(db: Session, asset: Asset, now: datetime,
+                        radius_m: int = 200, window_days: int = 30) -> Optional[dict]:
+    """Tel meldingen binnen radius+window rond dit asset (excl. asset's eigen
+    meldingen). Een hoge density wijst op buurt-brede problemen die een
+    enkele asset-score niet vangt — bv. een straat met scheurvorming over
+    meerdere wegvakken.
+
+    Output is een signaal, geen score-bonus — bewust gescheiden zodat de
+    asset-score niet stijgt door problemen op de buren.
+    """
+    if asset.lat is None or asset.lng is None:
+        return None
+    cutoff = now - timedelta(days=window_days)
+    # Bounding-box-prefilter (snel met index op organization_id),
+    # daarna haversine-filter in Python. Voor een Render Starter-tier DB met
+    # max ~10k meldingen/org acceptabel; bij grotere volumes kan dit naar
+    # PostGIS verhuizen.
+    deg_per_m_lat = 1 / 111_320  # ~constant
+    deg_per_m_lng = 1 / (111_320 * max(0.01, math.cos(math.radians(asset.lat))))
+    box_lat = radius_m * deg_per_m_lat * 1.2  # 20% marge voor box-vs-cirkel
+    box_lng = radius_m * deg_per_m_lng * 1.2
+
+    candidates = db.query(Melding).filter(
+        Melding.organization_id == asset.organization_id,
+        Melding.asset_id != asset.id,
+        Melding.created_at >= cutoff,
+        Melding.lat.isnot(None), Melding.lng.isnot(None),
+        Melding.lat.between(asset.lat - box_lat, asset.lat + box_lat),
+        Melding.lng.between(asset.lng - box_lng, asset.lng + box_lng),
+    ).all()
+
+    nearby = [m for m in candidates if _haversine_m(asset.lat, asset.lng, m.lat, m.lng) <= radius_m]
+    if not nearby:
+        return None
+
+    # Hottest klasse in de buurt (zelfde ranking als _worst_crow_klasse)
+    classified = [m.crow_klasse for m in nearby if m.crow_klasse in KLASSE_RISK_POINTS]
+    hottest = max(classified, key=klasse_to_risk_points) if classified else None
+
+    return {
+        "nearby_count": len(nearby),
+        "radius_m": radius_m,
+        "window_days": window_days,
+        "hottest_klasse": hottest,
+    }
+
+
+def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Geodetische afstand in meters tussen twee WGS84-punten. Bedoeld voor
+    radius-checks tot enkele kilometers — voor langere afstanden zou je
+    Vincenty willen, maar dat is hier overkill."""
+    R = 6_371_000  # aardstraal in meters
+    lat1r = math.radians(lat1); lat2r = math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = math.sin(dlat/2)**2 + math.cos(lat1r)*math.cos(lat2r)*math.sin(dlng/2)**2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
 def compute_asset_risk(db: Session, asset: Asset) -> dict:
     """Bereken risicoscore + uitleg. Werkt op één asset."""
     now = datetime.now(timezone.utc)
@@ -150,8 +282,18 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
         sev = f", waarvan {severe_m} hoog/kritiek" if severe_m else ""
         rationale.append(f"{total_m} meldingen in afgelopen 12 mnd{sev} — +{mel_pts} pt.")
 
-    score = age_pts + cond_pts + crow_pts + mel_pts
-    score = max(0, min(100, score))
+    base_score = age_pts + cond_pts + crow_pts + mel_pts
+    base_score = max(0, min(100, base_score))
+
+    # Trend-bonus (v2.1) — voegt toe bovenop base, maar wordt na cap niet boven 100.
+    recent_m, prior_m, trend_pts = _melding_trend(db, asset.id, now)
+    if trend_pts > 0:
+        rationale.append(
+            f"Toenemende meldingstrend ({prior_m}→{recent_m} in voorgaande 90d "
+            f"vs laatste 90d) — +{trend_pts} pt."
+        )
+
+    score = max(0, min(100, base_score + trend_pts))
 
     # Bandbepaling — drempels iets aangescherpt voor CROW-aware schaal
     if score >= 65:
@@ -164,18 +306,40 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
         band = "laag"
         recommendation = "Geen acute actie nodig; volg reguliere CROW-jaarcyclus."
 
+    confidence = _confidence(
+        asset,
+        has_meldingen=(total_m > 0),
+        has_crow_classification=(worst_klasse is not None),
+    )
+
+    geo_signal = _geo_cluster_signal(db, asset, now)
+    if geo_signal:
+        rationale.append(
+            f"{geo_signal['nearby_count']} meldingen binnen "
+            f"{geo_signal['radius_m']}m laatste {geo_signal['window_days']}d "
+            f"(buurt-signaal, geen score-effect)."
+        )
+
     return {
         "asset_id": asset.id,
         "asset_code": asset.code,
         "asset_type": asset.asset_type,
         "score": score,
         "band": band,
+        "confidence": confidence,
         "components": {
             "age": age_pts,
             "condition": cond_pts,
             "crow": crow_pts,
             "meldingen": mel_pts,
+            "trend": trend_pts,
         },
+        "trend": {
+            "recent_90d": recent_m,
+            "prior_90d": prior_m,
+            "points": trend_pts,
+        },
+        "geo_cluster": geo_signal,
         "worst_crow_klasse": worst_klasse,
         "rationale": rationale,
         "recommendation": recommendation,
@@ -200,3 +364,70 @@ def list_at_risk(db: Session, organization_id: str, *,
     results = [r for r in results if r["score"] >= min_score]
     results.sort(key=lambda r: r["score"], reverse=True)
     return results[:limit]
+
+
+def find_geo_clusters(db: Session, organization_id: str, *,
+                      window_days: int = 30,
+                      radius_m: int = 200,
+                      min_count: int = 3) -> list[dict]:
+    """Vind groepen meldingen die geografisch dicht bij elkaar liggen binnen
+    een tijdvenster — wijk-brede problemen die per-asset-scoring mist.
+
+    Greedy clustering: pak een ongeziene melding als seed, verzamel alle nog
+    ongeziene meldingen binnen `radius_m`, dat is één cluster. Herhaal tot er
+    geen seeds meer over zijn. Niet optimaal qua centroid maar uitlegbaar en
+    deterministisch — voldoende voor een ops-dashboard.
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=window_days)
+    meldingen = db.query(Melding).filter(
+        Melding.organization_id == organization_id,
+        Melding.created_at >= cutoff,
+        Melding.lat.isnot(None), Melding.lng.isnot(None),
+    ).all()
+
+    seen: set[str] = set()
+    clusters: list[dict] = []
+
+    for seed in meldingen:
+        if seed.id in seen:
+            continue
+        members = [seed]
+        seen.add(seed.id)
+        for m in meldingen:
+            if m.id in seen:
+                continue
+            if _haversine_m(seed.lat, seed.lng, m.lat, m.lng) <= radius_m:
+                members.append(m)
+                seen.add(m.id)
+        if len(members) < min_count:
+            continue
+
+        avg_lat = sum(m.lat for m in members) / len(members)
+        avg_lng = sum(m.lng for m in members) / len(members)
+        classified = [m.crow_klasse for m in members if m.crow_klasse in KLASSE_RISK_POINTS]
+        hottest = max(classified, key=klasse_to_risk_points) if classified else None
+
+        # Bepaal severity-band aan de hand van hottest klasse + count
+        if hottest and hottest[0] == "E":
+            severity = "hoog"
+        elif hottest and hottest[0] == "M":
+            severity = "matig"
+        elif len(members) >= min_count + 3:
+            severity = "matig"
+        else:
+            severity = "laag"
+
+        clusters.append({
+            "center_lat": round(avg_lat, 6),
+            "center_lng": round(avg_lng, 6),
+            "count": len(members),
+            "radius_m": radius_m,
+            "window_days": window_days,
+            "hottest_klasse": hottest,
+            "severity": severity,
+            "asset_ids": sorted({m.asset_id for m in members if m.asset_id}),
+            "melding_ids": [m.id for m in members],
+        })
+
+    clusters.sort(key=lambda c: (c["count"], c["hottest_klasse"] or ""), reverse=True)
+    return clusters
