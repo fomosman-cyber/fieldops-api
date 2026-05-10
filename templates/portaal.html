@@ -1951,6 +1951,7 @@
         <button class="int-tab active" data-tab="hooks-out" onclick="switchIntegrationTab('hooks-out')">📤 Webhooks (uit)</button>
         <button class="int-tab" data-tab="hooks-in" onclick="switchIntegrationTab('hooks-in')">📥 Sensoren (IoT in)</button>
         <button class="int-tab" data-tab="audit" onclick="switchIntegrationTab('audit')">📜 Audit-log</button>
+        <button class="int-tab" data-tab="failed-logins" onclick="switchIntegrationTab('failed-logins')" data-i18n="failed_logins_tab">🚫 Login-pogingen</button>
       </div>
 
       <!-- Tab 1: Outgoing webhooks -->
@@ -2005,6 +2006,88 @@
         </div>
         <div style="text-align:center;margin-top:16px;">
           <button class="btn-secondary" id="auditMoreBtn" onclick="loadAuditLog(false)" style="display:none;">Meer laden</button>
+        </div>
+      </div>
+
+      <!-- Tab 4: Failed-login monitor -->
+      <div class="int-tab-content" id="int-tab-failed-logins" style="display:none;">
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px;">
+          <p style="color:var(--text-muted);font-size:13px;margin:0;flex:1;min-width:300px;" data-i18n="failed_logins_intro">Mislukte login-pogingen tegen accounts in deze organisatie. Gebruikt dezelfde data als de brute-force-bescherming — handig om aanvallen vroeg te zien en (legitieme) gebruikers met wachtwoord-issues te helpen.</p>
+          <select id="flWindow" onchange="loadFailedLogins()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+            <option value="15" data-i18n="fl_window_15m">Laatste 15 min</option>
+            <option value="60" selected data-i18n="fl_window_1h">Laatste uur</option>
+            <option value="360" data-i18n="fl_window_6h">Laatste 6 uur</option>
+            <option value="1440" data-i18n="fl_window_24h">Laatste 24 uur</option>
+          </select>
+          <button class="btn-secondary" onclick="loadFailedLogins()" style="font-size:12px;padding:6px 12px;" data-i18n="vernieuwen">↻ Vernieuwen</button>
+        </div>
+
+        <!-- Stat-tegels -->
+        <div id="flStats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px;">
+          <div class="card" style="padding:14px;">
+            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;" data-i18n="fl_stat_attempts">Mislukte pogingen</div>
+            <div id="flStatAttempts" style="font-size:28px;font-weight:700;color:var(--text);margin-top:4px;">—</div>
+          </div>
+          <div class="card" style="padding:14px;">
+            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;" data-i18n="fl_stat_emails">Unieke accounts</div>
+            <div id="flStatEmails" style="font-size:28px;font-weight:700;color:var(--text);margin-top:4px;">—</div>
+          </div>
+          <div class="card" style="padding:14px;">
+            <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;" data-i18n="fl_stat_ips">Unieke IP-adressen</div>
+            <div id="flStatIps" style="font-size:28px;font-weight:700;color:var(--text);margin-top:4px;">—</div>
+          </div>
+        </div>
+
+        <!-- Top emails / Top IPs naast elkaar -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:16px;margin-bottom:20px;">
+          <div>
+            <h3 style="margin:0 0 10px;font-size:14px;color:var(--text-muted);" data-i18n="fl_top_emails">Top accounts</h3>
+            <div class="card" style="overflow-x:auto;padding:0;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="fl_col_email">E-mail</th>
+                    <th style="text-align:right;" data-i18n="fl_col_attempts">Pogingen</th>
+                    <th style="text-align:right;" data-i18n="fl_col_ip_count">IPs</th>
+                    <th style="width:160px;" data-i18n="fl_col_last">Laatst</th>
+                  </tr>
+                </thead>
+                <tbody id="flTopEmailsBody"><tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-dim);">—</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <h3 style="margin:0 0 10px;font-size:14px;color:var(--text-muted);" data-i18n="fl_top_ips">Top IP-adressen</h3>
+            <div class="card" style="overflow-x:auto;padding:0;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th data-i18n="fl_col_ip">IP</th>
+                    <th style="text-align:right;" data-i18n="fl_col_attempts">Pogingen</th>
+                    <th style="text-align:right;" data-i18n="fl_col_email_count">Accounts</th>
+                    <th style="width:160px;" data-i18n="fl_col_last">Laatst</th>
+                  </tr>
+                </thead>
+                <tbody id="flTopIpsBody"><tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-dim);">—</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recente events -->
+        <h3 style="margin:0 0 10px;font-size:14px;color:var(--text-muted);" data-i18n="fl_recent">Recente pogingen</h3>
+        <div class="card" style="overflow-x:auto;padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:170px;" data-i18n="fl_col_when">Wanneer</th>
+                <th data-i18n="fl_col_email">E-mail</th>
+                <th data-i18n="fl_col_ip">IP</th>
+                <th data-i18n="fl_col_reason">Reden</th>
+              </tr>
+            </thead>
+            <tbody id="flRecentBody"><tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-dim);">—</td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -2948,6 +3031,30 @@
         erasure_confirm_2: 'Typ WIS in hoofdletters om te bevestigen:',
         erasure_done: 'Uw account is verwijderd. U wordt uitgelogd...',
         erasure_failed: 'Verwijderen mislukt:',
+        failed_logins_tab: '🚫 Login-pogingen',
+        failed_logins_intro: 'Mislukte login-pogingen tegen accounts in deze organisatie. Gebruikt dezelfde data als de brute-force-bescherming — handig om aanvallen vroeg te zien en (legitieme) gebruikers met wachtwoord-issues te helpen.',
+        fl_window_15m: 'Laatste 15 min',
+        fl_window_1h: 'Laatste uur',
+        fl_window_6h: 'Laatste 6 uur',
+        fl_window_24h: 'Laatste 24 uur',
+        fl_stat_attempts: 'Mislukte pogingen',
+        fl_stat_emails: 'Unieke accounts',
+        fl_stat_ips: 'Unieke IP-adressen',
+        fl_top_emails: 'Top accounts',
+        fl_top_ips: 'Top IP-adressen',
+        fl_col_email: 'E-mail',
+        fl_col_ip: 'IP',
+        fl_col_attempts: 'Pogingen',
+        fl_col_ip_count: 'IPs',
+        fl_col_email_count: 'Accounts',
+        fl_col_last: 'Laatst',
+        fl_col_when: 'Wanneer',
+        fl_col_reason: 'Reden',
+        fl_recent: 'Recente pogingen',
+        fl_blocked: 'GEBLOKKEERD',
+        fl_none: 'Geen mislukte pogingen in dit venster.',
+        fl_reason_invalid_credentials: 'Onjuist wachtwoord',
+        fl_reason_deactivated: 'Account inactief',
       },
       en: {
         dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
@@ -3168,6 +3275,30 @@
         erasure_confirm_2: 'Type DELETE in capitals to confirm:',
         erasure_done: 'Your account has been deleted. Logging you out...',
         erasure_failed: 'Deletion failed:',
+        failed_logins_tab: '🚫 Login attempts',
+        failed_logins_intro: 'Failed login attempts against accounts in this organisation. Uses the same data as the brute-force protection — useful for spotting attacks early and helping (legitimate) users with password issues.',
+        fl_window_15m: 'Last 15 min',
+        fl_window_1h: 'Last hour',
+        fl_window_6h: 'Last 6 hours',
+        fl_window_24h: 'Last 24 hours',
+        fl_stat_attempts: 'Failed attempts',
+        fl_stat_emails: 'Unique accounts',
+        fl_stat_ips: 'Unique IP addresses',
+        fl_top_emails: 'Top accounts',
+        fl_top_ips: 'Top IP addresses',
+        fl_col_email: 'Email',
+        fl_col_ip: 'IP',
+        fl_col_attempts: 'Attempts',
+        fl_col_ip_count: 'IPs',
+        fl_col_email_count: 'Accounts',
+        fl_col_last: 'Last',
+        fl_col_when: 'When',
+        fl_col_reason: 'Reason',
+        fl_recent: 'Recent attempts',
+        fl_blocked: 'BLOCKED',
+        fl_none: 'No failed attempts in this window.',
+        fl_reason_invalid_credentials: 'Wrong password',
+        fl_reason_deactivated: 'Account inactive',
       },
       de: {
         dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
@@ -3388,6 +3519,30 @@
         erasure_confirm_2: 'Geben Sie LOESCHEN in Großbuchstaben ein, um zu bestätigen:',
         erasure_done: 'Ihr Konto wurde gelöscht. Sie werden abgemeldet...',
         erasure_failed: 'Löschen fehlgeschlagen:',
+        failed_logins_tab: '🚫 Login-Versuche',
+        failed_logins_intro: 'Fehlgeschlagene Login-Versuche gegen Konten in dieser Organisation. Nutzt dieselben Daten wie der Brute-Force-Schutz — hilfreich, um Angriffe früh zu erkennen und (legitime) Nutzer mit Passwortproblemen zu unterstützen.',
+        fl_window_15m: 'Letzte 15 Min',
+        fl_window_1h: 'Letzte Stunde',
+        fl_window_6h: 'Letzte 6 Stunden',
+        fl_window_24h: 'Letzte 24 Stunden',
+        fl_stat_attempts: 'Fehlgeschlagene Versuche',
+        fl_stat_emails: 'Eindeutige Konten',
+        fl_stat_ips: 'Eindeutige IP-Adressen',
+        fl_top_emails: 'Top-Konten',
+        fl_top_ips: 'Top-IP-Adressen',
+        fl_col_email: 'E-Mail',
+        fl_col_ip: 'IP',
+        fl_col_attempts: 'Versuche',
+        fl_col_ip_count: 'IPs',
+        fl_col_email_count: 'Konten',
+        fl_col_last: 'Zuletzt',
+        fl_col_when: 'Wann',
+        fl_col_reason: 'Grund',
+        fl_recent: 'Letzte Versuche',
+        fl_blocked: 'GESPERRT',
+        fl_none: 'Keine fehlgeschlagenen Versuche in diesem Zeitraum.',
+        fl_reason_invalid_credentials: 'Falsches Passwort',
+        fl_reason_deactivated: 'Konto inaktiv',
       },
       fr: {
         dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
@@ -3608,6 +3763,30 @@
         erasure_confirm_2: 'Tapez SUPPRIMER en majuscules pour confirmer :',
         erasure_done: 'Votre compte a été supprimé. Déconnexion en cours...',
         erasure_failed: 'Échec de la suppression :',
+        failed_logins_tab: '🚫 Tentatives de connexion',
+        failed_logins_intro: 'Tentatives de connexion échouées contre des comptes de cette organisation. Utilise les mêmes données que la protection contre les attaques par force brute — utile pour détecter les attaques tôt et aider les utilisateurs (légitimes) qui ont des problèmes de mot de passe.',
+        fl_window_15m: 'Dernières 15 min',
+        fl_window_1h: 'Dernière heure',
+        fl_window_6h: 'Dernières 6 heures',
+        fl_window_24h: 'Dernières 24 heures',
+        fl_stat_attempts: 'Tentatives échouées',
+        fl_stat_emails: 'Comptes uniques',
+        fl_stat_ips: 'Adresses IP uniques',
+        fl_top_emails: 'Top comptes',
+        fl_top_ips: 'Top adresses IP',
+        fl_col_email: 'E-mail',
+        fl_col_ip: 'IP',
+        fl_col_attempts: 'Tentatives',
+        fl_col_ip_count: 'IPs',
+        fl_col_email_count: 'Comptes',
+        fl_col_last: 'Dernière',
+        fl_col_when: 'Quand',
+        fl_col_reason: 'Motif',
+        fl_recent: 'Tentatives récentes',
+        fl_blocked: 'BLOQUÉ',
+        fl_none: 'Aucune tentative échouée dans cette fenêtre.',
+        fl_reason_invalid_credentials: 'Mot de passe incorrect',
+        fl_reason_deactivated: 'Compte inactif',
       },
       tr: {
         dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
@@ -3828,6 +4007,30 @@
         erasure_confirm_2: 'Onaylamak için büyük harflerle SIL yazın:',
         erasure_done: 'Hesabınız silindi. Çıkış yapılıyor...',
         erasure_failed: 'Silme başarısız:',
+        failed_logins_tab: '🚫 Giriş denemeleri',
+        failed_logins_intro: 'Bu kuruluştaki hesaplara yapılan başarısız giriş denemeleri. Kaba kuvvet korumasıyla aynı verileri kullanır — saldırıları erken görmek ve şifre sorunu olan (meşru) kullanıcılara yardımcı olmak için yararlıdır.',
+        fl_window_15m: 'Son 15 dk',
+        fl_window_1h: 'Son saat',
+        fl_window_6h: 'Son 6 saat',
+        fl_window_24h: 'Son 24 saat',
+        fl_stat_attempts: 'Başarısız denemeler',
+        fl_stat_emails: 'Benzersiz hesaplar',
+        fl_stat_ips: 'Benzersiz IP adresleri',
+        fl_top_emails: 'En çok denenen hesaplar',
+        fl_top_ips: 'En çok denenen IP\'ler',
+        fl_col_email: 'E-posta',
+        fl_col_ip: 'IP',
+        fl_col_attempts: 'Deneme',
+        fl_col_ip_count: 'IP',
+        fl_col_email_count: 'Hesap',
+        fl_col_last: 'Son',
+        fl_col_when: 'Zaman',
+        fl_col_reason: 'Sebep',
+        fl_recent: 'Son denemeler',
+        fl_blocked: 'ENGELLENDİ',
+        fl_none: 'Bu zaman aralığında başarısız deneme yok.',
+        fl_reason_invalid_credentials: 'Yanlış şifre',
+        fl_reason_deactivated: 'Hesap pasif',
       }
     };
 
@@ -8354,6 +8557,7 @@
       if (tab === 'hooks-out') loadWebhooksOut();
       if (tab === 'hooks-in') loadIncomingHooks();
       if (tab === 'audit') { loadAuditActions(); loadAuditLog(true); }
+      if (tab === 'failed-logins') loadFailedLogins();
     }
 
     function loadIntegrations() {
@@ -8713,6 +8917,118 @@
     function showAuditDetail(item) {
       document.getElementById('auditDetailBody').textContent = JSON.stringify(item, null, 2);
       document.getElementById('auditDetailModal').classList.add('active');
+    }
+
+    // ── Failed-login monitor ──
+    // Aggregeert auth.login.failed events uit het audit-log via /api/audit/failed-logins.
+    // Bedoeld om brute-force-patterns vroeg zichtbaar te maken voor admins.
+
+    function _flFmtWhen(iso) {
+      if (!iso) return '—';
+      try { return new Date(iso).toLocaleString(); } catch(e) { return iso; }
+    }
+
+    function _flReasonLabel(reason) {
+      if (!reason) return '—';
+      var key = 'fl_reason_' + reason;
+      var translated = (typeof t === 'function') ? t(key) : null;
+      // t() valt terug op de key zelf als er geen vertaling is — dan tonen we de raw reason
+      if (!translated || translated === key) return reason;
+      return translated;
+    }
+
+    function _flBlockedBadge() {
+      var label = (typeof t === 'function') ? t('fl_blocked') : 'GEBLOKKEERD';
+      if (!label || label === 'fl_blocked') label = 'GEBLOKKEERD';
+      return ' <span style="display:inline-block;padding:1px 6px;background:#dc2626;color:#fff;border-radius:4px;font-size:10px;font-weight:700;letter-spacing:0.3px;">' + escapeHtml(label) + '</span>';
+    }
+
+    function loadFailedLogins() {
+      var win = document.getElementById('flWindow').value || '60';
+      var statsAtt = document.getElementById('flStatAttempts');
+      var statsEm = document.getElementById('flStatEmails');
+      var statsIp = document.getElementById('flStatIps');
+      var emailsBody = document.getElementById('flTopEmailsBody');
+      var ipsBody = document.getElementById('flTopIpsBody');
+      var recentBody = document.getElementById('flRecentBody');
+
+      statsAtt.textContent = '…'; statsEm.textContent = '…'; statsIp.textContent = '…';
+      var loadingMsg = (typeof t === 'function') ? t('laden') : 'Laden...';
+      if (loadingMsg === 'laden') loadingMsg = 'Laden...';
+      var loadingRow = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-dim);">' + escapeHtml(loadingMsg) + '</td></tr>';
+      emailsBody.innerHTML = loadingRow;
+      ipsBody.innerHTML = loadingRow;
+      recentBody.innerHTML = loadingRow;
+
+      api('GET', '/api/audit/failed-logins?window_minutes=' + encodeURIComponent(win))
+        .then(function(res) {
+          var totals = res.totals || {attempts:0, distinct_emails:0, distinct_ips:0};
+          statsAtt.textContent = totals.attempts;
+          statsEm.textContent = totals.distinct_emails;
+          statsIp.textContent = totals.distinct_ips;
+
+          // Top emails
+          var emails = res.top_emails || [];
+          if (!emails.length) {
+            var noneMsg = (typeof t === 'function') ? t('fl_none') : 'Geen mislukte pogingen in dit venster.';
+            if (noneMsg === 'fl_none') noneMsg = 'Geen mislukte pogingen in dit venster.';
+            emailsBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-dim);">' + escapeHtml(noneMsg) + '</td></tr>';
+          } else {
+            emailsBody.innerHTML = '';
+            emails.forEach(function(row) {
+              var tr = document.createElement('tr');
+              tr.innerHTML =
+                '<td style="font-size:13px;">' + escapeHtml(row.email || '—') + (row.blocked ? _flBlockedBadge() : '') + '</td>' +
+                '<td style="text-align:right;font-weight:600;">' + row.attempts + '</td>' +
+                '<td style="text-align:right;color:var(--text-muted);">' + (row.ip_count || 0) + '</td>' +
+                '<td style="font-size:12px;color:var(--text-muted);white-space:nowrap;">' + escapeHtml(_flFmtWhen(row.last_attempt_at)) + '</td>';
+              emailsBody.appendChild(tr);
+            });
+          }
+
+          // Top IPs
+          var ips = res.top_ips || [];
+          if (!ips.length) {
+            var noneMsg2 = (typeof t === 'function') ? t('fl_none') : 'Geen mislukte pogingen in dit venster.';
+            if (noneMsg2 === 'fl_none') noneMsg2 = 'Geen mislukte pogingen in dit venster.';
+            ipsBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-dim);">' + escapeHtml(noneMsg2) + '</td></tr>';
+          } else {
+            ipsBody.innerHTML = '';
+            ips.forEach(function(row) {
+              var tr = document.createElement('tr');
+              tr.innerHTML =
+                '<td style="font-family:monospace;font-size:12px;">' + escapeHtml(row.ip || '—') + (row.blocked ? _flBlockedBadge() : '') + '</td>' +
+                '<td style="text-align:right;font-weight:600;">' + row.attempts + '</td>' +
+                '<td style="text-align:right;color:var(--text-muted);">' + (row.email_count || 0) + '</td>' +
+                '<td style="font-size:12px;color:var(--text-muted);white-space:nowrap;">' + escapeHtml(_flFmtWhen(row.last_attempt_at)) + '</td>';
+              ipsBody.appendChild(tr);
+            });
+          }
+
+          // Recente events
+          var recent = res.recent || [];
+          if (!recent.length) {
+            var noneMsg3 = (typeof t === 'function') ? t('fl_none') : 'Geen mislukte pogingen in dit venster.';
+            if (noneMsg3 === 'fl_none') noneMsg3 = 'Geen mislukte pogingen in dit venster.';
+            recentBody.innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-dim);">' + escapeHtml(noneMsg3) + '</td></tr>';
+          } else {
+            recentBody.innerHTML = '';
+            recent.forEach(function(row) {
+              var tr = document.createElement('tr');
+              tr.innerHTML =
+                '<td style="font-size:12px;color:var(--text-muted);white-space:nowrap;">' + escapeHtml(_flFmtWhen(row.created_at)) + '</td>' +
+                '<td style="font-size:13px;">' + escapeHtml(row.email || '—') + '</td>' +
+                '<td style="font-family:monospace;font-size:11px;color:var(--text-muted);">' + escapeHtml(row.ip || '—') + '</td>' +
+                '<td style="font-size:12px;color:var(--text-dim);">' + escapeHtml(_flReasonLabel(row.reason)) + '</td>';
+              recentBody.appendChild(tr);
+            });
+          }
+        })
+        .catch(function(err) {
+          statsAtt.textContent = '—'; statsEm.textContent = '—'; statsIp.textContent = '—';
+          var errRow = '<tr><td colspan="4" style="text-align:center;padding:20px;color:#dc2626;">' + escapeHtml(err.message || 'fout') + '</td></tr>';
+          emailsBody.innerHTML = errRow; ipsBody.innerHTML = errRow; recentBody.innerHTML = errRow;
+        });
     }
 
     // ══════════════════════════════════════
