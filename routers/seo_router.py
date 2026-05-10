@@ -1,13 +1,16 @@
 """SEO-endpoints voor portaal.fieldopsapp.nl.
 
   GET /robots.txt   — verwijst crawlers naar de sitemap
-  GET /sitemap.xml  — bevat alle publieke pagina's met hreflang per taal
+  GET /sitemap.xml  — alleen indexeerbare publieke pagina's
 
 De portaal-host is primair een admin-portal (`/portaal`) — de meerwaarde van
 SEO zit in de publieke landing-pagina's: developer-portal, whitepaper-CTA en
 de api-root als entry point. Voor Google-zichtbaarheid op NL infra-zoekopdrachten
 moet de apex-site (fieldopsapp.nl) zelf ook structured data hebben; deze
 sitemap exposeert alleen wat er op deze host live staat.
+
+`/portaal` en `/reset-wachtwoord` zijn bewust uitgesloten — die zijn `noindex`
+en horen niet in een sitemap (zou tegenstrijdige signalen aan crawlers geven).
 """
 
 from __future__ import annotations
@@ -20,31 +23,29 @@ from fastapi.responses import Response
 router = APIRouter(tags=["SEO"])
 
 
-# Production-host voor canonical/og links. Op Render zit de service achter
-# portaal.fieldopsapp.nl; lokaal kan dit via env worden overschreven.
+# Production-host voor canonical/og links. Render's RENDER_EXTERNAL_URL is de
+# service-URL (*.onrender.com) en NIET wat we als canonical willen — die staat
+# achter het custom domain. We respecteren alleen een expliciete PUBLIC_HOST
+# en vallen anders terug op de bekende productie-host.
 DEFAULT_PUBLIC_HOST = "https://portaal.fieldopsapp.nl"
-
-# Volgorde van talen die we als alternates op publieke pagina's exposen.
-# Eerste = x-default. Komt overeen met de in-portaal taalkeuze.
-SUPPORTED_LANGUAGES = ["nl", "en", "de", "fr", "tr"]
 
 
 def public_host() -> str:
-    """Geef de canonical host terug. Render zet RENDER_EXTERNAL_URL automatisch
-    op de service-URL; in productie overschrijven we naar het apex-domein via
-    PUBLIC_HOST env."""
-    host = os.getenv("PUBLIC_HOST") or os.getenv("RENDER_EXTERNAL_URL") or DEFAULT_PUBLIC_HOST
+    """Geef de canonical host terug. Override via PUBLIC_HOST env (bv. voor
+    staging of een ander custom domein); zonder override gebruiken we het
+    productie-domain. RENDER_EXTERNAL_URL wordt bewust GENEGEERD om te
+    voorkomen dat de sitemap *.onrender.com URLs genereert."""
+    host = os.getenv("PUBLIC_HOST") or DEFAULT_PUBLIC_HOST
     return host.rstrip("/")
 
 
-# Statische lijst met publieke routes die in de sitemap horen. Volgorde wordt
-# gebruikt door zowel sitemap.xml als interne navigatie-helpers.
-# (loc_path, changefreq, priority, has_lang_alternates)
-PUBLIC_ROUTES: list[tuple[str, str, str, bool]] = [
-    ("/",            "weekly",  "0.9", False),
-    ("/developers",  "weekly",  "0.8", False),
-    ("/whitepaper",  "monthly", "0.7", False),
-    ("/portaal",     "weekly",  "0.5", True),   # taal-aware UI
+# Statische lijst met indexeerbare publieke routes. /portaal en
+# /reset-wachtwoord staan hier bewust NIET — die zijn noindex.
+# (loc_path, changefreq, priority)
+PUBLIC_ROUTES: list[tuple[str, str, str]] = [
+    ("/",            "weekly",  "0.9"),
+    ("/developers",  "weekly",  "0.8"),
+    ("/whitepaper",  "monthly", "0.7"),
 ]
 
 
@@ -74,34 +75,23 @@ def robots_txt(request: Request) -> Response:
 
 @router.get("/sitemap.xml", include_in_schema=False)
 def sitemap_xml(request: Request) -> Response:
-    """XML-sitemap conform sitemaps.org schema. Voor /portaal voegen we
-    xhtml:link rel="alternate" hreflang per taal toe — Google gebruikt dat om
-    de juiste taalvariant per regio te tonen."""
+    """XML-sitemap conform sitemaps.org schema. Bevat alleen routes die
+    indexeerbaar zijn — gated/noindex pages horen niet in een sitemap."""
     host = public_host()
     today = datetime.now(timezone.utc).date().isoformat()
 
     parts: list[str] = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"',
-        '        xmlns:xhtml="http://www.w3.org/1999/xhtml">',
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ]
 
-    for path, changefreq, priority, has_lang_alts in PUBLIC_ROUTES:
+    for path, changefreq, priority in PUBLIC_ROUTES:
         loc = f"{host}{path}"
         parts.append("  <url>")
         parts.append(f"    <loc>{loc}</loc>")
         parts.append(f"    <lastmod>{today}</lastmod>")
         parts.append(f"    <changefreq>{changefreq}</changefreq>")
         parts.append(f"    <priority>{priority}</priority>")
-        if has_lang_alts:
-            for lang in SUPPORTED_LANGUAGES:
-                parts.append(
-                    f'    <xhtml:link rel="alternate" hreflang="{lang}" '
-                    f'href="{loc}?lang={lang}"/>'
-                )
-            parts.append(
-                f'    <xhtml:link rel="alternate" hreflang="x-default" href="{loc}"/>'
-            )
         parts.append("  </url>")
 
     parts.append("</urlset>")

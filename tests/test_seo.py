@@ -51,13 +51,35 @@ def test_sitemap_xml_includes_developers(client):
     assert "/whitepaper" in r.text
 
 
-def test_sitemap_xml_hreflang_alternates_for_portaal(client):
-    """Portaal heeft 5 talen — moeten als hreflang alternates in de sitemap."""
+def test_sitemap_xml_excludes_noindex_routes(client):
+    """noindex pages horen niet in sitemap — zou tegenstrijdige signalen
+    aan crawlers geven (sitemap zegt 'index dit', meta zegt 'doe niet')."""
+    import xml.etree.ElementTree as ET
     r = client.get("/sitemap.xml")
-    body = r.text
-    for lang in ("nl", "en", "de", "fr", "tr"):
-        assert f'hreflang="{lang}"' in body
-    assert 'hreflang="x-default"' in body
+    root = ET.fromstring(r.text)
+    ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+    locs = [el.text for el in root.findall(".//sm:loc", ns)]
+    # Geen enkele <loc> mag eindigen op /portaal of /reset-wachtwoord
+    for path in ("/portaal", "/reset-wachtwoord"):
+        assert not any(loc.endswith(path) for loc in locs), \
+            f"{path} should not appear as a sitemap loc"
+
+
+def test_sitemap_uses_canonical_host_not_render_url(monkeypatch, client):
+    """RENDER_EXTERNAL_URL mag niet lekken in de sitemap — anders krijgen
+    crawlers *.onrender.com URLs ipv het apex-domein."""
+    monkeypatch.setenv("RENDER_EXTERNAL_URL", "https://fieldops-api.onrender.com")
+    monkeypatch.delenv("PUBLIC_HOST", raising=False)
+    r = client.get("/sitemap.xml")
+    assert "onrender.com" not in r.text
+    assert "portaal.fieldopsapp.nl" in r.text
+
+
+def test_sitemap_respects_public_host_override(monkeypatch, client):
+    """Expliciete PUBLIC_HOST wint voor staging/alternate domains."""
+    monkeypatch.setenv("PUBLIC_HOST", "https://staging.fieldopsapp.nl")
+    r = client.get("/sitemap.xml")
+    assert "staging.fieldopsapp.nl" in r.text
 
 
 def test_developers_page_has_canonical(client):
