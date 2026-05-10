@@ -1447,10 +1447,34 @@
         <button class="btn-primary" onclick="openAssetModal()" data-i18n="eerste_asset">+ Eerste asset aanmaken</button>
       </div>
       <div id="assetsList" style="display:none;">
+        <!-- Bulk-action bar voor assets -->
+        <div id="assetsBulkBar" style="display:none;position:sticky;top:64px;z-index:50;background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;border-radius:12px;padding:12px 16px;margin-bottom:12px;box-shadow:0 4px 12px rgba(2,132,199,0.25);">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div style="font-size:14px;font-weight:600;"><span id="assetsBulkCount">0</span> geselecteerd</div>
+            <div style="flex:1;"></div>
+            <select id="assetsBulkProject" style="padding:6px 10px;border-radius:8px;border:none;font-size:13px;background:rgba(255,255,255,0.95);color:var(--text);font-weight:500;cursor:pointer;">
+              <option value="">Project wijzigen...</option>
+            </select>
+            <select id="assetsBulkType" style="padding:6px 10px;border-radius:8px;border:none;font-size:13px;background:rgba(255,255,255,0.95);color:var(--text);font-weight:500;cursor:pointer;">
+              <option value="">Type wijzigen...</option>
+              <option value="wegdek">wegdek</option>
+              <option value="lantaarnpaal">lantaarnpaal</option>
+              <option value="put">put</option>
+              <option value="kolk">kolk</option>
+              <option value="voegovergang">voegovergang</option>
+              <option value="geleiderail">geleiderail</option>
+              <option value="kunstwerk">kunstwerk</option>
+              <option value="wegmeubilair">wegmeubilair</option>
+            </select>
+            <button type="button" onclick="bulkArchiveAssets()" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(255,255,255,0.95);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">📦 Archiveer</button>
+            <button type="button" onclick="bulkDeleteAssets()" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(220,38,38,0.95);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">🗑️ Verwijder</button>
+            <button type="button" onclick="clearAssetsBulkSelection()" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.4);background:transparent;color:#fff;font-size:13px;font-weight:500;cursor:pointer;">✕ Selectie wissen</button>
+          </div>
+        </div>
         <div class="card" style="overflow-x:auto;padding:0;">
           <table class="data-table">
             <thead>
-              <tr><th>Code</th><th>Naam</th><th>Type</th><th>Project</th><th style="text-align:center;">NEN</th><th style="text-align:center;">Open</th><th style="text-align:center;">Risico</th><th></th></tr>
+              <tr><th style="width:32px;"><input type="checkbox" id="selectAllAssets" onchange="toggleAllAssets(this)"></th><th>Code</th><th>Naam</th><th>Type</th><th>Project</th><th style="text-align:center;">NEN</th><th style="text-align:center;">Open</th><th style="text-align:center;">Risico</th><th></th></tr>
             </thead>
             <tbody id="assetsBody"></tbody>
           </table>
@@ -7244,7 +7268,7 @@
       var listWrap = document.getElementById('assetsList');
       var emptyWrap = document.getElementById('assetsEmpty');
       var countEl = document.getElementById('assetCount');
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-dim);">Assets laden...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-dim);">Assets laden...</td></tr>';
       listWrap.style.display = ''; emptyWrap.style.display = 'none';
 
       // Vul project-filter
@@ -7284,7 +7308,7 @@
         countEl.textContent = allAssets.length + ' assets';
         renderAssetRows(allAssets);
       }).catch(function(err){
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--red);">'+escapeHtml(err.message||'fout')+'</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--red);">'+escapeHtml(err.message||'fout')+'</td></tr>';
       });
     }
 
@@ -7303,6 +7327,7 @@
           ? '<span style="background:rgba(220,38,38,0.1);color:#dc2626;padding:2px 8px;border-radius:8px;font-weight:700;font-size:12px;">'+a.open_meldingen_count+'</span>'
           : '<span style="color:var(--text-dim);">0</span>';
         tr.innerHTML =
+          '<td onclick="event.stopPropagation()" style="width:32px;"><input type="checkbox" class="asset-checkbox" value="'+a.id+'"></td>' +
           '<td style="font-weight:700;font-family:monospace;">'+escapeHtml(a.code)+'</td>' +
           '<td>'+escapeHtml(a.name || '—')+'</td>' +
           '<td><span style="background:var(--card-bg-hover);padding:2px 8px;border-radius:6px;font-size:12px;">'+escapeHtml(a.asset_type)+'</span></td>' +
@@ -7316,6 +7341,31 @@
           + '</td>';
         tbody.appendChild(tr);
       });
+      // Bulk-checkboxes wiren + project-dropdown vullen
+      tbody.querySelectorAll('.asset-checkbox').forEach(function(cb){
+        cb.addEventListener('change', updateAssetsBulkBar);
+      });
+      var bulkProjSel = document.getElementById('assetsBulkProject');
+      if (bulkProjSel) {
+        bulkProjSel.innerHTML = '<option value="">Project wijzigen...</option>'
+          + (allProjects||[]).map(function(p){
+              return '<option value="'+p.id+'">'+escapeHtml(p.name||p.naam||'')+'</option>';
+            }).join('');
+        if (!bulkProjSel._bound) {
+          bulkProjSel.addEventListener('change', function(e){
+            if (e.target.value) bulkUpdateAssets('project_id', e.target.value, 'Project');
+          });
+          bulkProjSel._bound = true;
+        }
+      }
+      var bulkTypeSel = document.getElementById('assetsBulkType');
+      if (bulkTypeSel && !bulkTypeSel._bound) {
+        bulkTypeSel.addEventListener('change', function(e){
+          if (e.target.value) bulkUpdateAssets('asset_type', e.target.value, 'Type');
+        });
+        bulkTypeSel._bound = true;
+      }
+      updateAssetsBulkBar();
       // Lazy: vraag risk-scores op (top 50 zichtbare)
       items.slice(0, 50).forEach(function(a){
         api('GET', '/api/predictive/asset/'+a.id).then(function(r){
@@ -7328,6 +7378,120 @@
 
     function nenColor(score) {
       return ({1:'#16a34a',2:'#65a30d',3:'#f59e0b',4:'#ea580c',5:'#dc2626'})[score] || '#94a3b8';
+    }
+
+    // ── Bulk-acties op assets ────────────────────────────────────────────
+    function toggleAllAssets(master) {
+      document.querySelectorAll('.asset-checkbox').forEach(function(cb){ cb.checked = master.checked; });
+      updateAssetsBulkBar();
+    }
+    function getSelectedAssetIds() {
+      var ids = [];
+      document.querySelectorAll('.asset-checkbox:checked').forEach(function(cb){ ids.push(cb.value); });
+      return ids;
+    }
+    function updateAssetsBulkBar() {
+      var ids = getSelectedAssetIds();
+      var bar = document.getElementById('assetsBulkBar');
+      var counter = document.getElementById('assetsBulkCount');
+      if (!bar || !counter) return;
+      counter.textContent = ids.length;
+      bar.style.display = ids.length > 0 ? 'block' : 'none';
+      var master = document.getElementById('selectAllAssets');
+      var total = document.querySelectorAll('.asset-checkbox').length;
+      if (master && total > 0) {
+        master.checked = ids.length === total;
+        master.indeterminate = ids.length > 0 && ids.length < total;
+      }
+    }
+    function clearAssetsBulkSelection() {
+      document.querySelectorAll('.asset-checkbox').forEach(function(cb){ cb.checked = false; });
+      var master = document.getElementById('selectAllAssets');
+      if (master) { master.checked = false; master.indeterminate = false; }
+      updateAssetsBulkBar();
+      var p = document.getElementById('assetsBulkProject'); if (p) p.value = '';
+      var t = document.getElementById('assetsBulkType'); if (t) t.value = '';
+    }
+    function bulkUpdateAssets(field, value, label) {
+      var ids = getSelectedAssetIds();
+      if (ids.length === 0 || !value) return;
+      showConfirm({
+        icon: field === 'asset_type' ? '🏷️' : '📁',
+        title: label + ' wijzigen?',
+        message: ids.length + ' assets krijgen ' + field + ' = "' + value + '".',
+        actionLabel: 'Bijwerken',
+        danger: false,
+        onConfirm: function() {
+          var payload = {}; payload[field] = value;
+          var ok = 0, fail = 0, done = 0;
+          ids.forEach(function(id){
+            api('PATCH', '/api/assets/' + id, payload).then(function(){ ok++; })
+              .catch(function(){ fail++; })
+              .finally(function(){
+                done++;
+                if (done === ids.length) {
+                  showToast(ok + ' bijgewerkt' + (fail ? ' (' + fail + ' mislukt)' : ''), fail ? 'error' : 'success');
+                  clearAssetsBulkSelection();
+                  loadAssets();
+                }
+              });
+          });
+        },
+      });
+      var sel = document.getElementById(field === 'asset_type' ? 'assetsBulkType' : 'assetsBulkProject');
+      if (sel) sel.value = '';
+    }
+    function bulkArchiveAssets() {
+      var ids = getSelectedAssetIds();
+      if (ids.length === 0) return;
+      showConfirm({
+        icon: '📦',
+        title: ids.length + ' assets archiveren?',
+        message: 'Gearchiveerde assets verdwijnen uit de actieve lijst maar blijven bewaard (soft-delete).',
+        actionLabel: 'Archiveren',
+        danger: false,
+        onConfirm: function() {
+          var ok = 0, fail = 0, done = 0;
+          ids.forEach(function(id){
+            api('PATCH', '/api/assets/' + id + '/archive').then(function(){ ok++; })
+              .catch(function(){ fail++; })
+              .finally(function(){
+                done++;
+                if (done === ids.length) {
+                  showToast(ok + ' gearchiveerd' + (fail ? ' (' + fail + ' mislukt)' : ''), fail ? 'error' : 'success');
+                  clearAssetsBulkSelection();
+                  loadAssets();
+                }
+              });
+          });
+        },
+      });
+    }
+    function bulkDeleteAssets() {
+      var ids = getSelectedAssetIds();
+      if (ids.length === 0) return;
+      showConfirm({
+        icon: '🗑️',
+        title: ids.length + ' assets verwijderen?',
+        message: 'Permanent verwijderen — dit kan niet ongedaan worden gemaakt. Bijbehorende meldingen verliezen hun asset-koppeling.',
+        actionLabel: 'Verwijderen',
+        danger: true,
+        onConfirm: function() {
+          var ok = 0, fail = 0, done = 0;
+          ids.forEach(function(id){
+            api('DELETE', '/api/assets/' + id).then(function(){ ok++; })
+              .catch(function(){ fail++; })
+              .finally(function(){
+                done++;
+                if (done === ids.length) {
+                  showToast(ok + ' verwijderd' + (fail ? ' (' + fail + ' mislukt)' : ''), fail ? 'error' : 'success');
+                  clearAssetsBulkSelection();
+                  loadAssets();
+                }
+              });
+          });
+        },
+      });
     }
 
     function openAssetModal() {
