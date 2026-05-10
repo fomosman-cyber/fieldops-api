@@ -2296,6 +2296,16 @@
 
   </main>
 
+  <!-- ═══════ ASSIGN CLUSTER MODAL (gebruiker kiezen i.p.v. prompt) ═══════ -->
+  <div class="modal-overlay" id="assignClusterModal">
+    <div class="modal" style="max-width:480px;">
+      <button class="modal-close" onclick="closeAssignClusterModal()" aria-label="Sluiten">&times;</button>
+      <h2>Cluster toewijzen</h2>
+      <p class="subtitle">Klik op een teamlid om dit cluster toe te wijzen.</p>
+      <div id="assignClusterUserList" style="max-height:60vh;overflow-y:auto;margin-top:12px;"></div>
+    </div>
+  </div>
+
   <!-- ═══════ SUPPORT / CONTACT MODAL ═══════ -->
   <div class="modal-overlay" id="supportModal">
     <div class="modal">
@@ -7998,31 +8008,68 @@
     }
 
     function generateClusters() {
-      if (!confirm('Genereer clusters op basis van open meldingen? Dit vervangt eerdere voorstellen.')) return;
-      showToast('Clusters genereren...', 'info');
-      api('POST', '/api/clusters/generate', { radius_km: 5.0, min_cluster_size: 2 }).then(function(r){
-        showToast(r.clusters_created + ' clusters gegenereerd · ' + r.total_savings_hours + ' u bespaard (' + r.savings_percentage + '%)', 'success');
-        loadClusters();
-      }).catch(function(err){
-        showToast('Fout: ' + err.message, 'error');
+      showConfirm({
+        icon: '⚡',
+        title: 'Clusters genereren?',
+        message: 'Open meldingen worden gegroepeerd op maatregel + nabije locatie. Eerdere voorstellen worden vervangen (toegewezen clusters blijven).',
+        actionLabel: 'Genereren',
+        danger: false,
+        onConfirm: function() {
+          showToast('Clusters genereren...', 'info');
+          api('POST', '/api/clusters/generate', { radius_km: 5.0, min_cluster_size: 2 }).then(function(r){
+            showToast(r.clusters_created + ' clusters gegenereerd · ' + r.total_savings_hours + ' u bespaard (' + r.savings_percentage + '%)', 'success');
+            loadClusters();
+          }).catch(function(err){
+            showToast('Fout: ' + err.message, 'error');
+          });
+        },
       });
     }
 
     function openAssignDialog(clusterId) {
-      // Stap 1: haal users op van mijn org (gebruik bestaande users-call)
       api('GET', '/api/users/').then(function(users){
-        var names = users.map(function(u){ return u.id + ' — ' + (u.email || u.id); }).join('\n');
-        var pick = prompt('Wijs cluster toe — kies een user-id:\n\n' + names + '\n\nPlak hier het user-id:');
-        if (!pick) return;
-        // Strip "id — email" voor het geval ze de hele regel plakken
-        pick = pick.split(/\s+—|\s+--/)[0].trim();
-        api('PATCH', '/api/clusters/' + clusterId + '/assign', { user_id: pick }).then(function(){
-          showToast('Cluster toegewezen', 'success');
-          loadClusters();
-        }).catch(function(err){
-          showToast('Fout: ' + err.message, 'error');
-        });
+        var modal = document.getElementById('assignClusterModal');
+        var listEl = document.getElementById('assignClusterUserList');
+        if (!users || users.length === 0) {
+          listEl.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:20px;">Geen gebruikers gevonden in je organisatie.</p>';
+        } else {
+          listEl.innerHTML = users.map(function(u){
+            var initial = ((u.first_name || u.email || '?')[0] || '?').toUpperCase();
+            var fullName = ((u.first_name || '') + ' ' + (u.last_name || '')).trim() || u.email;
+            var roleLabel = u.role ? '<span style="font-size:11px;color:var(--text-dim);background:var(--card-bg-hover);padding:2px 8px;border-radius:6px;text-transform:capitalize;">' + u.role + '</span>' : '';
+            return '<button type="button" class="assign-user-row" data-user-id="' + u.id + '" '
+              + 'style="width:100%;display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg);cursor:pointer;text-align:left;transition:all 0.15s;margin-bottom:8px;">'
+              + '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;flex-shrink:0;">' + initial + '</div>'
+              + '<div style="flex:1;min-width:0;">'
+              +   '<div style="font-weight:600;color:var(--text);font-size:14px;">' + fullName + '</div>'
+              +   '<div style="font-size:12px;color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + (u.email || '') + '</div>'
+              + '</div>'
+              + roleLabel
+              + '</button>';
+          }).join('');
+          // Bind click handler op elke rij
+          listEl.querySelectorAll('.assign-user-row').forEach(function(btn){
+            btn.addEventListener('click', function(){
+              var userId = btn.dataset.userId;
+              modal.classList.remove('active');
+              api('PATCH', '/api/clusters/' + clusterId + '/assign', { user_id: userId }).then(function(){
+                showToast('Cluster toegewezen', 'success');
+                loadClusters();
+              }).catch(function(err){
+                showToast('Fout: ' + err.message, 'error');
+              });
+            });
+            btn.addEventListener('mouseenter', function(){ btn.style.background = 'var(--card-bg-hover)'; btn.style.borderColor = 'var(--accent)'; });
+            btn.addEventListener('mouseleave', function(){ btn.style.background = 'var(--card-bg)'; btn.style.borderColor = 'var(--border)'; });
+          });
+        }
+        modal.classList.add('active');
+      }).catch(function(err){
+        showToast('Kon gebruikers niet laden: ' + err.message, 'error');
       });
+    }
+    function closeAssignClusterModal() {
+      document.getElementById('assignClusterModal').classList.remove('active');
     }
 
     function openSkillsModal() {
