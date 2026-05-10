@@ -1377,6 +1377,32 @@
         <button class="btn-primary" onclick="openMeldingModal()" data-i18n="eerste_melding">+ Eerste melding aanmaken</button>
       </div>
       <div id="meldingenList" style="display:none;">
+        <!-- Bulk-action bar: verschijnt zodra >=1 melding geselecteerd -->
+        <div id="meldingenBulkBar" style="display:none;position:sticky;top:64px;z-index:50;background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;border-radius:12px;padding:12px 16px;margin-bottom:12px;box-shadow:0 4px 12px rgba(2,132,199,0.25);">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div style="font-size:14px;font-weight:600;">
+              <span id="bulkSelectedCount">0</span> geselecteerd
+            </div>
+            <div style="flex:1;"></div>
+            <select id="bulkStatusSelect" style="padding:6px 10px;border-radius:8px;border:none;font-size:13px;background:rgba(255,255,255,0.95);color:var(--text);font-weight:500;cursor:pointer;">
+              <option value="">Status wijzigen...</option>
+              <option value="open">Open</option>
+              <option value="in_behandeling">In behandeling</option>
+              <option value="in_uitvoering">In uitvoering</option>
+              <option value="opgelost">Opgelost</option>
+              <option value="afgerond">Afgerond</option>
+            </select>
+            <select id="bulkPrioritySelect" style="padding:6px 10px;border-radius:8px;border:none;font-size:13px;background:rgba(255,255,255,0.95);color:var(--text);font-weight:500;cursor:pointer;">
+              <option value="">Prioriteit wijzigen...</option>
+              <option value="kritiek">Kritiek</option>
+              <option value="hoog">Hoog</option>
+              <option value="normaal">Normaal</option>
+              <option value="laag">Laag</option>
+            </select>
+            <button type="button" onclick="bulkDeleteMeldingen()" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(220,38,38,0.95);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">🗑️ Verwijder</button>
+            <button type="button" onclick="clearBulkSelection()" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.4);background:transparent;color:#fff;font-size:13px;font-weight:500;cursor:pointer;">✕ Selectie wissen</button>
+          </div>
+        </div>
         <div class="card" style="overflow-x:auto;">
           <table class="data-table">
             <thead>
@@ -6137,6 +6163,26 @@
             '</tr>';
         }).join('');
         document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
+        // Bind change-events op nieuwe checkboxes voor bulk-bar
+        document.querySelectorAll('.melding-checkbox').forEach(function(cb){
+          cb.addEventListener('change', updateBulkBar);
+        });
+        // Bind bulk-select dropdowns (één keer per laad — selects worden niet vervangen)
+        var bulkStatus = document.getElementById('bulkStatusSelect');
+        if (bulkStatus && !bulkStatus._bound) {
+          bulkStatus.addEventListener('change', function(e){
+            if (e.target.value) bulkUpdateMeldingen('status', e.target.value, 'Status');
+          });
+          bulkStatus._bound = true;
+        }
+        var bulkPrio = document.getElementById('bulkPrioritySelect');
+        if (bulkPrio && !bulkPrio._bound) {
+          bulkPrio.addEventListener('change', function(e){
+            if (e.target.value) bulkUpdateMeldingen('priority', e.target.value, 'Prioriteit');
+          });
+          bulkPrio._bound = true;
+        }
+        updateBulkBar();
       }).catch(function(err) {
         console.error('Meldingen laden mislukt:', err);
         document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="8"><div class="error-state"><h3>'+t('laden_mislukt')+'</h3><p>'+err.message+'</p><button class="btn-secondary" onclick="loadMeldingen()">'+t('opnieuw_proberen')+'</button></div></td></tr>';
@@ -6420,12 +6466,102 @@
 
     function toggleAllMeldingen(master) {
       document.querySelectorAll('.melding-checkbox').forEach(function(cb) { cb.checked = master.checked; });
+      updateBulkBar();
     }
 
     function getSelectedMeldingIds() {
       var ids = [];
       document.querySelectorAll('.melding-checkbox:checked').forEach(function(cb) { ids.push(cb.value); });
       return ids;
+    }
+
+    function updateBulkBar() {
+      var ids = getSelectedMeldingIds();
+      var bar = document.getElementById('meldingenBulkBar');
+      var counter = document.getElementById('bulkSelectedCount');
+      if (!bar || !counter) return;
+      counter.textContent = ids.length;
+      bar.style.display = ids.length > 0 ? 'block' : 'none';
+      // Sync master-checkbox indeterminate-state
+      var master = document.getElementById('selectAllMeldingen');
+      var total = document.querySelectorAll('.melding-checkbox').length;
+      if (master && total > 0) {
+        master.checked = ids.length === total;
+        master.indeterminate = ids.length > 0 && ids.length < total;
+      }
+    }
+
+    function clearBulkSelection() {
+      document.querySelectorAll('.melding-checkbox').forEach(function(cb){ cb.checked = false; });
+      var master = document.getElementById('selectAllMeldingen');
+      if (master) { master.checked = false; master.indeterminate = false; }
+      updateBulkBar();
+      // Reset dropdowns
+      var s = document.getElementById('bulkStatusSelect'); if (s) s.value = '';
+      var p = document.getElementById('bulkPrioritySelect'); if (p) p.value = '';
+    }
+
+    function bulkUpdateMeldingen(field, value, label) {
+      var ids = getSelectedMeldingIds();
+      if (ids.length === 0 || !value) return;
+      showConfirm({
+        icon: field === 'status' ? '🔄' : '⚡',
+        title: label + ' wijzigen?',
+        message: ids.length + ' meldingen krijgen ' + field + ' = "' + value + '".',
+        actionLabel: 'Bijwerken',
+        danger: false,
+        onConfirm: function() {
+          var payload = {}; payload[field] = value;
+          var ok = 0, fail = 0;
+          var done = 0;
+          ids.forEach(function(id){
+            api('PATCH', '/api/meldingen/' + id, payload).then(function(){
+              ok++;
+            }).catch(function(){
+              fail++;
+            }).finally(function(){
+              done++;
+              if (done === ids.length) {
+                showToast(ok + ' bijgewerkt' + (fail ? ' (' + fail + ' mislukt)' : ''), fail ? 'error' : 'success');
+                clearBulkSelection();
+                loadMeldingen();
+              }
+            });
+          });
+        },
+      });
+      // Reset select zodat dezelfde keuze opnieuw kan triggeren
+      var sel = document.getElementById(field === 'status' ? 'bulkStatusSelect' : 'bulkPrioritySelect');
+      if (sel) sel.value = '';
+    }
+
+    function bulkDeleteMeldingen() {
+      var ids = getSelectedMeldingIds();
+      if (ids.length === 0) return;
+      showConfirm({
+        icon: '🗑️',
+        title: ids.length + ' meldingen verwijderen?',
+        message: 'Dit kan niet ongedaan worden gemaakt.',
+        actionLabel: 'Verwijderen',
+        danger: true,
+        onConfirm: function() {
+          var ok = 0, fail = 0, done = 0;
+          ids.forEach(function(id){
+            api('DELETE', '/api/meldingen/' + id).then(function(){
+              ok++;
+            }).catch(function(){
+              fail++;
+            }).finally(function(){
+              done++;
+              if (done === ids.length) {
+                showToast(ok + ' verwijderd' + (fail ? ' (' + fail + ' mislukt)' : ''), fail ? 'error' : 'success');
+                clearBulkSelection();
+                loadMeldingen();
+              }
+            });
+          });
+        },
+      });
     }
 
     function toggleRapportagePanel() {
