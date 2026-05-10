@@ -4878,9 +4878,14 @@
             roleSelect += '</select>';
             // Reset password button
             var resetBtn = '<button onclick="resetUserPassword(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);color:var(--accent);font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;font-family:inherit;margin:0 4px;" title="Wachtwoord resetten">&#128273;</button>';
-            // Delete button
-            var deleteBtn = '<button onclick="deactivateUser(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);color:var(--red);font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;font-family:inherit;" title="Verwijderen">&#128465;</button>';
-            actionsHtml = roleSelect + resetBtn + deleteBtn;
+            // Deactivate (soft) button
+            var deactivateBtn = '<button onclick="deactivateUser(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);color:var(--orange,#ea580c);font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;font-family:inherit;margin-right:4px;" title="Deactiveren (kan later weer geactiveerd worden)">&#9209;</button>';
+            // Hard-delete (anonymize/GDPR) button — alleen tonen voor reeds inactieve users
+            var deleteBtn = '';
+            if (!u.is_active) {
+              deleteBtn = '<button onclick="deleteUserHard(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid #fee2e2;color:var(--red);font-size:11px;padding:3px 8px;border-radius:6px;cursor:pointer;font-family:inherit;" title="Permanent verwijderen (GDPR-anonymize)">&#128465;</button>';
+            }
+            actionsHtml = roleSelect + resetBtn + deactivateBtn + deleteBtn;
           }
           return '<tr>' +
             '<td><strong>' + name.trim() + '</strong></td>' +
@@ -4897,15 +4902,40 @@
     }
 
     // ── Deactivate User ──
-    async function deactivateUser(userId, userName) {
-      if (!confirm(t('bevestig_deactiveer').replace('{name}', userName))) return;
-      try {
-        await api('DELETE', '/api/users/' + userId);
-        showToast(t('gebruiker_gedeactiveerd').replace('{name}', userName));
-        loadUsers();
-      } catch(err) {
-        showToast(t('fout_laden') + ': ' + (err.message || 'Unknown error'), 'error');
-      }
+    function deactivateUser(userId, userName) {
+      showConfirm({
+        icon: '⏸️',
+        title: 'Gebruiker deactiveren?',
+        message: userName + ' verliest direct toegang. Het account blijft bewaard en kan later weer geactiveerd worden. Voor permanent verwijderen: deactiveer eerst, daarna verschijnt de prullenbak-knop.',
+        actionLabel: 'Deactiveren',
+        danger: false,
+        onConfirm: function() {
+          api('DELETE', '/api/users/' + userId).then(function(){
+            showToast((t('gebruiker_gedeactiveerd') || '{name} is gedeactiveerd').replace('{name}', userName), 'success');
+            loadUsers();
+          }).catch(function(err){
+            showToast((t('fout_laden') || 'Fout') + ': ' + (err.message || 'Unknown error'), 'error');
+          });
+        },
+      });
+    }
+
+    function deleteUserHard(userId, userName) {
+      showConfirm({
+        icon: '🗑️',
+        title: userName + ' permanent verwijderen?',
+        message: 'Dit verwijdert alle persoonsgegevens (GDPR Article 17 anonymize). Audit-records blijven bewaard zonder PII. Deze actie kan niet ongedaan worden gemaakt.',
+        actionLabel: 'Permanent verwijderen',
+        danger: true,
+        onConfirm: function() {
+          api('DELETE', '/api/users/' + userId + '/anonymize').then(function(r){
+            showToast('Gebruiker geanonimiseerd (' + (r.summary?.fields_anonymized || 0) + ' velden gewist)', 'success');
+            loadUsers();
+          }).catch(function(err){
+            showToast('Fout bij verwijderen: ' + (err.message || 'Unknown error'), 'error');
+          });
+        },
+      });
     }
 
     // ── Change User Role ──
@@ -4921,15 +4951,62 @@
     }
 
     // ── Reset User Password ──
-    async function resetUserPassword(userId, userName) {
-      var newPass = prompt('Nieuw wachtwoord voor ' + userName + ':', '');
-      if (!newPass) return;
-      try {
-        await api('PUT', '/api/users/' + userId, { password: newPass });
-        showToast('Wachtwoord gereset voor ' + userName);
-      } catch(err) {
-        showToast('Fout bij resetten: ' + (err.message || 'Unknown error'), 'error');
+    function resetUserPassword(userId, userName) {
+      // Genereer een veilig 16-char wachtwoord (zelfde regels als _genStrongPassword
+      // hieronder; los gehouden om altijd beschikbaar te zijn).
+      function _gen(){
+        var lower='abcdefghjkmnpqrstuvwxyz', upper='ABCDEFGHJKLMNPQRSTUVWXYZ',
+            digit='23456789', sym='!@#$%&*?-_';
+        var all=lower+upper+digit+sym, pools=[lower,upper,digit,sym];
+        var pick=function(s){ var a=new Uint32Array(1); crypto.getRandomValues(a); return s[a[0]%s.length]; };
+        var out=pools.map(pick);
+        while(out.length<16) out.push(pick(all));
+        for(var i=out.length-1;i>0;i--){ var a=new Uint32Array(1); crypto.getRandomValues(a); var j=a[0]%(i+1); var tmp=out[i]; out[i]=out[j]; out[j]=tmp; }
+        return out.join('');
       }
+      var generated = _gen();
+      // Toon een eigen modal i.p.v. native prompt
+      var existing = document.getElementById('pwResetModal');
+      if (existing) existing.remove();
+      var html = ''
+        + '<div id="pwResetModal" class="modal-overlay active">'
+        +   '<div class="modal" style="max-width:480px;">'
+        +     '<button class="modal-close" onclick="document.getElementById(\'pwResetModal\').remove()" aria-label="Sluiten">&times;</button>'
+        +     '<h2>Wachtwoord resetten</h2>'
+        +     '<p class="subtitle">Voor <strong>' + userName.replace(/</g,'&lt;') + '</strong>. De gebruiker moet dit bij eerste login wijzigen.</p>'
+        +     '<div class="form-group" style="margin-top:16px;">'
+        +       '<label>Nieuw wachtwoord</label>'
+        +       '<div style="display:flex;gap:8px;">'
+        +         '<input type="text" id="pwResetInput" value="' + generated + '" style="flex:1;font-family:JetBrains Mono,monospace;font-size:14px;">'
+        +         '<button type="button" class="btn-secondary" id="pwResetGenBtn" style="white-space:nowrap;">↻ Nieuw</button>'
+        +         '<button type="button" class="btn-secondary" id="pwResetCopyBtn" style="white-space:nowrap;">📋 Kopieer</button>'
+        +       '</div>'
+        +       '<p style="font-size:11px;color:var(--text-dim);margin-top:6px;">Beheerder moet dit veilig delen — wordt nergens opgeslagen behalve gehasht in de DB.</p>'
+        +     '</div>'
+        +     '<div class="form-actions" style="margin-top:16px;">'
+        +       '<button type="button" class="btn-secondary" id="pwResetCancelBtn">Annuleren</button>'
+        +       '<button type="button" class="btn-primary" id="pwResetSaveBtn">Wachtwoord resetten</button>'
+        +     '</div>'
+        +   '</div>'
+        + '</div>';
+      document.body.insertAdjacentHTML('beforeend', html);
+      var modal = document.getElementById('pwResetModal');
+      var input = document.getElementById('pwResetInput');
+      document.getElementById('pwResetGenBtn').addEventListener('click', function(){ input.value = _gen(); });
+      document.getElementById('pwResetCopyBtn').addEventListener('click', function(){
+        input.select(); navigator.clipboard.writeText(input.value).then(function(){ showToast('Wachtwoord gekopieerd', 'success'); });
+      });
+      document.getElementById('pwResetCancelBtn').addEventListener('click', function(){ modal.remove(); });
+      document.getElementById('pwResetSaveBtn').addEventListener('click', function(){
+        var newPass = input.value;
+        if (!newPass || newPass.length < 8) { showToast('Wachtwoord moet minstens 8 tekens zijn', 'error'); return; }
+        api('PUT', '/api/users/' + userId, { password: newPass, must_change_password: true }).then(function(){
+          showToast('Wachtwoord gereset voor ' + userName + ' (gebruiker moet bij volgende login wijzigen)', 'success');
+          modal.remove();
+        }).catch(function(err){
+          showToast('Fout bij resetten: ' + (err.message || 'Unknown error'), 'error');
+        });
+      });
     }
 
     // ── Admin Data (eigenaar) ──
@@ -4985,25 +5062,41 @@
     }
 
     async function approveDemo(demoId) {
-      if (!confirm('Demo goedkeuren? Er wordt een account aangemaakt met het standaard wachtwoord en een welkomstmail verstuurd.')) return;
-      try {
-        await api('POST', '/api/admin/demo/' + demoId + '/approve');
-        showToast('Demo goedgekeurd - welkomstmail verstuurd', 'success');
-        closeDemoDetails();
-        loadAdminData();
-      } catch(err) {
-        showToast('Fout: ' + (err.message || 'Onbekende fout'), 'error');
-      }
+      showConfirm({
+        icon: '✅',
+        title: 'Demo goedkeuren?',
+        message: 'Er wordt een nieuw account aangemaakt voor deze aanvraag. De gebruiker krijgt automatisch een welkomstmail met inloggegevens.',
+        actionLabel: 'Goedkeuren',
+        danger: false,
+        onConfirm: function() {
+          api('POST', '/api/admin/demo/' + demoId + '/approve').then(function(){
+            showToast('Demo goedgekeurd — welkomstmail verstuurd', 'success');
+            closeDemoDetails();
+            loadAdminData();
+          }).catch(function(err){
+            showToast('Fout: ' + (err.message || 'Onbekende fout'), 'error');
+          });
+        },
+      });
     }
 
-    async function deleteDemo(demoId) {
-      if (!confirm('Demo aanvraag verwijderen?')) return;
-      try {
-        await api('DELETE', '/api/admin/demo/' + demoId);
-        showToast('Demo aanvraag verwijderd');
-        closeDemoDetails();
-        loadAdminData();
-      } catch(err) { showToast('Fout: ' + err.message, 'error'); }
+    function deleteDemo(demoId) {
+      showConfirm({
+        icon: '🗑️',
+        title: 'Demo aanvraag verwijderen?',
+        message: 'De aanvraag wordt definitief uit de lijst verwijderd. Een nieuwe aanvraag kan altijd opnieuw worden ingediend via de website.',
+        actionLabel: 'Verwijderen',
+        danger: true,
+        onConfirm: function() {
+          api('DELETE', '/api/admin/demo/' + demoId).then(function(){
+            showToast('Demo aanvraag verwijderd', 'success');
+            closeDemoDetails();
+            loadAdminData();
+          }).catch(function(err){
+            showToast('Fout: ' + err.message, 'error');
+          });
+        },
+      });
     }
 
     // ── Admin Organization Actions ──
