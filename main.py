@@ -11,7 +11,7 @@ import os
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router
 from audit import assign_request_id
 
 # Maak alle tabellen aan
@@ -396,6 +396,7 @@ app.include_router(microsoft_router.router)
 app.include_router(orchestration_router.router)
 app.include_router(nwb_router.router)
 app.include_router(integrations_router.router)
+app.include_router(seo_router.router)
 
 
 # Request-ID middleware — koppelt elke request aan een correlatie-ID dat
@@ -530,13 +531,83 @@ def root():
 
 @app.get("/developers", response_class=HTMLResponse)
 def developer_portal():
-    """Public developer portal — enterprise-grade landing voor API-docs."""
+    """Public developer portal — enterprise-grade landing voor API-docs.
+
+    SEO-tags: structured data (Organization + SoftwareApplication +
+    BreadcrumbList), Open Graph, Twitter Card, canonical. NL-locale want
+    de doelgroep is Nederlandse infra-organisaties; zoekwoorden in title
+    + description gericht op "CROW", "NEN 2767", "infra API NL".
+    """
     return """<!DOCTYPE html>
 <html lang="nl">
 <head>
 <meta charset="UTF-8">
-<title>FieldOps API — Developers</title>
-<meta name="description" content="OpenAPI documentation, integration guides, and reference architecture for FieldOps Compliance-Native Infrastructure OS.">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FieldOps API — CROW & NEN 2767 conforme infra-API voor Nederland</title>
+<meta name="description" content="REST-API voor Nederlandse infra-organisaties: CROW 146a/b, NEN 2767-2, Audit-Bound AI. Swagger UI, OpenAPI 3.1, EU-region hosting, OAuth 2.0.">
+<meta name="keywords" content="CROW API, NEN 2767, infra-software Nederland, asset-management API, MOR-melding API, gemeente meldingen, predictive maintenance NL">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="theme-color" content="#0a0f1e">
+<link rel="canonical" href="https://portaal.fieldopsapp.nl/developers">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://portaal.fieldopsapp.nl/developers">
+<meta property="og:site_name" content="FieldOps">
+<meta property="og:title" content="FieldOps API — CROW & NEN 2767 conforme infra-API voor Nederland">
+<meta property="og:description" content="REST-API voor Nederlandse infra-organisaties: CROW 146a/b, NEN 2767-2, Audit-Bound AI. Swagger UI · OpenAPI 3.1 · EU-region.">
+<meta property="og:locale" content="nl_NL">
+<meta property="og:image" content="https://portaal.fieldopsapp.nl/static/icons/icon-512.png">
+<meta property="og:image:width" content="512">
+<meta property="og:image:height" content="512">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="FieldOps API — Developers">
+<meta name="twitter:description" content="REST-API voor Nederlandse infra-organisaties. CROW-conform · audit-bound · open standards.">
+<meta name="twitter:image" content="https://portaal.fieldopsapp.nl/static/icons/icon-512.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "https://fieldopsapp.nl/#organization",
+      "name": "FieldOps",
+      "url": "https://fieldopsapp.nl",
+      "logo": "https://portaal.fieldopsapp.nl/static/icons/icon-512.png",
+      "sameAs": ["https://portaal.fieldopsapp.nl"],
+      "areaServed": {"@type": "Country", "name": "Netherlands"},
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "email": "info@fieldopsapp.nl",
+        "contactType": "sales"
+      }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://portaal.fieldopsapp.nl/developers#api",
+      "name": "FieldOps API",
+      "applicationCategory": "BusinessApplication",
+      "applicationSubCategory": "Infrastructure Asset Management",
+      "operatingSystem": "Web",
+      "description": "REST-API voor Nederlands infra-veldwerk: meldingen, assets, AI-foto-inspecties met CROW 146a/b classificatie, predictive maintenance op NEN 2767-2, en append-only audit-log.",
+      "url": "https://portaal.fieldopsapp.nl/developers",
+      "offers": {"@type": "Offer", "price": "0", "priceCurrency": "EUR", "availability": "https://schema.org/InStock"},
+      "publisher": {"@id": "https://fieldopsapp.nl/#organization"},
+      "softwareVersion": "3.3.0",
+      "featureList": ["CROW 146a/b classificatie", "NEN 2767-2 conditiescores", "Audit-Bound AI", "OAuth 2.0 (Google + Microsoft)", "HMAC-SHA256 webhooks", "WebSocket realtime", "EU-region hosting"]
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "FieldOps", "item": "https://fieldopsapp.nl"},
+        {"@type": "ListItem", "position": 2, "name": "Developer Portal", "item": "https://portaal.fieldopsapp.nl/developers"}
+      ]
+    }
+  ]
+}
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
