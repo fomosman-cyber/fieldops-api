@@ -80,10 +80,7 @@ def list_clusters(
     if status:
         q = q.filter(JobCluster.status == status)
     clusters = q.order_by(JobCluster.created_at.desc()).all()
-    # Geef db mee zodat cluster_summary priority_score + priority_label
-    # kan berekenen op basis van melding-aggregaat. Frontend gebruikt dit
-    # om clusters op urgency te sorteren.
-    return [cluster_summary(c, db=db) for c in clusters]
+    return [cluster_summary(c) for c in clusters]
 
 
 @router.post("/clusters/generate")
