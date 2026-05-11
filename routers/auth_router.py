@@ -24,35 +24,57 @@ def _hash_token(token: str) -> str:
 def login(payload: LoginRequest, http_request: Request, db: Session = Depends(get_db)):
     # Brute-force gate: bevraagt audit_logs voor recent gefaalde pogingen.
     # Werpt 429 zodat client weet dat het rate-limit is, niet credential-issue.
-    check_login_rate_limit(db, payload.email, http_request)
+    # Defensief: laat een uitval van de rate-limit-check de login zelf niet
+    # blokkeren — productie had een 500 op deze regel wat alle inloggen verhinderde.
+    try:
+        check_login_rate_limit(db, payload.email, http_request)
+    except HTTPException:
+        raise
+    except Exception as e:
+        import logging
+        logging.exception("login rate-limit check faalde (login gaat door): %s", e)
 
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.hashed_password):
-        # user wordt meegegeven (kan None zijn): bij bestaande email vult dat
-        # user_email in op de audit-rij, zodat de rate-limit-query exact werkt.
-        log_action(db, http_request, user,
-                   action=ACTION.LOGIN_FAILED,
-                   entity_type="user", entity_id=user.id if user else None,
-                   extra={"email": payload.email, "reason": "invalid_credentials"})
+        try:
+            log_action(db, http_request, user,
+                       action=ACTION.LOGIN_FAILED,
+                       entity_type="user", entity_id=user.id if user else None,
+                       extra={"email": payload.email, "reason": "invalid_credentials"})
+        except Exception as e:
+            import logging
+            logging.exception("audit log_action faalde bij LOGIN_FAILED: %s", e)
         raise HTTPException(status_code=401, detail="Onjuist e-mailadres of wachtwoord")
     if not user.is_active:
-        log_action(db, http_request, user,
-                   action=ACTION.LOGIN_FAILED,
-                   entity_type="user", entity_id=user.id,
-                   extra={"reason": "deactivated"})
+        try:
+            log_action(db, http_request, user,
+                       action=ACTION.LOGIN_FAILED,
+                       entity_type="user", entity_id=user.id,
+                       extra={"reason": "deactivated"})
+        except Exception:
+            pass
         raise HTTPException(status_code=403, detail="Account is gedeactiveerd")
 
     org = user.organization
-    if org.status == "expired":
+    if org and org.status == "expired":
         raise HTTPException(status_code=403, detail="Uw proefperiode is verlopen. Neem een abonnement.")
-    if org.status == "suspended":
+    if org and org.status == "suspended":
         raise HTTPException(status_code=403, detail="Account is opgeschort. Neem contact op met support.")
 
     user.last_login = datetime.now(timezone.utc)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as e:
+        import logging
+        logging.exception("last_login commit faalde: %s", e)
+        db.rollback()
 
     token = create_access_token(data={"sub": user.id, "org": user.organization_id, "role": user.role.value})
-    log_action(db, http_request, user, action=ACTION.LOGIN_SUCCESS, entity_type="user", entity_id=user.id)
+    try:
+        log_action(db, http_request, user, action=ACTION.LOGIN_SUCCESS, entity_type="user", entity_id=user.id)
+    except Exception as e:
+        import logging
+        logging.exception("audit log_action faalde bij LOGIN_SUCCESS: %s", e)
 
     return TokenResponse(
         access_token=token,
