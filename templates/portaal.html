@@ -2513,10 +2513,13 @@
       <div id="opDetailHeader" style="margin:14px 0;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg-hover);font-size:13px;line-height:1.7;color:var(--text-muted);"></div>
 
       <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px;">
-        <h3 style="margin:0;font-size:16px;">Opleverpunten <span id="opPuntenCount" style="font-weight:400;color:var(--text-dim);font-size:13px;">(0)</span></h3>
-        <button class="btn-primary" style="font-size:13px;padding:6px 14px;" onclick="openPuntModal()">+ Punt toevoegen</button>
+        <h3 style="margin:0;font-size:16px;">Restpunten <span id="opPuntenCount" style="font-weight:400;color:var(--text-dim);font-size:13px;">(0)</span></h3>
       </div>
       <div id="opPuntenList" style="display:flex;flex-direction:column;gap:10px;"></div>
+      <!-- Prominent + knop onderaan om eindeloos restpunten toe te voegen -->
+      <button type="button" class="btn-primary" onclick="openPuntModal()" style="width:100%;margin-top:14px;font-size:14px;padding:14px;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#0284c7,#0369a1);">
+        <span style="font-size:18px;font-weight:300;line-height:1;">+</span> Restpunt toevoegen
+      </button>
     </div>
   </div>
 
@@ -2524,30 +2527,31 @@
   <div class="modal-overlay" id="puntModal">
     <div class="modal" style="max-width:600px;">
       <button class="modal-close" onclick="closePuntModal()" aria-label="Sluiten">&times;</button>
-      <h2 id="puntModalTitle">Opleverpunt toevoegen</h2>
+      <h2 id="puntModalTitle">Restpunt toevoegen</h2>
       <form id="puntForm" onsubmit="submitPunt(event)">
         <input type="hidden" id="puntEditId" value="">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
             <label>Code *</label>
-            <input type="text" id="puntCode" required placeholder="bv. OP-001 of WL-NW-DIJ">
+            <input type="text" id="puntCode" required readonly style="font-family:JetBrains Mono,monospace;background:var(--card-bg-hover);cursor:not-allowed;" placeholder="auto-gegenereerd">
+            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Automatisch gegenereerd op datum + volgnummer. Niet te wijzigen.</p>
           </div>
           <div class="form-group">
             <label>Status</label>
             <select id="puntStatus">
-              <option value="gereed">Gereed</option>
               <option value="restpunt">Restpunt</option>
+              <option value="gereed">Gereed</option>
               <option value="afgekeurd">Afgekeurd</option>
             </select>
           </div>
         </div>
         <div class="form-group">
-          <label>Omschrijving *</label>
-          <textarea id="puntOmschrijving" rows="2" required placeholder="Wat is uitgevoerd / opgeleverd?"></textarea>
+          <label>Omschrijving * <span id="puntOmsCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
+          <textarea id="puntOmschrijving" rows="3" required maxlength="300" style="resize:none;" placeholder="Wat is uitgevoerd / opgeleverd? (max 300 tekens)" oninput="document.getElementById('puntOmsCount').textContent = this.value.length + ' / 300'"></textarea>
         </div>
         <div class="form-group">
-          <label>Uitvoeringsmethode</label>
-          <textarea id="puntUitvoering" rows="2" placeholder="bv. Scheurvulling polymeer (cold-pour) over 12m¹, 2 lagen"></textarea>
+          <label>Uitvoeringsmethode <span id="puntUitvCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
+          <textarea id="puntUitvoering" rows="3" maxlength="300" style="resize:none;" placeholder="bv. Scheurvulling polymeer (cold-pour) over 12m¹, 2 lagen (max 300 tekens)" oninput="document.getElementById('puntUitvCount').textContent = this.value.length + ' / 300'"></textarea>
         </div>
         <div class="form-group">
           <label>Asset (optioneel — koppel aan bestaande asset)</label>
@@ -8953,7 +8957,7 @@
       var punten = o.punten || [];
       document.getElementById('opPuntenCount').textContent = '(' + punten.length + ')';
       if (!punten.length) {
-        puntenList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);border:1px dashed var(--border);border-radius:10px;">Nog geen opleverpunten — klik op "+ Punt toevoegen" om de eerste vast te leggen.</div>';
+        puntenList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);border:1px dashed var(--border);border-radius:10px;">Nog geen restpunten — klik op de knop hieronder om er één toe te voegen.</div>';
         return;
       }
       var puntStatusColors = {
@@ -9036,14 +9040,17 @@
       assetSel.innerHTML = '<option value="">— Geen asset gekoppeld —</option>'
         + assets.map(function(a){ return '<option value="' + a.id + '">' + escapeHtml(a.code) + ' — ' + escapeHtml(a.name || '') + '</option>'; }).join('');
       // Reset
-      document.getElementById('puntCode').value = '';
       document.getElementById('puntOmschrijving').value = '';
       document.getElementById('puntUitvoering').value = '';
       document.getElementById('puntPhotoUrl').value = '';
       document.getElementById('puntPhotoUrlAfter').value = '';
-      document.getElementById('puntStatus').value = 'gereed';
+      document.getElementById('puntStatus').value = 'restpunt';
       idField.value = '';
-      title.textContent = 'Opleverpunt toevoegen';
+      title.textContent = 'Restpunt toevoegen';
+      // Reset char-counters
+      var omsCount = document.getElementById('puntOmsCount'); if (omsCount) omsCount.textContent = '0 / 300';
+      var uitvCount = document.getElementById('puntUitvCount'); if (uitvCount) uitvCount.textContent = '0 / 300';
+
       if (puntId && _currentOplevering) {
         var p = (_currentOplevering.punten || []).find(function(x){ return x.id === puntId; });
         if (p) {
@@ -9053,10 +9060,24 @@
           document.getElementById('puntUitvoering').value = p.uitvoeringsmethode || '';
           document.getElementById('puntPhotoUrl').value = p.photo_url || '';
           document.getElementById('puntPhotoUrlAfter').value = p.photo_url_after || '';
-          document.getElementById('puntStatus').value = p.status || 'gereed';
+          document.getElementById('puntStatus').value = p.status || 'restpunt';
           if (p.asset_id) assetSel.value = p.asset_id;
-          title.textContent = 'Opleverpunt bewerken';
+          if (omsCount) omsCount.textContent = (p.omschrijving || '').length + ' / 300';
+          if (uitvCount) uitvCount.textContent = (p.uitvoeringsmethode || '').length + ' / 300';
+          title.textContent = 'Restpunt bewerken';
         }
+      } else {
+        // Auto-genereer ID: OP-YYYY-MM-DD-NNN (volgnummer binnen deze oplevering)
+        var now = new Date();
+        var datePart = now.getFullYear() + '-'
+          + String(now.getMonth() + 1).padStart(2, '0') + '-'
+          + String(now.getDate()).padStart(2, '0');
+        var existingPunten = (_currentOplevering && _currentOplevering.punten) || [];
+        var seq = existingPunten.length + 1;
+        // Voorkom ID-collisie: tel door totdat we een vrije code hebben
+        var codes = existingPunten.map(function(x){ return x.code; });
+        while (codes.indexOf('OP-' + datePart + '-' + String(seq).padStart(3, '0')) !== -1) seq++;
+        document.getElementById('puntCode').value = 'OP-' + datePart + '-' + String(seq).padStart(3, '0');
       }
       modal.classList.add('active');
     }
