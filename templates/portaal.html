@@ -958,17 +958,14 @@
         <div class="logo-icon"><svg viewBox="0 0 24 24" fill="none" width="20" height="20"><path d="M12 2L3 7v10l9 5 9-5V7L12 2z" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"/><path d="M12 12L3 7M12 12l9-5M12 12v10" stroke="#fff" stroke-width="2.2" stroke-linejoin="round"/></svg></div>
         <div class="logo-text">Field<span>Ops</span></div>
       </a>
+      <!-- Topbar = BEHEER (account, gebruikers, integraties, instellingen).
+           Sidebar = OPERATIES (dashboard/projecten/assets/meldingen/etc.).
+           Geen dubbeling meer tussen de twee. -->
       <nav class="topbar-nav" id="topNav">
-        <a data-page="dashboard" class="active" onclick="navigateTo('dashboard')">Dashboard</a>
-        <a data-page="projecten" onclick="navigateTo('projecten')">Projecten</a>
-        <a data-page="assets" onclick="navigateTo('assets')">Assets</a>
-        <a data-page="meldingen" onclick="navigateTo('meldingen')">Meldingen</a>
-        <a data-page="mijn-dag" onclick="navigateTo('mijn-dag')" id="topNavMijnDag">Mijn dag</a>
-        <a data-page="predictive" onclick="navigateTo('predictive')">Voorspeller</a>
-        <a data-page="clusters" onclick="navigateTo('clusters')">Clusters</a>
-        <a data-page="opleveren" onclick="navigateTo('opleveren')">Opleveren</a>
-        <a data-page="kaart" onclick="navigateTo('kaart')">Kaart</a>
         <a data-page="gebruikers" onclick="navigateTo('gebruikers')">Gebruikers</a>
+        <a data-page="admin" onclick="navigateTo('admin')" id="topNavAdmin" style="display:none;">Admin Overzicht</a>
+        <a data-page="integraties" onclick="navigateTo('integraties')" id="topNavIntegraties" style="display:none;">Integraties</a>
+        <a data-page="instellingen" onclick="navigateTo('instellingen')">Instellingen</a>
       </nav>
     </div>
     <div class="topbar-right">
@@ -1025,30 +1022,12 @@
         <a data-page="kaart" onclick="navigateTo('kaart')">
           <span class="icon">&#127758;</span> Kaart
         </a>
-        <a data-page="gebruikers" onclick="navigateTo('gebruikers')">
-          <span class="icon">&#128101;</span> Gebruikers
-        </a>
       </nav>
     </div>
-    <div class="sidebar-section" id="adminSection" style="display:none;">
-      <div class="sidebar-label">Beheer</div>
-      <nav class="sidebar-nav">
-        <a data-page="admin" onclick="navigateTo('admin')">
-          <span class="icon">&#128274;</span> Admin Overzicht
-        </a>
-        <a data-page="integraties" onclick="navigateTo('integraties')">
-          <span class="icon">&#128268;</span> Integraties
-        </a>
-      </nav>
-    </div>
-    <div class="sidebar-section">
-      <div class="sidebar-label">Overig</div>
-      <nav class="sidebar-nav">
-        <a data-page="instellingen" onclick="navigateTo('instellingen')">
-          <span class="icon">&#9881;</span> Instellingen
-        </a>
-      </nav>
-    </div>
+    <!-- Beheer + Overig zijn naar de topbar verplaatst (Gebruikers /
+         Admin Overzicht / Integraties / Instellingen) zodat de sidebar
+         puur operationeel blijft. Geen dubbele items meer. -->
+
     <div class="sidebar-lang">
       <select id="sidebarLangSwitcher" onchange="switchLanguage(this.value)">
         <option value="nl">🇳🇱 Nederlands</option>
@@ -5018,9 +4997,13 @@
         document.getElementById('settStatus').innerHTML = '<span class="status-badge ' + stats.status + '">' + stats.status + '</span>';
         document.getElementById('settUsers').textContent = (stats.active_users || 0) + ' / ' + (stats.max_users || 10);
 
-        // Show admin section + invite buttons for org admin
+        // Show admin entries in TOPBAR + invite buttons for org admin
+        // (Sidebar Beheer-sectie is verwijderd — alles staat nu in topbar.)
         if (currentUser && currentUser.is_org_admin) {
-          document.getElementById('adminSection').style.display = 'block';
+          var navAdmin = document.getElementById('topNavAdmin');
+          var navIntegr = document.getElementById('topNavIntegraties');
+          if (navAdmin) navAdmin.style.display = '';
+          if (navIntegr) navIntegr.style.display = '';
           // Show invite button and invitations tab for admins
           var invBtn = document.getElementById('inviteUserBtn');
           var tabInv = document.getElementById('tabInvites');
