@@ -2512,6 +2512,7 @@
           <p class="subtitle" id="opDetailMeta" style="margin:4px 0 0;"></p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="sendCurrentOpleveringEmail()">📧 Verstuur per mail</button>
           <button class="btn-secondary" onclick="editCurrentOplevering()">✎ Bewerken</button>
           <button class="btn-secondary" style="color:#dc2626;border-color:#fee2e2;" onclick="deleteCurrentOplevering()">🗑️ Verwijderen</button>
         </div>
@@ -9014,6 +9015,35 @@
       if (!_currentOplevering) return;
       closeOpleveringDetail();
       openOpleveringModal(_currentOplevering.id);
+    }
+
+    function sendCurrentOpleveringEmail() {
+      if (!_currentOplevering) return;
+      var o = _currentOplevering;
+      // Bouw default-recipients-lijst voor confirm-bericht
+      var rec = [];
+      if (o.opdrachtgever_email) rec.push(o.opdrachtgever_email);
+      if (o.aannemer_email && o.aannemer_email !== o.opdrachtgever_email) rec.push(o.aannemer_email);
+      if (rec.length === 0) {
+        showToast('Geen email-adres ingevuld bij opdrachtgever of aannemer. Vul eerst in via "Bewerken".', 'error');
+        return;
+      }
+      showConfirm({
+        icon: '📧',
+        title: 'Verstuur oplever-formulier?',
+        message: 'De huidige stand (status + alle ' + (o.punten || []).length + ' restpunten met foto\'s) wordt gemaild naar:',
+        extraInfo: rec.map(function(e){ return '• ' + e; }).join('<br>'),
+        actionLabel: 'Verstuur',
+        danger: false,
+        onConfirm: function() {
+          api('POST', '/api/opleveringen/' + o.id + '/send', { recipients: null })
+            .then(function(r){
+              showToast('Verstuurd naar ' + r.sent + ' ontvanger(s)' + (r.failed ? ' (' + r.failed + ' mislukt)' : ''), r.failed ? 'error' : 'success');
+            }).catch(function(err){
+              showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
+            });
+        },
+      });
     }
 
     function deleteCurrentOplevering() {

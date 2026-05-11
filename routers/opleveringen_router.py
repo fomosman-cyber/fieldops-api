@@ -21,6 +21,17 @@ from database import get_db
 from models import User, Oplevering, OpleveringPunt, Asset
 from auth import get_current_user
 from audit import log_action, ACTION
+from email_service import send_oplevering_email
+
+
+def _collect_recipients(o: Oplevering) -> list[str]:
+    """Stuur naar opdrachtgever + aannemer als e-mail is ingevuld."""
+    out = []
+    if o.opdrachtgever_email:
+        out.append(o.opdrachtgever_email)
+    if o.aannemer_email and o.aannemer_email not in out:
+        out.append(o.aannemer_email)
+    return out
 
 router = APIRouter(prefix="/api/opleveringen", tags=["Opleveringen"])
 
@@ -224,6 +235,21 @@ def update_oplevering(
     log_action(db, request, current_user, action="oplevering.update",
                entity_type="oplevering", entity_id=o.id,
                extra={"before_status": before_status, "after_status": o.status})
+
+    # Auto-trigger email bij status-overgang naar 'opgeleverd' (eenmalig).
+    # Defensief in try/except: een email-fout mag de status-update niet blokkeren.
+    if before_status != "opgeleverd" and o.status == "opgeleverd":
+        try:
+            recipients = _collect_recipients(o)
+            if recipients:
+                result = send_oplevering_email(o, recipients, trigger="auto_status_change")
+                log_action(db, request, current_user, action="oplevering.email_sent",
+                           entity_type="oplevering", entity_id=o.id,
+                           extra={"trigger": "auto_status_change", **result})
+        except Exception as e:
+            import logging
+            logging.exception("auto-email bij opleveren faalde: %s", e)
+
     return _oplevering_to_dict(o, include_punten=True)
 
 
@@ -337,3 +363,40 @@ def delete_punt(
                entity_type="oplevering_punt", entity_id=punt_id,
                extra={"oplevering_id": o.id, "code": code})
     return {"message": "Punt verwijderd"}
+
+
+# ── Email versturen (handmatig) ─────────────────────────────────────
+
+class SendOpleveringRequest(BaseModel):
+    recipients: Optional[List[str]] = None  # extra/override; default = opdrachtgever + aannemer
+
+
+@router.post("/{oplevering_id}/send")
+def send_oplevering(
+    oplevering_id: str,
+    payload: SendOpleveringRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Verstuur het oplever-formulier handmatig per email.
+
+    Standaard naar opdrachtgever + aannemer (gevuld in de oplevering).
+    Caller kan custom recipient-lijst meesturen voor cc/extra ontvangers.
+    """
+    o = _get_oplevering_or_404(db, oplevering_id, current_user)
+    recipients = payload.recipients or _collect_recipients(o)
+    if not recipients:
+        raise HTTPException(
+            status_code=400,
+            detail="Geen ontvangers — vul opdrachtgever-email of aannemer-email in (of geef recipients mee in de request).",
+        )
+    result = send_oplevering_email(o, recipients, trigger="manual")
+    log_action(db, request, current_user, action="oplevering.email_sent",
+               entity_type="oplevering", entity_id=o.id,
+               extra={"trigger": "manual", "recipients": recipients, **result})
+    return {
+        "message": f"Email verstuurd naar {result['sent']} ontvanger(s)",
+        "recipients": recipients,
+        **result,
+    }

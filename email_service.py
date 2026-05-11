@@ -344,3 +344,146 @@ FieldOps
         f"Welkom bij FieldOps - uw account is klaar",
         _base_template(content, "Account geactiveerd"),
     )
+
+
+def send_oplevering_email(oplevering, recipients: list[str], *, trigger: str = "manual") -> dict:
+    """Verstuur oplever-formulier per email naar opdrachtgever + aannemer.
+
+    Args:
+        oplevering: Oplevering SQLAlchemy object (relationship .punten geladen).
+        recipients: lijst email-adressen om naar te versturen.
+        trigger: "manual" (handmatige knop) of "auto_status_change" (status
+            ging over naar opgeleverd). Verschijnt in subject.
+
+    Returns:
+        dict met counts: {"sent": int, "failed": int, "skipped": int}
+    """
+    import json
+    from datetime import datetime
+
+    if not recipients:
+        return {"sent": 0, "failed": 0, "skipped": 0}
+
+    # Header-info
+    status_labels = {"concept": "Concept", "opgeleverd": "Opgeleverd",
+                     "aanvaard": "Aanvaard", "afgewezen": "Afgewezen"}
+    status_colors = {"concept": "#64748b", "opgeleverd": "#0284c7",
+                     "aanvaard": "#16a34a", "afgewezen": "#dc2626"}
+    status_label = status_labels.get(oplevering.status, oplevering.status or "—")
+    status_color = status_colors.get(oplevering.status, "#64748b")
+
+    datum_str = (
+        oplevering.datum_oplevering.strftime("%d-%m-%Y")
+        if oplevering.datum_oplevering else "—"
+    )
+
+    # Extra-vragen ontleden
+    eq = {}
+    if oplevering.extra_questions_json:
+        try:
+            eq = json.loads(oplevering.extra_questions_json) or {}
+        except (json.JSONDecodeError, TypeError):
+            eq = {}
+    extra_rows = ""
+    eq_labels = {"weer": "Weersomstandigheden", "veiligheid": "Veiligheid",
+                 "normen": "Bouwbesluit / normen", "netheid": "Netheid / afval"}
+    for k, label in eq_labels.items():
+        v = eq.get(k)
+        if v:
+            extra_rows += (
+                f'<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">{label}</td>'
+                f'<td style="padding:4px 0;color:#1e293b;font-size:13px;font-weight:500;">{v}</td></tr>'
+            )
+
+    # Restpunten-rijen
+    punten_html = ""
+    for p in (oplevering.punten or []):
+        punt_status_colors = {"gereed": "#16a34a", "restpunt": "#f59e0b", "afgekeurd": "#dc2626"}
+        ps_color = punt_status_colors.get(p.status, "#64748b")
+        photos = []
+        if p.photo_url:
+            photos.append(
+                f'<a href="{p.photo_url}" style="display:inline-block;margin-right:6px;">'
+                f'<img src="{p.photo_url}" style="width:80px;height:80px;object-fit:cover;border:2px solid #f59e0b;border-radius:6px;" alt="vóór"></a>'
+            )
+        if p.photo_url_after:
+            photos.append(
+                f'<a href="{p.photo_url_after}" style="display:inline-block;">'
+                f'<img src="{p.photo_url_after}" style="width:80px;height:80px;object-fit:cover;border:2px solid #16a34a;border-radius:6px;" alt="na"></a>'
+            )
+        photos_html = ("".join(photos)) or '<span style="color:#94a3b8;font-size:12px;">geen foto\'s</span>'
+        uitvoering_html = (
+            f'<div style="color:#64748b;font-size:12px;margin-top:6px;">'
+            f'<strong>Methode:</strong> {p.uitvoeringsmethode}</div>'
+            if p.uitvoeringsmethode else ""
+        )
+        punten_html += f"""
+<tr><td style="padding:12px 0;border-bottom:1px solid #e2e8f0;">
+  <div style="display:flex;align-items:flex-start;gap:12px;">
+    <div style="flex:1;">
+      <div style="font-family:monospace;font-size:11px;background:#f1f5f9;color:#1e293b;padding:2px 8px;border-radius:4px;display:inline-block;font-weight:700;">{p.code}</div>
+      <span style="background:{ps_color}20;color:{ps_color};font-size:10px;padding:2px 8px;border-radius:100px;font-weight:700;letter-spacing:.05em;margin-left:6px;">{p.status.upper()}</span>
+      <div style="color:#1e293b;font-size:14px;margin-top:6px;font-weight:500;">{p.omschrijving}</div>
+      {uitvoering_html}
+    </div>
+    <div style="text-align:right;">{photos_html}</div>
+  </div>
+</td></tr>"""
+
+    if not punten_html:
+        punten_html = '<tr><td style="padding:20px;text-align:center;color:#94a3b8;font-size:13px;">Geen restpunten toegevoegd.</td></tr>'
+
+    notes_html = ""
+    if oplevering.notes:
+        notes_html = f"""
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#fef3c7;border-left:3px solid #f59e0b;border-radius:6px;margin:16px 0;">
+<tr><td style="padding:12px 16px;">
+<div style="color:#78350f;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Opmerkingen / restpunten</div>
+<div style="color:#1e293b;font-size:13px;line-height:1.5;">{oplevering.notes}</div>
+</td></tr></table>"""
+
+    trigger_note = (
+        "Deze oplevering is zojuist gemarkeerd als <strong>Opgeleverd</strong>."
+        if trigger == "auto_status_change" else
+        "Hierbij het oplever-overzicht zoals opgevraagd."
+    )
+
+    content = f"""
+<h2 style="color:#1e293b;font-size:22px;margin:0 0 4px;">Oplever-formulier</h2>
+<p style="color:#64748b;font-size:14px;margin:0 0 16px;">{trigger_note}</p>
+
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:12px;margin-bottom:20px;">
+<tr><td style="padding:18px 22px;">
+<div style="font-size:18px;font-weight:700;color:#1e293b;margin-bottom:4px;">{oplevering.title}</div>
+<span style="background:{status_color}20;color:{status_color};font-size:11px;padding:3px 10px;border-radius:100px;font-weight:700;letter-spacing:.05em;">{status_label.upper()}</span>
+<table width="100%" style="margin-top:14px;">
+<tr><td style="padding:4px 0;color:#64748b;font-size:13px;width:160px;">Project</td><td style="padding:4px 0;color:#1e293b;font-size:13px;font-weight:500;">{(oplevering.project.name if oplevering.project else '—')}</td></tr>
+<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Locatie</td><td style="padding:4px 0;color:#1e293b;font-size:13px;font-weight:500;">{oplevering.locatie or '—'}</td></tr>
+<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Datum oplevering</td><td style="padding:4px 0;color:#1e293b;font-size:13px;font-weight:500;">{datum_str}</td></tr>
+<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Opdrachtgever</td><td style="padding:4px 0;color:#1e293b;font-size:13px;font-weight:500;">{oplevering.opdrachtgever_naam or '—'}{(' · ' + oplevering.opdrachtgever_email) if oplevering.opdrachtgever_email else ''}</td></tr>
+<tr><td style="padding:4px 0;color:#64748b;font-size:13px;">Aannemer</td><td style="padding:4px 0;color:#1e293b;font-size:13px;font-weight:500;">{oplevering.aannemer_naam or '—'}{(' · ' + oplevering.aannemer_email) if oplevering.aannemer_email else ''}</td></tr>
+{extra_rows}
+</table>
+</td></tr></table>
+
+{notes_html}
+
+<h3 style="color:#1e293b;font-size:16px;margin:16px 0 8px;">Restpunten ({len(oplevering.punten or [])})</h3>
+<table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e2e8f0;">
+{punten_html}
+</table>
+
+<p style="color:#94a3b8;font-size:12px;margin:24px 0 0;">
+Reageren? Antwoord direct op deze mail.<br>
+Deze e-mail is automatisch verstuurd via FieldOps.
+</p>"""
+
+    sent, failed = 0, 0
+    subject = f"[FieldOps] Oplevering {status_label.lower()}: {oplevering.title}"
+    for email in recipients:
+        ok = send_email(email, subject, _base_template(content, "Oplever-formulier"))
+        if ok:
+            sent += 1
+        else:
+            failed += 1
+    return {"sent": sent, "failed": failed, "skipped": 0}
