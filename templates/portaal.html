@@ -2553,11 +2553,19 @@
           <label>Asset (optioneel — koppel aan bestaande asset)</label>
           <select id="puntAsset"><option value="">— Geen asset gekoppeld —</option></select>
         </div>
-        <div class="form-group">
-          <label>Foto-URL (optioneel)</label>
-          <input type="url" id="puntPhotoUrl" placeholder="https://... of upload via meldingen-flow en plak URL">
-          <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Tip: maak een melding aan met de foto, plak hier de photo_url die je daar krijgt.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>📷 Foto vóór uitvoering</label>
+            <input type="url" id="puntPhotoUrl" placeholder="https://...">
+            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Beginsituatie / restpunt.</p>
+          </div>
+          <div class="form-group">
+            <label>✅ Foto na uitvoering</label>
+            <input type="url" id="puntPhotoUrlAfter" placeholder="https://...">
+            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Bewijs van oplevering — vul in zodra status = gereed.</p>
+          </div>
         </div>
+        <p style="font-size:11px;color:var(--text-dim);margin:-4px 0 8px;">Tip: maak een melding aan met de foto, plak hier de photo_url die je daar krijgt.</p>
         <div class="form-actions">
           <button type="button" class="btn-secondary" onclick="closePuntModal()">Annuleren</button>
           <button type="submit" class="btn-primary">Opslaan</button>
@@ -8947,13 +8955,28 @@
         restpunt:  {bg:'#fef3c7', color:'#92400e'},
         afgekeurd: {bg:'#fee2e2', color:'#991b1b'},
       };
+      function photoTile(url, label, badgeColor) {
+        if (url) {
+          return '<div style="text-align:center;">'
+            +     '<a href="' + escapeHtml(url) + '" target="_blank">'
+            +       '<img src="' + escapeHtml(url) + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:2px solid ' + badgeColor + ';display:block;">'
+            +     '</a>'
+            +     '<div style="font-size:9px;font-weight:700;color:' + badgeColor + ';letter-spacing:.05em;margin-top:4px;">' + label + '</div>'
+            +   '</div>';
+        }
+        return '<div style="text-align:center;">'
+          +     '<div style="width:80px;height:80px;border-radius:8px;background:var(--card-bg-hover);border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:10px;line-height:1.2;">geen<br>foto</div>'
+          +     '<div style="font-size:9px;font-weight:700;color:var(--text-dim);letter-spacing:.05em;margin-top:4px;">' + label + '</div>'
+          +   '</div>';
+      }
       puntenList.innerHTML = punten.map(function(p){
         var ps = puntStatusColors[p.status] || puntStatusColors.gereed;
-        var photoHtml = p.photo_url
-          ? '<a href="' + escapeHtml(p.photo_url) + '" target="_blank" style="flex-shrink:0;"><img src="' + escapeHtml(p.photo_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border);"></a>'
-          : '<div style="width:72px;height:72px;border-radius:8px;background:var(--card-bg-hover);border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:11px;flex-shrink:0;">geen foto</div>';
+        var photosHtml = '<div style="display:flex;gap:8px;flex-shrink:0;">'
+          + photoTile(p.photo_url, 'VÓÓR', '#f59e0b')
+          + photoTile(p.photo_url_after, 'NA', '#16a34a')
+          + '</div>';
         return '<div style="display:flex;gap:12px;padding:12px;border:1px solid var(--border);border-radius:10px;align-items:flex-start;">'
-          + photoHtml
+          + photosHtml
           + '<div style="flex:1;min-width:0;">'
           +   '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">'
           +     '<span style="font-family:JetBrains Mono,monospace;font-size:12px;font-weight:700;background:var(--card-bg-hover);padding:2px 8px;border-radius:6px;">' + escapeHtml(p.code) + '</span>'
@@ -9011,6 +9034,7 @@
       document.getElementById('puntOmschrijving').value = '';
       document.getElementById('puntUitvoering').value = '';
       document.getElementById('puntPhotoUrl').value = '';
+      document.getElementById('puntPhotoUrlAfter').value = '';
       document.getElementById('puntStatus').value = 'gereed';
       idField.value = '';
       title.textContent = 'Opleverpunt toevoegen';
@@ -9022,6 +9046,7 @@
           document.getElementById('puntOmschrijving').value = p.omschrijving || '';
           document.getElementById('puntUitvoering').value = p.uitvoeringsmethode || '';
           document.getElementById('puntPhotoUrl').value = p.photo_url || '';
+          document.getElementById('puntPhotoUrlAfter').value = p.photo_url_after || '';
           document.getElementById('puntStatus').value = p.status || 'gereed';
           if (p.asset_id) assetSel.value = p.asset_id;
           title.textContent = 'Opleverpunt bewerken';
@@ -9042,6 +9067,7 @@
         omschrijving: document.getElementById('puntOmschrijving').value,
         uitvoeringsmethode: document.getElementById('puntUitvoering').value || null,
         photo_url: document.getElementById('puntPhotoUrl').value || null,
+        photo_url_after: document.getElementById('puntPhotoUrlAfter').value || null,
         asset_id: document.getElementById('puntAsset').value || null,
         status: document.getElementById('puntStatus').value,
       };

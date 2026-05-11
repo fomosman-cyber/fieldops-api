@@ -120,6 +120,16 @@ def _run_migrations():
                     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_is_segment ON assets(is_segment)"))
                 print("[migration] assets NWB-kolommen toegevoegd.")
 
+        # OpleveringPunt — photo_url_after (foto na uitvoering, toegevoegd 2026-05-11
+        # voor voor/na-vergelijking bij opleverpunten)
+        if "opleveringspunten" in insp.get_table_names():
+            opcols = [c["name"] for c in insp.get_columns("opleveringspunten")]
+            if "photo_url_after" not in opcols:
+                print("[migration] opleveringspunten.photo_url_after kolom toevoegen...")
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE opleveringspunten ADD COLUMN photo_url_after VARCHAR(500)"))
+                print("[migration] opleveringspunten.photo_url_after toegevoegd.")
+
         # Job Orchestration Engine — assigned_to + job_cluster_id op meldingen (v3.0)
         if "meldingen" in insp.get_table_names():
             mcols = [c["name"] for c in insp.get_columns("meldingen")]

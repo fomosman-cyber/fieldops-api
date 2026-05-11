@@ -31,7 +31,8 @@ class OpleveringPuntIn(BaseModel):
     code: str = Field(..., min_length=1, max_length=64)
     omschrijving: str = Field(..., min_length=1)
     uitvoeringsmethode: Optional[str] = None
-    photo_url: Optional[str] = None
+    photo_url: Optional[str] = None           # foto voor uitvoering
+    photo_url_after: Optional[str] = None     # foto na uitvoering
     asset_id: Optional[str] = None
     order_index: int = 0
     status: str = Field(default="gereed", pattern="^(gereed|restpunt|afgekeurd)$")
@@ -42,6 +43,7 @@ class OpleveringPuntUpdate(BaseModel):
     omschrijving: Optional[str] = None
     uitvoeringsmethode: Optional[str] = None
     photo_url: Optional[str] = None
+    photo_url_after: Optional[str] = None
     asset_id: Optional[str] = None
     order_index: Optional[int] = None
     status: Optional[str] = Field(default=None, pattern="^(gereed|restpunt|afgekeurd)$")
@@ -86,6 +88,7 @@ def _punt_to_dict(p: OpleveringPunt) -> dict:
         "omschrijving": p.omschrijving,
         "uitvoeringsmethode": p.uitvoeringsmethode,
         "photo_url": p.photo_url,
+        "photo_url_after": p.photo_url_after,
         "asset_id": p.asset_id,
         "order_index": p.order_index,
         "status": p.status,

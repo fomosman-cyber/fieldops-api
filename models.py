@@ -689,7 +689,8 @@ class OpleveringPunt(Base):
     code = Column(String(64), nullable=False)                # eigen code, bv. "OP-001" of asset-code
     omschrijving = Column(Text, nullable=False)              # wat is gedaan / wat wordt opgeleverd
     uitvoeringsmethode = Column(Text, nullable=True)         # hoe is het uitgevoerd
-    photo_url = Column(String(500), nullable=True)           # bewijslast-foto
+    photo_url = Column(String(500), nullable=True)           # foto voor uitvoering (beginsituatie)
+    photo_url_after = Column(String(500), nullable=True)     # foto na uitvoering (bewijs van oplevering)
     asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)  # optionele koppeling
 
     order_index = Column(Integer, default=0, nullable=False)  # volgorde in oplever-PV
