@@ -623,3 +623,79 @@ class DemoRequest(Base):
     processed = Column(Boolean, default=False)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class Oplevering(Base):
+    """Oplevering / proces-verbaal van uitgevoerd werk.
+
+    Een Oplevering is de formele afsluiting van een (deel)project: de aannemer
+    overhandigt het werk aan de opdrachtgever. Bestaat uit een header met
+    project-/locatie-gegevens en een lijst opleverpunten (OpleveringPunt) die
+    per object/element zijn vastgelegd met foto + uitvoeringsmethode.
+
+    Status-flow: concept -> opgeleverd -> aanvaard | afgewezen.
+    """
+    __tablename__ = "opleveringen"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+
+    # Header — algemene oplevergegevens
+    title = Column(String(255), nullable=False)              # "Oplevering KO Naaldwijk fase 2"
+    description = Column(Text, nullable=True)
+    locatie = Column(String(500), nullable=True)             # "Westland, kern Naaldwijk"
+    datum_oplevering = Column(DateTime, nullable=True)       # geplande/uitgevoerde oplever-datum
+    opdrachtgever_naam = Column(String(255), nullable=True)
+    opdrachtgever_email = Column(String(255), nullable=True)
+    aannemer_naam = Column(String(255), nullable=True)
+    aannemer_email = Column(String(255), nullable=True)
+
+    # Vrije aanvullende vragen — JSON-string voor flexibiliteit
+    # bv. {"weersomstandigheden": "droog", "veiligheid_ok": true, "bouwbesluit": "voldoet"}
+    extra_questions_json = Column(Text, nullable=True)
+
+    notes = Column(Text, nullable=True)                       # opmerkingen / restpunten
+    status = Column(String(30), default="concept", index=True)  # concept|opgeleverd|aanvaard|afgewezen
+    signed_off_at = Column(DateTime, nullable=True)           # wanneer opdrachtgever aanvaard heeft
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    organization = relationship("Organization")
+    project = relationship("Project")
+    creator = relationship("User", foreign_keys=[created_by])
+    punten = relationship("OpleveringPunt", back_populates="oplevering",
+                          cascade="all, delete-orphan",
+                          order_by="OpleveringPunt.order_index")
+
+
+class OpleveringPunt(Base):
+    """Eén opleverpunt binnen een Oplevering.
+
+    Elk punt staat voor één gecontroleerd/opgeleverd object of element:
+    bv. "Lantaarnpaal WL-LP-001 vervangen", "Scheurvulling Dijkweg km 0.4-0.8".
+    Per punt: code, omschrijving, uitvoeringsmethode, foto, status.
+    """
+    __tablename__ = "opleveringspunten"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    oplevering_id = Column(String, ForeignKey("opleveringen.id", ondelete="CASCADE"),
+                           nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    code = Column(String(64), nullable=False)                # eigen code, bv. "OP-001" of asset-code
+    omschrijving = Column(Text, nullable=False)              # wat is gedaan / wat wordt opgeleverd
+    uitvoeringsmethode = Column(Text, nullable=True)         # hoe is het uitgevoerd
+    photo_url = Column(String(500), nullable=True)           # bewijslast-foto
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)  # optionele koppeling
+
+    order_index = Column(Integer, default=0, nullable=False)  # volgorde in oplever-PV
+    status = Column(String(20), default="gereed", nullable=False)  # gereed | restpunt | afgekeurd
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    oplevering = relationship("Oplevering", back_populates="punten")
+    asset = relationship("Asset", foreign_keys=[asset_id])

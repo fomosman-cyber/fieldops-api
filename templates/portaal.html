@@ -966,6 +966,7 @@
         <a data-page="mijn-dag" onclick="navigateTo('mijn-dag')" id="topNavMijnDag">Mijn dag</a>
         <a data-page="predictive" onclick="navigateTo('predictive')">Voorspeller</a>
         <a data-page="clusters" onclick="navigateTo('clusters')">Clusters</a>
+        <a data-page="opleveren" onclick="navigateTo('opleveren')">Opleveren</a>
         <a data-page="kaart" onclick="navigateTo('kaart')">Kaart</a>
         <a data-page="gebruikers" onclick="navigateTo('gebruikers')">Gebruikers</a>
       </nav>
@@ -1017,6 +1018,9 @@
         </a>
         <a data-page="clusters" onclick="navigateTo('clusters')">
           <span class="icon">&#129520;</span> Clusters <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:700;letter-spacing:.05em;">NIEUW</span>
+        </a>
+        <a data-page="opleveren" onclick="navigateTo('opleveren')">
+          <span class="icon">&#128203;</span> Opleveren <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:700;letter-spacing:.05em;">NIEUW</span>
         </a>
         <a data-page="kaart" onclick="navigateTo('kaart')">
           <span class="icon">&#127758;</span> Kaart
@@ -1840,6 +1844,41 @@
       </div>
     </div>
 
+    <!-- ═══ OPLEVEREN ═══ -->
+    <div class="page-section" id="page-opleveren">
+      <div class="page-header">
+        <div>
+          <h1>Opleveren</h1>
+          <p>Proces-verbalen van uitgevoerd werk — header-gegevens + per opleverpunt code, omschrijving, uitvoeringsmethode en foto.</p>
+        </div>
+        <button class="btn-primary" onclick="openOpleveringModal()">+ Nieuwe oplevering</button>
+      </div>
+      <div id="opleveringenEmpty" class="empty-state" style="display:none;">
+        <div class="empty-icon">&#128203;</div>
+        <h3>Nog geen opleveringen</h3>
+        <p>Maak een proces-verbaal aan voor de eerste oplevering van een (deel)project.</p>
+        <button class="btn-primary" onclick="openOpleveringModal()">+ Eerste oplevering aanmaken</button>
+      </div>
+      <div id="opleveringenList" style="display:none;">
+        <div class="card" style="overflow-x:auto;padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Titel</th>
+                <th>Project</th>
+                <th>Opdrachtgever</th>
+                <th style="text-align:center;">Punten</th>
+                <th>Status</th>
+                <th>Datum</th>
+                <th style="width:120px;text-align:right;"></th>
+              </tr>
+            </thead>
+            <tbody id="opleveringenBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ KAART ═══ -->
     <div class="page-section" id="page-kaart">
       <div class="page-header" style="margin-bottom:16px;">
@@ -2364,6 +2403,189 @@
     </footer>
 
   </main>
+
+  <!-- ═══════ OPLEVERING MODAL (header) ═══════ -->
+  <div class="modal-overlay" id="opleveringModal">
+    <div class="modal" style="max-width:760px;">
+      <button class="modal-close" onclick="closeOpleveringModal()" aria-label="Sluiten">&times;</button>
+      <h2 id="opleveringModalTitle">Nieuwe oplevering</h2>
+      <p class="subtitle">Header-gegevens voor het proces-verbaal. Punten voeg je hieronder toe.</p>
+      <form id="opleveringForm" onsubmit="submitOplevering(event)">
+        <input type="hidden" id="opleveringEditId" value="">
+        <div class="form-group">
+          <label>Titel *</label>
+          <input type="text" id="opTitle" required placeholder="bv. Oplevering KO Naaldwijk fase 2">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>Project</label>
+            <select id="opProject"><option value="">— Geen project —</option></select>
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="opStatus">
+              <option value="concept">Concept</option>
+              <option value="opgeleverd">Opgeleverd</option>
+              <option value="aanvaard">Aanvaard</option>
+              <option value="afgewezen">Afgewezen</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Locatie</label>
+          <input type="text" id="opLocatie" placeholder="bv. Westland, kern Naaldwijk">
+        </div>
+        <div class="form-group">
+          <label>Datum oplevering</label>
+          <input type="datetime-local" id="opDatum">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>Opdrachtgever — naam</label>
+            <input type="text" id="opOpdrachtgeverNaam" placeholder="bv. Gemeente Westland">
+          </div>
+          <div class="form-group">
+            <label>Opdrachtgever — email</label>
+            <input type="email" id="opOpdrachtgeverEmail" placeholder="contact@gemeente.nl">
+          </div>
+          <div class="form-group">
+            <label>Aannemer — naam</label>
+            <input type="text" id="opAannemerNaam" placeholder="bv. Wegenbouw Combinatie">
+          </div>
+          <div class="form-group">
+            <label>Aannemer — email</label>
+            <input type="email" id="opAannemerEmail" placeholder="info@aannemer.nl">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Omschrijving</label>
+          <textarea id="opDescription" rows="2" placeholder="Wat is er opgeleverd — korte samenvatting"></textarea>
+        </div>
+        <!-- Extra-vragen sectie (open default) -->
+        <div class="form-group" style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:rgba(2,132,199,0.03);">
+          <div style="font-weight:600;font-size:13px;margin-bottom:10px;">🇳🇱 Standaard oplever-vragen</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);">Weersomstandigheden</label>
+              <select id="opQWeer" style="width:100%;">
+                <option value="">—</option>
+                <option value="droog">Droog</option>
+                <option value="regen">Regen</option>
+                <option value="vorst">Vorst</option>
+                <option value="wind">Veel wind</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);">Veiligheid in orde?</label>
+              <select id="opQVeiligheid" style="width:100%;">
+                <option value="">—</option>
+                <option value="ja">Ja — geen incidenten</option>
+                <option value="kanttekening">Met kanttekening</option>
+                <option value="nee">Nee — actie vereist</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);">Bouwbesluit / normen</label>
+              <select id="opQNormen" style="width:100%;">
+                <option value="">—</option>
+                <option value="voldoet">Voldoet</option>
+                <option value="kleine_afwijking">Kleine afwijking</option>
+                <option value="ernstige_afwijking">Ernstige afwijking</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);">Afval / netjes opgeleverd?</label>
+              <select id="opQNetheid" style="width:100%;">
+                <option value="">—</option>
+                <option value="schoon">Schoon</option>
+                <option value="redelijk">Redelijk</option>
+                <option value="restafval">Restafval aanwezig</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Opmerkingen / restpunten</label>
+          <textarea id="opNotes" rows="2" placeholder="Eventuele restpunten of bijzonderheden"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" onclick="closeOpleveringModal()">Annuleren</button>
+          <button type="submit" class="btn-primary" id="opSubmitBtn">Aanmaken</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ═══════ OPLEVERING DETAIL + PUNTEN MODAL ═══════ -->
+  <div class="modal-overlay" id="opleveringDetailModal">
+    <div class="modal" style="max-width:900px;">
+      <button class="modal-close" onclick="closeOpleveringDetail()" aria-label="Sluiten">&times;</button>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+        <div>
+          <h2 id="opDetailTitle" style="margin:0;">Oplevering</h2>
+          <p class="subtitle" id="opDetailMeta" style="margin:4px 0 0;"></p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="editCurrentOplevering()">✎ Bewerken</button>
+          <button class="btn-secondary" style="color:#dc2626;border-color:#fee2e2;" onclick="deleteCurrentOplevering()">🗑️ Verwijderen</button>
+        </div>
+      </div>
+
+      <div id="opDetailHeader" style="margin:14px 0;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--card-bg-hover);font-size:13px;line-height:1.7;color:var(--text-muted);"></div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px;">
+        <h3 style="margin:0;font-size:16px;">Opleverpunten <span id="opPuntenCount" style="font-weight:400;color:var(--text-dim);font-size:13px;">(0)</span></h3>
+        <button class="btn-primary" style="font-size:13px;padding:6px 14px;" onclick="openPuntModal()">+ Punt toevoegen</button>
+      </div>
+      <div id="opPuntenList" style="display:flex;flex-direction:column;gap:10px;"></div>
+    </div>
+  </div>
+
+  <!-- ═══════ OPLEVERPUNT MODAL ═══════ -->
+  <div class="modal-overlay" id="puntModal">
+    <div class="modal" style="max-width:600px;">
+      <button class="modal-close" onclick="closePuntModal()" aria-label="Sluiten">&times;</button>
+      <h2 id="puntModalTitle">Opleverpunt toevoegen</h2>
+      <form id="puntForm" onsubmit="submitPunt(event)">
+        <input type="hidden" id="puntEditId" value="">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>Code *</label>
+            <input type="text" id="puntCode" required placeholder="bv. OP-001 of WL-NW-DIJ">
+          </div>
+          <div class="form-group">
+            <label>Status</label>
+            <select id="puntStatus">
+              <option value="gereed">Gereed</option>
+              <option value="restpunt">Restpunt</option>
+              <option value="afgekeurd">Afgekeurd</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Omschrijving *</label>
+          <textarea id="puntOmschrijving" rows="2" required placeholder="Wat is uitgevoerd / opgeleverd?"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Uitvoeringsmethode</label>
+          <textarea id="puntUitvoering" rows="2" placeholder="bv. Scheurvulling polymeer (cold-pour) over 12m¹, 2 lagen"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Asset (optioneel — koppel aan bestaande asset)</label>
+          <select id="puntAsset"><option value="">— Geen asset gekoppeld —</option></select>
+        </div>
+        <div class="form-group">
+          <label>Foto-URL (optioneel)</label>
+          <input type="url" id="puntPhotoUrl" placeholder="https://... of upload via meldingen-flow en plak URL">
+          <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Tip: maak een melding aan met de foto, plak hier de photo_url die je daar krijgt.</p>
+        </div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" onclick="closePuntModal()">Annuleren</button>
+          <button type="submit" class="btn-primary">Opslaan</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- ═══════ ASSIGN CLUSTER MODAL (gebruiker kiezen i.p.v. prompt) ═══════ -->
   <div class="modal-overlay" id="assignClusterModal">
@@ -4856,6 +5078,7 @@
       if (page === 'assets') loadAssets();
       if (page === 'predictive') loadPredictive();
       if (page === 'clusters') loadClusters();
+      if (page === 'opleveren') loadOpleveringen();
       if (page === 'mijn-dag') loadMijnDag();
       if (page === 'dashboard') loadDashboardPredictiveWidget();
       if (page === 'integraties') loadIntegrations();
@@ -8549,6 +8772,332 @@
     }
     function closeAssignClusterModal() {
       document.getElementById('assignClusterModal').classList.remove('active');
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // ── OPLEVEREN (proces-verbalen + opleverpunten) ──────────────
+    // ══════════════════════════════════════════════════════════════
+    var _opleveringen = [];
+    var _currentOplevering = null;  // detail-modal context
+
+    function loadOpleveringen() {
+      var empty = document.getElementById('opleveringenEmpty');
+      var list = document.getElementById('opleveringenList');
+      var tbody = document.getElementById('opleveringenBody');
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-dim);">Laden...</td></tr>';
+      api('GET', '/api/opleveringen/').then(function(items){
+        _opleveringen = items || [];
+        if (!_opleveringen.length) {
+          empty.style.display = 'flex';
+          list.style.display = 'none';
+          return;
+        }
+        empty.style.display = 'none';
+        list.style.display = 'block';
+        var statusColors = {
+          concept:    {bg:'#f1f5f9', color:'#475569'},
+          opgeleverd: {bg:'#dbeafe', color:'#1e40af'},
+          aanvaard:   {bg:'#dcfce7', color:'#166534'},
+          afgewezen:  {bg:'#fee2e2', color:'#991b1b'},
+        };
+        tbody.innerHTML = _opleveringen.map(function(o){
+          var s = statusColors[o.status] || statusColors.concept;
+          var date = o.datum_oplevering
+            ? new Date(o.datum_oplevering).toLocaleDateString(currentLang, {day:'numeric', month:'short', year:'numeric'})
+            : '—';
+          return '<tr style="cursor:pointer;" onclick="openOpleveringDetail(\'' + o.id + '\')">'
+            + '<td><strong>' + escapeHtml(o.title) + '</strong></td>'
+            + '<td style="color:var(--text-muted);">' + escapeHtml(o.project_name || '—') + '</td>'
+            + '<td style="color:var(--text-muted);">' + escapeHtml(o.opdrachtgever_naam || '—') + '</td>'
+            + '<td style="text-align:center;"><span style="background:var(--card-bg-hover);padding:2px 8px;border-radius:8px;font-weight:600;font-size:12px;">' + (o.punten_count || 0) + '</span></td>'
+            + '<td><span style="background:' + s.bg + ';color:' + s.color + ';font-size:11px;padding:3px 10px;border-radius:100px;font-weight:700;letter-spacing:.05em;">' + o.status.toUpperCase() + '</span></td>'
+            + '<td style="color:var(--text-dim);">' + date + '</td>'
+            + '<td onclick="event.stopPropagation()" style="text-align:right;">'
+              + '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="openOpleveringDetail(\'' + o.id + '\')">Bekijken</button>'
+            + '</td>'
+            + '</tr>';
+        }).join('');
+      }).catch(function(err){
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--red);">' + escapeHtml(err.message || 'fout') + '</td></tr>';
+      });
+    }
+
+    function openOpleveringModal(opleveringId) {
+      var modal = document.getElementById('opleveringModal');
+      var title = document.getElementById('opleveringModalTitle');
+      var submitBtn = document.getElementById('opSubmitBtn');
+      var idField = document.getElementById('opleveringEditId');
+      // Vul project-dropdown
+      var projSel = document.getElementById('opProject');
+      projSel.innerHTML = '<option value="">— Geen project —</option>'
+        + (allProjects || []).map(function(p){
+            return '<option value="' + p.id + '">' + escapeHtml(p.name || p.naam || '') + '</option>';
+          }).join('');
+      // Reset form
+      ['opTitle','opLocatie','opDatum','opOpdrachtgeverNaam','opOpdrachtgeverEmail','opAannemerNaam','opAannemerEmail','opDescription','opNotes'].forEach(function(id){
+        var el = document.getElementById(id); if (el) el.value = '';
+      });
+      document.getElementById('opStatus').value = 'concept';
+      ['opQWeer','opQVeiligheid','opQNormen','opQNetheid'].forEach(function(id){
+        var el = document.getElementById(id); if (el) el.value = '';
+      });
+      if (opleveringId) {
+        title.textContent = 'Oplevering bewerken';
+        submitBtn.textContent = 'Wijzigingen opslaan';
+        idField.value = opleveringId;
+        var o = _opleveringen.find(function(x){ return x.id === opleveringId; }) || _currentOplevering;
+        if (o) {
+          document.getElementById('opTitle').value = o.title || '';
+          document.getElementById('opProject').value = o.project_id || '';
+          document.getElementById('opStatus').value = o.status || 'concept';
+          document.getElementById('opLocatie').value = o.locatie || '';
+          document.getElementById('opDatum').value = o.datum_oplevering ? o.datum_oplevering.slice(0, 16) : '';
+          document.getElementById('opOpdrachtgeverNaam').value = o.opdrachtgever_naam || '';
+          document.getElementById('opOpdrachtgeverEmail').value = o.opdrachtgever_email || '';
+          document.getElementById('opAannemerNaam').value = o.aannemer_naam || '';
+          document.getElementById('opAannemerEmail').value = o.aannemer_email || '';
+          document.getElementById('opDescription').value = o.description || '';
+          document.getElementById('opNotes').value = o.notes || '';
+          var eq = o.extra_questions || {};
+          if (eq.weer) document.getElementById('opQWeer').value = eq.weer;
+          if (eq.veiligheid) document.getElementById('opQVeiligheid').value = eq.veiligheid;
+          if (eq.normen) document.getElementById('opQNormen').value = eq.normen;
+          if (eq.netheid) document.getElementById('opQNetheid').value = eq.netheid;
+        }
+      } else {
+        title.textContent = 'Nieuwe oplevering';
+        submitBtn.textContent = 'Aanmaken';
+        idField.value = '';
+      }
+      modal.classList.add('active');
+    }
+    function closeOpleveringModal() {
+      document.getElementById('opleveringModal').classList.remove('active');
+    }
+
+    function submitOplevering(e) {
+      e.preventDefault();
+      var id = document.getElementById('opleveringEditId').value;
+      var isEdit = !!id;
+      var datum = document.getElementById('opDatum').value;
+      var payload = {
+        title: document.getElementById('opTitle').value,
+        description: document.getElementById('opDescription').value || null,
+        project_id: document.getElementById('opProject').value || null,
+        locatie: document.getElementById('opLocatie').value || null,
+        datum_oplevering: datum ? new Date(datum).toISOString() : null,
+        opdrachtgever_naam: document.getElementById('opOpdrachtgeverNaam').value || null,
+        opdrachtgever_email: document.getElementById('opOpdrachtgeverEmail').value || null,
+        aannemer_naam: document.getElementById('opAannemerNaam').value || null,
+        aannemer_email: document.getElementById('opAannemerEmail').value || null,
+        notes: document.getElementById('opNotes').value || null,
+        status: document.getElementById('opStatus').value,
+        extra_questions: {
+          weer: document.getElementById('opQWeer').value || null,
+          veiligheid: document.getElementById('opQVeiligheid').value || null,
+          normen: document.getElementById('opQNormen').value || null,
+          netheid: document.getElementById('opQNetheid').value || null,
+        },
+      };
+      var method = isEdit ? 'PATCH' : 'POST';
+      var url = isEdit ? ('/api/opleveringen/' + id) : '/api/opleveringen/';
+      api(method, url, payload).then(function(o){
+        showToast(isEdit ? 'Oplevering bijgewerkt' : 'Oplevering aangemaakt', 'success');
+        closeOpleveringModal();
+        loadOpleveringen();
+        if (isEdit && _currentOplevering && _currentOplevering.id === o.id) {
+          _currentOplevering = o;
+          renderOpleveringDetail(o);
+        }
+      }).catch(function(err){
+        showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
+      });
+    }
+
+    function openOpleveringDetail(opleveringId) {
+      api('GET', '/api/opleveringen/' + opleveringId).then(function(o){
+        _currentOplevering = o;
+        renderOpleveringDetail(o);
+        document.getElementById('opleveringDetailModal').classList.add('active');
+      }).catch(function(err){
+        showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
+      });
+    }
+    function closeOpleveringDetail() {
+      document.getElementById('opleveringDetailModal').classList.remove('active');
+      _currentOplevering = null;
+    }
+
+    function renderOpleveringDetail(o) {
+      document.getElementById('opDetailTitle').textContent = o.title;
+      var statusBadge = '<span style="background:#f1f5f9;color:#475569;padding:2px 10px;border-radius:100px;font-size:11px;font-weight:700;letter-spacing:.05em;margin-left:8px;">' + o.status.toUpperCase() + '</span>';
+      var meta = [];
+      if (o.project_name) meta.push('Project: <strong>' + escapeHtml(o.project_name) + '</strong>');
+      if (o.locatie) meta.push(escapeHtml(o.locatie));
+      if (o.datum_oplevering) meta.push(new Date(o.datum_oplevering).toLocaleDateString(currentLang, {day:'numeric', month:'long', year:'numeric'}));
+      document.getElementById('opDetailMeta').innerHTML = meta.join(' · ') + statusBadge;
+
+      var headerEl = document.getElementById('opDetailHeader');
+      var rows = [];
+      if (o.opdrachtgever_naam) rows.push('<strong>Opdrachtgever:</strong> ' + escapeHtml(o.opdrachtgever_naam) + (o.opdrachtgever_email ? ' · ' + escapeHtml(o.opdrachtgever_email) : ''));
+      if (o.aannemer_naam) rows.push('<strong>Aannemer:</strong> ' + escapeHtml(o.aannemer_naam) + (o.aannemer_email ? ' · ' + escapeHtml(o.aannemer_email) : ''));
+      if (o.description) rows.push('<strong>Omschrijving:</strong> ' + escapeHtml(o.description));
+      var eq = o.extra_questions || {};
+      var extras = [];
+      if (eq.weer) extras.push('Weer: ' + eq.weer);
+      if (eq.veiligheid) extras.push('Veiligheid: ' + eq.veiligheid);
+      if (eq.normen) extras.push('Normen: ' + eq.normen);
+      if (eq.netheid) extras.push('Netheid: ' + eq.netheid);
+      if (extras.length) rows.push('<strong>Vragen:</strong> ' + extras.join(' · '));
+      if (o.notes) rows.push('<strong>Opmerkingen:</strong> ' + escapeHtml(o.notes));
+      headerEl.innerHTML = rows.length ? rows.join('<br>') : '<span style="color:var(--text-dim);">Geen aanvullende gegevens</span>';
+
+      var puntenList = document.getElementById('opPuntenList');
+      var punten = o.punten || [];
+      document.getElementById('opPuntenCount').textContent = '(' + punten.length + ')';
+      if (!punten.length) {
+        puntenList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);border:1px dashed var(--border);border-radius:10px;">Nog geen opleverpunten — klik op "+ Punt toevoegen" om de eerste vast te leggen.</div>';
+        return;
+      }
+      var puntStatusColors = {
+        gereed:    {bg:'#dcfce7', color:'#166534'},
+        restpunt:  {bg:'#fef3c7', color:'#92400e'},
+        afgekeurd: {bg:'#fee2e2', color:'#991b1b'},
+      };
+      puntenList.innerHTML = punten.map(function(p){
+        var ps = puntStatusColors[p.status] || puntStatusColors.gereed;
+        var photoHtml = p.photo_url
+          ? '<a href="' + escapeHtml(p.photo_url) + '" target="_blank" style="flex-shrink:0;"><img src="' + escapeHtml(p.photo_url) + '" style="width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--border);"></a>'
+          : '<div style="width:72px;height:72px;border-radius:8px;background:var(--card-bg-hover);border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:11px;flex-shrink:0;">geen foto</div>';
+        return '<div style="display:flex;gap:12px;padding:12px;border:1px solid var(--border);border-radius:10px;align-items:flex-start;">'
+          + photoHtml
+          + '<div style="flex:1;min-width:0;">'
+          +   '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">'
+          +     '<span style="font-family:JetBrains Mono,monospace;font-size:12px;font-weight:700;background:var(--card-bg-hover);padding:2px 8px;border-radius:6px;">' + escapeHtml(p.code) + '</span>'
+          +     '<span style="background:' + ps.bg + ';color:' + ps.color + ';font-size:10px;padding:2px 8px;border-radius:100px;font-weight:700;letter-spacing:.05em;">' + p.status.toUpperCase() + '</span>'
+          +   '</div>'
+          +   '<div style="font-size:14px;color:var(--text);font-weight:500;">' + escapeHtml(p.omschrijving) + '</div>'
+          + (p.uitvoeringsmethode ? '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;"><strong>Methode:</strong> ' + escapeHtml(p.uitvoeringsmethode) + '</div>' : '')
+          + '</div>'
+          + '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">'
+          +   '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="openPuntModal(\'' + p.id + '\')">✎</button>'
+          +   '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fee2e2;" onclick="deletePunt(\'' + p.id + '\')">🗑️</button>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+    }
+
+    function editCurrentOplevering() {
+      if (!_currentOplevering) return;
+      closeOpleveringDetail();
+      openOpleveringModal(_currentOplevering.id);
+    }
+
+    function deleteCurrentOplevering() {
+      if (!_currentOplevering) return;
+      var o = _currentOplevering;
+      showConfirm({
+        icon: '🗑️', danger: true,
+        title: 'Oplevering verwijderen?',
+        message: 'Dit verwijdert "' + o.title + '" en alle ' + (o.punten || []).length + ' opleverpunten. Niet ongedaan te maken.',
+        actionLabel: 'Verwijderen',
+        onConfirm: function() {
+          api('DELETE', '/api/opleveringen/' + o.id).then(function(){
+            showToast('Oplevering verwijderd', 'success');
+            closeOpleveringDetail();
+            loadOpleveringen();
+          }).catch(function(err){
+            showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
+          });
+        },
+      });
+    }
+
+    function openPuntModal(puntId) {
+      var modal = document.getElementById('puntModal');
+      var title = document.getElementById('puntModalTitle');
+      var idField = document.getElementById('puntEditId');
+      // Vul asset-dropdown met assets van huidig project (of alle)
+      var assetSel = document.getElementById('puntAsset');
+      var projectId = _currentOplevering && _currentOplevering.project_id;
+      var assets = (allAssets || []).filter(function(a){ return !projectId || a.project_id === projectId; });
+      assetSel.innerHTML = '<option value="">— Geen asset gekoppeld —</option>'
+        + assets.map(function(a){ return '<option value="' + a.id + '">' + escapeHtml(a.code) + ' — ' + escapeHtml(a.name || '') + '</option>'; }).join('');
+      // Reset
+      document.getElementById('puntCode').value = '';
+      document.getElementById('puntOmschrijving').value = '';
+      document.getElementById('puntUitvoering').value = '';
+      document.getElementById('puntPhotoUrl').value = '';
+      document.getElementById('puntStatus').value = 'gereed';
+      idField.value = '';
+      title.textContent = 'Opleverpunt toevoegen';
+      if (puntId && _currentOplevering) {
+        var p = (_currentOplevering.punten || []).find(function(x){ return x.id === puntId; });
+        if (p) {
+          idField.value = p.id;
+          document.getElementById('puntCode').value = p.code || '';
+          document.getElementById('puntOmschrijving').value = p.omschrijving || '';
+          document.getElementById('puntUitvoering').value = p.uitvoeringsmethode || '';
+          document.getElementById('puntPhotoUrl').value = p.photo_url || '';
+          document.getElementById('puntStatus').value = p.status || 'gereed';
+          if (p.asset_id) assetSel.value = p.asset_id;
+          title.textContent = 'Opleverpunt bewerken';
+        }
+      }
+      modal.classList.add('active');
+    }
+    function closePuntModal() {
+      document.getElementById('puntModal').classList.remove('active');
+    }
+
+    function submitPunt(e) {
+      e.preventDefault();
+      if (!_currentOplevering) return;
+      var id = document.getElementById('puntEditId').value;
+      var payload = {
+        code: document.getElementById('puntCode').value,
+        omschrijving: document.getElementById('puntOmschrijving').value,
+        uitvoeringsmethode: document.getElementById('puntUitvoering').value || null,
+        photo_url: document.getElementById('puntPhotoUrl').value || null,
+        asset_id: document.getElementById('puntAsset').value || null,
+        status: document.getElementById('puntStatus').value,
+      };
+      var method = id ? 'PATCH' : 'POST';
+      var url = '/api/opleveringen/' + _currentOplevering.id + '/punten' + (id ? '/' + id : '');
+      api(method, url, payload).then(function(){
+        showToast(id ? 'Punt bijgewerkt' : 'Punt toegevoegd', 'success');
+        closePuntModal();
+        // Reload detail om nieuwste punten te krijgen
+        return api('GET', '/api/opleveringen/' + _currentOplevering.id);
+      }).then(function(o){
+        if (o) { _currentOplevering = o; renderOpleveringDetail(o); }
+        loadOpleveringen();
+      }).catch(function(err){
+        showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
+      });
+    }
+
+    function deletePunt(puntId) {
+      if (!_currentOplevering) return;
+      var p = (_currentOplevering.punten || []).find(function(x){ return x.id === puntId; });
+      if (!p) return;
+      showConfirm({
+        icon: '🗑️', danger: true,
+        title: 'Opleverpunt verwijderen?',
+        message: 'Code ' + p.code + ' wordt verwijderd uit het proces-verbaal.',
+        actionLabel: 'Verwijderen',
+        onConfirm: function() {
+          api('DELETE', '/api/opleveringen/' + _currentOplevering.id + '/punten/' + puntId).then(function(){
+            showToast('Punt verwijderd', 'success');
+            return api('GET', '/api/opleveringen/' + _currentOplevering.id);
+          }).then(function(o){
+            if (o) { _currentOplevering = o; renderOpleveringDetail(o); }
+            loadOpleveringen();
+          }).catch(function(err){
+            showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
+          });
+        },
+      });
     }
 
     function openSkillsModal() {
