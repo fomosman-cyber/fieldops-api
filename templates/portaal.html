@@ -1103,6 +1103,40 @@
         </div>
       </div>
 
+      <!-- OPERATIONS CENTER STRIP (audit-item #8) ─ command-center feel
+           bovenaan het dashboard. Live status, urgentie, AI-suggesties. -->
+      <div id="opsCenterStrip" style="background:linear-gradient(135deg,#0b1929,#11253d);color:#e6edf3;border-radius:14px;padding:18px 22px;margin-bottom:20px;box-shadow:0 4px 20px rgba(11,25,41,0.15);">
+        <div style="display:grid;grid-template-columns:auto 1fr auto auto auto;gap:24px;align-items:center;flex-wrap:wrap;" class="ops-strip-grid">
+          <!-- System status pulse -->
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="width:10px;height:10px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite;box-shadow:0 0 12px rgba(34,197,94,0.6);"></span>
+            <div>
+              <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.1em;text-transform:uppercase;font-weight:600;">System</div>
+              <div style="font-size:13px;font-weight:700;color:#86efac;">Online</div>
+            </div>
+          </div>
+          <!-- Live banner met datum + project-info -->
+          <div style="padding:0 8px;">
+            <div style="font-size:10px;color:#7dd3fc;letter-spacing:0.1em;text-transform:uppercase;font-weight:600;margin-bottom:2px;">Operations Center</div>
+            <div id="opsCenterHeadline" style="font-size:15px;font-weight:600;color:#e6edf3;">Veld-status realtime · NEN 2767-2 · CROW 146 actief</div>
+          </div>
+          <!-- Urgent counters -->
+          <div style="text-align:center;padding:0 16px;border-left:1px solid rgba(255,255,255,0.1);">
+            <div style="font-size:24px;font-weight:800;color:#f87171;line-height:1;" id="opsKritiekCount">0</div>
+            <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;">Kritiek nu</div>
+          </div>
+          <div style="text-align:center;padding:0 16px;border-left:1px solid rgba(255,255,255,0.1);">
+            <div style="font-size:24px;font-weight:800;color:#fbbf24;line-height:1;" id="opsHoogCount">0</div>
+            <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;">Hoog open</div>
+          </div>
+          <!-- AI-suggestie -->
+          <div style="text-align:right;padding-left:16px;border-left:1px solid rgba(255,255,255,0.1);">
+            <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:4px;">AI-suggestie</div>
+            <button onclick="navigateTo('clusters')" style="background:linear-gradient(135deg,#38bdf8,#0ea5e9);border:none;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">⚡ Optimaliseer vandaag</button>
+          </div>
+        </div>
+      </div>
+
       <!-- 6 Stat Cards (matching app exactly) -->
       <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:24px;" class="dash-stat-grid">
         <div class="stat-card animate-in" style="cursor:default;border-left:3px solid #64748b;">
@@ -6346,6 +6380,27 @@
         document.getElementById('statKritiek').textContent = kritiek;
         document.getElementById('statVandaag').textContent = vandaag;
         document.getElementById('statVandaagOpgelost').textContent = '+' + vandaagOpgelost;
+
+        // Operations Center strip (audit-item #8) — live urgentie-counts
+        var hoogOpen = allMeldingen.filter(function(x){return x.status==='open' && x.priority==='hoog';}).length;
+        var kritiekOpen = allMeldingen.filter(function(x){return x.status==='open' && x.priority==='kritiek';}).length;
+        var opsKritiekEl = document.getElementById('opsKritiekCount');
+        var opsHoogEl = document.getElementById('opsHoogCount');
+        if (opsKritiekEl) opsKritiekEl.textContent = kritiekOpen;
+        if (opsHoogEl) opsHoogEl.textContent = hoogOpen;
+        // Contextual headline
+        var opsHead = document.getElementById('opsCenterHeadline');
+        if (opsHead) {
+          if (kritiekOpen > 0) {
+            opsHead.innerHTML = '<span style="color:#fca5a5;">⚠ ' + kritiekOpen + ' kritieke melding' + (kritiekOpen === 1 ? '' : 'en') + ' vereisen directe actie</span>';
+          } else if (hoogOpen >= 3) {
+            opsHead.innerHTML = '<span style="color:#fbbf24;">' + hoogOpen + ' meldingen met hoge prioriteit — overweeg cluster-optimalisatie</span>';
+          } else if (open === 0) {
+            opsHead.innerHTML = '<span style="color:#86efac;">✓ Alles onder controle — geen openstaande operationele issues</span>';
+          } else {
+            opsHead.textContent = 'Veld-status realtime · NEN 2767-2 · CROW 146 actief';
+          }
+        }
 
         // Priority bars
         var prioData = [
