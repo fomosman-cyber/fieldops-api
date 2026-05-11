@@ -1367,8 +1367,8 @@
 
       <div id="meldingenEmpty" class="empty-state">
         <div class="empty-icon">&#128276;</div>
-        <h3 data-i18n="nog_geen_meldingen">Nog geen meldingen</h3>
-        <p>Registreer je eerste melding vanuit het veld. Voeg foto's, GPS-locatie en schadecategorie toe.</p>
+        <h3 data-i18n="nog_geen_meldingen">Alles onder controle — geen openstaande meldingen</h3>
+        <p>Zodra een veldwerker een schade of inspectiepunt registreert, verschijnt het hier met foto, GPS en CROW-classificatie. Start nu een eerste melding om de workflow te zien.</p>
         <button class="btn-primary" onclick="openMeldingModal()" data-i18n="eerste_melding">+ Eerste melding aanmaken</button>
       </div>
       <div id="meldingenList" style="display:none;">
@@ -1437,9 +1437,13 @@
       </div>
       <div id="assetsEmpty" class="empty-state" style="display:none;">
         <div class="empty-icon">&#128302;</div>
-        <h3 data-i18n="geen_assets">Geen assets</h3>
-        <p>Voeg assets toe om meldingen aan fysieke objecten te koppelen — handmatig of via CSV-import.</p>
-        <button class="btn-primary" onclick="openAssetModal()" data-i18n="eerste_asset">+ Eerste asset aanmaken</button>
+        <h3 data-i18n="geen_assets">Bouw je asset-register op</h3>
+        <p>Begin met <strong>NWB-wegvakken</strong> importeren — dat scheelt 80% handwerk en levert direct GPS-geometrie. Of upload een CSV met je bestaande assets.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+          <button class="btn-primary" onclick="openNwbZoekModal()">🛣️ NWB-wegvakken importeren</button>
+          <button class="btn-secondary" onclick="document.getElementById('assetCsvInput').click()">📄 CSV-import</button>
+          <button class="btn-secondary" onclick="openAssetModal()" data-i18n="eerste_asset">+ Handmatig</button>
+        </div>
       </div>
       <div id="assetsList" style="display:none;">
         <!-- Bulk-action bar voor assets -->
@@ -1488,9 +1492,9 @@
       </div>
       <div id="predictiveEmpty" class="empty-state" style="display:none;">
         <div class="empty-icon">&#128202;</div>
-        <h3 data-i18n="nog_geen_data">Nog geen data</h3>
-        <p>Voeg eerst assets toe (met installatiedatum, levensduur en NEN-conditiescore) om voorspellingen te genereren.</p>
-        <button class="btn-primary" onclick="navigateTo('assets')" data-i18n="naar_assets">Naar Assets</button>
+        <h3 data-i18n="nog_geen_data">Voorspellend onderhoud klaar om te starten</h3>
+        <p>Zodra assets installatiedatum, levensduur en NEN-conditiescore hebben, voorspelt FieldOps welke wegen het eerst NEN 3 → 4 worden — vaak <strong>8-24 maanden voor de schade zichtbaar is</strong>. Bespaart 3-5× t.o.v. noodreparatie.</p>
+        <button class="btn-primary" onclick="navigateTo('assets')" data-i18n="naar_assets">Naar Assets — voeg eerste data toe</button>
       </div>
       <div id="predictiveContent" style="display:none;">
         <div class="stats-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));margin-bottom:24px;">
@@ -1752,9 +1756,9 @@
       <div id="myClustersList"></div>
 
       <div id="myDayEmpty" class="empty-state" style="display:none;">
-        <div class="icon">🛠️</div>
-        <div class="title">Geen werk voor vandaag</div>
-        <div style="font-size:14px;line-height:1.5;max-width:340px;margin:0 auto;">Zodra een projectleider een cluster aan je toewijst, verschijnt het hier — geoptimaliseerd op route en gebundeld op maatregel.</div>
+        <div class="icon">✅</div>
+        <div class="title">Geen dispatch — vrij in te delen</div>
+        <div style="font-size:14px;line-height:1.5;max-width:380px;margin:0 auto;">Geen toegewezen werk vandaag. Wil je vrije routes inspecteren? Open <strong>Voorspeller</strong> — daar staan assets die binnen 6 maanden NEN-degradatie verwachten. Vroeg inspecteren = noodreparatie voorkomen.</div>
       </div>
     </div>
 
@@ -1762,12 +1766,12 @@
     <div class="page-section" id="page-clusters">
       <div class="page-header" style="margin-bottom:16px;">
         <div>
-          <h1>Job-Clusters <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:11px;padding:3px 10px;border-radius:6px;font-weight:700;letter-spacing:.05em;vertical-align:middle;margin-left:8px;">NIEUW · v3.0</span></h1>
-          <p>Productiviteit-winst door homogene maatregelen samen te plannen — "scheurvulling hele dag" i.p.v. mixed werk met setup-omschakelingen.</p>
+          <h1>Operations Optimizer <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:11px;padding:3px 10px;border-radius:6px;font-weight:700;letter-spacing:.05em;vertical-align:middle;margin-left:8px;">AI · v3.0</span></h1>
+          <p>Operationele AI bundelt open meldingen op maatregel + locatie tot efficiënte ploegdagen. Audit-bound, NEN-prioriteit-gestuurd, route-geoptimaliseerd.</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="openSkillsModal()">⚙️ Mijn skills</button>
-          <button class="btn-primary" onclick="generateClusters()" data-i18n="genereer_clusters">⚡ Genereer clusters</button>
+          <button class="btn-primary" onclick="generateClusters()" data-i18n="genereer_clusters">⚡ Optimaliseer vandaag</button>
         </div>
       </div>
 
@@ -1809,11 +1813,12 @@
       <!-- Clusters list -->
       <div id="clustersList" style="display:flex;flex-direction:column;gap:12px;"></div>
 
-      <!-- Empty state -->
+      <!-- Empty state — Operations Optimizer branding -->
       <div id="clustersEmpty" style="display:none;text-align:center;padding:60px 20px;color:var(--text-muted);background:var(--card-bg);border:1px dashed var(--border);border-radius:12px;">
-        <div style="font-size:48px;margin-bottom:14px;">🧠</div>
-        <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px;">Nog geen clusters</div>
-        <div style="font-size:14px;line-height:1.5;max-width:480px;margin:0 auto;">Klik op <strong>⚡ Genereer clusters</strong> om open meldingen met dezelfde maatregel + nabije locatie automatisch te bundelen tot werkbare batches.<br><br>Bv: 12× "Vullen polymeer" binnen 5 km → één dag scheurvullen i.p.v. losse trips.</div>
+        <div style="font-size:48px;margin-bottom:14px;">⚡</div>
+        <div style="font-size:18px;font-weight:600;color:var(--text);margin-bottom:8px;">Klaar om vandaag's operations te optimaliseren</div>
+        <div style="font-size:14px;line-height:1.5;max-width:520px;margin:0 auto 18px;">De <strong>Operations Optimizer</strong> analyseert open meldingen op CROW-maatregel, NEN-conditie en geolocatie — en bundelt ze tot werkbare batches. <br>Voorbeeld: 12× "Scheurvulling polymeer" binnen 5 km → één ploegdag i.p.v. 4 losse trips.</div>
+        <button class="btn-primary" onclick="generateClusters()" style="font-size:14px;padding:12px 28px;background:linear-gradient(135deg,#0284c7,#0369a1);">⚡ Optimaliseer vandaag</button>
       </div>
     </div>
 
