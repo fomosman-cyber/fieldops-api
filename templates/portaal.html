@@ -648,7 +648,8 @@
       .modal .form-group { margin-bottom: 14px; }
       .modal .form-group label { font-size: 12px; margin-bottom: 6px; }
       .modal .form-group input,
-      .modal .form-group select { padding: 11px 14px; font-size: 14px; }
+      .modal .form-group select,
+      .modal .form-group textarea { padding: 11px 14px; font-size: 14px; }
       .modal .form-actions { margin-top: 16px; flex-wrap: wrap; }
       .modal .form-actions button { font-size: 13px; padding: 10px 16px; }
       .modal-close {
@@ -720,7 +721,8 @@
       color: var(--text-muted);
     }
     .form-group input,
-    .form-group select {
+    .form-group select,
+    .form-group textarea {
       width: 100%;
       padding: 14px 18px;
       background: rgba(0,0,0,0.03);
@@ -729,14 +731,19 @@
       color: var(--text);
       font-family: inherit;
       font-size: 15px;
+      line-height: 1.5;
       transition: border-color 0.2s;
       outline: none;
+      box-sizing: border-box;
     }
+    .form-group textarea { display: block; }
     .form-group input:focus,
-    .form-group select:focus {
+    .form-group select:focus,
+    .form-group textarea:focus {
       border-color: var(--accent);
     }
-    .form-group input::placeholder { color: var(--text-dim); }
+    .form-group input::placeholder,
+    .form-group textarea::placeholder { color: var(--text-dim); }
 
     .form-actions {
       display: flex;
