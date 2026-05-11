@@ -2582,20 +2582,20 @@
             <label>📷 Foto vóór uitvoering</label>
             <label for="puntPhotoBeforeFile" style="display:block;cursor:pointer;border:2px dashed #f59e0b;border-radius:10px;padding:18px;text-align:center;background:rgba(245,158,11,0.05);min-height:120px;">
               <img id="puntPhotoBeforePreview" style="max-width:100%;max-height:120px;display:none;border-radius:8px;margin:0 auto 8px;">
-              <div id="puntPhotoBeforeLabel" style="font-size:13px;color:#92400e;font-weight:600;">📷 Klik om foto te kiezen</div>
-              <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Camera of galerij — beginsituatie</div>
+              <div id="puntPhotoBeforeLabel" style="font-size:13px;color:#92400e;font-weight:600;">📂 Upload foto vóór</div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Kies bestand van je apparaat</div>
             </label>
-            <input type="file" id="puntPhotoBeforeFile" accept="image/*" capture="environment" style="display:none;" onchange="onPuntPhotoChange(this, 'before')">
+            <input type="file" id="puntPhotoBeforeFile" accept="image/*" style="display:none;" onchange="onPuntPhotoChange(this, 'before')">
             <input type="hidden" id="puntPhotoUrl">
           </div>
           <div class="form-group">
             <label>✅ Foto na uitvoering</label>
             <label for="puntPhotoAfterFile" style="display:block;cursor:pointer;border:2px dashed #16a34a;border-radius:10px;padding:18px;text-align:center;background:rgba(22,163,74,0.05);min-height:120px;">
               <img id="puntPhotoAfterPreview" style="max-width:100%;max-height:120px;display:none;border-radius:8px;margin:0 auto 8px;">
-              <div id="puntPhotoAfterLabel" style="font-size:13px;color:#166534;font-weight:600;">✅ Klik om foto te kiezen</div>
-              <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Bewijs van oplevering</div>
+              <div id="puntPhotoAfterLabel" style="font-size:13px;color:#166534;font-weight:600;">📂 Upload foto na</div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Kies bestand van je apparaat</div>
             </label>
-            <input type="file" id="puntPhotoAfterFile" accept="image/*" capture="environment" style="display:none;" onchange="onPuntPhotoChange(this, 'after')">
+            <input type="file" id="puntPhotoAfterFile" accept="image/*" style="display:none;" onchange="onPuntPhotoChange(this, 'after')">
             <input type="hidden" id="puntPhotoUrlAfter">
           </div>
         </div>
@@ -8888,7 +8888,7 @@
         +       '<div class="ir-photo-before-label" style="font-size:12px;color:#92400e;font-weight:600;">📷 Foto vóór</div>'
         +       '<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">Klik om te kiezen</div>'
         +     '</label>'
-        +     '<input type="file" id="' + rowId + '-photo-before" class="ir-photo-before-file" accept="image/*" capture="environment" style="display:none;" onchange="onInlineRestpuntPhoto(this, \'before\')">'
+        +     '<input type="file" id="' + rowId + '-photo-before" class="ir-photo-before-file" accept="image/*" style="display:none;" onchange="onInlineRestpuntPhoto(this, \'before\')">'
         +     '<input type="hidden" class="ir-photo-before">'
         +   '</div>'
         +   '<div>'
@@ -8897,7 +8897,7 @@
         +       '<div class="ir-photo-after-label" style="font-size:12px;color:#166534;font-weight:600;">✅ Foto na</div>'
         +       '<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">Klik om te kiezen</div>'
         +     '</label>'
-        +     '<input type="file" id="' + rowId + '-photo-after" class="ir-photo-after-file" accept="image/*" capture="environment" style="display:none;" onchange="onInlineRestpuntPhoto(this, \'after\')">'
+        +     '<input type="file" id="' + rowId + '-photo-after" class="ir-photo-after-file" accept="image/*" style="display:none;" onchange="onInlineRestpuntPhoto(this, \'after\')">'
         +     '<input type="hidden" class="ir-photo-after">'
         +   '</div>'
         + '</div>'
@@ -9275,7 +9275,7 @@
         if (lbl) lbl.textContent = position === 'before' ? '📷 Vóór ✓ — klik om te wijzigen' : '✅ Na ✓ — klik om te wijzigen';
       } else {
         if (prev) { prev.src = ''; prev.style.display = 'none'; }
-        if (lbl) lbl.textContent = position === 'before' ? '📷 Klik om foto te kiezen' : '✅ Klik om foto te kiezen';
+        if (lbl) lbl.textContent = position === 'before' ? '📂 Upload foto vóór' : '📂 Upload foto na';
       }
     }
 
