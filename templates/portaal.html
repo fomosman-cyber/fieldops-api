@@ -2437,8 +2437,8 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Omschrijving</label>
-          <textarea id="opDescription" rows="2" placeholder="Wat is er opgeleverd — korte samenvatting"></textarea>
+          <label>Omschrijving <span id="opDescCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
+          <textarea id="opDescription" rows="3" maxlength="300" style="resize:none;" placeholder="Wat is er opgeleverd — korte samenvatting (max 300 tekens)" oninput="document.getElementById('opDescCount').textContent = this.value.length + ' / 300'"></textarea>
         </div>
         <!-- Extra-vragen sectie (open default) -->
         <div class="form-group" style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;background:rgba(2,132,199,0.03);">
@@ -2484,8 +2484,8 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Opmerkingen / restpunten</label>
-          <textarea id="opNotes" rows="2" placeholder="Eventuele restpunten of bijzonderheden"></textarea>
+          <label>Opmerkingen / restpunten <span id="opNotesCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
+          <textarea id="opNotes" rows="3" maxlength="300" style="resize:none;" placeholder="Eventuele restpunten of bijzonderheden (max 300 tekens)" oninput="document.getElementById('opNotesCount').textContent = this.value.length + ' / 300'"></textarea>
         </div>
         <div class="form-actions">
           <button type="button" class="btn-secondary" onclick="closeOpleveringModal()">Annuleren</button>
@@ -8828,6 +8828,9 @@
       ['opTitle','opLocatie','opDatum','opOpdrachtgeverNaam','opOpdrachtgeverEmail','opAannemerNaam','opAannemerEmail','opDescription','opNotes'].forEach(function(id){
         var el = document.getElementById(id); if (el) el.value = '';
       });
+      // Reset char-counters (verband met maxlength=300 op textareas)
+      var dc = document.getElementById('opDescCount'); if (dc) dc.textContent = '0 / 300';
+      var nc = document.getElementById('opNotesCount'); if (nc) nc.textContent = '0 / 300';
       document.getElementById('opStatus').value = 'concept';
       ['opQWeer','opQVeiligheid','opQNormen','opQNetheid'].forEach(function(id){
         var el = document.getElementById(id); if (el) el.value = '';
@@ -8849,6 +8852,9 @@
           document.getElementById('opAannemerEmail').value = o.aannemer_email || '';
           document.getElementById('opDescription').value = o.description || '';
           document.getElementById('opNotes').value = o.notes || '';
+          // Sync char-counters met pre-filled inhoud
+          var dc2 = document.getElementById('opDescCount'); if (dc2) dc2.textContent = (o.description || '').length + ' / 300';
+          var nc2 = document.getElementById('opNotesCount'); if (nc2) nc2.textContent = (o.notes || '').length + ' / 300';
           var eq = o.extra_questions || {};
           if (eq.weer) document.getElementById('opQWeer').value = eq.weer;
           if (eq.veiligheid) document.getElementById('opQVeiligheid').value = eq.veiligheid;
