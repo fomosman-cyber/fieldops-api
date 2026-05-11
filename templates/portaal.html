@@ -2580,16 +2580,25 @@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
             <label>📷 Foto vóór uitvoering</label>
-            <input type="url" id="puntPhotoUrl" placeholder="https://...">
-            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Beginsituatie / restpunt.</p>
+            <label for="puntPhotoBeforeFile" style="display:block;cursor:pointer;border:2px dashed #f59e0b;border-radius:10px;padding:18px;text-align:center;background:rgba(245,158,11,0.05);min-height:120px;">
+              <img id="puntPhotoBeforePreview" style="max-width:100%;max-height:120px;display:none;border-radius:8px;margin:0 auto 8px;">
+              <div id="puntPhotoBeforeLabel" style="font-size:13px;color:#92400e;font-weight:600;">📷 Klik om foto te kiezen</div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Camera of galerij — beginsituatie</div>
+            </label>
+            <input type="file" id="puntPhotoBeforeFile" accept="image/*" capture="environment" style="display:none;" onchange="onPuntPhotoChange(this, 'before')">
+            <input type="hidden" id="puntPhotoUrl">
           </div>
           <div class="form-group">
             <label>✅ Foto na uitvoering</label>
-            <input type="url" id="puntPhotoUrlAfter" placeholder="https://...">
-            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Bewijs van oplevering — vul in zodra status = gereed.</p>
+            <label for="puntPhotoAfterFile" style="display:block;cursor:pointer;border:2px dashed #16a34a;border-radius:10px;padding:18px;text-align:center;background:rgba(22,163,74,0.05);min-height:120px;">
+              <img id="puntPhotoAfterPreview" style="max-width:100%;max-height:120px;display:none;border-radius:8px;margin:0 auto 8px;">
+              <div id="puntPhotoAfterLabel" style="font-size:13px;color:#166534;font-weight:600;">✅ Klik om foto te kiezen</div>
+              <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Bewijs van oplevering</div>
+            </label>
+            <input type="file" id="puntPhotoAfterFile" accept="image/*" capture="environment" style="display:none;" onchange="onPuntPhotoChange(this, 'after')">
+            <input type="hidden" id="puntPhotoUrlAfter">
           </div>
         </div>
-        <p style="font-size:11px;color:var(--text-dim);margin:-4px 0 8px;">Tip: maak een melding aan met de foto, plak hier de photo_url die je daar krijgt.</p>
         <div class="form-actions">
           <button type="button" class="btn-secondary" onclick="closePuntModal()">Annuleren</button>
           <button type="submit" class="btn-primary">Opslaan</button>
@@ -8869,10 +8878,28 @@
         + '<div class="form-group" style="margin:0 0 8px;">'
         +   '<input type="text" class="ir-omschrijving" required placeholder="Omschrijving restpunt (verplicht)" style="font-size:13px;">'
         + '</div>'
-        + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">'
-        +   '<input type="url" class="ir-photo-before" placeholder="📷 Foto vóór (URL)" style="font-size:12px;">'
-        +   '<input type="text" class="ir-uitvoering" placeholder="Uitvoeringsmethode" style="font-size:12px;">'
-        +   '<input type="url" class="ir-photo-after" placeholder="✅ Foto na (URL)" style="font-size:12px;">'
+        + '<div class="form-group" style="margin:0 0 8px;">'
+        +   '<input type="text" class="ir-uitvoering" placeholder="Uitvoeringsmethode" style="font-size:13px;">'
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">'
+        +   '<div>'
+        +     '<label for="' + rowId + '-photo-before" style="display:block;cursor:pointer;border:2px dashed #f59e0b;border-radius:8px;padding:12px;text-align:center;background:rgba(245,158,11,0.05);">'
+        +       '<img class="ir-photo-before-preview" style="max-width:100%;max-height:80px;display:none;border-radius:6px;margin:0 auto 6px;">'
+        +       '<div class="ir-photo-before-label" style="font-size:12px;color:#92400e;font-weight:600;">📷 Foto vóór</div>'
+        +       '<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">Klik om te kiezen</div>'
+        +     '</label>'
+        +     '<input type="file" id="' + rowId + '-photo-before" class="ir-photo-before-file" accept="image/*" capture="environment" style="display:none;" onchange="onInlineRestpuntPhoto(this, \'before\')">'
+        +     '<input type="hidden" class="ir-photo-before">'
+        +   '</div>'
+        +   '<div>'
+        +     '<label for="' + rowId + '-photo-after" style="display:block;cursor:pointer;border:2px dashed #16a34a;border-radius:8px;padding:12px;text-align:center;background:rgba(22,163,74,0.05);">'
+        +       '<img class="ir-photo-after-preview" style="max-width:100%;max-height:80px;display:none;border-radius:6px;margin:0 auto 6px;">'
+        +       '<div class="ir-photo-after-label" style="font-size:12px;color:#166534;font-weight:600;">✅ Foto na</div>'
+        +       '<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">Klik om te kiezen</div>'
+        +     '</label>'
+        +     '<input type="file" id="' + rowId + '-photo-after" class="ir-photo-after-file" accept="image/*" capture="environment" style="display:none;" onchange="onInlineRestpuntPhoto(this, \'after\')">'
+        +     '<input type="hidden" class="ir-photo-after">'
+        +   '</div>'
         + '</div>'
         + '<select class="ir-status" style="font-size:12px;margin-top:8px;">'
         +   '<option value="restpunt">Restpunt</option>'
@@ -8884,6 +8911,26 @@
       var input = row.querySelector('.ir-omschrijving');
       if (input) input.focus();
       _updateInlineRestpuntenCount();
+    }
+
+    function onInlineRestpuntPhoto(input, position) {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      var row = input.closest('.inline-restpunt-row');
+      if (!row) return;
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var dataUrl = e.target.result;
+        // Sla op in hidden input (wordt door collectInlineRestpunten gelezen)
+        var hidden = row.querySelector(position === 'before' ? '.ir-photo-before' : '.ir-photo-after');
+        if (hidden) hidden.value = dataUrl;
+        // Toon preview
+        var preview = row.querySelector(position === 'before' ? '.ir-photo-before-preview' : '.ir-photo-after-preview');
+        var label = row.querySelector(position === 'before' ? '.ir-photo-before-label' : '.ir-photo-after-label');
+        if (preview) { preview.src = dataUrl; preview.style.display = 'block'; }
+        if (label) label.textContent = position === 'before' ? '📷 Vóór ✓' : '✅ Na ✓';
+      };
+      reader.readAsDataURL(file);
     }
 
     function removeInlineRestpunt(rowId) {
@@ -9195,6 +9242,43 @@
       });
     }
 
+    function onPuntPhotoChange(input, position) {
+      var file = input.files && input.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(e){
+        var dataUrl = e.target.result;
+        if (position === 'before') {
+          document.getElementById('puntPhotoUrl').value = dataUrl;
+          var prev = document.getElementById('puntPhotoBeforePreview');
+          var lbl = document.getElementById('puntPhotoBeforeLabel');
+          if (prev) { prev.src = dataUrl; prev.style.display = 'block'; }
+          if (lbl) lbl.textContent = '📷 Vóór ✓ — klik om te wijzigen';
+        } else {
+          document.getElementById('puntPhotoUrlAfter').value = dataUrl;
+          var prev2 = document.getElementById('puntPhotoAfterPreview');
+          var lbl2 = document.getElementById('puntPhotoAfterLabel');
+          if (prev2) { prev2.src = dataUrl; prev2.style.display = 'block'; }
+          if (lbl2) lbl2.textContent = '✅ Na ✓ — klik om te wijzigen';
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function _resetPuntPhotoPreview(position, existingUrl) {
+      var prev = document.getElementById('puntPhoto' + (position === 'before' ? 'Before' : 'After') + 'Preview');
+      var lbl = document.getElementById('puntPhoto' + (position === 'before' ? 'Before' : 'After') + 'Label');
+      var fileIn = document.getElementById('puntPhoto' + (position === 'before' ? 'Before' : 'After') + 'File');
+      if (fileIn) fileIn.value = '';
+      if (existingUrl) {
+        if (prev) { prev.src = existingUrl; prev.style.display = 'block'; }
+        if (lbl) lbl.textContent = position === 'before' ? '📷 Vóór ✓ — klik om te wijzigen' : '✅ Na ✓ — klik om te wijzigen';
+      } else {
+        if (prev) { prev.src = ''; prev.style.display = 'none'; }
+        if (lbl) lbl.textContent = position === 'before' ? '📷 Klik om foto te kiezen' : '✅ Klik om foto te kiezen';
+      }
+    }
+
     function openPuntModal(puntId) {
       var modal = document.getElementById('puntModal');
       var title = document.getElementById('puntModalTitle');
@@ -9216,6 +9300,9 @@
       // Reset char-counters
       var omsCount = document.getElementById('puntOmsCount'); if (omsCount) omsCount.textContent = '0 / 300';
       var uitvCount = document.getElementById('puntUitvCount'); if (uitvCount) uitvCount.textContent = '0 / 300';
+      // Reset foto-previews
+      _resetPuntPhotoPreview('before', null);
+      _resetPuntPhotoPreview('after', null);
 
       if (puntId && _currentOplevering) {
         var p = (_currentOplevering.punten || []).find(function(x){ return x.id === puntId; });
@@ -9230,6 +9317,9 @@
           if (p.asset_id) assetSel.value = p.asset_id;
           if (omsCount) omsCount.textContent = (p.omschrijving || '').length + ' / 300';
           if (uitvCount) uitvCount.textContent = (p.uitvoeringsmethode || '').length + ' / 300';
+          // Pre-fill foto-previews uit bestaande data
+          _resetPuntPhotoPreview('before', p.photo_url || null);
+          _resetPuntPhotoPreview('after', p.photo_url_after || null);
           title.textContent = 'Restpunt bewerken';
         }
       } else {
