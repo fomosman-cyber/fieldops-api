@@ -64,6 +64,39 @@
       --topbar-h: 64px;
     }
 
+    /* Dark theme — Palantir/Linear-feel. Geactiveerd via [data-theme="dark"]
+       op <html>. Voorkeur opgeslagen in localStorage.fieldops_theme. */
+    html[data-theme="dark"] {
+      --bg: #0b0e14;
+      --bg-sidebar: #11151c;
+      --card-bg: #161b22;
+      --card-bg-hover: #1c222b;
+      --border: #2a313c;
+      --border-hover: #3a414c;
+      --text: #e6edf3;
+      --text-muted: #9ba6b3;
+      --text-dim: #6e7787;
+      --accent: #38bdf8;
+      --accent-dark: #0ea5e9;
+      --gradient: linear-gradient(135deg, #38bdf8, #0284c7);
+      --gradient-hover: linear-gradient(135deg, #7dd3fc, #38bdf8);
+    }
+    html[data-theme="dark"] img[src*="logo"],
+    html[data-theme="dark"] .stat-card,
+    html[data-theme="dark"] .data-table tr:hover td { /* lichte hover-fix */
+      filter: none;
+    }
+    html[data-theme="dark"] .data-table tr:hover td { background: rgba(255,255,255,0.03); }
+    html[data-theme="dark"] body { background: var(--bg); color: var(--text); }
+    html[data-theme="dark"] input,
+    html[data-theme="dark"] select,
+    html[data-theme="dark"] textarea {
+      background: rgba(255,255,255,0.04) !important;
+      color: var(--text) !important;
+      border-color: var(--border) !important;
+    }
+    html[data-theme="dark"] .modal { background: var(--card-bg) !important; color: var(--text); }
+
     html { scroll-behavior: smooth; }
 
     body {
@@ -984,6 +1017,7 @@
         <option value="fr">🇫🇷 FR</option>
         <option value="tr">🇹🇷 TR</option>
       </select>
+      <button class="notif-btn" id="themeBtn" aria-label="Donker thema" onclick="toggleTheme()" title="Donker/licht thema">🌓</button>
       <button class="notif-btn" id="pushBtn" aria-label="Push notificaties" onclick="togglePushNotifications()" title="Push notificaties aan/uit">🔔</button>
       <span id="syncStatusBadge" style="display:none;font-size:11px;padding:3px 8px;border-radius:10px;background:#fbbf24;color:#78350f;font-weight:600;cursor:pointer;" onclick="syncQueueRetry()" title="Klik om opnieuw te proberen">⏳ <span id="syncStatusCount">0</span></span>
       <div class="user-pill">
@@ -9884,6 +9918,30 @@
       for (let i = 0; i < raw.length; ++i) out[i] = raw.charCodeAt(i);
       return out;
     }
+
+    // ── Donker thema (audit-item #7) ────────────────────────────
+    // Voorkeur in localStorage zodat reload het thema bewaart.
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      var btn = document.getElementById('themeBtn');
+      if (btn) {
+        btn.textContent = theme === 'dark' ? '☀️' : '🌓';
+        btn.title = theme === 'dark' ? 'Wissel naar licht thema' : 'Wissel naar donker thema';
+      }
+    }
+    function toggleTheme() {
+      var current = document.documentElement.getAttribute('data-theme') || 'light';
+      var next = current === 'dark' ? 'light' : 'dark';
+      try { localStorage.setItem('fieldops_theme', next); } catch(e){}
+      applyTheme(next);
+    }
+    // Init bij page-load (vóór render, voorkomt flash van wit-thema)
+    (function initTheme(){
+      try {
+        var saved = localStorage.getItem('fieldops_theme');
+        if (saved === 'dark') applyTheme('dark');
+      } catch(e){}
+    })();
 
     async function togglePushNotifications() {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
