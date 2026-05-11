@@ -2393,7 +2393,10 @@
           <h1>Admin Overzicht</h1>
           <p>Alle bedrijven en gebruikers op het platform.</p>
         </div>
-        <button class="btn-primary" onclick="openCreateOrgModal()">+ Nieuwe organisatie</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="seedDemoData()" title="Vult je org met demo-data: 1 project, 12 assets, 14 meldingen (waarvan 6 cluster-bare scheurvulling). Idempotent.">🎬 Demo-data aanmaken</button>
+          <button class="btn-primary" onclick="openCreateOrgModal()">+ Nieuwe organisatie</button>
+        </div>
       </div>
 
       <div class="stats-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 32px;">
@@ -5677,6 +5680,31 @@
     }
 
     // ── Create Organization Modal ──
+    function seedDemoData() {
+      showConfirm({
+        icon: '🎬',
+        title: 'Demo-data aanmaken?',
+        message: 'Vult je organisatie met: 1 project (KO-Demo), 12 assets (wegen, voegovergangen, lantaarnpalen, brug), 14 meldingen — waarvan 6 clusterbare scheurvulling-meldingen + 1 kritieke voegovergang. Idempotent: bestaande data blijft.',
+        actionLabel: 'Genereer demo-data',
+        danger: false,
+        onConfirm: function() {
+          showToast('Demo-data aanmaken...', 'info');
+          api('POST', '/api/admin/seed-demo-data').then(function(r){
+            showToast(
+              r.assets_created + ' assets + ' + r.meldingen_created + ' meldingen aangemaakt. ' +
+              r.clusterable_open + ' open meldingen klaar voor Operations Optimizer.',
+              'success'
+            );
+            // Refresh dashboard + lijst-views
+            if (typeof loadDashboardStats === 'function') loadDashboardStats();
+            if (typeof loadAdminData === 'function') loadAdminData();
+          }).catch(function(err){
+            showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
+          });
+        },
+      });
+    }
+
     function openCreateOrgModal() {
       document.getElementById('createOrgModal').classList.add('active');
       document.getElementById('orgAdminPassword').value = _genStrongPassword();

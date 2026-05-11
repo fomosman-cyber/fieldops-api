@@ -2,10 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone, timedelta
+import json
+import random
 import secrets
 import string
 from database import get_db
-from models import User, Organization, DemoRequest, Project, Melding, SubscriptionPlan, AccountStatus
+from models import User, Organization, DemoRequest, Project, Melding, Asset, SubscriptionPlan, AccountStatus
 from auth import get_current_user, hash_password, validate_password_strength
 from audit import log_action, ACTION
 
@@ -367,4 +370,191 @@ def approve_demo_request(
         "message": f"Demo goedgekeurd. Welkomstmail verstuurd naar {demo.email}",
         "organization_id": org.id,
         "user_id": admin_user.id,
+    }
+
+
+# ════════════════════════════════════════════════════════════
+# Demo-data seeder — voor product demo's: vult een org met
+# voldoende meldingen, assets en clusters zodat Voorspeller,
+# Operations Optimizer en Mijn dag direct werken.
+# ════════════════════════════════════════════════════════════
+
+@router.post("/seed-demo-data")
+def seed_demo_data(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Vult de huidige org met realistische demo-data.
+
+    Maakt aan: 1 project (KO-Demo), 12 wegen-assets met NEN-conditie 2-5,
+    20 meldingen verdeeld over statussen, waarvan een cluster-set van
+    8 open meldingen met identieke gw_term + nabij elkaar (zodat
+    Operations Optimizer direct ≥2 clusters genereert). Idempotent: skipt
+    items die al bestaan met dezelfde code.
+    """
+    if not current_user.is_org_admin:
+        raise HTTPException(status_code=403, detail="Alleen org-admin")
+
+    org_id = current_user.organization_id
+
+    # ── Project ──────────────────────────────────────────────
+    project = (db.query(Project)
+                 .filter(Project.organization_id == org_id, Project.name == "KO-Demo")
+                 .first())
+    if not project:
+        project = Project(
+            name="KO-Demo",
+            description="Demo-project voor productverkenning. Bevat assets + meldingen om Voorspeller, Operations Optimizer en Mijn dag te demonstreren.",
+            gemeente="Demo Gemeente",
+            status="active",
+            color="#8b5cf6",
+            categories=json.dumps(["wegdek", "lantaarnpaal", "voegovergang", "kunstwerk"]),
+            organization_id=org_id,
+            created_by=current_user.id,
+        )
+        db.add(project)
+        db.flush()
+
+    # ── Assets ───────────────────────────────────────────────
+    asset_specs = [
+        ("DEMO-WV-001", "Hoofdstraat km 0.2-1.4", "wegdek", 52.090, 4.310, 3),
+        ("DEMO-WV-002", "Hoofdstraat km 1.4-2.6", "wegdek", 52.094, 4.318, 4),
+        ("DEMO-WV-003", "Stationsweg km 0.0-0.8", "wegdek", 52.085, 4.305, 5),
+        ("DEMO-WV-004", "Kerkstraat km 0.0-0.5", "wegdek", 52.088, 4.315, 2),
+        ("DEMO-WV-005", "Marktweg km 0.0-1.0", "wegdek", 52.092, 4.302, 4),
+        ("DEMO-WV-006", "Dorpsstraat km 0.0-0.9", "wegdek", 52.086, 4.320, 3),
+        ("DEMO-VG-001", "Voegovergang Hoofdstraat", "voegovergang", 52.091, 4.313, 4),
+        ("DEMO-VG-002", "Voegovergang Stationsweg", "voegovergang", 52.085, 4.307, 5),
+        ("DEMO-LP-001", "Lantaarn Hoofdstraat 12", "lantaarnpaal", 52.090, 4.311, 3),
+        ("DEMO-LP-002", "Lantaarn Stationsweg 8", "lantaarnpaal", 52.085, 4.306, 4),
+        ("DEMO-LP-003", "Lantaarn Marktweg 22", "lantaarnpaal", 52.092, 4.303, 5),
+        ("DEMO-KW-001", "Brug over de Demo-vaart", "kunstwerk", 52.087, 4.312, 3),
+    ]
+    created_assets = []
+    for code, name, atype, lat, lng, conditie in asset_specs:
+        existing = (db.query(Asset)
+                      .filter(Asset.organization_id == org_id, Asset.code == code)
+                      .first())
+        if existing:
+            created_assets.append(existing); continue
+        installed = datetime.now(timezone.utc) - timedelta(days=random.randint(2000, 7300))
+        a = Asset(
+            code=code, name=name, asset_type=atype, lat=lat, lng=lng,
+            location_description=f"Demo Gemeente — {name}",
+            project_id=project.id, organization_id=org_id,
+            condition_score=conditie,
+            installed_at=installed,
+            expected_lifespan_years=25 if atype == "wegdek" else (30 if atype == "lantaarnpaal" else 50),
+            created_by=current_user.id,
+        )
+        db.add(a); db.flush()
+        created_assets.append(a)
+
+    # ── Meldingen ────────────────────────────────────────────
+    # Cluster-set: 6 open scheurvulling-meldingen op nabije wegen — zorgt
+    # dat Operations Optimizer ≥1 cluster genereert.
+    scheur_assets = [a for a in created_assets if a.asset_type == "wegdek"][:6]
+    crow_advies_scheur = {
+        "crow_schadegroep": "samenhang",
+        "crow_schadebeeld": "scheurvorming-langs",
+        "crow_ernst": "M",
+        "crow_omvang": "2",
+        "crow_klasse": "M2",
+        "nen_2767_conditie": 4,
+        "onderhoud_categorie": "KO",
+        "gw_maatregel": "Scheurvulling polymeer",
+        "gw_term": "Scheurvulling polymeer (cold-pour) per m1",
+        "gw_kosten_orde": "EUR 5-15 / m1",
+    }
+    crow_advies_lantaarn = {
+        "crow_schadegroep": None, "crow_schadebeeld": None,
+        "crow_ernst": "M", "crow_omvang": "1", "crow_klasse": "M1",
+        "nen_2767_conditie": 4,
+        "onderhoud_categorie": "KO",
+        "gw_maatregel": "Armatuur vervangen",
+        "gw_term": "Lichtarmatuur LED vervangen per stuk",
+        "gw_kosten_orde": "EUR 250-450 / stuk",
+    }
+    melding_specs = []
+    # 6 scheurvulling-meldingen (open, hoog) — clusterbaar
+    for idx, a in enumerate(scheur_assets):
+        melding_specs.append({
+            "title": f"Scheur in wegdek {a.name.split(' km')[0]} — sectie {idx+1}",
+            "asset": a, "status": "open", "priority": "hoog", "category": "schade",
+            "crow": crow_advies_scheur, "days_ago": random.randint(1, 20),
+        })
+    # 2 lantaarnpaal-meldingen (open, normaal) — clusterbaar samen
+    for a in [x for x in created_assets if x.asset_type == "lantaarnpaal"][:2]:
+        melding_specs.append({
+            "title": f"Defecte verlichting — {a.name}",
+            "asset": a, "status": "open", "priority": "normaal", "category": "schade",
+            "crow": crow_advies_lantaarn, "days_ago": random.randint(1, 15),
+        })
+    # 2 kritieke meldingen (Operations Center strip toont rood)
+    if any(a.asset_type == "voegovergang" for a in created_assets):
+        vg = next(a for a in created_assets if a.asset_type == "voegovergang")
+        melding_specs.append({
+            "title": "Voegovergang verzakt — verkeershinder",
+            "asset": vg, "status": "open", "priority": "kritiek", "category": "schade",
+            "crow": {"crow_ernst": "E", "crow_omvang": "2", "crow_klasse": "E2",
+                     "nen_2767_conditie": 5, "onderhoud_categorie": "acuut",
+                     "gw_maatregel": "Voegovergang renoveren",
+                     "gw_term": "Voegovergang vervangen per stuk",
+                     "gw_kosten_orde": "EUR 8.000-15.000 / stuk"},
+            "days_ago": 0,
+        })
+    # 4 in-behandeling / afgeronde voor het verleden
+    for status, prio, days in [
+        ("in_behandeling", "hoog", 5),
+        ("in_behandeling", "normaal", 8),
+        ("opgelost", "normaal", 18),
+        ("afgerond", "normaal", 28),
+    ]:
+        a = random.choice(created_assets)
+        melding_specs.append({
+            "title": f"Onderhoud {a.name}",
+            "asset": a, "status": status, "priority": prio, "category": "schade",
+            "crow": crow_advies_scheur if a.asset_type == "wegdek" else {},
+            "days_ago": days,
+        })
+
+    created_meldingen = []
+    for spec in melding_specs:
+        title = spec["title"]
+        existing = (db.query(Melding)
+                      .filter(Melding.organization_id == org_id, Melding.title == title)
+                      .first())
+        if existing:
+            created_meldingen.append(existing); continue
+        a = spec["asset"]
+        m = Melding(
+            title=title,
+            description=f"Demo-melding. Asset: {a.code}. Locatie: {a.location_description}.",
+            category=spec["category"],
+            priority=spec["priority"],
+            status=spec["status"],
+            lat=a.lat, lng=a.lng,
+            project_id=project.id, asset_id=a.id,
+            organization_id=org_id,
+            created_by=current_user.id,
+            created_at=datetime.now(timezone.utc) - timedelta(days=spec["days_ago"]),
+        )
+        for k, v in (spec.get("crow") or {}).items():
+            setattr(m, k, v)
+        db.add(m); db.flush()
+        created_meldingen.append(m)
+
+    db.commit()
+    log_action(db, request, current_user,
+               action="admin.seed_demo_data", entity_type="organization", entity_id=org_id,
+               extra={"assets": len(created_assets), "meldingen": len(created_meldingen)})
+
+    return {
+        "success": True,
+        "message": "Demo-data aangemaakt. Open Voorspeller, Operations Optimizer en Mijn dag om de workflow te zien.",
+        "project_id": project.id,
+        "assets_created": len(created_assets),
+        "meldingen_created": len(created_meldingen),
+        "clusterable_open": sum(1 for m in created_meldingen if m.status == "open" and m.gw_term),
     }
