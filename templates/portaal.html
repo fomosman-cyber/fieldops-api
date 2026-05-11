@@ -2494,6 +2494,18 @@
           <label>Opmerkingen / restpunten <span id="opNotesCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
           <textarea id="opNotes" rows="3" maxlength="300" style="resize:none;" placeholder="Eventuele restpunten of bijzonderheden (max 300 tekens)" oninput="document.getElementById('opNotesCount').textContent = this.value.length + ' / 300'"></textarea>
         </div>
+
+        <!-- Inline-restpunten op aanmaak-formulier (bij edit verstopt — daar
+             gebruik je de aparte restpunt-modal in detail-view). -->
+        <div class="form-group" id="opInlineRestpuntenSection" style="border:1px solid var(--border);border-radius:10px;padding:14px;background:rgba(2,132,199,0.02);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <strong style="font-size:14px;">📋 Restpunten <span id="opInlineRestpuntenCount" style="color:var(--text-dim);font-weight:400;font-size:12px;">(0)</span></strong>
+            <button type="button" class="btn-secondary" style="font-size:12px;padding:5px 12px;" onclick="addInlineRestpunt()">+ Restpunt</button>
+          </div>
+          <div id="opInlineRestpuntenList" style="display:flex;flex-direction:column;gap:10px;"></div>
+          <p id="opInlineRestpuntenEmpty" style="margin:0;font-size:12px;color:var(--text-dim);text-align:center;padding:8px 0;">Voeg restpunten toe — of doe dat later in de detail-modal.</p>
+        </div>
+
         <div class="form-actions">
           <button type="button" class="btn-secondary" onclick="closeOpleveringModal()">Annuleren</button>
           <button type="submit" class="btn-primary" id="opSubmitBtn">Aanmaken</button>
@@ -8825,6 +8837,96 @@
       });
     }
 
+    // ── Inline-restpunten op het Nieuwe-Oplevering formulier ──
+    // Houdt counter per-modal-open vast voor auto-ID generatie.
+    var _inlineRestpuntCounter = 0;
+
+    function _opInlineDateCode() {
+      var n = new Date();
+      return 'OP-' + n.getFullYear() + '-'
+        + String(n.getMonth() + 1).padStart(2, '0') + '-'
+        + String(n.getDate()).padStart(2, '0');
+    }
+
+    function addInlineRestpunt() {
+      _inlineRestpuntCounter++;
+      var seq = _inlineRestpuntCounter;
+      var code = _opInlineDateCode() + '-' + String(seq).padStart(3, '0');
+      var rowId = 'inlineRestpunt-' + seq;
+      var list = document.getElementById('opInlineRestpuntenList');
+      var empty = document.getElementById('opInlineRestpuntenEmpty');
+      if (empty) empty.style.display = 'none';
+      var row = document.createElement('div');
+      row.id = rowId;
+      row.className = 'inline-restpunt-row';
+      row.dataset.code = code;
+      row.style.cssText = 'border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--card-bg);';
+      row.innerHTML =
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">'
+        +   '<span style="font-family:JetBrains Mono,monospace;font-size:11px;background:var(--card-bg-hover);padding:2px 8px;border-radius:4px;font-weight:700;">' + code + '</span>'
+        +   '<button type="button" onclick="removeInlineRestpunt(\'' + rowId + '\')" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:16px;padding:2px 6px;" title="Verwijder">&times;</button>'
+        + '</div>'
+        + '<div class="form-group" style="margin:0 0 8px;">'
+        +   '<input type="text" class="ir-omschrijving" required placeholder="Omschrijving restpunt (verplicht)" style="font-size:13px;">'
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">'
+        +   '<input type="url" class="ir-photo-before" placeholder="📷 Foto vóór (URL)" style="font-size:12px;">'
+        +   '<input type="text" class="ir-uitvoering" placeholder="Uitvoeringsmethode" style="font-size:12px;">'
+        +   '<input type="url" class="ir-photo-after" placeholder="✅ Foto na (URL)" style="font-size:12px;">'
+        + '</div>'
+        + '<select class="ir-status" style="font-size:12px;margin-top:8px;">'
+        +   '<option value="restpunt">Restpunt</option>'
+        +   '<option value="gereed">Gereed</option>'
+        +   '<option value="afgekeurd">Afgekeurd</option>'
+        + '</select>';
+      list.appendChild(row);
+      // Auto-focus omschrijving voor snelle invoer
+      var input = row.querySelector('.ir-omschrijving');
+      if (input) input.focus();
+      _updateInlineRestpuntenCount();
+    }
+
+    function removeInlineRestpunt(rowId) {
+      var row = document.getElementById(rowId);
+      if (row) row.remove();
+      _updateInlineRestpuntenCount();
+    }
+
+    function _updateInlineRestpuntenCount() {
+      var list = document.getElementById('opInlineRestpuntenList');
+      var count = list ? list.children.length : 0;
+      var lbl = document.getElementById('opInlineRestpuntenCount');
+      if (lbl) lbl.textContent = '(' + count + ')';
+      var empty = document.getElementById('opInlineRestpuntenEmpty');
+      if (empty) empty.style.display = count === 0 ? '' : 'none';
+    }
+
+    function resetInlineRestpunten() {
+      var list = document.getElementById('opInlineRestpuntenList');
+      if (list) list.innerHTML = '';
+      _inlineRestpuntCounter = 0;
+      _updateInlineRestpuntenCount();
+    }
+
+    function collectInlineRestpunten() {
+      var rows = document.querySelectorAll('#opInlineRestpuntenList .inline-restpunt-row');
+      var items = [];
+      rows.forEach(function(row, idx){
+        var oms = row.querySelector('.ir-omschrijving').value.trim();
+        if (!oms) return; // skip lege rijen
+        items.push({
+          code: row.dataset.code,
+          omschrijving: oms,
+          uitvoeringsmethode: row.querySelector('.ir-uitvoering').value.trim() || null,
+          photo_url: row.querySelector('.ir-photo-before').value.trim() || null,
+          photo_url_after: row.querySelector('.ir-photo-after').value.trim() || null,
+          status: row.querySelector('.ir-status').value,
+          order_index: idx + 1,
+        });
+      });
+      return items;
+    }
+
     function openOpleveringModal(opleveringId) {
       var modal = document.getElementById('opleveringModal');
       var title = document.getElementById('opleveringModalTitle');
@@ -8843,6 +8945,11 @@
       // Reset char-counters (verband met maxlength=300 op textareas)
       var dc = document.getElementById('opDescCount'); if (dc) dc.textContent = '0 / 300';
       var nc = document.getElementById('opNotesCount'); if (nc) nc.textContent = '0 / 300';
+      // Inline-restpunten reset + zichtbaarheid (bij edit verberg sectie, bij
+      // nieuw aanmaken toon hem zodat user direct restpunten kan toevoegen)
+      resetInlineRestpunten();
+      var inlineSec = document.getElementById('opInlineRestpuntenSection');
+      if (inlineSec) inlineSec.style.display = opleveringId ? 'none' : '';
       document.getElementById('opStatus').value = 'concept';
       ['opQWeer','opQVeiligheid','opQNormen','opQNetheid'].forEach(function(id){
         var el = document.getElementById(id); if (el) el.value = '';
@@ -8910,14 +9017,36 @@
       };
       var method = isEdit ? 'PATCH' : 'POST';
       var url = isEdit ? ('/api/opleveringen/' + id) : '/api/opleveringen/';
+      // Bij nieuwe aanmaak: collecteer inline restpunten voor batch-POST achteraf
+      var inlineItems = isEdit ? [] : collectInlineRestpunten();
+
       api(method, url, payload).then(function(o){
-        showToast(isEdit ? 'Oplevering bijgewerkt' : 'Oplevering aangemaakt', 'success');
-        closeOpleveringModal();
-        loadOpleveringen();
-        if (isEdit && _currentOplevering && _currentOplevering.id === o.id) {
-          _currentOplevering = o;
-          renderOpleveringDetail(o);
+        if (inlineItems.length === 0) {
+          showToast(isEdit ? 'Oplevering bijgewerkt' : 'Oplevering aangemaakt', 'success');
+          closeOpleveringModal();
+          loadOpleveringen();
+          if (isEdit && _currentOplevering && _currentOplevering.id === o.id) {
+            _currentOplevering = o;
+            renderOpleveringDetail(o);
+          }
+          return;
         }
+        // Serieel POSTen van inline restpunten — eenvoudiger dan parallel, en
+        // we krijgen volgorde gegarandeerd. Bij fouten gaan we toch door (skip).
+        var ok = 0, fail = 0;
+        var chain = Promise.resolve();
+        inlineItems.forEach(function(item){
+          chain = chain.then(function(){
+            return api('POST', '/api/opleveringen/' + o.id + '/punten', item)
+              .then(function(){ ok++; })
+              .catch(function(){ fail++; });
+          });
+        });
+        chain.then(function(){
+          showToast('Oplevering + ' + ok + ' restpunt(en) aangemaakt' + (fail ? ' (' + fail + ' mislukt)' : ''), fail ? 'error' : 'success');
+          closeOpleveringModal();
+          loadOpleveringen();
+        });
       }).catch(function(err){
         showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
       });
