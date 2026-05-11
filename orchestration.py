@@ -133,6 +133,41 @@ def label_for_bbox(lat_min, lat_max, lng_min, lng_max) -> Optional[str]:
 DEFAULT_CLUSTER_RADIUS_KM = 5.0  # binnen 5 km bij elkaar = clusterbaar
 
 
+# Urgency-scoring per melding voor cluster-prioritering. Combineert
+# priority + NEN 2767 conditie + CROW-ernst + onderhoudscategorie. Hogere
+# score = urgenter aanpakken. Bij gelijke gw_term-groep wordt de meest
+# urgente melding de seed van de geo-cluster, waardoor het hele cluster
+# de juiste prioriteit erft.
+_PRIORITY_WEIGHT = {"kritiek": 100, "hoog": 60, "normaal": 30, "laag": 10}
+_CROW_ERNST_WEIGHT = {"E": 30, "M": 15, "L": 5}
+_ONDERHOUD_WEIGHT = {"acuut": 40, "GO": 25, "KO": 10, "observatie": 0}
+
+
+def melding_urgency(m: Melding) -> int:
+    """Combineerde urgency-score voor een melding (hoger = eerder aanpakken)."""
+    score = _PRIORITY_WEIGHT.get(m.priority, 30)
+    if m.nen_2767_conditie:
+        # NEN 5 = +60, NEN 4 = +45, NEN 1 = 0
+        score += (m.nen_2767_conditie - 1) * 15
+    if m.crow_klasse:
+        ernst = m.crow_klasse[0] if m.crow_klasse else ""
+        score += _CROW_ERNST_WEIGHT.get(ernst, 0)
+    if m.onderhoud_categorie:
+        score += _ONDERHOUD_WEIGHT.get(m.onderhoud_categorie, 0)
+    return score
+
+
+def urgency_label(score: int) -> str:
+    """Cluster-niveau label uit aggregaat-score voor UI-badge."""
+    if score >= 150:
+        return "kritiek"
+    if score >= 100:
+        return "hoog"
+    if score >= 60:
+        return "normaal"
+    return "laag"
+
+
 def _greedy_geo_clusters(
     meldingen: list[Melding],
     radius_km: float = DEFAULT_CLUSTER_RADIUS_KM,
@@ -203,10 +238,16 @@ def generate_clusters(
                            Melding.job_cluster_id.is_(None))
                    .all())
 
-    # Groep per gw_term
+    # Groep per gw_term. Sorteer binnen elke groep op urgency-aflopend
+    # (combinatie van priority + NEN-conditie + CROW-ernst + onderhoud-cat).
+    # Hierdoor wordt de meest urgente melding de seed van de greedy
+    # geo-cluster: kritieke meldingen krijgen voorrang qua geografische
+    # samenhang, en het cluster erft hun urgentie.
     by_term: dict[str, list[Melding]] = {}
     for m in meldingen:
         by_term.setdefault(m.gw_term, []).append(m)
+    for term in by_term:
+        by_term[term].sort(key=melding_urgency, reverse=True)
 
     created_clusters: list[JobCluster] = []
     total_baseline = 0.0
@@ -318,8 +359,24 @@ def cluster_summary(jc: JobCluster, *, include_meldingen: bool = False, db: Opti
     Met include_meldingen=True wordt de bijbehorende melding-lijst
     embedded in het response — voor mobile day-planner zodat alle
     context in één API-call beschikbaar is.
+
+    Sinds 2026-05: voegt priority_score (max urgency van cluster-meldingen)
+    + priority_label ("kritiek"/"hoog"/"normaal"/"laag") toe zodat de
+    frontend clusters kan sorteren en kleuren op urgentie.
     """
+    # Bereken cluster-prioriteit uit gekoppelde meldingen. db kan None zijn
+    # als caller niet doorgegeven heeft — dan slaan we het over (frontend
+    # toont dan gewoon geen badge).
+    priority_score = None
+    priority_label = None
+    if db is not None:
+        ms = db.query(Melding).filter(Melding.job_cluster_id == jc.id).all()
+        if ms:
+            priority_score = max(melding_urgency(m) for m in ms)
+            priority_label = urgency_label(priority_score)
     out = {
+        "priority_score": priority_score,
+        "priority_label": priority_label,
         "id": jc.id,
         "gw_term": jc.gw_term,
         "skill_code": jc.skill_code,
