@@ -895,7 +895,12 @@
       .stat-card .stat-value { font-size: 26px; }
       .user-name { display: none; }
       .data-table { font-size: 13px; }
-      .data-table th, .data-table td { padding: 10px 8px; }
+      .data-table th, .data-table td { padding: 10px 8px; white-space: nowrap; }
+      /* Cards met tabellen scrollen horizontaal op mobile zodat alle
+         kolommen bereikbaar zijn (Totaal Gebruikers, Demo Aanvragen,
+         Meldingen, Assets, etc.). Voorkomt afgesneden ACTIES-kolom. */
+      .card { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .card .data-table { min-width: max-content; }
       /* Topbar links: kleinere logo en tighter spacing */
       .topbar-left { gap: 10px; }
       .logo-text { font-size: 18px; }
