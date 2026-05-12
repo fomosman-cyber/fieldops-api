@@ -2395,6 +2395,7 @@
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="seedDemoData()" title="Vult je org met demo-data: 1 project, 12 assets, 14 meldingen (waarvan 6 cluster-bare scheurvulling). Idempotent.">🎬 Demo-data aanmaken</button>
+          <button class="btn-secondary" onclick="seedMeldingenForProject()" title="Genereer realistische test-meldingen op een bestaand project (gebruikt zijn eigen assets). Goed voor clusters/voorspeller/mijn-dag testen op KO-Naaldwijk.">📋 Meldingen op project</button>
           <button class="btn-primary" onclick="openCreateOrgModal()">+ Nieuwe organisatie</button>
         </div>
       </div>
@@ -5702,6 +5703,68 @@
             showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
           });
         },
+      });
+    }
+
+    function seedMeldingenForProject() {
+      // Haal eerst de projecten op zodat de gebruiker er één kan kiezen
+      showToast('Projecten laden...', 'info');
+      api('GET', '/api/projects/').then(function(projects){
+        if (!projects || !projects.length) {
+          showToast('Geen projecten gevonden. Maak eerst een project aan.', 'error');
+          return;
+        }
+        // Bouw een select-modal
+        var options = projects.map(function(p){
+          return '<option value="' + p.id + '">' + p.name + (p.gemeente ? ' (' + p.gemeente + ')' : '') + '</option>';
+        }).join('');
+        // Default naar project met "Naaldwijk" in de naam
+        var defaultProject = projects.find(function(p){ return /naaldwijk/i.test(p.name); }) || projects[0];
+
+        var modalHtml =
+          '<div id="seedMeldingenModal" class="modal active" style="display:flex;">' +
+            '<div class="modal-content" style="max-width:480px;">' +
+              '<div class="modal-header"><h3>📋 Meldingen op project genereren</h3>' +
+                '<button class="modal-close" onclick="document.getElementById(\'seedMeldingenModal\').remove()">×</button>' +
+              '</div>' +
+              '<div class="modal-body">' +
+                '<p style="font-size:13px;color:#64748b;margin-bottom:14px;">Voegt realistische test-meldingen toe aan een bestaand project op basis van zijn assets. Goed voor clusters/voorspeller/mijn-dag testen.</p>' +
+                '<div class="form-group"><label>Project</label>' +
+                  '<select id="seedMeldingenProject">' + options + '</select>' +
+                '</div>' +
+                '<div class="form-group"><label>Aantal meldingen</label>' +
+                  '<input type="number" id="seedMeldingenCount" value="14" min="4" max="50">' +
+                '</div>' +
+                '<p style="font-size:12px;color:#94a3b8;">≈ 40% clusterbare scheurvulling op wegen, 15% defecte lantaarns, 10% kritieke voegovergangen, 30% diverse statussen.</p>' +
+              '</div>' +
+              '<div class="modal-footer">' +
+                '<button class="btn-secondary" onclick="document.getElementById(\'seedMeldingenModal\').remove()">Annuleren</button>' +
+                '<button class="btn-primary" onclick="confirmSeedMeldingenForProject()">Genereer</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        document.getElementById('seedMeldingenProject').value = defaultProject.id;
+      }).catch(function(err){
+        showToast('Kon projecten niet laden: ' + (err.message || 'Onbekend'), 'error');
+      });
+    }
+
+    function confirmSeedMeldingenForProject() {
+      var projectId = document.getElementById('seedMeldingenProject').value;
+      var count = parseInt(document.getElementById('seedMeldingenCount').value, 10) || 14;
+      document.getElementById('seedMeldingenModal').remove();
+      showToast('Meldingen genereren...', 'info');
+      api('POST', '/api/admin/seed-meldingen-for-project', { project_id: projectId, count: count }).then(function(r){
+        showToast(
+          r.meldingen_created + ' meldingen aangemaakt op ' + r.project_name + '. ' +
+          (r.clusterable_open || 0) + ' open meldingen klaar voor Operations Optimizer.',
+          'success'
+        );
+        if (typeof loadDashboardStats === 'function') loadDashboardStats();
+        if (typeof loadMeldingen === 'function') loadMeldingen();
+      }).catch(function(err){
+        showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
       });
     }
 

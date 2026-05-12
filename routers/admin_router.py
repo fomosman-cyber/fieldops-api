@@ -558,3 +558,248 @@ def seed_demo_data(
         "meldingen_created": len(created_meldingen),
         "clusterable_open": sum(1 for m in created_meldingen if m.status == "open" and m.gw_term),
     }
+
+
+# ════════════════════════════════════════════════════════════
+# Meldingen-seeder voor BESTAAND project — gebruikt assets die
+# al in het project zitten (bv. KO-Naaldwijk met 21 wegen + 6
+# lantaarnpalen) en spreidt realistische meldingen + CROW-data.
+# ════════════════════════════════════════════════════════════
+
+class SeedMeldingenRequest(BaseModel):
+    project_id: str
+    count: Optional[int] = 14
+
+
+@router.post("/seed-meldingen-for-project")
+def seed_meldingen_for_project(
+    payload: SeedMeldingenRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Voegt realistische meldingen toe aan een bestaand project op basis van
+    de assets die in dat project zitten. Goed voor testen van clusters,
+    Voorspeller en Mijn-dag op je echte projecten (bv. KO-Naaldwijk).
+
+    Spreiding:
+      - 40% clusterbare scheurvulling-meldingen op wegen (open, hoog)
+      - 20% lantaarn-meldingen (open, normaal)
+      - 10% kritieke voegovergang/kunstwerk (open, kritiek)
+      - 20% in_behandeling (verleden)
+      - 10% afgerond/opgelost (verleden)
+    """
+    if not current_user.is_org_admin:
+        raise HTTPException(status_code=403, detail="Alleen org-admin")
+
+    org_id = current_user.organization_id
+    project = (db.query(Project)
+                 .filter(Project.id == payload.project_id,
+                         Project.organization_id == org_id)
+                 .first())
+    if not project:
+        raise HTTPException(status_code=404, detail="Project niet gevonden")
+
+    assets = (db.query(Asset)
+                .filter(Asset.project_id == project.id,
+                        Asset.organization_id == org_id)
+                .all())
+    if not assets:
+        raise HTTPException(
+            status_code=400,
+            detail="Project heeft geen assets. Voeg eerst assets toe voordat je meldingen kunt genereren.",
+        )
+
+    wegen = [a for a in assets if a.asset_type == "wegdek"]
+    lantaarns = [a for a in assets if a.asset_type == "lantaarnpaal"]
+    kunstwerken = [a for a in assets if a.asset_type in ("voegovergang", "kunstwerk", "brug")]
+    overig = [a for a in assets if a not in wegen and a not in lantaarns and a not in kunstwerken]
+
+    count = max(4, min(payload.count or 14, 50))
+
+    crow_scheur = {
+        "crow_schadegroep": "samenhang",
+        "crow_schadebeeld": "scheurvorming-langs",
+        "crow_ernst": "M",
+        "crow_omvang": "2",
+        "crow_klasse": "M2",
+        "nen_2767_conditie": 4,
+        "onderhoud_categorie": "KO",
+        "gw_maatregel": "Scheurvulling polymeer",
+        "gw_term": "Scheurvulling polymeer (cold-pour) per m1",
+        "gw_kosten_orde": "EUR 5-15 / m1",
+    }
+    crow_spoor = {
+        "crow_schadegroep": "vlakheid",
+        "crow_schadebeeld": "spoorvorming",
+        "crow_ernst": "M",
+        "crow_omvang": "2",
+        "crow_klasse": "M2",
+        "nen_2767_conditie": 4,
+        "onderhoud_categorie": "KO",
+        "gw_maatregel": "Deklaag vervangen",
+        "gw_term": "Asfalt deklaag SMA 0/8 vervangen per m2",
+        "gw_kosten_orde": "EUR 30-55 / m2",
+    }
+    crow_rafeling = {
+        "crow_schadegroep": "textuur",
+        "crow_schadebeeld": "rafeling",
+        "crow_ernst": "L",
+        "crow_omvang": "2",
+        "crow_klasse": "L2",
+        "nen_2767_conditie": 3,
+        "onderhoud_categorie": "KO",
+        "gw_maatregel": "Oppervlakbehandeling",
+        "gw_term": "Oppervlakbehandeling enkelvoudig per m2",
+        "gw_kosten_orde": "EUR 4-9 / m2",
+    }
+    crow_lantaarn = {
+        "crow_ernst": "M",
+        "crow_omvang": "1",
+        "crow_klasse": "M1",
+        "nen_2767_conditie": 4,
+        "onderhoud_categorie": "KO",
+        "gw_maatregel": "Armatuur vervangen",
+        "gw_term": "Lichtarmatuur LED vervangen per stuk",
+        "gw_kosten_orde": "EUR 250-450 / stuk",
+    }
+    crow_voeg = {
+        "crow_schadegroep": "voegen",
+        "crow_schadebeeld": "scheurvorming-voeg",
+        "crow_ernst": "E",
+        "crow_omvang": "2",
+        "crow_klasse": "E2",
+        "nen_2767_conditie": 5,
+        "onderhoud_categorie": "acuut",
+        "gw_maatregel": "Voegovergang renoveren",
+        "gw_term": "Voegovergang vervangen per stuk",
+        "gw_kosten_orde": "EUR 8.000-15.000 / stuk",
+    }
+
+    melding_specs = []
+
+    # 40%: clusterbare scheurvulling op wegen (open, hoog) — minimaal 4 om
+    # een cluster te krijgen
+    n_cluster = max(4, int(count * 0.40))
+    if wegen:
+        for i in range(min(n_cluster, len(wegen) * 2)):
+            asset = wegen[i % len(wegen)]
+            melding_specs.append({
+                "title": f"Scheurvorming wegdek {asset.name} — sectie {i+1}",
+                "asset": asset, "status": "open", "priority": "hoog", "category": "schade",
+                "crow": crow_scheur, "days_ago": random.randint(1, 14),
+            })
+
+    # 10%: spoorvorming op wegen (open, normaal)
+    n_spoor = max(1, int(count * 0.10))
+    if wegen:
+        for i in range(min(n_spoor, len(wegen))):
+            asset = random.choice(wegen)
+            melding_specs.append({
+                "title": f"Spoorvorming {asset.name} richting kruising",
+                "asset": asset, "status": "open", "priority": "normaal", "category": "schade",
+                "crow": crow_spoor, "days_ago": random.randint(2, 20),
+            })
+
+    # 10%: rafeling op wegen (open, laag)
+    n_raf = max(1, int(count * 0.10))
+    if wegen:
+        for i in range(min(n_raf, len(wegen))):
+            asset = random.choice(wegen)
+            melding_specs.append({
+                "title": f"Rafeling asfaltdeklaag {asset.name}",
+                "asset": asset, "status": "open", "priority": "laag", "category": "schade",
+                "crow": crow_rafeling, "days_ago": random.randint(3, 25),
+            })
+
+    # 15%: lantaarn-meldingen (open, normaal) — clusterbaar onder elkaar
+    n_lp = max(2, int(count * 0.15))
+    if lantaarns:
+        for i in range(min(n_lp, len(lantaarns))):
+            asset = lantaarns[i % len(lantaarns)]
+            melding_specs.append({
+                "title": f"Defecte verlichting — {asset.name}",
+                "asset": asset, "status": "open", "priority": "normaal", "category": "schade",
+                "crow": crow_lantaarn, "days_ago": random.randint(1, 10),
+            })
+
+    # 10%: kritieke voegovergang / kunstwerk (open, kritiek)
+    if kunstwerken:
+        for kw in kunstwerken[:max(1, int(count * 0.10))]:
+            melding_specs.append({
+                "title": f"Kritieke schade {kw.name} — verkeershinder",
+                "asset": kw, "status": "open", "priority": "kritiek", "category": "schade",
+                "crow": crow_voeg, "days_ago": 0,
+            })
+
+    # 10%: in_behandeling op willekeurige assets
+    for _ in range(max(1, int(count * 0.10))):
+        asset = random.choice(assets)
+        melding_specs.append({
+            "title": f"Onderhoud uitvoering {asset.name}",
+            "asset": asset, "status": "in_behandeling", "priority": "hoog", "category": "schade",
+            "crow": crow_scheur if asset.asset_type == "wegdek" else {},
+            "days_ago": random.randint(3, 14),
+        })
+
+    # 5%: afgerond (verleden)
+    for _ in range(max(1, int(count * 0.05))):
+        asset = random.choice(assets)
+        melding_specs.append({
+            "title": f"Reparatie afgerond {asset.name}",
+            "asset": asset, "status": "afgerond", "priority": "normaal", "category": "schade",
+            "crow": crow_scheur if asset.asset_type == "wegdek" else {},
+            "days_ago": random.randint(20, 60),
+        })
+
+    # 5%: inspectie (afgerond, laag) — voor reporting variation
+    for _ in range(max(1, int(count * 0.05))):
+        asset = random.choice(assets)
+        melding_specs.append({
+            "title": f"Routine-inspectie {asset.name}",
+            "asset": asset, "status": "afgerond", "priority": "laag", "category": "inspectie",
+            "crow": {}, "days_ago": random.randint(15, 45),
+        })
+
+    created_meldingen = []
+    for spec in melding_specs:
+        title = spec["title"]
+        existing = (db.query(Melding)
+                      .filter(Melding.organization_id == org_id,
+                              Melding.project_id == project.id,
+                              Melding.title == title)
+                      .first())
+        if existing:
+            continue
+        a = spec["asset"]
+        m = Melding(
+            title=title,
+            description=f"Test-melding voor {a.name}. Asset: {a.code}. Locatie: {a.location_description or '-'}.",
+            category=spec["category"],
+            priority=spec["priority"],
+            status=spec["status"],
+            lat=a.lat, lng=a.lng,
+            project_id=project.id, asset_id=a.id,
+            organization_id=org_id,
+            created_by=current_user.id,
+            created_at=datetime.now(timezone.utc) - timedelta(days=spec["days_ago"]),
+        )
+        for k, v in (spec.get("crow") or {}).items():
+            setattr(m, k, v)
+        db.add(m); db.flush()
+        created_meldingen.append(m)
+
+    db.commit()
+    log_action(db, request, current_user,
+               action="admin.seed_meldingen_for_project",
+               entity_type="project", entity_id=project.id,
+               extra={"meldingen": len(created_meldingen)})
+
+    return {
+        "success": True,
+        "message": f"{len(created_meldingen)} meldingen aangemaakt op project '{project.name}'.",
+        "project_id": project.id,
+        "project_name": project.name,
+        "meldingen_created": len(created_meldingen),
+        "clusterable_open": sum(1 for m in created_meldingen if m.status == "open" and m.gw_term),
+    }
