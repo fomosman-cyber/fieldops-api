@@ -1111,28 +1111,28 @@
           <div style="display:flex;align-items:center;gap:10px;">
             <span style="width:10px;height:10px;border-radius:50%;background:#22c55e;animation:pulse 2s infinite;box-shadow:0 0 12px rgba(34,197,94,0.6);"></span>
             <div>
-              <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.1em;text-transform:uppercase;font-weight:600;">System</div>
-              <div style="font-size:13px;font-weight:700;color:#86efac;">Online</div>
+              <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.1em;text-transform:uppercase;font-weight:600;" data-i18n="ops_system">System</div>
+              <div style="font-size:13px;font-weight:700;color:#86efac;" data-i18n="ops_online">Online</div>
             </div>
           </div>
           <!-- Live banner met datum + project-info -->
           <div style="padding:0 8px;">
-            <div style="font-size:10px;color:#7dd3fc;letter-spacing:0.1em;text-transform:uppercase;font-weight:600;margin-bottom:2px;">Operations Center</div>
-            <div id="opsCenterHeadline" style="font-size:15px;font-weight:600;color:#e6edf3;">Veld-status realtime · NEN 2767-2 · CROW 146 actief</div>
+            <div style="font-size:10px;color:#7dd3fc;letter-spacing:0.1em;text-transform:uppercase;font-weight:600;margin-bottom:2px;" data-i18n="ops_center">Operations Center</div>
+            <div id="opsCenterHeadline" style="font-size:15px;font-weight:600;color:#e6edf3;" data-i18n="ops_headline_default">Veld-status realtime · NEN 2767-2 · CROW 146 actief</div>
           </div>
           <!-- Urgent counters -->
           <div style="text-align:center;padding:0 16px;border-left:1px solid rgba(255,255,255,0.1);">
             <div style="font-size:24px;font-weight:800;color:#f87171;line-height:1;" id="opsKritiekCount">0</div>
-            <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;">Kritiek nu</div>
+            <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;" data-i18n="ops_kritiek_nu">Kritiek nu</div>
           </div>
           <div style="text-align:center;padding:0 16px;border-left:1px solid rgba(255,255,255,0.1);">
             <div style="font-size:24px;font-weight:800;color:#fbbf24;line-height:1;" id="opsHoogCount">0</div>
-            <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;">Hoog open</div>
+            <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;" data-i18n="ops_hoog_open">Hoog open</div>
           </div>
           <!-- AI-suggestie -->
           <div style="text-align:right;padding-left:16px;border-left:1px solid rgba(255,255,255,0.1);">
-            <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:4px;">AI-suggestie</div>
-            <button onclick="navigateTo('clusters')" style="background:linear-gradient(135deg,#38bdf8,#0ea5e9);border:none;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;">⚡ Optimaliseer vandaag</button>
+            <div style="font-size:10px;color:#9ba6b3;letter-spacing:0.05em;text-transform:uppercase;margin-bottom:4px;" data-i18n="ops_ai_sug">AI-suggestie</div>
+            <button onclick="navigateTo('clusters')" style="background:linear-gradient(135deg,#38bdf8,#0ea5e9);border:none;color:#fff;padding:8px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;" data-i18n="ops_optimize_today">⚡ Optimaliseer vandaag</button>
           </div>
         </div>
       </div>
@@ -1338,7 +1338,7 @@
               <button class="btn-primary" onclick="openMeldingForProject()" style="font-size:12px;padding:6px 12px;">+ Melding</button>
             </div>
             <div id="projectDetailMeldingen" style="max-height:200px;overflow-y:auto;">
-              <p id="projDetailNoMeldingen" style="color:var(--text-dim);font-size:14px;">Geen meldingen in dit project.</p>
+              <p id="projDetailNoMeldingen" style="color:var(--text-dim);font-size:14px;" data-i18n="es_geen_meldingen_project">Geen meldingen in dit project.</p>
             </div>
           </div>
         </div>
@@ -1914,7 +1914,7 @@
       </div>
       <div id="opleveringenEmpty" class="empty-state" style="display:none;">
         <div class="empty-icon">&#128203;</div>
-        <h3>Nog geen opleveringen</h3>
+        <h3 data-i18n="es_nog_geen_opleveringen">Nog geen opleveringen</h3>
         <p>Maak een proces-verbaal aan voor de eerste oplevering van een (deel)project.</p>
         <button class="btn-primary" onclick="openOpleveringModal()">+ Eerste oplevering aanmaken</button>
       </div>
@@ -3495,6 +3495,25 @@
         fl_none: 'Geen mislukte pogingen in dit venster.',
         fl_reason_invalid_credentials: 'Onjuist wachtwoord',
         fl_reason_deactivated: 'Account inactief',
+        // Operations Center strip
+        ops_system: 'Systeem', ops_online: 'Online', ops_center: 'Operations Center',
+        ops_headline_default: 'Veld-status realtime · NEN 2767-2 · CROW 146 actief',
+        ops_kritiek_nu: 'Kritiek nu', ops_hoog_open: 'Hoog open',
+        ops_ai_sug: 'AI-suggestie', ops_optimize_today: '⚡ Optimaliseer vandaag',
+        ops_alles_onder_controle: '✓ Alles onder controle — geen openstaande operationele issues',
+        ops_kritiek_actie_1: '⚠ 1 kritieke melding vereist directe actie',
+        ops_kritiek_actie_n: '⚠ {n} kritieke meldingen vereisen directe actie',
+        ops_hoog_cluster: '{n} meldingen met hoge prioriteit — overweeg cluster-optimalisatie',
+        // Empty states (es_*)
+        es_nog_geen_opleveringen: 'Nog geen opleveringen',
+        es_geen_assets_drempel: 'Geen assets boven deze drempel — goed nieuws!',
+        es_geen_assets_risico: 'Geen assets met hoog risico — alles onder controle.',
+        es_nog_geen_restpunten: 'Nog geen restpunten — klik op de knop hieronder om er één toe te voegen.',
+        es_nog_geen_webhooks: 'Nog geen webhooks. Klik <strong>+ Nieuwe webhook</strong> om Slack/Teams te koppelen.',
+        es_nog_geen_sensors: 'Nog geen sensor-tokens. Klik <strong>+ Nieuwe sensor-token</strong> om een sensor te koppelen.',
+        es_geen_assets_project: 'Geen assets in dit project. Voeg ze toe via de Assets-pagina (binnenkort) of CSV-import.',
+        es_geen_projecten_toast: 'Geen projecten gevonden. Maak eerst een project aan.',
+        es_geen_meldingen_project: 'Geen meldingen in dit project.',
       },
       en: {
         dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
@@ -3739,6 +3758,23 @@
         fl_none: 'No failed attempts in this window.',
         fl_reason_invalid_credentials: 'Wrong password',
         fl_reason_deactivated: 'Account inactive',
+        ops_system: 'System', ops_online: 'Online', ops_center: 'Operations Center',
+        ops_headline_default: 'Field status realtime · NEN 2767-2 · CROW 146 active',
+        ops_kritiek_nu: 'Critical now', ops_hoog_open: 'High open',
+        ops_ai_sug: 'AI suggestion', ops_optimize_today: '⚡ Optimise today',
+        ops_alles_onder_controle: '✓ All under control — no open operational issues',
+        ops_kritiek_actie_1: '⚠ 1 critical report needs immediate action',
+        ops_kritiek_actie_n: '⚠ {n} critical reports need immediate action',
+        ops_hoog_cluster: '{n} high-priority reports — consider cluster optimisation',
+        es_nog_geen_opleveringen: 'No deliveries yet',
+        es_geen_assets_drempel: 'No assets above this threshold — good news!',
+        es_geen_assets_risico: 'No high-risk assets — all under control.',
+        es_nog_geen_restpunten: 'No remaining items yet — click the button below to add one.',
+        es_nog_geen_webhooks: 'No webhooks yet. Click <strong>+ New webhook</strong> to connect Slack/Teams.',
+        es_nog_geen_sensors: 'No sensor tokens yet. Click <strong>+ New sensor token</strong> to connect a sensor.',
+        es_geen_assets_project: 'No assets in this project. Add them via the Assets page (soon) or CSV import.',
+        es_geen_projecten_toast: 'No projects found. Create a project first.',
+        es_geen_meldingen_project: 'No reports in this project.',
       },
       de: {
         dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
@@ -3983,6 +4019,23 @@
         fl_none: 'Keine fehlgeschlagenen Versuche in diesem Zeitraum.',
         fl_reason_invalid_credentials: 'Falsches Passwort',
         fl_reason_deactivated: 'Konto inaktiv',
+        ops_system: 'System', ops_online: 'Online', ops_center: 'Operations Center',
+        ops_headline_default: 'Feld-Status realtime · NEN 2767-2 · CROW 146 aktiv',
+        ops_kritiek_nu: 'Kritisch jetzt', ops_hoog_open: 'Hoch offen',
+        ops_ai_sug: 'KI-Vorschlag', ops_optimize_today: '⚡ Heute optimieren',
+        ops_alles_onder_controle: '✓ Alles unter Kontrolle — keine offenen operativen Probleme',
+        ops_kritiek_actie_1: '⚠ 1 kritische Meldung erfordert sofortiges Handeln',
+        ops_kritiek_actie_n: '⚠ {n} kritische Meldungen erfordern sofortiges Handeln',
+        ops_hoog_cluster: '{n} Meldungen mit hoher Priorität — Cluster-Optimierung in Betracht ziehen',
+        es_nog_geen_opleveringen: 'Noch keine Übergaben',
+        es_geen_assets_drempel: 'Keine Assets über dieser Schwelle — gute Nachrichten!',
+        es_geen_assets_risico: 'Keine Hochrisiko-Assets — alles unter Kontrolle.',
+        es_nog_geen_restpunten: 'Noch keine Restpunkte — auf die Schaltfläche unten klicken, um einen hinzuzufügen.',
+        es_nog_geen_webhooks: 'Noch keine Webhooks. <strong>+ Neuer Webhook</strong> klicken, um Slack/Teams zu verbinden.',
+        es_nog_geen_sensors: 'Noch keine Sensor-Token. <strong>+ Neuer Sensor-Token</strong> klicken, um einen Sensor zu verbinden.',
+        es_geen_assets_project: 'Keine Assets in diesem Projekt. Über die Assets-Seite (bald) oder CSV-Import hinzufügen.',
+        es_geen_projecten_toast: 'Keine Projekte gefunden. Erst ein Projekt anlegen.',
+        es_geen_meldingen_project: 'Keine Meldungen in diesem Projekt.',
       },
       fr: {
         dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
@@ -4227,6 +4280,23 @@
         fl_none: 'Aucune tentative échouée dans cette fenêtre.',
         fl_reason_invalid_credentials: 'Mot de passe incorrect',
         fl_reason_deactivated: 'Compte inactif',
+        ops_system: 'Système', ops_online: 'En ligne', ops_center: 'Operations Center',
+        ops_headline_default: 'Statut terrain temps réel · NEN 2767-2 · CROW 146 actif',
+        ops_kritiek_nu: 'Critique maintenant', ops_hoog_open: 'Élevé ouvert',
+        ops_ai_sug: 'Suggestion IA', ops_optimize_today: '⚡ Optimiser aujourd\'hui',
+        ops_alles_onder_controle: '✓ Tout sous contrôle — aucun problème opérationnel ouvert',
+        ops_kritiek_actie_1: '⚠ 1 signalement critique nécessite une action immédiate',
+        ops_kritiek_actie_n: '⚠ {n} signalements critiques nécessitent une action immédiate',
+        ops_hoog_cluster: '{n} signalements haute priorité — envisager l\'optimisation par cluster',
+        es_nog_geen_opleveringen: 'Aucune livraison pour le moment',
+        es_geen_assets_drempel: 'Aucun actif au-dessus de ce seuil — bonne nouvelle !',
+        es_geen_assets_risico: 'Aucun actif à haut risque — tout sous contrôle.',
+        es_nog_geen_restpunten: 'Aucun point restant — cliquez sur le bouton ci-dessous pour en ajouter un.',
+        es_nog_geen_webhooks: 'Aucun webhook. Cliquez sur <strong>+ Nouveau webhook</strong> pour connecter Slack/Teams.',
+        es_nog_geen_sensors: 'Aucun jeton capteur. Cliquez sur <strong>+ Nouveau jeton capteur</strong> pour connecter un capteur.',
+        es_geen_assets_project: 'Aucun actif dans ce projet. Ajoutez-les via la page Actifs (bientôt) ou par import CSV.',
+        es_geen_projecten_toast: 'Aucun projet trouvé. Créez d\'abord un projet.',
+        es_geen_meldingen_project: 'Aucun signalement dans ce projet.',
       },
       tr: {
         dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
@@ -4471,6 +4541,23 @@
         fl_none: 'Bu zaman aralığında başarısız deneme yok.',
         fl_reason_invalid_credentials: 'Yanlış şifre',
         fl_reason_deactivated: 'Hesap pasif',
+        ops_system: 'Sistem', ops_online: 'Çevrimiçi', ops_center: 'Operations Center',
+        ops_headline_default: 'Saha durumu gerçek zamanlı · NEN 2767-2 · CROW 146 aktif',
+        ops_kritiek_nu: 'Şu an kritik', ops_hoog_open: 'Yüksek açık',
+        ops_ai_sug: 'AI önerisi', ops_optimize_today: '⚡ Bugün optimize et',
+        ops_alles_onder_controle: '✓ Her şey kontrol altında — açık operasyonel sorun yok',
+        ops_kritiek_actie_1: '⚠ 1 kritik bildirim acil eylem gerektiriyor',
+        ops_kritiek_actie_n: '⚠ {n} kritik bildirim acil eylem gerektiriyor',
+        ops_hoog_cluster: '{n} yüksek öncelikli bildirim — küme optimizasyonunu düşünün',
+        es_nog_geen_opleveringen: 'Henüz teslimat yok',
+        es_geen_assets_drempel: 'Bu eşiğin üzerinde varlık yok — iyi haber!',
+        es_geen_assets_risico: 'Yüksek riskli varlık yok — her şey kontrol altında.',
+        es_nog_geen_restpunten: 'Henüz kalan madde yok — bir tane eklemek için aşağıdaki düğmeye tıklayın.',
+        es_nog_geen_webhooks: 'Henüz webhook yok. Slack/Teams bağlamak için <strong>+ Yeni webhook</strong> tıklayın.',
+        es_nog_geen_sensors: 'Henüz sensör jetonu yok. Sensör bağlamak için <strong>+ Yeni sensör jetonu</strong> tıklayın.',
+        es_geen_assets_project: 'Bu projede varlık yok. Varlıklar sayfasından (yakında) veya CSV içe aktarmadan ekleyin.',
+        es_geen_projecten_toast: 'Proje bulunamadı. Önce bir proje oluşturun.',
+        es_geen_meldingen_project: 'Bu projede bildirim yok.',
       }
     };
 
@@ -5711,7 +5798,7 @@
       showToast('Projecten laden...', 'info');
       api('GET', '/api/projects/').then(function(projects){
         if (!projects || !projects.length) {
-          showToast('Geen projecten gevonden. Maak eerst een project aan.', 'error');
+          showToast(t('es_geen_projecten_toast'), 'error');
           return;
         }
         // Bouw een select-modal
@@ -6479,17 +6566,18 @@
         var opsHoogEl = document.getElementById('opsHoogCount');
         if (opsKritiekEl) opsKritiekEl.textContent = kritiekOpen;
         if (opsHoogEl) opsHoogEl.textContent = hoogOpen;
-        // Contextual headline
+        // Contextual headline (i18n via t())
         var opsHead = document.getElementById('opsCenterHeadline');
         if (opsHead) {
           if (kritiekOpen > 0) {
-            opsHead.innerHTML = '<span style="color:#fca5a5;">⚠ ' + kritiekOpen + ' kritieke melding' + (kritiekOpen === 1 ? '' : 'en') + ' vereisen directe actie</span>';
+            var critTxt = (kritiekOpen === 1 ? t('ops_kritiek_actie_1') : t('ops_kritiek_actie_n')).replace('{n}', kritiekOpen);
+            opsHead.innerHTML = '<span style="color:#fca5a5;">' + critTxt + '</span>';
           } else if (hoogOpen >= 3) {
-            opsHead.innerHTML = '<span style="color:#fbbf24;">' + hoogOpen + ' meldingen met hoge prioriteit — overweeg cluster-optimalisatie</span>';
+            opsHead.innerHTML = '<span style="color:#fbbf24;">' + t('ops_hoog_cluster').replace('{n}', hoogOpen) + '</span>';
           } else if (open === 0) {
-            opsHead.innerHTML = '<span style="color:#86efac;">✓ Alles onder controle — geen openstaande operationele issues</span>';
+            opsHead.innerHTML = '<span style="color:#86efac;">' + t('ops_alles_onder_controle') + '</span>';
           } else {
-            opsHead.textContent = 'Veld-status realtime · NEN 2767-2 · CROW 146 actief';
+            opsHead.textContent = t('ops_headline_default');
           }
         }
 
@@ -9326,7 +9414,7 @@
       var punten = o.punten || [];
       document.getElementById('opPuntenCount').textContent = '(' + punten.length + ')';
       if (!punten.length) {
-        puntenList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);border:1px dashed var(--border);border-radius:10px;">Nog geen restpunten — klik op de knop hieronder om er één toe te voegen.</div>';
+        puntenList.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text-dim);border:1px dashed var(--border);border-radius:10px;">' + t('es_nog_geen_restpunten') + '</div>';
         return;
       }
       var puntStatusColors = {
@@ -9715,7 +9803,7 @@
       listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Laden...</div>';
       api('GET', '/api/predictive/at-risk?min_score='+min+'&limit=20').then(function(items){
         if (!items.length) {
-          listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Geen assets boven deze drempel — goed nieuws!</div>';
+          listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">' + t('es_geen_assets_drempel') + '</div>';
           return;
         }
         listEl.innerHTML = items.map(function(r){
@@ -9765,7 +9853,7 @@
         if (!items) return;
         var topList = document.getElementById('dashPredTopList');
         if (!items.length) {
-          topList.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:14px;">Geen assets met hoog risico — alles onder controle.</div>';
+          topList.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:14px;">' + t('es_geen_assets_risico') + '</div>';
           return;
         }
         topList.innerHTML = items.map(function(r){
@@ -10304,7 +10392,7 @@
       tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Laden...</td></tr>';
       api('GET', '/api/webhooks/').then(function(items) {
         if (!items || items.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Nog geen webhooks. Klik <strong>+ Nieuwe webhook</strong> om Slack/Teams te koppelen.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">' + t('es_nog_geen_webhooks') + '</td></tr>';
           return;
         }
         tbody.innerHTML = items.map(function(h) {
@@ -10430,7 +10518,7 @@
       tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Laden...</td></tr>';
       api('GET', '/api/incoming/').then(function(items) {
         if (!items || items.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Nog geen sensor-tokens. Klik <strong>+ Nieuwe sensor-token</strong> om een sensor te koppelen.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">' + t('es_nog_geen_sensors') + '</td></tr>';
           return;
         }
         var projMap = {}; (allProjects||[]).forEach(function(p){ projMap[p.id] = p.name || p.naam; });
@@ -10794,7 +10882,7 @@
         .then(function(items) {
           meldingAssets = items || [];
           if (meldingAssets.length === 0) {
-            if (hint) hint.textContent = 'Geen assets in dit project. Voeg ze toe via de Assets-pagina (binnenkort) of CSV-import.';
+            if (hint) hint.textContent = t('es_geen_assets_project');
             return;
           }
           meldingAssets.forEach(function(a) {
