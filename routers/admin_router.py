@@ -803,3 +803,57 @@ def seed_meldingen_for_project(
         "meldingen_created": len(created_meldingen),
         "clusterable_open": sum(1 for m in created_meldingen if m.status == "open" and m.gw_term),
     }
+
+
+@router.post("/seed-demo-user")
+def seed_demo_user(
+    request: Request,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Idempotent: maakt of reset demo@fieldopsapp.nl met wachtwoord 'demo2026'.
+
+    Bedoeld voor de sandbox demo.html op de marketing-site die automatisch
+    inlogt. VIEWER-rol zodat de demo-user geen kritieke data kan muteren.
+    Wachtwoord-strength wordt bewust gebypassed — dit is een seeder die de
+    server-side hash direct schrijft. must_change_password=False omdat de
+    sandbox direct moet kunnen inloggen.
+    """
+    from models import UserRole as _UR
+    DEMO_EMAIL = "demo@fieldopsapp.nl"
+    DEMO_PW = "demo2026"
+
+    org = current_user.organization
+    existing = db.query(User).filter(User.email == DEMO_EMAIL).first()
+    if existing:
+        existing.hashed_password = hash_password(DEMO_PW)
+        existing.is_active = True
+        existing.must_change_password = False
+        db.commit()
+        log_action(db, request, current_user,
+                   action="admin.seed_demo_user",
+                   entity_type="user", entity_id=existing.id,
+                   extra={"mode": "updated"})
+        return {"success": True, "mode": "updated", "email": DEMO_EMAIL,
+                "user_id": existing.id, "organization": org.name}
+
+    demo = User(
+        email=DEMO_EMAIL,
+        hashed_password=hash_password(DEMO_PW),
+        first_name="Demo",
+        last_name="Sandbox",
+        role=_UR.VIEWER,
+        is_active=True,
+        is_org_admin=False,
+        must_change_password=False,
+        organization_id=org.id,
+    )
+    db.add(demo)
+    db.commit()
+    db.refresh(demo)
+    log_action(db, request, current_user,
+               action="admin.seed_demo_user",
+               entity_type="user", entity_id=demo.id,
+               extra={"mode": "created"})
+    return {"success": True, "mode": "created", "email": DEMO_EMAIL,
+            "user_id": demo.id, "organization": org.name}
