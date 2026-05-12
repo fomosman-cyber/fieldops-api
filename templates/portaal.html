@@ -9831,54 +9831,74 @@
         var normal = function(){doc.setFont('helvetica','normal');};
         var hr = function(){ doc.setDrawColor(220,220,220); doc.line(M, y, W-M, y); y += 4; };
         var ensure = function(needed){ if (y + needed > H - 20) { doc.addPage(); y = M; } };
+        // Safe text-helper: jsPDF.text crasht op null/undefined/empty.
+        // T() coerced naar string en skipt lege strings volledig.
+        var T = function(text, x, yy, opts) {
+          if (text === null || text === undefined) return;
+          var s = String(text);
+          if (s.length === 0) return;
+          if (opts) doc.text(s, x, yy, opts);
+          else doc.text(s, x, yy);
+        };
+        // splitTextToSize crasht ook op null — defensieve wrapper
+        var split = function(text, maxW) {
+          if (text === null || text === undefined) return [];
+          var s = String(text);
+          if (s.length === 0) return [];
+          try { return doc.splitTextToSize(s, maxW) || []; }
+          catch (e) { return [s]; }
+        };
 
         // ── Header banner ──
         doc.setFillColor(2,132,199);
         doc.rect(0,0,W,40,'F');
         doc.setTextColor(255,255,255);
         doc.setFontSize(20); bold();
-        doc.text('PROCES-VERBAAL VAN OPLEVERING', M, 18);
+        T('PROCES-VERBAAL VAN OPLEVERING', M, 18);
         doc.setFontSize(10); normal();
-        doc.text('FieldOps · CROW 146 · NEN 2767-2', M, 26);
-        var statusUpper = (o.status || 'concept').toUpperCase();
+        T('FieldOps · CROW 146 · NEN 2767-2', M, 26);
+        var statusUpper = String(o.status || 'concept').toUpperCase();
         doc.setFontSize(10); bold();
-        doc.text(statusUpper, W-M, 18, {align:'right'});
+        T(statusUpper, W-M, 18, {align:'right'});
         normal();
-        doc.text(currentOrg ? currentOrg.name : '', W-M, 26, {align:'right'});
+        var orgName = (currentOrg && currentOrg.name) ? currentOrg.name : '';
+        T(orgName, W-M, 26, {align:'right'});
 
         y = 50;
         doc.setTextColor(30,41,59);
 
         // ── Titel + datum ──
         doc.setFontSize(15); bold();
-        doc.text((o.title || 'Oplevering').substring(0, 70), M, y); y += 8;
+        T(String(o.title || 'Oplevering').substring(0, 70), M, y); y += 8;
         normal(); doc.setFontSize(10); doc.setTextColor(100,116,139);
-        var datumStr = o.datum_oplevering
-          ? new Date(o.datum_oplevering).toLocaleDateString(currentLang, {day:'numeric', month:'long', year:'numeric'})
-          : '—';
-        doc.text('Datum oplevering: ' + datumStr, M, y); y += 4;
-        if (o.project_name) { doc.text('Project: ' + o.project_name, M, y); y += 4; }
-        if (o.locatie) { doc.text('Locatie: ' + o.locatie, M, y); y += 4; }
+        var datumStr = '—';
+        if (o.datum_oplevering) {
+          try {
+            datumStr = new Date(o.datum_oplevering).toLocaleDateString(currentLang || 'nl', {day:'numeric', month:'long', year:'numeric'});
+          } catch (e) { datumStr = String(o.datum_oplevering); }
+        }
+        T('Datum oplevering: ' + datumStr, M, y); y += 4;
+        if (o.project_name) { T('Project: ' + o.project_name, M, y); y += 4; }
+        if (o.locatie) { T('Locatie: ' + o.locatie, M, y); y += 4; }
         y += 4;
         doc.setTextColor(30,41,59);
         hr();
 
         // ── Partijen ──
         ensure(40);
-        doc.setFontSize(12); bold(); doc.text('Partijen', M, y); y += 6;
+        doc.setFontSize(12); bold(); T('Partijen', M, y); y += 6;
         doc.setFontSize(10); normal();
         var colW = (W - 2*M - 8) / 2;
-        var pyStart = y;
-        bold(); doc.text('Opdrachtgever', M, y);
-        bold(); doc.text('Aannemer', M + colW + 8, y);
+        bold(); T('Opdrachtgever', M, y);
+        T('Aannemer', M + colW + 8, y);
         y += 5; normal();
-        doc.text(o.opdrachtgever_naam || '—', M, y);
-        doc.text(o.aannemer_naam || '—', M + colW + 8, y);
+        T(o.opdrachtgever_naam || '—', M, y);
+        T(o.aannemer_naam || '—', M + colW + 8, y);
         y += 5;
         if (o.opdrachtgever_email || o.aannemer_email) {
           doc.setTextColor(100,116,139); doc.setFontSize(9);
-          doc.text(o.opdrachtgever_email || '', M, y);
-          doc.text(o.aannemer_email || '', M + colW + 8, y);
+          T(o.opdrachtgever_email, M, y);
+          T(o.aannemer_email, M + colW + 8, y);
           y += 5;
           doc.setTextColor(30,41,59); doc.setFontSize(10);
         }
@@ -9887,10 +9907,9 @@
         // ── Omschrijving + extra vragen ──
         if (o.description) {
           ensure(20);
-          doc.setFontSize(12); bold(); doc.text('Omschrijving', M, y); y += 6;
+          doc.setFontSize(12); bold(); T('Omschrijving', M, y); y += 6;
           doc.setFontSize(10); normal();
-          var descLines = doc.splitTextToSize(o.description, W - 2*M);
-          descLines.forEach(function(line){ ensure(6); doc.text(line, M, y); y += 5; });
+          split(o.description, W - 2*M).forEach(function(line){ ensure(6); T(line, M, y); y += 5; });
           y += 2;
         }
 
@@ -9902,11 +9921,11 @@
         if (eq.netheid) qPairs.push(['Netheid', eq.netheid]);
         if (qPairs.length) {
           ensure(12 + qPairs.length * 6);
-          doc.setFontSize(12); bold(); doc.text('Inspectievragen', M, y); y += 6;
+          doc.setFontSize(12); bold(); T('Inspectievragen', M, y); y += 6;
           doc.setFontSize(10);
           qPairs.forEach(function(p){
-            bold(); doc.text(p[0] + ':', M, y);
-            normal(); doc.text(String(p[1]).substring(0, 100), M + 35, y);
+            bold(); T(p[0] + ':', M, y);
+            normal(); T(String(p[1]).substring(0, 100), M + 35, y);
             y += 5;
           });
           y += 2;
@@ -9914,13 +9933,13 @@
         hr();
 
         // ── Restpunten ──
-        var punten = o.punten || [];
+        var punten = Array.isArray(o.punten) ? o.punten : [];
         ensure(20);
         doc.setFontSize(12); bold();
-        doc.text('Restpunten (' + punten.length + ')', M, y); y += 6;
+        T('Restpunten (' + punten.length + ')', M, y); y += 6;
         if (!punten.length) {
           doc.setFontSize(10); normal(); doc.setTextColor(100,116,139);
-          doc.text('— Geen restpunten geregistreerd —', M, y); y += 6;
+          T('— Geen restpunten geregistreerd —', M, y); y += 6;
           doc.setTextColor(30,41,59);
         } else {
           var statusBg = { gereed:[220,252,231], restpunt:[254,243,199], afgekeurd:[254,226,226] };
@@ -9930,25 +9949,27 @@
             doc.setFillColor(248,250,252);
             doc.rect(M, y, W-2*M, 6, 'F');
             doc.setFontSize(9); bold(); doc.setTextColor(30,41,59);
-            doc.text('#' + (idx+1) + (p.code ? ' · ' + p.code : ''), M+2, y+4);
-            var st = (p.status || 'restpunt').toLowerCase();
+            T('#' + (idx+1) + (p.code ? ' · ' + p.code : ''), M+2, y+4);
+            var st = String(p.status || 'restpunt').toLowerCase();
             var bg = statusBg[st] || statusBg.restpunt;
             var fg = statusFg[st] || statusFg.restpunt;
             doc.setFillColor(bg[0],bg[1],bg[2]);
             doc.rect(W-M-30, y+1, 28, 4, 'F');
             doc.setTextColor(fg[0],fg[1],fg[2]); doc.setFontSize(7);
-            doc.text(st.toUpperCase(), W-M-16, y+4, {align:'center'});
+            T(st.toUpperCase(), W-M-16, y+4, {align:'center'});
             doc.setTextColor(30,41,59);
             y += 8;
             doc.setFontSize(10); normal();
             if (p.omschrijving) {
-              var omsLines = doc.splitTextToSize('Omschrijving: ' + p.omschrijving, W - 2*M - 4);
-              omsLines.forEach(function(line){ ensure(5); doc.text(line, M+2, y); y += 5; });
+              split('Omschrijving: ' + p.omschrijving, W - 2*M - 4)
+                .forEach(function(line){ ensure(5); T(line, M+2, y); y += 5; });
             }
-            if (p.uitvoering) {
-              var uitLines = doc.splitTextToSize('Uitvoering: ' + p.uitvoering, W - 2*M - 4);
+            // Backend gebruikt 'uitvoeringsmethode'; sommige oudere code 'uitvoering'.
+            var uitv = p.uitvoeringsmethode || p.uitvoering;
+            if (uitv) {
               doc.setTextColor(71,85,105);
-              uitLines.forEach(function(line){ ensure(5); doc.text(line, M+2, y); y += 5; });
+              split('Uitvoering: ' + uitv, W - 2*M - 4)
+                .forEach(function(line){ ensure(5); T(line, M+2, y); y += 5; });
               doc.setTextColor(30,41,59);
             }
             y += 3;
@@ -9959,38 +9980,39 @@
         if (o.notes) {
           ensure(16);
           hr();
-          doc.setFontSize(12); bold(); doc.text('Opmerkingen', M, y); y += 6;
+          doc.setFontSize(12); bold(); T('Opmerkingen', M, y); y += 6;
           doc.setFontSize(10); normal();
-          var notesLines = doc.splitTextToSize(o.notes, W - 2*M);
-          notesLines.forEach(function(line){ ensure(5); doc.text(line, M, y); y += 5; });
+          split(o.notes, W - 2*M).forEach(function(line){ ensure(5); T(line, M, y); y += 5; });
         }
 
         // ── Ondertekening ──
         ensure(35);
         y = Math.min(y + 10, H - 50);
         hr();
-        doc.setFontSize(12); bold(); doc.text('Ondertekening', M, y); y += 8;
+        doc.setFontSize(12); bold(); T('Ondertekening', M, y); y += 8;
         doc.setFontSize(10); normal();
         var sigW = (W - 2*M - 10) / 2;
         doc.setDrawColor(150,150,150);
         doc.line(M, y+12, M + sigW, y+12);
         doc.line(M + sigW + 10, y+12, W - M, y+12);
         doc.setFontSize(9); doc.setTextColor(100,116,139);
-        doc.text('Opdrachtgever — ' + (o.opdrachtgever_naam || '—'), M, y+17);
-        doc.text('Aannemer — ' + (o.aannemer_naam || '—'), M + sigW + 10, y+17);
-        doc.text('Datum: ' + datumStr, M, y+22);
+        T('Opdrachtgever — ' + (o.opdrachtgever_naam || '—'), M, y+17);
+        T('Aannemer — ' + (o.aannemer_naam || '—'), M + sigW + 10, y+17);
+        T('Datum: ' + datumStr, M, y+22);
 
         // ── Footer op elke pagina ──
         var totalPages = doc.internal.getNumberOfPages();
+        var nowStr = '';
+        try { nowStr = new Date().toLocaleString(currentLang || 'nl'); }
+        catch (e) { nowStr = new Date().toISOString(); }
         for (var pi = 1; pi <= totalPages; pi++) {
           doc.setPage(pi);
           doc.setFontSize(8); doc.setTextColor(150,150,150); normal();
-          doc.text('Proces-verbaal · gegenereerd ' + new Date().toLocaleString(currentLang),
-                   M, H - 8);
-          doc.text('Pagina ' + pi + ' / ' + totalPages, W - M, H - 8, {align:'right'});
+          T('Proces-verbaal · gegenereerd ' + nowStr, M, H - 8);
+          T('Pagina ' + pi + ' / ' + totalPages, W - M, H - 8, {align:'right'});
         }
 
-        var safeTitle = (o.title || 'oplevering').replace(/[^a-z0-9_\-]+/gi, '_').toLowerCase().substring(0,40);
+        var safeTitle = String(o.title || 'oplevering').replace(/[^a-z0-9_\-]+/gi, '_').toLowerCase().substring(0,40) || 'oplevering';
         doc.save('PV_' + safeTitle + '_' + (new Date().toISOString().slice(0,10)) + '.pdf');
         showToast('PDF gegenereerd', 'success');
       } catch (err) {
