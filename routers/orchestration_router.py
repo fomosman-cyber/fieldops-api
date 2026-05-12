@@ -282,6 +282,15 @@ def update_melding_status_in_cluster(
         current_user.role not in (UserRole.ADMIN, UserRole.MANAGER, UserRole.CONTRACTOR)):
         raise HTTPException(status_code=403, detail="Geen rechten voor deze melding")
 
+    # Foto-na verplicht voordat veldwerker de melding mag afsluiten.
+    # Verhindert dat clusters worden afgerond zonder bewijslast van uitvoering.
+    if new_status == "afgerond" and m.status != "afgerond" and not m.photo_after_url:
+        raise HTTPException(
+            status_code=400,
+            detail="Foto na uitvoering vereist voordat de melding afgesloten "
+                   "kan worden. Upload eerst een foto.",
+        )
+
     old_status = m.status
     m.status = new_status
     db.commit()

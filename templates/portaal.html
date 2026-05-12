@@ -7125,6 +7125,21 @@
     function saveMeldingStatus() {
       if (!currentDetailMeldingId) return;
       var status = document.getElementById('detailStatus').value;
+      // Foto-na verplicht voordat afgesloten kan worden (opgelost/afgerond).
+      // Backend valideert dit ook — maar we vragen 'm hier vooraf zodat er
+      // geen verwarrende 400 ontstaat na klikken.
+      if (status === 'opgelost' || status === 'afgerond') {
+        var m = (allMeldingen || []).find(function(x){ return x.id === currentDetailMeldingId; });
+        if (m && !m.photo_after_url) {
+          openPhotoAfterModal(currentDetailMeldingId, function(){
+            api('PUT', '/api/meldingen/' + currentDetailMeldingId, { status: status }).then(function() {
+              showToast(t('status_bijgewerkt'));
+              loadMeldingen();
+            }).catch(function(err) { showToast(t('fout_laden') + ': ' + err.message, 'error'); });
+          });
+          return;
+        }
+      }
       api('PUT', '/api/meldingen/' + currentDetailMeldingId, { status: status }).then(function() {
         showToast(t('status_bijgewerkt'));
         loadMeldingen();
@@ -8984,12 +8999,101 @@
 
     function markMeldingStatus(clusterId, meldingId, newStatus, evt) {
       if (evt) evt.stopPropagation();
+      // Bij afronden: eerst foto-na uitvoering vereisen voordat de status
+      // daadwerkelijk naar 'afgerond' gaat. Backend valideert dit ook, maar
+      // we vragen 'm hier op zodat de veldwerker direct vanaf telefoon kan
+      // uploaden. Bij heropen (status='open') geen foto-eis.
+      if (newStatus !== 'afgerond') {
+        return _patchClusterMeldingStatus(clusterId, meldingId, newStatus);
+      }
+      // Check eerst of er al een foto-na bestaat — dan kan direct afsluiten
+      api('GET', '/api/meldingen/' + meldingId).then(function(m){
+        if (m && m.photo_after_url) {
+          _patchClusterMeldingStatus(clusterId, meldingId, newStatus);
+        } else {
+          openPhotoAfterModal(meldingId, function onUploaded(){
+            _patchClusterMeldingStatus(clusterId, meldingId, newStatus);
+          });
+        }
+      }).catch(function(err){
+        showToast('Kan melding niet laden: ' + (err.message || 'onbekend'), 'error');
+      });
+    }
+
+    function _patchClusterMeldingStatus(clusterId, meldingId, newStatus) {
       api('PATCH', '/api/clusters/' + clusterId + '/meldingen/' + meldingId + '/status',
           { status: newStatus }).then(function(){
         showToast(newStatus === 'afgerond' ? 'Melding afgerond ✓' : 'Status bijgewerkt', 'success');
         loadMijnDag();
       }).catch(function(err){
-        showToast('Fout: ' + err.message, 'error');
+        showToast('Fout: ' + (err.message || 'onbekend'), 'error');
+      });
+    }
+
+    // Foto-na uploader voor Mijn-dag afronden-flow. Compact, mobile-first.
+    // Roept onUploaded() pas aan nadat de foto succesvol is opgeslagen op
+    // de melding (PUT met photo_after_url).
+    function openPhotoAfterModal(meldingId, onUploaded) {
+      // Bouw een ad-hoc modal — voorkomt extra HTML in template-body
+      var existing = document.getElementById('photoAfterModalDynamic');
+      if (existing) existing.remove();
+      var overlay = document.createElement('div');
+      overlay.id = 'photoAfterModalDynamic';
+      overlay.className = 'modal-overlay active';
+      overlay.style.zIndex = '10000';
+      overlay.innerHTML =
+        '<div class="modal" style="max-width:480px;">'
+        + '<button class="modal-close" onclick="document.getElementById(\'photoAfterModalDynamic\').remove()" aria-label="Sluiten">&times;</button>'
+        + '<h2 style="margin:0 0 6px;">📸 Foto na uitvoering</h2>'
+        + '<p class="subtitle" style="margin:0 0 16px;">Verplicht voordat de melding afgesloten wordt. Even snel een foto maken of een bestaande kiezen.</p>'
+        + '<label for="photoAfterInputDyn" style="display:block;cursor:pointer;border:2px dashed #16a34a;border-radius:12px;padding:24px;text-align:center;background:rgba(22,163,74,0.05);">'
+        +   '<img id="photoAfterPreviewDyn" style="max-width:100%;max-height:200px;display:none;border-radius:8px;margin:0 auto 10px;">'
+        +   '<div id="photoAfterLabelDyn" style="font-size:14px;color:#166534;font-weight:600;">✅ Tik om foto te kiezen of te maken</div>'
+        +   '<div style="font-size:12px;color:var(--text-dim);margin-top:4px;">Camera of bestand</div>'
+        + '</label>'
+        + '<input type="file" id="photoAfterInputDyn" accept="image/*" capture="environment" style="display:none;">'
+        + '<div style="display:flex;gap:8px;margin-top:18px;">'
+        +   '<button type="button" class="btn-secondary" style="flex:1;" onclick="document.getElementById(\'photoAfterModalDynamic\').remove()">Annuleer</button>'
+        +   '<button type="button" id="photoAfterSubmitDyn" class="btn-primary" style="flex:1;" disabled>Opslaan & afronden</button>'
+        + '</div>'
+        + '</div>';
+      document.body.appendChild(overlay);
+
+      var fileInput = document.getElementById('photoAfterInputDyn');
+      var preview = document.getElementById('photoAfterPreviewDyn');
+      var label = document.getElementById('photoAfterLabelDyn');
+      var submitBtn = document.getElementById('photoAfterSubmitDyn');
+      var capturedDataUrl = null;
+
+      fileInput.addEventListener('change', function(e){
+        var f = e.target.files && e.target.files[0];
+        if (!f) return;
+        var reader = new FileReader();
+        reader.onload = function(ev){
+          capturedDataUrl = ev.target.result;
+          preview.src = capturedDataUrl;
+          preview.style.display = 'block';
+          label.textContent = '✓ Foto klaar — tik op Opslaan & afronden';
+          submitBtn.disabled = false;
+        };
+        reader.readAsDataURL(f);
+      });
+
+      submitBtn.addEventListener('click', function(){
+        if (!capturedDataUrl) return;
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Bezig…';
+        api('PUT', '/api/meldingen/' + meldingId, { photo_after_url: capturedDataUrl })
+          .then(function(){
+            overlay.remove();
+            showToast('Foto na opgeslagen — melding wordt afgesloten', 'success');
+            if (typeof onUploaded === 'function') onUploaded();
+          })
+          .catch(function(err){
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Opslaan & afronden';
+            showToast('Foto opslaan mislukt: ' + (err.message || 'onbekend'), 'error');
+          });
       });
     }
 

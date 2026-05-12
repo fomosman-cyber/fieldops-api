@@ -158,6 +158,20 @@ def update_melding(
     before = {k: getattr(melding, k) for k in update_data.keys()}
     status_change = has_status_field and update_data["status"] != melding.status
 
+    # Foto-na verplicht vóór afsluiten — bewijslast voor opdrachtgevers
+    # dat het werk daadwerkelijk is uitgevoerd. Geldt voor de twee terminal-
+    # statussen 'opgelost' en 'afgerond'. Een melding direct herstellen naar
+    # 'open' (heropen) blijft mogelijk zonder foto.
+    if status_change and update_data["status"] in ("opgelost", "afgerond"):
+        new_photo_after = update_data.get("photo_after_url")
+        existing_photo_after = melding.photo_after_url
+        if not (new_photo_after or existing_photo_after):
+            raise HTTPException(
+                status_code=400,
+                detail="Foto na uitvoering vereist voordat de melding afgesloten "
+                       "(opgelost/afgerond) kan worden. Upload eerst een foto.",
+            )
+
     for field, value in update_data.items():
         setattr(melding, field, value)
     db.commit()
