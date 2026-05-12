@@ -914,6 +914,14 @@ def reset_wachtwoord():
     return HTMLResponse(content=html)
 
 
+@app.get("/handleiding", response_class=HTMLResponse)
+def handleiding():
+    """Publieke handleiding — bereikbaar zonder login. Linkt vanuit portaal-
+    header (❓-knop) en marketing-site footer."""
+    html = (TEMPLATES_DIR / "handleiding.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
+
+
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}

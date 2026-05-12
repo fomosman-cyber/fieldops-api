@@ -1017,6 +1017,7 @@
         <option value="fr">🇫🇷 FR</option>
         <option value="tr">🇹🇷 TR</option>
       </select>
+      <button class="notif-btn" id="helpBtn" aria-label="Handleiding" onclick="window.open('/handleiding', '_blank')" title="Open handleiding">❓</button>
       <button class="notif-btn" id="themeBtn" aria-label="Donker thema" onclick="toggleTheme()" title="Donker/licht thema">🌓</button>
       <button class="notif-btn" id="pushBtn" aria-label="Push notificaties" onclick="togglePushNotifications()" title="Push notificaties aan/uit">🔔</button>
       <span id="syncStatusBadge" style="display:none;font-size:11px;padding:3px 8px;border-radius:10px;background:#fbbf24;color:#78350f;font-weight:600;cursor:pointer;" onclick="syncQueueRetry()" title="Klik om opnieuw te proberen">⏳ <span id="syncStatusCount">0</span></span>
@@ -1299,7 +1300,7 @@
       <div class="page-header">
         <div>
           <h1>Projecten</h1>
-          <p>Beheer je projecten en werkgebieden.</p>
+          <p>Beheer je <strong>onderhoudsprojecten</strong> en werkgebieden — langlopende contracten zoals KO Westland of A12-renovatie. Voor <strong>eenmalig werk</strong> (één-keer-oplevering zonder doorlopend onderhoud) gebruik je het tabblad <a href="#" onclick="event.preventDefault(); navigateTo('opleveren');" style="color:var(--accent);text-decoration:underline;">Opleveren</a>.</p>
         </div>
         <button class="btn-primary" onclick="openProjectModal()">+ Nieuw Project</button>
       </div>
@@ -1482,7 +1483,7 @@
       <div class="page-header">
         <div>
           <h1>Assets</h1>
-          <p>Beheer je infrastructuur — lantaarnpalen, putten, wegvakken, kunstwerken.</p>
+          <p>De fysieke objecten waarop je onderhoudt en meldt — wegvakken, lantaarnpalen, putten, voegovergangen, kunstwerken. Elke asset krijgt een uniek nummer + GPS-locatie zodat meldingen en metingen automatisch koppelen. Importeer in bulk via CSV of NWB-wegvakken.</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="document.getElementById('assetCsvInput').click()" data-i18n="csv_importeren">CSV importeren</button>
@@ -1554,7 +1555,7 @@
       <div class="page-header">
         <div>
           <h1>Voorspeller</h1>
-          <p>Predictive maintenance — risicoscore per asset op basis van leeftijd, NEN-conditie en meldingen-historie.</p>
+          <p>Voorspellend onderhoud op basis van <strong>NEN 2767-2</strong>: combineert leeftijd, conditie-score (1–5) en meldingen-historie om assets te tonen die binnen 6–24 maanden naar NEN 3→4 degraderen. Vroeg inspecteren = 3–5× goedkoper dan noodreparatie.</p>
         </div>
         <button class="btn-secondary" onclick="loadPredictive()">&#8635; Vernieuwen</button>
       </div>
@@ -1802,6 +1803,10 @@
         }
       </style>
 
+      <div style="background:rgba(2,132,199,0.06);border:1px solid rgba(2,132,199,0.18);border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:var(--text-muted);line-height:1.55;">
+        <strong style="color:var(--text);">Mijn dag</strong> — jouw persoonlijke werkroute voor vandaag. Toegewezen clusters (route-geoptimaliseerde meldingen op de kaart), je openstaande taken en de geschatte werktijd. Tik op een melding voor detail; gebruik de cluster-knop om sequentieel af te werken.
+      </div>
+
       <div class="day-header">
         <div class="day-greeting" id="dayGreeting">VANDAAG</div>
         <div class="day-name" id="dayName">Goedemorgen</div>
@@ -1908,7 +1913,7 @@
       <div class="page-header">
         <div>
           <h1>Opleveren</h1>
-          <p>Proces-verbalen van uitgevoerd werk — header-gegevens + per opleverpunt code, omschrijving, uitvoeringsmethode en foto.</p>
+          <p>Registreer hier <strong>eenmalig werk</strong> en officiële <strong>proces-verbalen</strong> — opdrachtgever/aannemer, datum, locatie, restpunten met foto vóór/na. Voor doorlopende onderhoudscontracten gebruik je <a href="#" onclick="event.preventDefault(); navigateTo('projecten');" style="color:var(--accent);text-decoration:underline;">Projecten</a>. Elke oplevering kan als PDF-opleverdocument geëxporteerd worden.</p>
         </div>
         <button class="btn-primary" onclick="openOpleveringModal()">+ Nieuwe oplevering</button>
       </div>
@@ -2472,8 +2477,11 @@
   <div class="modal-overlay" id="opleveringModal">
     <div class="modal" style="max-width:760px;">
       <button class="modal-close" onclick="closeOpleveringModal()" aria-label="Sluiten">&times;</button>
-      <h2 id="opleveringModalTitle">Nieuwe oplevering</h2>
-      <p class="subtitle">Header-gegevens voor het proces-verbaal. Punten voeg je hieronder toe.</p>
+      <div style="background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;margin:-24px -24px 18px;padding:18px 24px;border-radius:14px 14px 0 0;">
+        <div style="font-size:10px;letter-spacing:0.18em;opacity:0.85;font-weight:700;text-transform:uppercase;margin-bottom:2px;">Proces-Verbaal van Oplevering</div>
+        <h2 id="opleveringModalTitle" style="margin:0;color:#fff;font-size:20px;font-weight:800;letter-spacing:-0.3px;">Nieuwe oplevering</h2>
+        <p class="subtitle" style="margin:4px 0 0;color:rgba(255,255,255,0.85);font-size:13px;">Dit formulier is óók het opleverdocument — na opslaan direct als PDF te downloaden. CROW-conform.</p>
+      </div>
       <form id="opleveringForm" onsubmit="submitOplevering(event)">
         <input type="hidden" id="opleveringEditId" value="">
         <div class="form-group">
@@ -7965,10 +7973,49 @@
         navigator.geolocation.getCurrentPosition(function(pos2) {
           document.getElementById('meldingLat').value = pos2.coords.latitude.toFixed(6);
           document.getElementById('meldingLng').value = pos2.coords.longitude.toFixed(6);
-        }, function(){}, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
+          // Stage 3: snap aan dichtstbijzijnde asset op basis van precieze fix
+          autoLinkNearestAsset(pos2.coords.latitude, pos2.coords.longitude);
+        }, function(){
+          // Fallback: gebruik low-accuracy fix voor asset-snap
+          autoLinkNearestAsset(pos.coords.latitude, pos.coords.longitude);
+        }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
       }, function(err) {
         showToast(t('kan_locatie_niet_ophalen') + ': ' + err.message, 'error');
       }, { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 });
+    }
+
+    // Zoekt dichtstbijzijnde asset (wegvak of punt) bij gegeven GPS en
+    // selecteert die automatisch in het melding-formulier. Voorkomt dat
+    // veldwerkers handmatig het juiste assetnummer/wegvak moeten kiezen.
+    function autoLinkNearestAsset(lat, lng) {
+      if (lat == null || lng == null) return;
+      var sel = document.getElementById('meldingAsset');
+      // Niet overschrijven als gebruiker al expliciet een asset koos
+      if (sel && sel.value) return;
+      var projId = document.getElementById('meldingProject').value || '';
+      var qs = 'lat=' + lat.toFixed(6) + '&lng=' + lng.toFixed(6) + '&max_m=300';
+      if (projId) qs += '&project_id=' + encodeURIComponent(projId);
+      api('GET', '/api/assets/nearest?' + qs).then(function(r) {
+        if (!r || !r.found || !r.asset) return;
+        var asset = r.asset;
+        // Asset uit project laden als nog niet geladen
+        var inProject = meldingAssets.some(function(a){ return a.id === asset.id; });
+        if (!inProject && projId && asset.project_id === projId) {
+          // Voeg toe aan select zodat hij selecteerbaar is
+          var opt = document.createElement('option');
+          opt.value = asset.id;
+          opt.textContent = asset.code + (asset.name ? ' — ' + asset.name : '') + ' (' + asset.asset_type + ')';
+          sel.appendChild(opt);
+          meldingAssets.push(asset);
+        }
+        if (sel.querySelector('option[value="' + asset.id + '"]')) {
+          sel.value = asset.id;
+          showToast('Gekoppeld aan asset ' + asset.code + ' (' + r.distance_m + ' m)', 'success');
+        } else {
+          // Asset hoort niet bij gekozen project — gewoon melden
+          showToast('Dichtstbijzijnde asset: ' + asset.code + ' op ' + r.distance_m + ' m (ander project)', 'info');
+        }
+      }).catch(function(){ /* stil falen — asset-koppeling is optioneel */ });
     }
 
     // ══════════════════════════════════════
@@ -8865,9 +8912,11 @@
         var crowTag = m.crow_klasse
           ? '<span style="background:var(--blue-light, #e0f2fe);color:var(--blue, #0284c7);padding:1px 7px;border-radius:4px;font-size:10px;font-weight:600;font-family:JetBrains Mono,monospace;margin-right:6px;">' + m.crow_klasse + '</span>'
           : '';
+        // Hele info-blok klikbaar zodat veldwerker direct melding-detail opent
+        // (eerder alleen maps-link en done-knop — open faalde).
         return '<div class="' + rowClass + '">'
           + '<div class="melding-num">' + checkmark + '</div>'
-          + '<div class="melding-info">'
+          + '<div class="melding-info" onclick="openMeldingDetailFromMyDay(\'' + m.id + '\')" style="cursor:pointer;" title="Open melding-detail">'
             + '<div class="melding-title">' + escapeHtml(m.title) + '</div>'
             + '<div class="melding-meta">' + crowTag + (m.lat && m.lng ? m.lat.toFixed(4) + ', ' + m.lng.toFixed(4) : 'geen GPS') + '</div>'
           + '</div>'
@@ -8918,6 +8967,21 @@
       if (el) el.classList.toggle('expanded');
     }
 
+    // Open de melding-detail/edit-modal vanuit Mijn dag. De melding zit
+    // niet in allMeldingen (die wordt door /api/meldingen/ gevuld, niet door
+    // /clusters/me/meldingen). Laad 'm dus eerst expliciet, plak in cache,
+    // en open daarna openMeldingModal — die leest uit allMeldingen.
+    function openMeldingDetailFromMyDay(meldingId) {
+      api('GET', '/api/meldingen/' + meldingId).then(function(m) {
+        if (!Array.isArray(allMeldingen)) allMeldingen = [];
+        var idx = allMeldingen.findIndex(function(x){ return x.id === m.id; });
+        if (idx >= 0) allMeldingen[idx] = m; else allMeldingen.push(m);
+        openMeldingModal(m.id);
+      }).catch(function(err){
+        showToast('Kan melding niet laden: ' + (err.message || 'onbekend'), 'error');
+      });
+    }
+
     function markMeldingStatus(clusterId, meldingId, newStatus, evt) {
       if (evt) evt.stopPropagation();
       api('PATCH', '/api/clusters/' + clusterId + '/meldingen/' + meldingId + '/status',
@@ -8930,13 +8994,27 @@
     }
 
     function setClusterStatus(clusterId, newStatus) {
+      // Optimistic UI: vervang knoppen meteen zodat het cluster niet
+      // 'vastzit' op de huidige knop als de PATCH-call traag of stil faalt.
+      var card = document.getElementById('cluster-' + clusterId);
+      var actionsEl = card ? card.querySelector('.cluster-actions') : null;
+      if (actionsEl) actionsEl.innerHTML = '<button disabled style="opacity:0.6;">Bezig…</button>';
+
       api('PATCH', '/api/clusters/' + clusterId + '/status',
-          { status: newStatus }).then(function(){
+          { status: newStatus }).then(function(updated){
         var msg = {in_progress:'Cluster gestart 🚀', done:'Cluster afgerond ✓', assigned:'Cluster gepauzeerd'}[newStatus] || 'Bijgewerkt';
-        showToast(msg, 'success');
+        // Sanity-check: server moet de gevraagde status hebben gehonoreerd
+        if (updated && updated.status && updated.status !== newStatus) {
+          showToast('Server zette status op "' + updated.status + '" i.p.v. "' + newStatus + '" — controleer cluster-rechten', 'error');
+        } else {
+          showToast(msg, 'success');
+        }
         loadMijnDag();
       }).catch(function(err){
-        showToast('Fout: ' + err.message, 'error');
+        console.error('cluster-status update faalde', err);
+        showToast('Cluster bijwerken mislukt: ' + (err.message || 'onbekend'), 'error');
+        // Roll back: herlaad zodat de knoppen weer correct staan
+        loadMijnDag();
       });
     }
 
@@ -9370,6 +9448,8 @@
             _currentOplevering = o;
             renderOpleveringDetail(o);
           }
+          // Na succesvolle aanmaak: bied direct het opleverdocument aan
+          if (!isEdit) offerPVDownload(o);
           return;
         }
         // Serieel POSTen van inline restpunten — eenvoudiger dan parallel, en
@@ -9387,9 +9467,30 @@
           showToast('Oplevering + ' + ok + ' restpunt(en) aangemaakt' + (fail ? ' (' + fail + ' mislukt)' : ''), fail ? 'error' : 'success');
           closeOpleveringModal();
           loadOpleveringen();
+          // Refresh oplevering met embedded punten en bied PV aan
+          api('GET', '/api/opleveringen/' + o.id).then(function(full){
+            offerPVDownload(full);
+          }).catch(function(){ offerPVDownload(o); });
         });
       }).catch(function(err){
         showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
+      });
+    }
+
+    // Vraag of de gebruiker meteen het opleverdocument (PDF-proces-verbaal)
+    // wil downloaden. Maakt het formulier ook formeel een opleverdocument.
+    function offerPVDownload(o) {
+      showConfirm({
+        icon: '📄',
+        title: 'Opleverdocument downloaden?',
+        message: 'De oplevering <strong>' + escapeHtml(o.title || '') + '</strong> is opgeslagen. Wil je direct het proces-verbaal als PDF-opleverdocument downloaden?',
+        actionLabel: 'Download PV (PDF)',
+        cancelLabel: 'Later',
+        danger: false,
+        onConfirm: function() {
+          _currentOplevering = o;
+          exportCurrentOpleveringPDF();
+        }
       });
     }
 

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FieldOps — Handleiding</title>
+  <link rel="icon" href="/static/favicon-32.png">
+  <style>
+    :root {
+      --bg: #f8fafc; --card: #fff; --text: #1e293b; --muted: #64748b;
+      --dim: #94a3b8; --border: #e2e8f0; --accent: #0284c7;
+      --accent-dark: #0369a1; --green: #16a34a; --orange: #ea580c;
+      --rule-soft: #f1f5f9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; font-family: 'Inter', 'DM Sans', -apple-system, system-ui, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.6;
+    }
+    .topbar {
+      background: linear-gradient(135deg, #0284c7, #0369a1);
+      color: #fff; padding: 20px 32px;
+      box-shadow: 0 4px 12px rgba(2,132,199,0.15);
+    }
+    .topbar-inner {
+      max-width: 1100px; margin: 0 auto;
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    }
+    .topbar h1 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+    .topbar p { margin: 0; opacity: 0.85; font-size: 14px; }
+    .topbar .back-link {
+      margin-left: auto; color: #fff; text-decoration: none;
+      padding: 8px 14px; border-radius: 8px;
+      background: rgba(255,255,255,0.12); font-size: 13px; font-weight: 600;
+      transition: background 0.15s;
+    }
+    .topbar .back-link:hover { background: rgba(255,255,255,0.22); }
+
+    .layout {
+      max-width: 1100px; margin: 28px auto; padding: 0 32px;
+      display: grid; grid-template-columns: 240px 1fr; gap: 28px;
+    }
+    @media (max-width: 760px) {
+      .layout { grid-template-columns: 1fr; padding: 0 18px; }
+      .toc { position: static !important; }
+    }
+
+    .toc {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 18px; height: fit-content;
+      position: sticky; top: 20px;
+    }
+    .toc h3 {
+      margin: 0 0 12px; font-size: 12px; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--muted); font-weight: 700;
+    }
+    .toc a {
+      display: block; padding: 8px 10px; border-radius: 8px;
+      color: var(--text); text-decoration: none; font-size: 14px;
+      transition: background 0.15s, color 0.15s;
+    }
+    .toc a:hover { background: var(--rule-soft); color: var(--accent); }
+    .toc a.active { background: rgba(2,132,199,0.08); color: var(--accent); font-weight: 600; }
+
+    .content {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 14px; padding: 32px 36px;
+    }
+    .content section { margin-bottom: 36px; scroll-margin-top: 24px; }
+    .content section:last-child { margin-bottom: 0; }
+    .content h2 {
+      margin: 0 0 12px; font-size: 22px; font-weight: 800;
+      letter-spacing: -0.4px; color: var(--text);
+      padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    }
+    .content h3 {
+      margin: 22px 0 8px; font-size: 15px; font-weight: 700; color: var(--accent-dark);
+    }
+    .content p { margin: 0 0 12px; color: var(--text); font-size: 14.5px; }
+    .content ul, .content ol { padding-left: 22px; margin: 0 0 14px; }
+    .content li { margin-bottom: 6px; font-size: 14.5px; }
+    .content strong { color: var(--text); font-weight: 700; }
+    .content code {
+      background: var(--rule-soft); padding: 1px 6px; border-radius: 4px;
+      font-family: 'JetBrains Mono', 'SFMono-Regular', monospace; font-size: 13px;
+    }
+    .tip {
+      background: rgba(2,132,199,0.05); border-left: 4px solid var(--accent);
+      padding: 12px 16px; border-radius: 8px; margin: 12px 0; font-size: 14px;
+    }
+    .warn {
+      background: rgba(234,88,12,0.05); border-left: 4px solid var(--orange);
+      padding: 12px 16px; border-radius: 8px; margin: 12px 0; font-size: 14px;
+    }
+    .step-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
+      gap: 12px; margin: 14px 0;
+    }
+    .step {
+      background: var(--rule-soft); border-radius: 10px; padding: 14px;
+      font-size: 13.5px;
+    }
+    .step .num {
+      display: inline-block; width: 26px; height: 26px; border-radius: 50%;
+      background: var(--accent); color: #fff; text-align: center; line-height: 26px;
+      font-weight: 700; font-size: 13px; margin-right: 8px;
+    }
+
+    footer {
+      max-width: 1100px; margin: 36px auto; padding: 0 32px;
+      text-align: center; color: var(--muted); font-size: 13px;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-inner">
+      <div>
+        <h1>FieldOps · Handleiding</h1>
+        <p>Korte uitleg per onderdeel — van aanmelden tot opleveren.</p>
+      </div>
+      <a class="back-link" href="/portaal">← Terug naar portaal</a>
+    </div>
+  </div>
+
+  <div class="layout">
+    <nav class="toc" id="toc">
+      <h3>Inhoud</h3>
+      <a href="#aan-de-slag" class="active">1. Aan de slag</a>
+      <a href="#dashboard">2. Dashboard</a>
+      <a href="#projecten">3. Projecten</a>
+      <a href="#assets">4. Assets</a>
+      <a href="#meldingen">5. Meldingen</a>
+      <a href="#mijn-dag">6. Mijn dag</a>
+      <a href="#voorspeller">7. Voorspeller</a>
+      <a href="#opleveren">8. Opleveren</a>
+      <a href="#kaart">9. Kaart</a>
+      <a href="#gebruikers">10. Gebruikers</a>
+      <a href="#faq">11. FAQ</a>
+    </nav>
+
+    <main class="content">
+      <section id="aan-de-slag">
+        <h2>1. Aan de slag</h2>
+        <p>FieldOps is een <strong>compliance-native infrastructure OS</strong> voor gemeenten en infra-aannemers. Je werkt vanuit één platform — van melding tot oplevering, met CROW 146-classificatie en NEN 2767-2 conditie-scores ingebouwd.</p>
+        <h3>Eerste keer inloggen</h3>
+        <div class="step-grid">
+          <div class="step"><span class="num">1</span>Open <code>app.fieldopsapp.nl</code> in je browser.</div>
+          <div class="step"><span class="num">2</span>Log in met je e-mail + wachtwoord uit de uitnodiging.</div>
+          <div class="step"><span class="num">3</span>Verplicht: kies een nieuw wachtwoord (3 van 4: hoofdletter, kleine letter, cijfer, symbool).</div>
+          <div class="step"><span class="num">4</span>Pas je profiel aan onder <strong>Instellingen</strong>.</div>
+        </div>
+        <div class="tip"><strong>Mobiel:</strong> open <code>app.fieldopsapp.nl</code> op je telefoon — installeerbaar als PWA (Chrome → menu → "Toevoegen aan startscherm").</div>
+      </section>
+
+      <section id="dashboard">
+        <h2>2. Dashboard</h2>
+        <p>Het dashboard is je <strong>command-center</strong>. Bovenaan zie je de <em>Operations Center</em> strip met live urgentie (kritieke meldingen, hoge prioriteit, AI-suggesties). Daaronder zes telkaarten en grafieken voor trends, prioriteit-verdeling, top-categorieën en actieve projecten.</p>
+        <h3>Wat zie je hier</h3>
+        <ul>
+          <li><strong>Kritiek nu</strong> — open meldingen met prioriteit kritiek (rood). Verlies geen tijd.</li>
+          <li><strong>Hoog open</strong> — bij ≥3 stuks krijg je een hint om <em>cluster-optimalisatie</em> te overwegen.</li>
+          <li><strong>Trend-grafiek</strong> — kies 1/3/6/12 maanden of een specifieke maand.</li>
+          <li><strong>Recente activiteit</strong> — laatste mutaties uit het audit-log.</li>
+        </ul>
+      </section>
+
+      <section id="projecten">
+        <h2>3. Projecten</h2>
+        <p>Hier registreer je <strong>onderhoudsprojecten</strong> — doorlopende contracten zoals KO Westland, A12-renovatie, riolering Amsterdam-Zuid. Eén project = één werkgebied met een eigen set assets en meldingen.</p>
+        <div class="warn"><strong>Eenmalig werk?</strong> Voor één-keer-opleveringen zonder doorlopend onderhoud gebruik je het tabblad <strong>Opleveren</strong>, niet Projecten.</div>
+        <h3>Project aanmaken</h3>
+        <ol>
+          <li>Klik <strong>+ Nieuw Project</strong>.</li>
+          <li>Vul naam, beschrijving, gemeente, optioneel een kleur voor de map-pin.</li>
+          <li>Bij <em>Categorieën</em> kies je welke schadetypen relevant zijn (wegdek, lantaarnpaal, voegovergang, ...).</li>
+          <li>Sla op. Het project verschijnt in de lijst — klik erop voor detail.</li>
+        </ol>
+      </section>
+
+      <section id="assets">
+        <h2>4. Assets</h2>
+        <p><strong>Assets</strong> zijn de fysieke objecten waarop je onderhoudt — wegvakken, lantaarnpalen, putten, voegovergangen, kunstwerken. Elke asset heeft een uniek <code>code</code> + GPS-locatie zodat meldingen automatisch koppelen.</p>
+        <h3>Drie manieren om assets toe te voegen</h3>
+        <div class="step-grid">
+          <div class="step"><span class="num">1</span><strong>Eén voor één</strong> — <em>+ Nieuw Asset</em>, vul code, type, GPS in.</div>
+          <div class="step"><span class="num">2</span><strong>CSV import</strong> — gebruik kolommen <code>code, asset_type, lat, lng, project_id</code>.</div>
+          <div class="step"><span class="num">3</span><strong>NWB wegvakken</strong> — importeer per gemeente met één klik (Rijkswaterstaat-bron).</div>
+        </div>
+        <h3>Conditie-score (NEN 2767-2)</h3>
+        <p>Per asset registreer je een conditie-score van 1 (uitstekend) tot 5 (slecht). Combineer met installatiedatum en verwachte levensduur — <strong>Voorspeller</strong> gebruikt deze data.</p>
+      </section>
+
+      <section id="meldingen">
+        <h2>5. Meldingen</h2>
+        <p>Een melding is een geconstateerd schadepunt: een scheur in het wegdek, een kapotte lantaarn, een verzakking. Elke melding krijgt een titel, beschrijving, GPS, foto, prioriteit, status en optioneel CROW-classificatie (schadegroep, beeld, ernst, omvang, klasse).</p>
+        <h3>Nieuwe melding maken</h3>
+        <ol>
+          <li>Klik <strong>+ Melding</strong> rechts boven, of <strong>+ Nieuwe melding</strong> op het dashboard.</li>
+          <li>Vul titel + omschrijving.</li>
+          <li>Kies project — assets worden automatisch geladen.</li>
+          <li>Tik op <strong>📍 GPS</strong> — locatie wordt vastgelegd en <em>de dichtstbijzijnde asset wordt automatisch geselecteerd</em>.</li>
+          <li>Upload foto (camera of bestand).</li>
+          <li>Vul CROW-classificatie + NEN-conditie voor onderhoudsplanning.</li>
+          <li>Opslaan — melding verschijnt in de lijst, op de kaart en mogelijk in een cluster.</li>
+        </ol>
+        <h3>Statussen</h3>
+        <ul>
+          <li><strong>Open</strong> → geregistreerd, wacht op behandeling</li>
+          <li><strong>In behandeling</strong> → toegewezen aan team</li>
+          <li><strong>Gereed uitvoering</strong> → klaar om uit te voeren</li>
+          <li><strong>In uitvoering</strong> → wordt nu opgepakt</li>
+          <li><strong>Opgelost</strong> → werk klaar, wacht op controle</li>
+          <li><strong>Afgerond</strong> → administratief gesloten</li>
+        </ul>
+      </section>
+
+      <section id="mijn-dag">
+        <h2>6. Mijn dag</h2>
+        <p>Je persoonlijke werkroute voor vandaag — alle clusters die aan jou zijn toegewezen, route-geoptimaliseerd. Voor uitvoerders, contractors en inspecteurs.</p>
+        <h3>Hoe werkt het</h3>
+        <ol>
+          <li>Een planner maakt clusters (groepen meldingen die in één rit kunnen).</li>
+          <li>Cluster wordt aan jou toegewezen — verschijnt in <strong>Mijn dag</strong>.</li>
+          <li>Tik op een cluster om het uit te klappen — meldingen staan in optimale rij-volgorde.</li>
+          <li>Tik op een melding om de details te openen (foto, GPS, status wijzigen).</li>
+          <li>Tik <strong>▶️ Cluster starten</strong> als je begint. Daarna kun je pauzeren of afronden.</li>
+          <li>Vink elke melding af met ✓ zodra je klaar bent.</li>
+        </ol>
+        <div class="tip"><strong>Tip:</strong> tik op 📍 om de melding direct in Google Maps te openen voor navigatie.</div>
+      </section>
+
+      <section id="voorspeller">
+        <h2>7. Voorspeller</h2>
+        <p>Voorspellend onderhoud op basis van <strong>NEN 2767-2</strong>: assets die binnen 6–24 maanden van NEN 3 naar NEN 4 degraderen. Combineert installatiedatum, leeftijd, conditie en meldingen-historie.</p>
+        <h3>Wat doe je hier</h3>
+        <ul>
+          <li>Sorteer op risico-score om de meest urgente assets eerst te zien.</li>
+          <li>Klik op een asset om de degradatiecurve te zien.</li>
+          <li>Plan inspecties of preventief onderhoud voordat de schade zichtbaar is — bespaart 3-5× t.o.v. noodreparatie.</li>
+        </ul>
+        <div class="tip">Voorspeller heeft data nodig: installatiedatum, levensduur, conditie-score. Vul deze velden in via het Assets-tabblad.</div>
+      </section>
+
+      <section id="opleveren">
+        <h2>8. Opleveren</h2>
+        <p>Registreer hier <strong>eenmalig werk</strong> en officiële <strong>proces-verbalen</strong>. Per oplevering vul je opdrachtgever, aannemer, locatie, datum, inspectievragen (weer, veiligheid, normen, netheid) en de uitgevoerde restpunten met foto vóór/na.</p>
+        <h3>Opleveren is een opleverdocument</h3>
+        <p>Elke oplevering kun je downloaden als <strong>PDF-proces-verbaal</strong> via de knop <em>📄 PV (PDF)</em>. Het PDF-document bevat:</p>
+        <ul>
+          <li>Header met datum, status-badge en project-info</li>
+          <li>Partijen-blok (opdrachtgever + aannemer, naam + e-mail)</li>
+          <li>Omschrijving + inspectievragen</li>
+          <li>Restpunten met code, omschrijving, uitvoeringsmethode en status</li>
+          <li>Ondertekeningsblok onderaan voor handtekeningen</li>
+          <li>Paginanummering + gegenereerd-datum</li>
+        </ul>
+        <h3>Workflow</h3>
+        <ol>
+          <li>Klik <strong>+ Nieuwe oplevering</strong>.</li>
+          <li>Vul header-gegevens (titel, project optioneel, locatie, datum, partijen).</li>
+          <li>Voeg direct inline restpunten toe (code is auto-gegenereerd) of later via de detail-modal.</li>
+          <li>Status doorloopt: <em>concept → opgeleverd → aanvaard / afgewezen</em>.</li>
+          <li>Verstuur per mail of download het PV als PDF voor archivering.</li>
+        </ol>
+      </section>
+
+      <section id="kaart">
+        <h2>9. Kaart</h2>
+        <p>Geografische weergave van al je assets en meldingen. Wegvakken zijn gekleurd op basis van conditie-score (groen → rood). Klik op een pin voor detail of teken een nieuwe melding direct op de kaart.</p>
+      </section>
+
+      <section id="gebruikers">
+        <h2>10. Gebruikers</h2>
+        <p>Beheer teamleden binnen je organisatie. Rollen bepalen wat iemand mag:</p>
+        <ul>
+          <li><strong>Beheerder (admin)</strong> — alles, inclusief gebruikersbeheer</li>
+          <li><strong>Projectleider (manager)</strong> — projecten, meldingen, clusters</li>
+          <li><strong>Aannemer (contractor)</strong> — meldingen oppakken en uitvoeren</li>
+          <li><strong>Toezichthouder (inspector)</strong> — meldingen registreren + inspecteren</li>
+          <li><strong>Technicus (technician)</strong> — meldingen oppakken + uitvoeren</li>
+          <li><strong>Opdrachtgever (viewer)</strong> — alleen lezen, geen mutaties</li>
+        </ul>
+        <p>Klik <strong>+ Gebruiker uitnodigen</strong> om een nieuwe te toevoegen. Ze krijgen een mail met eenmalig wachtwoord.</p>
+      </section>
+
+      <section id="faq">
+        <h2>11. FAQ</h2>
+        <h3>Wachtwoord vergeten?</h3>
+        <p>Klik op het login-scherm op "Wachtwoord vergeten" — je krijgt een resetlink per mail.</p>
+        <h3>Geen GPS-fix?</h3>
+        <p>Browser-permissie checken (slotje in de adresbalk → Locatie toestaan). Op mobiel werkt het beter buiten dan binnen.</p>
+        <h3>Push-notificaties activeren</h3>
+        <p>Klik op het 🔔-icoon rechts boven. Werkt op desktop Chrome/Edge en mobiel (Android + iOS 16.4+ als PWA).</p>
+        <h3>Data exporteren</h3>
+        <p>Op <strong>Rapportages</strong> kun je een PDF-rapport genereren voor een periode + project-filter. Voor ruwe data is een CSV-export beschikbaar op de Meldingen-pagina.</p>
+        <h3>Cluster verschijnt niet bij Mijn dag</h3>
+        <p>Controleer of het cluster aan jou is toegewezen (assigned_to) en status <em>assigned</em> of <em>in_progress</em> heeft. Proposed-clusters wachten op planner-goedkeuring.</p>
+        <h3>Vraag niet beantwoord?</h3>
+        <p>Mail <a href="mailto:info@fieldopsapp.nl">info@fieldopsapp.nl</a> — reactietijd binnen 24 uur op werkdagen.</p>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    FieldOps · CROW 146 · NEN 2767-2 · Audit-bound · EU-hosted ·
+    <a href="https://fieldopsapp.nl" target="_blank">fieldopsapp.nl</a>
+  </footer>
+
+  <script>
+    // Highlight de actieve sectie in de TOC tijdens scrollen
+    var tocLinks = document.querySelectorAll('#toc a');
+    var sections = Array.prototype.map.call(tocLinks, function(a) {
+      return document.querySelector(a.getAttribute('href'));
+    });
+    function onScroll() {
+      var pos = window.scrollY + 80;
+      var active = 0;
+      for (var i = 0; i < sections.length; i++) {
+        if (sections[i] && sections[i].offsetTop <= pos) active = i;
+      }
+      tocLinks.forEach(function(a, i) { a.classList.toggle('active', i === active); });
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    // Smooth-scroll bij klik
+    tocLinks.forEach(function(a) {
+      a.addEventListener('click', function(e) {
+        var target = document.querySelector(a.getAttribute('href'));
+        if (target) {
+          e.preventDefault();
+          window.scrollTo({ top: target.offsetTop - 20, behavior: 'smooth' });
+          history.replaceState(null, '', a.getAttribute('href'));
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -62,6 +62,7 @@ class UserResponse(BaseModel):
     must_change_password: bool = False
     organization_id: str
     created_at: datetime
+    last_login: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

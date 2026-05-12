@@ -300,6 +300,116 @@ def create_asset(
     return _to_response(asset)
 
 
+@router.get("/nearest")
+def find_nearest_asset(
+    lat: float = Query(..., description="Latitude in WGS84"),
+    lng: float = Query(..., description="Longitude in WGS84"),
+    project_id: Optional[str] = Query(None, description="Beperk zoek tot dit project"),
+    asset_type: Optional[str] = Query(None, description="Beperk op type (bv. wegdek)"),
+    max_m: float = Query(500.0, ge=1, le=5000, description="Max zoekradius in meters"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Vind de dichtstbijzijnde asset bij een GPS-coördinaat.
+
+    Houdt rekening met zowel punt-assets (lat/lng) als wegvakken
+    (geometry_geojson — afstand tot dichtstbijzijnde vertex). Bedoeld voor
+    auto-koppelen van meldingen aan het juiste assetnummer zodat veldwerkers
+    geen verkeerd wegvak hoeven uit te kiezen.
+
+    Response:
+        - found: bool — of er een asset binnen max_m is gevonden
+        - distance_m: float — afstand in meters (afgerond op 1 cijfer)
+        - asset: AssetResponse-vorm (subset)
+    """
+    import math
+    # Bounding-box pre-filter: 1 graad lat ≈ 111km, 1 graad lng ≈ 111km·cos(lat)
+    box_lat = max_m / 111000.0
+    cos_lat = math.cos(math.radians(lat))
+    box_lng = max_m / (111000.0 * (cos_lat if abs(cos_lat) > 0.01 else 0.01))
+
+    q = db.query(Asset).filter(
+        Asset.organization_id == current_user.organization_id,
+        Asset.archived_at.is_(None),
+    )
+    if project_id:
+        q = q.filter(Asset.project_id == project_id)
+    if asset_type:
+        q = q.filter(Asset.asset_type == asset_type)
+
+    # Twee groepen: punt-assets met lat/lng binnen box, en wegvakken (geometry)
+    point_candidates = q.filter(
+        Asset.lat.isnot(None), Asset.lng.isnot(None),
+        Asset.lat.between(lat - box_lat, lat + box_lat),
+        Asset.lng.between(lng - box_lng, lng + box_lng),
+    ).all()
+    geom_candidates = q.filter(Asset.geometry_geojson.isnot(None)).all()
+
+    def haversine_m(lat1, lng1, lat2, lng2):
+        R = 6371000.0
+        p1, p2 = math.radians(lat1), math.radians(lat2)
+        dp = math.radians(lat2 - lat1)
+        dl = math.radians(lng2 - lng1)
+        a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+        return 2 * R * math.asin(math.sqrt(a))
+
+    best_asset = None
+    best_dist = None
+
+    for a in point_candidates:
+        d = haversine_m(lat, lng, a.lat, a.lng)
+        if best_dist is None or d < best_dist:
+            best_dist, best_asset = d, a
+
+    for a in geom_candidates:
+        try:
+            geo = a.geometry_geojson
+            if isinstance(geo, str):
+                geo = json.loads(geo)
+            if not isinstance(geo, dict):
+                continue
+            gtype = geo.get("type")
+            coords = geo.get("coordinates") or []
+            if gtype == "LineString":
+                pieces = [coords]
+            elif gtype == "MultiLineString":
+                pieces = coords
+            else:
+                continue
+            # Quick bbox-skip: bekijk eerste/laatste vertex per piece
+            for piece in pieces:
+                if not piece:
+                    continue
+                # Sample elke n-de vertex bij lange wegvakken voor snelheid
+                step = max(1, len(piece) // 50)
+                for i in range(0, len(piece), step):
+                    pt = piece[i]
+                    if len(pt) < 2:
+                        continue
+                    plng, plat = pt[0], pt[1]
+                    d = haversine_m(lat, lng, plat, plng)
+                    if best_dist is None or d < best_dist:
+                        best_dist, best_asset = d, a
+        except (ValueError, TypeError, KeyError, AttributeError):
+            continue
+
+    if best_asset is None or best_dist is None or best_dist > max_m:
+        return {"found": False, "distance_m": None, "asset": None}
+
+    # Open-meldingen count voor de gekozen asset
+    open_count = (
+        db.query(func.count(Melding.id))
+          .filter(Melding.asset_id == best_asset.id, Melding.status != "afgerond")
+          .scalar()
+    ) or 0
+
+    return {
+        "found": True,
+        "distance_m": round(best_dist, 1),
+        "asset": _to_response(best_asset, open_meldingen=open_count),
+    }
+
+
 @router.get("/{asset_id}", response_model=AssetResponse)
 def get_asset(
     asset_id: str,
