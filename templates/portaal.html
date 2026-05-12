@@ -1482,8 +1482,8 @@
     <div class="page-section" id="page-assets">
       <div class="page-header">
         <div>
-          <h1>Assets</h1>
-          <p>De fysieke objecten waarop je onderhoudt en meldt — wegvakken, lantaarnpalen, putten, voegovergangen, kunstwerken. Elke asset krijgt een uniek nummer + GPS-locatie zodat meldingen en metingen automatisch koppelen. Importeer in bulk via CSV of NWB-wegvakken.</p>
+          <h1 data-i18n="ph_assets">Assets</h1>
+          <p data-i18n="ph_assets_sub">De fysieke objecten waarop je onderhoudt en meldt — wegvakken, lantaarnpalen, putten, voegovergangen, kunstwerken. Elke asset krijgt een uniek nummer + GPS-locatie zodat meldingen en metingen automatisch koppelen. Importeer in bulk via CSV of NWB-wegvakken.</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="document.getElementById('assetCsvInput').click()" data-i18n="csv_importeren">CSV importeren</button>
@@ -1554,8 +1554,8 @@
     <div class="page-section" id="page-predictive">
       <div class="page-header">
         <div>
-          <h1>Voorspeller</h1>
-          <p>Voorspellend onderhoud op basis van <strong>NEN 2767-2</strong>: combineert leeftijd, conditie-score (1–5) en meldingen-historie om assets te tonen die binnen 6–24 maanden naar NEN 3→4 degraderen. Vroeg inspecteren = 3–5× goedkoper dan noodreparatie.</p>
+          <h1 data-i18n="ph_predictive">Voorspeller</h1>
+          <p data-i18n="ph_predictive_sub">Voorspellend onderhoud op basis van <strong>NEN 2767-2</strong>: combineert leeftijd, conditie-score (1–5) en meldingen-historie om assets te tonen die binnen 6–24 maanden naar NEN 3→4 degraderen. Vroeg inspecteren = 3–5× goedkoper dan noodreparatie.</p>
         </div>
         <button class="btn-secondary" onclick="loadPredictive()">&#8635; Vernieuwen</button>
       </div>
@@ -1621,19 +1621,18 @@
     <div class="modal-overlay" id="assetModal">
       <div class="modal">
         <button class="modal-close" onclick="closeAssetModal()">&times;</button>
-        <h2 id="assetModalTitle">Nieuw Asset</h2>
-        <p class="subtitle">Registreer een fysiek object dat onderhoud nodig heeft.</p>
+        <h2 id="assetModalTitle" data-i18n="am_title_new">Nieuw Asset</h2>
         <form onsubmit="submitAsset(event)">
           <input type="hidden" id="assetEditId" value="">
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div class="form-group">
-              <label>Code *</label>
+              <label data-i18n="am_code">Code</label> *
               <input type="text" id="assetCode" placeholder="bv. WV-001" required>
             </div>
             <div class="form-group">
-              <label>Asset-type *</label>
+              <label data-i18n="am_type">Asset-type</label> *
               <select id="assetType" required>
-                <option value="">Kies...</option>
+                <option value="">—</option>
                 <option value="wegdek">Wegdek</option>
                 <option value="kunstwerk">Kunstwerk (brug/viaduct/sluis)</option>
                 <option value="lantaarnpaal">Lantaarnpaal</option>
@@ -1647,15 +1646,15 @@
             </div>
           </div>
           <div class="form-group">
-            <label>Naam (optioneel)</label>
+            <label data-i18n="am_name">Naam (optioneel)</label>
             <input type="text" id="assetName" placeholder="bv. Lekdijk km 12-14">
           </div>
           <div class="form-group">
-            <label>Project (optioneel)</label>
-            <select id="assetProject"><option value="">— Geen project —</option></select>
+            <label data-i18n="am_project">Project (optioneel)</label>
+            <select id="assetProject"><option value="">—</option></select>
           </div>
           <div class="form-group">
-            <label>Locatie-omschrijving</label>
+            <label data-i18n="am_locatie">Locatie-omschrijving</label>
             <input type="text" id="assetLocDesc" placeholder="bv. A12 km 45.2 noord-zijde">
           </div>
           <div class="form-group">
@@ -1668,15 +1667,15 @@
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
             <div class="form-group">
-              <label>Geïnstalleerd</label>
+              <label data-i18n="am_installed">Geïnstalleerd</label>
               <input type="date" id="assetInstalled">
             </div>
             <div class="form-group">
-              <label>Levensduur (jaar)</label>
+              <label data-i18n="am_lifespan">Levensduur (jaar)</label>
               <input type="number" id="assetLifespan" min="1" max="150" placeholder="bv. 30">
             </div>
             <div class="form-group">
-              <label>NEN-conditie 1-5</label>
+              <label data-i18n="am_condition">NEN-conditie 1-5</label>
               <select id="assetCondition">
                 <option value="">—</option>
                 <option value="1">1 — Als nieuw</option>
@@ -1688,7 +1687,7 @@
             </div>
           </div>
           <div class="form-actions">
-            <button type="submit" class="btn-primary" id="assetSubmitBtn">Asset aanmaken</button>
+            <button type="submit" class="btn-primary" id="assetSubmitBtn" data-i18n="am_submit">Asset aanmaken</button>
           </div>
         </form>
       </div>
@@ -1804,7 +1803,7 @@
       </style>
 
       <div style="background:rgba(2,132,199,0.06);border:1px solid rgba(2,132,199,0.18);border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:13px;color:var(--text-muted);line-height:1.55;">
-        <strong style="color:var(--text);">Mijn dag</strong> — jouw persoonlijke werkroute voor vandaag. Toegewezen clusters (route-geoptimaliseerde meldingen op de kaart), je openstaande taken en de geschatte werktijd. Tik op een melding voor detail; gebruik de cluster-knop om sequentieel af te werken.
+        <strong style="color:var(--text);" data-i18n="ph_mijndag">Mijn dag</strong> <span data-i18n="ph_mijndag_sub">— jouw persoonlijke werkroute voor vandaag. Toegewezen clusters (route-geoptimaliseerde meldingen op de kaart), je openstaande taken en de geschatte werktijd. Tik op een melding voor detail; gebruik de cluster-knop om sequentieel af te werken.</span>
       </div>
 
       <div class="day-header">
@@ -1839,8 +1838,8 @@
     <div class="page-section" id="page-clusters">
       <div class="page-header" style="margin-bottom:16px;">
         <div>
-          <h1>Operations Optimizer <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:11px;padding:3px 10px;border-radius:6px;font-weight:700;letter-spacing:.05em;vertical-align:middle;margin-left:8px;">AI · v3.0</span></h1>
-          <p>Operationele AI bundelt open meldingen op maatregel + locatie tot efficiënte ploegdagen. Audit-bound, NEN-prioriteit-gestuurd, route-geoptimaliseerd.</p>
+          <h1><span data-i18n="ph_clusters">Operations Optimizer</span> <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:11px;padding:3px 10px;border-radius:6px;font-weight:700;letter-spacing:.05em;vertical-align:middle;margin-left:8px;">AI · v3.0</span></h1>
+          <p data-i18n="ph_clusters_sub">Operationele AI bundelt open meldingen op maatregel + locatie tot efficiënte ploegdagen. Audit-bound, NEN-prioriteit-gestuurd, route-geoptimaliseerd.</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="openSkillsModal()">⚙️ Mijn skills</button>
@@ -1912,10 +1911,10 @@
     <div class="page-section" id="page-opleveren">
       <div class="page-header">
         <div>
-          <h1>Opleveren</h1>
-          <p>Registreer hier <strong>eenmalig werk</strong> en officiële <strong>proces-verbalen</strong> — opdrachtgever/aannemer, datum, locatie, restpunten met foto vóór/na. Voor doorlopende onderhoudscontracten gebruik je <a href="#" onclick="event.preventDefault(); navigateTo('projecten');" style="color:var(--accent);text-decoration:underline;">Projecten</a>. Elke oplevering kan als PDF-opleverdocument geëxporteerd worden.</p>
+          <h1 data-i18n="ph_opleveren">Opleveren</h1>
+          <p data-i18n="ph_opleveren_sub">Registreer hier <strong>eenmalig werk</strong> en officiële <strong>proces-verbalen</strong> — opdrachtgever/aannemer, datum, locatie, restpunten met foto vóór/na. Voor doorlopende onderhoudscontracten gebruik je <a href="#" onclick="event.preventDefault(); navigateTo('projecten');" style="color:var(--accent);text-decoration:underline;">Projecten</a>. Elke oplevering kan als PDF-opleverdocument geëxporteerd worden.</p>
         </div>
-        <button class="btn-primary" onclick="openOpleveringModal()">+ Nieuwe oplevering</button>
+        <button class="btn-primary" onclick="openOpleveringModal()">+ <span data-i18n="om_title_new">Nieuwe oplevering</span></button>
       </div>
       <div id="opleveringenEmpty" class="empty-state" style="display:none;">
         <div class="empty-icon">&#128203;</div>
@@ -2117,8 +2116,8 @@
     <div class="page-section" id="page-integraties">
       <div class="page-header">
         <div>
-          <h1>Integraties</h1>
-          <p>Webhooks, sensoren en compliance-trail in één overzicht.</p>
+          <h1 data-i18n="ph_integraties">Integraties</h1>
+          <p data-i18n="ph_integraties_sub">Webhooks, sensoren en compliance-trail in één overzicht.</p>
         </div>
       </div>
       <div style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:24px;">
@@ -2395,8 +2394,8 @@
     <div class="page-section" id="page-admin">
       <div class="page-header">
         <div>
-          <h1>Admin Overzicht</h1>
-          <p>Alle bedrijven en gebruikers op het platform.</p>
+          <h1 data-i18n="ph_admin">Admin Overzicht</h1>
+          <p data-i18n="ph_admin_sub">Alle bedrijven en gebruikers op het platform.</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="seedDemoData()" title="Vult je org met demo-data: 1 project, 12 assets, 14 meldingen (waarvan 6 cluster-bare scheurvulling). Idempotent.">🎬 Demo-data aanmaken</button>
@@ -2485,52 +2484,52 @@
       <form id="opleveringForm" onsubmit="submitOplevering(event)">
         <input type="hidden" id="opleveringEditId" value="">
         <div class="form-group">
-          <label>Titel *</label>
+          <label data-i18n="om_titel">Titel</label> *
           <input type="text" id="opTitle" required placeholder="bv. Oplevering KO Naaldwijk fase 2">
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
-            <label>Project</label>
-            <select id="opProject"><option value="">— Geen project —</option></select>
+            <label data-i18n="om_titel">Project</label>
+            <select id="opProject"><option value="">—</option></select>
           </div>
           <div class="form-group">
-            <label>Status</label>
+            <label data-i18n="om_status">Status</label>
             <select id="opStatus">
-              <option value="concept">Concept</option>
-              <option value="opgeleverd">Opgeleverd</option>
-              <option value="aanvaard">Aanvaard</option>
-              <option value="afgewezen">Afgewezen</option>
+              <option value="concept" data-i18n="st_concept">Concept</option>
+              <option value="opgeleverd" data-i18n="st_opgeleverd">Opgeleverd</option>
+              <option value="aanvaard" data-i18n="st_aanvaard">Aanvaard</option>
+              <option value="afgewezen" data-i18n="st_afgewezen">Afgewezen</option>
             </select>
           </div>
         </div>
         <div class="form-group">
-          <label>Locatie</label>
+          <label data-i18n="om_locatie">Locatie</label>
           <input type="text" id="opLocatie" placeholder="bv. Westland, kern Naaldwijk">
         </div>
         <div class="form-group">
-          <label>Datum oplevering</label>
+          <label data-i18n="om_datum">Datum oplevering</label>
           <input type="datetime-local" id="opDatum">
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
-            <label>Opdrachtgever — naam</label>
+            <label data-i18n="om_opdr_naam">Opdrachtgever — naam</label>
             <input type="text" id="opOpdrachtgeverNaam" placeholder="bv. Gemeente Westland">
           </div>
           <div class="form-group">
-            <label>Opdrachtgever — email</label>
+            <label data-i18n="om_opdr_email">Opdrachtgever — email</label>
             <input type="email" id="opOpdrachtgeverEmail" placeholder="contact@gemeente.nl">
           </div>
           <div class="form-group">
-            <label>Aannemer — naam</label>
+            <label data-i18n="om_aann_naam">Aannemer — naam</label>
             <input type="text" id="opAannemerNaam" placeholder="bv. Wegenbouw Combinatie">
           </div>
           <div class="form-group">
-            <label>Aannemer — email</label>
+            <label data-i18n="om_aann_email">Aannemer — email</label>
             <input type="email" id="opAannemerEmail" placeholder="info@aannemer.nl">
           </div>
         </div>
         <div class="form-group">
-          <label>Omschrijving <span id="opDescCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
+          <label><span data-i18n="om_omschr">Omschrijving</span> <span id="opDescCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
           <textarea id="opDescription" rows="3" maxlength="300" style="resize:none;" placeholder="Wat is er opgeleverd — korte samenvatting (max 300 tekens)" oninput="document.getElementById('opDescCount').textContent = this.value.length + ' / 300'"></textarea>
         </div>
         <!-- Extra-vragen sectie (open default) -->
@@ -2538,7 +2537,7 @@
           <div style="font-weight:600;font-size:13px;margin-bottom:10px;">🇳🇱 Standaard oplever-vragen</div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
             <div>
-              <label style="font-size:11px;color:var(--text-muted);">Weersomstandigheden</label>
+              <label style="font-size:11px;color:var(--text-muted);" data-i18n="om_q_weer">Weersomstandigheden</label>
               <select id="opQWeer" style="width:100%;">
                 <option value="">—</option>
                 <option value="droog">Droog</option>
@@ -2548,7 +2547,7 @@
               </select>
             </div>
             <div>
-              <label style="font-size:11px;color:var(--text-muted);">Veiligheid in orde?</label>
+              <label style="font-size:11px;color:var(--text-muted);" data-i18n="om_q_veil">Veiligheid in orde?</label>
               <select id="opQVeiligheid" style="width:100%;">
                 <option value="">—</option>
                 <option value="ja">Ja — geen incidenten</option>
@@ -2557,7 +2556,7 @@
               </select>
             </div>
             <div>
-              <label style="font-size:11px;color:var(--text-muted);">Bouwbesluit / normen</label>
+              <label style="font-size:11px;color:var(--text-muted);" data-i18n="om_q_normen">Bouwbesluit / normen</label>
               <select id="opQNormen" style="width:100%;">
                 <option value="">—</option>
                 <option value="voldoet">Voldoet</option>
@@ -2566,7 +2565,7 @@
               </select>
             </div>
             <div>
-              <label style="font-size:11px;color:var(--text-muted);">Afval / netjes opgeleverd?</label>
+              <label style="font-size:11px;color:var(--text-muted);" data-i18n="om_q_neth">Afval / netjes opgeleverd?</label>
               <select id="opQNetheid" style="width:100%;">
                 <option value="">—</option>
                 <option value="schoon">Schoon</option>
@@ -2577,7 +2576,7 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Opmerkingen / restpunten <span id="opNotesCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
+          <label><span data-i18n="om_notes">Opmerkingen / restpunten</span> <span id="opNotesCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
           <textarea id="opNotes" rows="3" maxlength="300" style="resize:none;" placeholder="Eventuele restpunten of bijzonderheden (max 300 tekens)" oninput="document.getElementById('opNotesCount').textContent = this.value.length + ' / 300'"></textarea>
         </div>
 
@@ -2593,8 +2592,8 @@
         </div>
 
         <div class="form-actions">
-          <button type="button" class="btn-secondary" onclick="closeOpleveringModal()">Annuleren</button>
-          <button type="submit" class="btn-primary" id="opSubmitBtn">Aanmaken</button>
+          <button type="button" class="btn-secondary" onclick="closeOpleveringModal()" data-i18n="t_annuleren">Annuleren</button>
+          <button type="submit" class="btn-primary" id="opSubmitBtn" data-i18n="om_submit">Aanmaken</button>
         </div>
       </form>
     </div>
@@ -2625,7 +2624,7 @@
       <div id="opPuntenList" style="display:flex;flex-direction:column;gap:10px;"></div>
       <!-- Prominent + knop onderaan om eindeloos restpunten toe te voegen -->
       <button type="button" class="btn-primary" onclick="openPuntModal()" style="width:100%;margin-top:14px;font-size:14px;padding:14px;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#0284c7,#0369a1);">
-        <span style="font-size:18px;font-weight:300;line-height:1;">+</span> Restpunt toevoegen
+        <span style="font-size:18px;font-weight:300;line-height:1;">+</span> <span data-i18n="pm_title_new">Restpunt toevoegen</span>
       </button>
     </div>
   </div>
@@ -2634,39 +2633,38 @@
   <div class="modal-overlay" id="puntModal">
     <div class="modal" style="max-width:600px;">
       <button class="modal-close" onclick="closePuntModal()" aria-label="Sluiten">&times;</button>
-      <h2 id="puntModalTitle">Restpunt toevoegen</h2>
+      <h2 id="puntModalTitle" data-i18n="pm_title_new">Restpunt toevoegen</h2>
       <form id="puntForm" onsubmit="submitPunt(event)">
         <input type="hidden" id="puntEditId" value="">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
-            <label>Code *</label>
+            <label data-i18n="pm_code">Code</label> *
             <input type="text" id="puntCode" required readonly style="font-family:JetBrains Mono,monospace;background:var(--card-bg-hover);cursor:not-allowed;" placeholder="auto-gegenereerd">
-            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Automatisch gegenereerd op datum + volgnummer. Niet te wijzigen.</p>
           </div>
           <div class="form-group">
-            <label>Status</label>
+            <label data-i18n="pm_status">Status</label>
             <select id="puntStatus">
-              <option value="restpunt">Restpunt</option>
-              <option value="gereed">Gereed</option>
-              <option value="afgekeurd">Afgekeurd</option>
+              <option value="restpunt" data-i18n="st_restpunt">Restpunt</option>
+              <option value="gereed" data-i18n="st_gereed">Gereed</option>
+              <option value="afgekeurd" data-i18n="st_afgekeurd">Afgekeurd</option>
             </select>
           </div>
         </div>
         <div class="form-group">
-          <label>Omschrijving * <span id="puntOmsCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
+          <label><span data-i18n="pm_omschr">Omschrijving</span> * <span id="puntOmsCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
           <textarea id="puntOmschrijving" rows="3" required maxlength="300" style="resize:none;" placeholder="Wat is uitgevoerd / opgeleverd? (max 300 tekens)" oninput="document.getElementById('puntOmsCount').textContent = this.value.length + ' / 300'"></textarea>
         </div>
         <div class="form-group">
-          <label>Uitvoeringsmethode <span id="puntUitvCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
+          <label><span data-i18n="pm_uitv">Uitvoeringsmethode</span> <span id="puntUitvCount" style="float:right;font-size:11px;color:var(--text-dim);font-weight:400;">0 / 300</span></label>
           <textarea id="puntUitvoering" rows="3" maxlength="300" style="resize:none;" placeholder="bv. Scheurvulling polymeer (cold-pour) over 12m¹, 2 lagen (max 300 tekens)" oninput="document.getElementById('puntUitvCount').textContent = this.value.length + ' / 300'"></textarea>
         </div>
         <div class="form-group">
-          <label>Asset (optioneel — koppel aan bestaande asset)</label>
-          <select id="puntAsset"><option value="">— Geen asset gekoppeld —</option></select>
+          <label data-i18n="pm_asset">Asset (optioneel — koppel aan bestaande asset)</label>
+          <select id="puntAsset"><option value="">—</option></select>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div class="form-group">
-            <label>📷 Foto vóór uitvoering</label>
+            <label data-i18n="pm_photo_before">📷 Foto vóór uitvoering</label>
             <label for="puntPhotoBeforeFile" style="display:block;cursor:pointer;border:2px dashed #f59e0b;border-radius:10px;padding:18px;text-align:center;background:rgba(245,158,11,0.05);min-height:120px;">
               <img id="puntPhotoBeforePreview" style="max-width:100%;max-height:120px;display:none;border-radius:8px;margin:0 auto 8px;">
               <div id="puntPhotoBeforeLabel" style="font-size:13px;color:#92400e;font-weight:600;">📂 Upload foto vóór</div>
@@ -2676,7 +2674,7 @@
             <input type="hidden" id="puntPhotoUrl">
           </div>
           <div class="form-group">
-            <label>✅ Foto na uitvoering</label>
+            <label data-i18n="pm_photo_after">✅ Foto na uitvoering</label>
             <label for="puntPhotoAfterFile" style="display:block;cursor:pointer;border:2px dashed #16a34a;border-radius:10px;padding:18px;text-align:center;background:rgba(22,163,74,0.05);min-height:120px;">
               <img id="puntPhotoAfterPreview" style="max-width:100%;max-height:120px;display:none;border-radius:8px;margin:0 auto 8px;">
               <div id="puntPhotoAfterLabel" style="font-size:13px;color:#166534;font-weight:600;">📂 Upload foto na</div>
@@ -2687,8 +2685,8 @@
           </div>
         </div>
         <div class="form-actions">
-          <button type="button" class="btn-secondary" onclick="closePuntModal()">Annuleren</button>
-          <button type="submit" class="btn-primary">Opslaan</button>
+          <button type="button" class="btn-secondary" onclick="closePuntModal()" data-i18n="t_annuleren">Annuleren</button>
+          <button type="submit" class="btn-primary" data-i18n="pm_submit">Opslaan</button>
         </div>
       </form>
     </div>
@@ -3524,6 +3522,61 @@
         es_geen_assets_project: 'Geen assets in dit project. Voeg ze toe via de Assets-pagina (binnenkort) of CSV-import.',
         es_geen_projecten_toast: 'Geen projecten gevonden. Maak eerst een project aan.',
         es_geen_meldingen_project: 'Geen meldingen in dit project.',
+        // Page headers
+        ph_assets: 'Assets', ph_assets_sub: 'De fysieke objecten waarop je onderhoudt en meldt — wegvakken, lantaarnpalen, putten, voegovergangen, kunstwerken. Elke asset krijgt een uniek nummer + GPS-locatie zodat meldingen en metingen automatisch koppelen. Importeer in bulk via CSV of NWB-wegvakken.',
+        ph_predictive: 'Voorspeller', ph_predictive_sub: 'Voorspellend onderhoud op basis van NEN 2767-2: combineert leeftijd, conditie-score (1–5) en meldingen-historie om assets te tonen die binnen 6–24 maanden naar NEN 3→4 degraderen. Vroeg inspecteren = 3–5× goedkoper dan noodreparatie.',
+        ph_mijndag: 'Mijn dag', ph_mijndag_sub: 'Jouw persoonlijke werkroute voor vandaag. Toegewezen clusters (route-geoptimaliseerde meldingen op de kaart), je openstaande taken en de geschatte werktijd. Tik op een melding voor detail; gebruik de cluster-knop om sequentieel af te werken.',
+        ph_clusters: 'Operations Optimizer', ph_clusters_sub: 'Operationele AI bundelt meldingen automatisch tot werkbare clusters — bespaart reistijd en omsteltijd.',
+        ph_opleveren: 'Opleveren', ph_opleveren_sub: 'Registreer hier eenmalig werk en officiële proces-verbalen — opdrachtgever/aannemer, datum, locatie, restpunten met foto vóór/na. Voor doorlopende onderhoudscontracten gebruik je Projecten. Elke oplevering kan als PDF-opleverdocument geëxporteerd worden.',
+        ph_integraties: 'Integraties', ph_integraties_sub: 'Webhooks, sensoren en compliance-trail.',
+        ph_admin: 'Admin Overzicht', ph_admin_sub: 'Alle bedrijven en gebruikers op het platform.',
+        // Veelgebruikte toasts/feedback
+        t_fout: 'Fout',
+        t_bezig: 'Bezig…',
+        t_opslaan: 'Opslaan',
+        t_annuleren: 'Annuleren',
+        t_verwijderen: 'Verwijderen',
+        t_bevestig: 'Bevestigen',
+        t_aanmaken: 'Aanmaken',
+        t_bijwerken: 'Bijwerken',
+        t_aangemaakt: 'Aangemaakt',
+        t_bijgewerkt: 'Bijgewerkt',
+        t_verwijderd: 'Verwijderd',
+        t_status_bijgewerkt: 'Status bijgewerkt',
+        t_terug: '← Terug',
+        t_meer_laden: 'Meer laden',
+        t_zoeken: 'Zoeken',
+        t_sluiten: 'Sluiten',
+        t_laden: 'Laden…',
+        // Asset-modal
+        am_title_new: 'Nieuw asset', am_title_edit: 'Asset bewerken',
+        am_code: 'Code', am_type: 'Asset-type', am_name: 'Naam',
+        am_project: 'Project', am_parent: 'Parent asset (optioneel)',
+        am_locatie: 'Locatie (omschrijving)', am_lat: 'Latitude', am_lng: 'Longitude',
+        am_installed: 'Geïnstalleerd op', am_lifespan: 'Levensduur (jaar)',
+        am_condition: 'NEN-conditie (1-5)', am_submit: 'Asset aanmaken',
+        am_save: 'Wijzigingen opslaan',
+        // Oplevering-modal
+        om_title_new: 'Nieuwe oplevering', om_title_edit: 'Oplevering bewerken',
+        om_pv_kicker: 'Proces-Verbaal van Oplevering',
+        om_pv_sub: 'Dit formulier is óók het opleverdocument — na opslaan direct als PDF te downloaden. CROW-conform.',
+        om_titel: 'Titel', om_status: 'Status', om_locatie: 'Locatie',
+        om_datum: 'Datum oplevering', om_opdr_naam: 'Opdrachtgever naam',
+        om_opdr_email: 'Opdrachtgever e-mail', om_aann_naam: 'Aannemer naam',
+        om_aann_email: 'Aannemer e-mail', om_omschr: 'Omschrijving',
+        om_notes: 'Opmerkingen', om_q_weer: 'Weersomstandigheden',
+        om_q_veil: 'Veiligheid', om_q_normen: 'Normen', om_q_neth: 'Netheid',
+        om_submit: 'Aanmaken', om_save: 'Wijzigingen opslaan',
+        // Punt-modal (restpunten)
+        pm_title_new: 'Restpunt toevoegen', pm_title_edit: 'Restpunt bewerken',
+        pm_code: 'Code', pm_status: 'Status', pm_omschr: 'Omschrijving',
+        pm_uitv: 'Uitvoeringsmethode', pm_asset: 'Asset (optioneel — koppel aan bestaande asset)',
+        pm_photo_before: '📷 Foto vóór uitvoering', pm_photo_after: '✅ Foto na uitvoering',
+        pm_submit: 'Opslaan',
+        // Status-opties
+        st_concept: 'Concept', st_opgeleverd: 'Opgeleverd',
+        st_aanvaard: 'Aanvaard', st_afgewezen: 'Afgewezen',
+        st_restpunt: 'Restpunt', st_gereed: 'Gereed', st_afgekeurd: 'Afgekeurd',
       },
       en: {
         dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
@@ -3785,6 +3838,44 @@
         es_geen_assets_project: 'No assets in this project. Add them via the Assets page (soon) or CSV import.',
         es_geen_projecten_toast: 'No projects found. Create a project first.',
         es_geen_meldingen_project: 'No reports in this project.',
+        ph_assets: 'Assets', ph_assets_sub: 'The physical objects you maintain and report on — road segments, lampposts, manholes, expansion joints, structures. Each asset gets a unique number + GPS location so reports and measurements link automatically. Bulk-import via CSV or NWB road segments.',
+        ph_predictive: 'Predictor', ph_predictive_sub: 'Predictive maintenance based on NEN 2767-2: combines age, condition score (1–5) and report history to show assets degrading from NEN 3→4 within 6–24 months. Inspecting early = 3–5× cheaper than emergency repair.',
+        ph_mijndag: 'My day', ph_mijndag_sub: 'Your personal work route for today. Assigned clusters (route-optimised reports on the map), your open tasks and estimated work time. Tap a report for detail; use the cluster button to work through them sequentially.',
+        ph_clusters: 'Operations Optimizer', ph_clusters_sub: 'Operational AI automatically bundles reports into workable clusters — saves travel and switch-over time.',
+        ph_opleveren: 'Delivery', ph_opleveren_sub: 'Register one-off work and official handover documents — client/contractor, date, location, remaining items with before/after photos. For ongoing maintenance contracts use Projects. Each delivery can be exported as a PDF handover document.',
+        ph_integraties: 'Integrations', ph_integraties_sub: 'Webhooks, sensors and compliance trail.',
+        ph_admin: 'Admin Overview', ph_admin_sub: 'All organisations and users on the platform.',
+        t_fout: 'Error', t_bezig: 'Working…', t_opslaan: 'Save', t_annuleren: 'Cancel',
+        t_verwijderen: 'Delete', t_bevestig: 'Confirm', t_aanmaken: 'Create',
+        t_bijwerken: 'Update', t_aangemaakt: 'Created', t_bijgewerkt: 'Updated',
+        t_verwijderd: 'Deleted', t_status_bijgewerkt: 'Status updated',
+        t_terug: '← Back', t_meer_laden: 'Load more', t_zoeken: 'Search',
+        t_sluiten: 'Close', t_laden: 'Loading…',
+        am_title_new: 'New asset', am_title_edit: 'Edit asset',
+        am_code: 'Code', am_type: 'Asset type', am_name: 'Name',
+        am_project: 'Project', am_parent: 'Parent asset (optional)',
+        am_locatie: 'Location (description)', am_lat: 'Latitude', am_lng: 'Longitude',
+        am_installed: 'Installed on', am_lifespan: 'Lifespan (years)',
+        am_condition: 'NEN condition (1-5)', am_submit: 'Create asset',
+        am_save: 'Save changes',
+        om_title_new: 'New delivery', om_title_edit: 'Edit delivery',
+        om_pv_kicker: 'Handover Report',
+        om_pv_sub: 'This form is also the handover document — directly downloadable as PDF after saving. CROW compliant.',
+        om_titel: 'Title', om_status: 'Status', om_locatie: 'Location',
+        om_datum: 'Delivery date', om_opdr_naam: 'Client name',
+        om_opdr_email: 'Client email', om_aann_naam: 'Contractor name',
+        om_aann_email: 'Contractor email', om_omschr: 'Description',
+        om_notes: 'Notes', om_q_weer: 'Weather conditions',
+        om_q_veil: 'Safety', om_q_normen: 'Standards', om_q_neth: 'Cleanliness',
+        om_submit: 'Create', om_save: 'Save changes',
+        pm_title_new: 'Add remaining item', pm_title_edit: 'Edit remaining item',
+        pm_code: 'Code', pm_status: 'Status', pm_omschr: 'Description',
+        pm_uitv: 'Execution method', pm_asset: 'Asset (optional — link to existing asset)',
+        pm_photo_before: '📷 Photo before', pm_photo_after: '✅ Photo after',
+        pm_submit: 'Save',
+        st_concept: 'Draft', st_opgeleverd: 'Delivered',
+        st_aanvaard: 'Accepted', st_afgewezen: 'Rejected',
+        st_restpunt: 'Remaining', st_gereed: 'Done', st_afgekeurd: 'Rejected',
       },
       de: {
         dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
@@ -4046,6 +4137,44 @@
         es_geen_assets_project: 'Keine Assets in diesem Projekt. Über die Assets-Seite (bald) oder CSV-Import hinzufügen.',
         es_geen_projecten_toast: 'Keine Projekte gefunden. Erst ein Projekt anlegen.',
         es_geen_meldingen_project: 'Keine Meldungen in diesem Projekt.',
+        ph_assets: 'Assets', ph_assets_sub: 'Die physischen Objekte, an denen Sie warten und melden — Straßenabschnitte, Laternen, Schächte, Fugenübergänge, Bauwerke. Jedes Asset bekommt eine eindeutige Nummer + GPS-Position, sodass Meldungen und Messungen automatisch zuordnen. Bulk-Import via CSV oder NWB-Straßenabschnitte.',
+        ph_predictive: 'Voraussage', ph_predictive_sub: 'Vorausschauende Instandhaltung auf Basis NEN 2767-2: kombiniert Alter, Zustandsnote (1–5) und Meldungs-Historie, um Assets zu zeigen, die innerhalb von 6–24 Monaten von NEN 3→4 degradieren. Früh inspizieren = 3–5× günstiger als Notreparatur.',
+        ph_mijndag: 'Mein Tag', ph_mijndag_sub: 'Ihre persönliche Arbeitsroute für heute. Zugewiesene Cluster (route-optimierte Meldungen auf der Karte), Ihre offenen Aufgaben und geschätzte Arbeitszeit. Tippen Sie auf eine Meldung für Details; nutzen Sie die Cluster-Taste, um sequenziell abzuarbeiten.',
+        ph_clusters: 'Operations Optimizer', ph_clusters_sub: 'Operative KI bündelt Meldungen automatisch zu bearbeitbaren Clustern — spart Fahrt- und Umrüstzeit.',
+        ph_opleveren: 'Übergabe', ph_opleveren_sub: 'Einmalige Arbeiten und offizielle Übergabeprotokolle erfassen — Auftraggeber/Auftragnehmer, Datum, Ort, Restpunkte mit Vorher/Nachher-Foto. Für laufende Wartungsverträge nutzen Sie Projekte. Jede Übergabe kann als PDF-Übergabedokument exportiert werden.',
+        ph_integraties: 'Integrationen', ph_integraties_sub: 'Webhooks, Sensoren und Compliance-Trail.',
+        ph_admin: 'Admin-Übersicht', ph_admin_sub: 'Alle Organisationen und Benutzer auf der Plattform.',
+        t_fout: 'Fehler', t_bezig: 'Arbeitet…', t_opslaan: 'Speichern', t_annuleren: 'Abbrechen',
+        t_verwijderen: 'Löschen', t_bevestig: 'Bestätigen', t_aanmaken: 'Erstellen',
+        t_bijwerken: 'Aktualisieren', t_aangemaakt: 'Erstellt', t_bijgewerkt: 'Aktualisiert',
+        t_verwijderd: 'Gelöscht', t_status_bijgewerkt: 'Status aktualisiert',
+        t_terug: '← Zurück', t_meer_laden: 'Mehr laden', t_zoeken: 'Suchen',
+        t_sluiten: 'Schließen', t_laden: 'Wird geladen…',
+        am_title_new: 'Neues Asset', am_title_edit: 'Asset bearbeiten',
+        am_code: 'Code', am_type: 'Asset-Typ', am_name: 'Name',
+        am_project: 'Projekt', am_parent: 'Übergeordnetes Asset (optional)',
+        am_locatie: 'Standort (Beschreibung)', am_lat: 'Breitengrad', am_lng: 'Längengrad',
+        am_installed: 'Installiert am', am_lifespan: 'Lebensdauer (Jahre)',
+        am_condition: 'NEN-Zustand (1-5)', am_submit: 'Asset erstellen',
+        am_save: 'Änderungen speichern',
+        om_title_new: 'Neue Übergabe', om_title_edit: 'Übergabe bearbeiten',
+        om_pv_kicker: 'Übergabeprotokoll',
+        om_pv_sub: 'Dieses Formular ist auch das Übergabedokument — nach dem Speichern direkt als PDF herunterladbar. CROW-konform.',
+        om_titel: 'Titel', om_status: 'Status', om_locatie: 'Standort',
+        om_datum: 'Übergabedatum', om_opdr_naam: 'Auftraggeber Name',
+        om_opdr_email: 'Auftraggeber E-Mail', om_aann_naam: 'Auftragnehmer Name',
+        om_aann_email: 'Auftragnehmer E-Mail', om_omschr: 'Beschreibung',
+        om_notes: 'Anmerkungen', om_q_weer: 'Wetterbedingungen',
+        om_q_veil: 'Sicherheit', om_q_normen: 'Normen', om_q_neth: 'Sauberkeit',
+        om_submit: 'Erstellen', om_save: 'Änderungen speichern',
+        pm_title_new: 'Restpunkt hinzufügen', pm_title_edit: 'Restpunkt bearbeiten',
+        pm_code: 'Code', pm_status: 'Status', pm_omschr: 'Beschreibung',
+        pm_uitv: 'Ausführungsmethode', pm_asset: 'Asset (optional — an bestehendes Asset koppeln)',
+        pm_photo_before: '📷 Foto vorher', pm_photo_after: '✅ Foto nachher',
+        pm_submit: 'Speichern',
+        st_concept: 'Entwurf', st_opgeleverd: 'Übergeben',
+        st_aanvaard: 'Akzeptiert', st_afgewezen: 'Abgelehnt',
+        st_restpunt: 'Restpunkt', st_gereed: 'Fertig', st_afgekeurd: 'Abgelehnt',
       },
       fr: {
         dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
@@ -4307,6 +4436,44 @@
         es_geen_assets_project: 'Aucun actif dans ce projet. Ajoutez-les via la page Actifs (bientôt) ou par import CSV.',
         es_geen_projecten_toast: 'Aucun projet trouvé. Créez d\'abord un projet.',
         es_geen_meldingen_project: 'Aucun signalement dans ce projet.',
+        ph_assets: 'Actifs', ph_assets_sub: 'Les objets physiques que vous entretenez et signalez — tronçons routiers, lampadaires, regards, joints de dilatation, ouvrages. Chaque actif obtient un numéro unique + position GPS afin que signalements et mesures soient automatiquement liés. Import en masse via CSV ou tronçons NWB.',
+        ph_predictive: 'Prédicteur', ph_predictive_sub: 'Maintenance prédictive basée sur NEN 2767-2 : combine âge, score de condition (1–5) et historique des signalements pour montrer les actifs se dégradant de NEN 3→4 dans 6–24 mois. Inspecter tôt = 3–5× moins cher qu\'une réparation d\'urgence.',
+        ph_mijndag: 'Ma journée', ph_mijndag_sub: 'Votre itinéraire de travail personnel pour aujourd\'hui. Clusters assignés (signalements optimisés sur la carte), vos tâches ouvertes et temps de travail estimé. Tapez sur un signalement pour le détail ; utilisez le bouton cluster pour les traiter séquentiellement.',
+        ph_clusters: 'Operations Optimizer', ph_clusters_sub: 'L\'IA opérationnelle regroupe automatiquement les signalements en clusters exploitables — économise du temps de déplacement et de bascule.',
+        ph_opleveren: 'Livraison', ph_opleveren_sub: 'Enregistrez ici les travaux ponctuels et les procès-verbaux officiels — donneur d\'ordre/entrepreneur, date, lieu, points restants avec photos avant/après. Pour les contrats d\'entretien en cours, utilisez Projets. Chaque livraison peut être exportée en PDF.',
+        ph_integraties: 'Intégrations', ph_integraties_sub: 'Webhooks, capteurs et piste de conformité.',
+        ph_admin: 'Vue admin', ph_admin_sub: 'Toutes les organisations et utilisateurs de la plateforme.',
+        t_fout: 'Erreur', t_bezig: 'En cours…', t_opslaan: 'Enregistrer', t_annuleren: 'Annuler',
+        t_verwijderen: 'Supprimer', t_bevestig: 'Confirmer', t_aanmaken: 'Créer',
+        t_bijwerken: 'Mettre à jour', t_aangemaakt: 'Créé', t_bijgewerkt: 'Mis à jour',
+        t_verwijderd: 'Supprimé', t_status_bijgewerkt: 'Statut mis à jour',
+        t_terug: '← Retour', t_meer_laden: 'Charger plus', t_zoeken: 'Rechercher',
+        t_sluiten: 'Fermer', t_laden: 'Chargement…',
+        am_title_new: 'Nouvel actif', am_title_edit: 'Modifier l\'actif',
+        am_code: 'Code', am_type: 'Type d\'actif', am_name: 'Nom',
+        am_project: 'Projet', am_parent: 'Actif parent (facultatif)',
+        am_locatie: 'Emplacement (description)', am_lat: 'Latitude', am_lng: 'Longitude',
+        am_installed: 'Installé le', am_lifespan: 'Durée de vie (années)',
+        am_condition: 'Condition NEN (1-5)', am_submit: 'Créer l\'actif',
+        am_save: 'Enregistrer les modifications',
+        om_title_new: 'Nouvelle livraison', om_title_edit: 'Modifier la livraison',
+        om_pv_kicker: 'Procès-verbal de livraison',
+        om_pv_sub: 'Ce formulaire est aussi le document de livraison — téléchargeable directement en PDF après l\'enregistrement. Conforme CROW.',
+        om_titel: 'Titre', om_status: 'Statut', om_locatie: 'Emplacement',
+        om_datum: 'Date de livraison', om_opdr_naam: 'Nom du donneur d\'ordre',
+        om_opdr_email: 'E-mail du donneur d\'ordre', om_aann_naam: 'Nom de l\'entrepreneur',
+        om_aann_email: 'E-mail de l\'entrepreneur', om_omschr: 'Description',
+        om_notes: 'Remarques', om_q_weer: 'Conditions météo',
+        om_q_veil: 'Sécurité', om_q_normen: 'Normes', om_q_neth: 'Propreté',
+        om_submit: 'Créer', om_save: 'Enregistrer les modifications',
+        pm_title_new: 'Ajouter un point restant', pm_title_edit: 'Modifier le point',
+        pm_code: 'Code', pm_status: 'Statut', pm_omschr: 'Description',
+        pm_uitv: 'Méthode d\'exécution', pm_asset: 'Actif (facultatif — lier à un actif existant)',
+        pm_photo_before: '📷 Photo avant', pm_photo_after: '✅ Photo après',
+        pm_submit: 'Enregistrer',
+        st_concept: 'Brouillon', st_opgeleverd: 'Livré',
+        st_aanvaard: 'Accepté', st_afgewezen: 'Rejeté',
+        st_restpunt: 'Restant', st_gereed: 'Terminé', st_afgekeurd: 'Rejeté',
       },
       tr: {
         dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
@@ -4568,6 +4735,44 @@
         es_geen_assets_project: 'Bu projede varlık yok. Varlıklar sayfasından (yakında) veya CSV içe aktarmadan ekleyin.',
         es_geen_projecten_toast: 'Proje bulunamadı. Önce bir proje oluşturun.',
         es_geen_meldingen_project: 'Bu projede bildirim yok.',
+        ph_assets: 'Varlıklar', ph_assets_sub: 'Bakım yaptığınız ve bildirim yaptığınız fiziksel nesneler — yol kesimleri, sokak lambaları, rögarlar, derz birleşimleri, sanat yapıları. Her varlık benzersiz bir numara + GPS konumu alır, böylece bildirimler ve ölçümler otomatik olarak bağlanır. CSV veya NWB yol kesimleri ile toplu içe aktarma.',
+        ph_predictive: 'Tahminci', ph_predictive_sub: 'NEN 2767-2 tabanlı tahminci bakım: yaş, durum puanı (1–5) ve bildirim geçmişini birleştirerek 6–24 ay içinde NEN 3→4 düzeyine düşecek varlıkları gösterir. Erken inceleme = acil onarımdan 3–5 kat daha ucuz.',
+        ph_mijndag: 'Günüm', ph_mijndag_sub: 'Bugün için kişisel çalışma rotanız. Atanmış kümeler (haritada rota-optimize bildirimler), açık görevleriniz ve tahmini çalışma süresi. Detay için bildirime dokunun; sıralı olarak işlemek için küme düğmesini kullanın.',
+        ph_clusters: 'Operations Optimizer', ph_clusters_sub: 'Operasyonel AI, bildirimleri otomatik olarak işlenebilir kümelere paketler — seyahat ve geçiş süresinden tasarruf sağlar.',
+        ph_opleveren: 'Teslim', ph_opleveren_sub: 'Tek seferlik işleri ve resmi tutanakları burada kaydedin — sahip/yüklenici, tarih, konum, öncesi/sonrası fotoğraflı kalan maddeler. Süregelen bakım sözleşmeleri için Projeler\'i kullanın. Her teslimat PDF teslim belgesi olarak dışa aktarılabilir.',
+        ph_integraties: 'Entegrasyonlar', ph_integraties_sub: 'Webhook\'lar, sensörler ve uyumluluk izi.',
+        ph_admin: 'Admin Genel Bakış', ph_admin_sub: 'Platformdaki tüm kuruluşlar ve kullanıcılar.',
+        t_fout: 'Hata', t_bezig: 'İşleniyor…', t_opslaan: 'Kaydet', t_annuleren: 'İptal',
+        t_verwijderen: 'Sil', t_bevestig: 'Onayla', t_aanmaken: 'Oluştur',
+        t_bijwerken: 'Güncelle', t_aangemaakt: 'Oluşturuldu', t_bijgewerkt: 'Güncellendi',
+        t_verwijderd: 'Silindi', t_status_bijgewerkt: 'Durum güncellendi',
+        t_terug: '← Geri', t_meer_laden: 'Daha fazla yükle', t_zoeken: 'Ara',
+        t_sluiten: 'Kapat', t_laden: 'Yükleniyor…',
+        am_title_new: 'Yeni varlık', am_title_edit: 'Varlığı düzenle',
+        am_code: 'Kod', am_type: 'Varlık tipi', am_name: 'Ad',
+        am_project: 'Proje', am_parent: 'Üst varlık (isteğe bağlı)',
+        am_locatie: 'Konum (açıklama)', am_lat: 'Enlem', am_lng: 'Boylam',
+        am_installed: 'Kurulum tarihi', am_lifespan: 'Ömür (yıl)',
+        am_condition: 'NEN durumu (1-5)', am_submit: 'Varlık oluştur',
+        am_save: 'Değişiklikleri kaydet',
+        om_title_new: 'Yeni teslim', om_title_edit: 'Teslimi düzenle',
+        om_pv_kicker: 'Teslim Tutanağı',
+        om_pv_sub: 'Bu form aynı zamanda teslim belgesidir — kaydettikten sonra doğrudan PDF olarak indirilebilir. CROW uyumlu.',
+        om_titel: 'Başlık', om_status: 'Durum', om_locatie: 'Konum',
+        om_datum: 'Teslim tarihi', om_opdr_naam: 'Müşteri adı',
+        om_opdr_email: 'Müşteri e-postası', om_aann_naam: 'Yüklenici adı',
+        om_aann_email: 'Yüklenici e-postası', om_omschr: 'Açıklama',
+        om_notes: 'Notlar', om_q_weer: 'Hava koşulları',
+        om_q_veil: 'Güvenlik', om_q_normen: 'Standartlar', om_q_neth: 'Temizlik',
+        om_submit: 'Oluştur', om_save: 'Değişiklikleri kaydet',
+        pm_title_new: 'Kalan madde ekle', pm_title_edit: 'Maddeyi düzenle',
+        pm_code: 'Kod', pm_status: 'Durum', pm_omschr: 'Açıklama',
+        pm_uitv: 'Uygulama yöntemi', pm_asset: 'Varlık (isteğe bağlı — mevcut varlığa bağla)',
+        pm_photo_before: '📷 Önce fotoğraf', pm_photo_after: '✅ Sonra fotoğraf',
+        pm_submit: 'Kaydet',
+        st_concept: 'Taslak', st_opgeleverd: 'Teslim edildi',
+        st_aanvaard: 'Kabul edildi', st_afgewezen: 'Reddedildi',
+        st_restpunt: 'Kalan', st_gereed: 'Tamam', st_afgekeurd: 'Reddedildi',
       }
     };
 
@@ -8299,8 +8504,8 @@
       var a = allAssets.find(function(x){ return x.id === id; });
       if (!a) return;
       openAssetModal();
-      document.getElementById('assetModalTitle').textContent = 'Asset bewerken';
-      document.getElementById('assetSubmitBtn').textContent = 'Wijzigingen opslaan';
+      document.getElementById('assetModalTitle').textContent = t('am_title_edit');
+      document.getElementById('assetSubmitBtn').textContent = t('am_save');
       document.getElementById('assetEditId').value = id;
       document.getElementById('assetCode').value = a.code || '';
       document.getElementById('assetName').value = a.name || '';
@@ -9478,8 +9683,8 @@
         var el = document.getElementById(id); if (el) el.value = '';
       });
       if (opleveringId) {
-        title.textContent = 'Oplevering bewerken';
-        submitBtn.textContent = 'Wijzigingen opslaan';
+        title.textContent = t('om_title_edit');
+        submitBtn.textContent = t('om_save');
         idField.value = opleveringId;
         var o = _opleveringen.find(function(x){ return x.id === opleveringId; }) || _currentOplevering;
         if (o) {
@@ -9504,8 +9709,8 @@
           if (eq.netheid) document.getElementById('opQNetheid').value = eq.netheid;
         }
       } else {
-        title.textContent = 'Nieuwe oplevering';
-        submitBtn.textContent = 'Aanmaken';
+        title.textContent = t('om_title_new');
+        submitBtn.textContent = t('om_submit');
         idField.value = '';
       }
       modal.classList.add('active');
@@ -10001,7 +10206,7 @@
           // Pre-fill foto-previews uit bestaande data
           _resetPuntPhotoPreview('before', p.photo_url || null);
           _resetPuntPhotoPreview('after', p.photo_url_after || null);
-          title.textContent = 'Restpunt bewerken';
+          title.textContent = t('pm_title_edit');
         }
       } else {
         // Auto-genereer ID: OP-YYYY-MM-DD-NNN (volgnummer binnen deze oplevering)
