@@ -10,7 +10,7 @@
       --bg: #f8fafc; --card: #fff; --text: #1e293b; --muted: #64748b;
       --dim: #94a3b8; --border: #e2e8f0; --accent: #0284c7;
       --accent-dark: #0369a1; --green: #16a34a; --orange: #ea580c;
-      --rule-soft: #f1f5f9;
+      --red: #dc2626; --rule-soft: #f1f5f9;
     }
     * { box-sizing: border-box; }
     body {
@@ -61,6 +61,12 @@
     }
     .toc a:hover { background: var(--rule-soft); color: var(--accent); }
     .toc a.active { background: rgba(2,132,199,0.08); color: var(--accent); font-weight: 600; }
+    .toc a.new::after {
+      content: "NIEUW"; background: var(--green); color: #fff;
+      font-size: 9px; padding: 2px 6px; border-radius: 4px;
+      margin-left: 6px; vertical-align: middle; letter-spacing: 0.05em;
+      font-weight: 700;
+    }
 
     .content {
       background: var(--card); border: 1px solid var(--border);
@@ -72,6 +78,11 @@
       margin: 0 0 12px; font-size: 22px; font-weight: 800;
       letter-spacing: -0.4px; color: var(--text);
       padding-bottom: 10px; border-bottom: 1px solid var(--border);
+    }
+    .content h2 .badge {
+      font-size: 10px; padding: 3px 8px; border-radius: 5px;
+      background: var(--green); color: #fff; vertical-align: middle;
+      margin-left: 8px; font-weight: 700; letter-spacing: 0.05em;
     }
     .content h3 {
       margin: 22px 0 8px; font-size: 15px; font-weight: 700; color: var(--accent-dark);
@@ -92,6 +103,10 @@
       background: rgba(234,88,12,0.05); border-left: 4px solid var(--orange);
       padding: 12px 16px; border-radius: 8px; margin: 12px 0; font-size: 14px;
     }
+    .norm {
+      background: rgba(22,163,74,0.05); border-left: 4px solid var(--green);
+      padding: 12px 16px; border-radius: 8px; margin: 12px 0; font-size: 14px;
+    }
     .step-grid {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr));
       gap: 12px; margin: 14px 0;
@@ -105,6 +120,28 @@
       background: var(--accent); color: #fff; text-align: center; line-height: 26px;
       font-weight: 700; font-size: 13px; margin-right: 8px;
     }
+    .score-table {
+      width: 100%; border-collapse: collapse; margin: 12px 0;
+      font-size: 13.5px; background: var(--card);
+    }
+    .score-table th, .score-table td {
+      border: 1px solid var(--border); padding: 8px 10px; text-align: left;
+    }
+    .score-table th {
+      background: var(--rule-soft); font-weight: 700; color: var(--muted);
+      font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .score-table tr:nth-child(even) td { background: rgba(241,245,249,0.4); }
+    .pill {
+      display: inline-block; padding: 2px 8px; border-radius: 5px;
+      font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+    }
+    .pill-1 { background: #dcfce7; color: #166534; }
+    .pill-2 { background: #d1fae5; color: #065f46; }
+    .pill-3 { background: #fef3c7; color: #854d0e; }
+    .pill-4 { background: #fed7aa; color: #9a3412; }
+    .pill-5 { background: #fecaca; color: #991b1b; }
+    .pill-6 { background: #fca5a5; color: #7f1d1d; }
 
     footer {
       max-width: 1100px; margin: 36px auto; padding: 0 32px;
@@ -118,7 +155,7 @@
     <div class="topbar-inner">
       <div>
         <h1>FieldOps · Handleiding</h1>
-        <p>Korte uitleg per onderdeel — van aanmelden tot opleveren.</p>
+        <p>Korte uitleg per onderdeel — van melding tot oplevering, inclusief NEN/CROW-conforme kunstwerk-inspecties.</p>
       </div>
       <a class="back-link" href="/portaal">← Terug naar portaal</a>
     </div>
@@ -134,24 +171,27 @@
       <a href="#meldingen">5. Meldingen</a>
       <a href="#mijn-dag">6. Mijn dag</a>
       <a href="#voorspeller">7. Voorspeller</a>
-      <a href="#opleveren">8. Opleveren</a>
-      <a href="#kaart">9. Kaart</a>
-      <a href="#gebruikers">10. Gebruikers</a>
-      <a href="#faq">11. FAQ</a>
+      <a href="#kunstwerken" class="new">8. Kunstwerken</a>
+      <a href="#riolering" class="new">9. Riolering</a>
+      <a href="#opleveren">10. Opleveren</a>
+      <a href="#kaart">11. Kaart</a>
+      <a href="#gebruikers">12. Gebruikers</a>
+      <a href="#taal-export" class="new">13. Taal & export</a>
+      <a href="#faq">14. FAQ</a>
     </nav>
 
     <main class="content">
       <section id="aan-de-slag">
         <h2>1. Aan de slag</h2>
-        <p>FieldOps is een <strong>compliance-native infrastructure OS</strong> voor gemeenten en infra-aannemers. Je werkt vanuit één platform — van melding tot oplevering, met CROW 146-classificatie en NEN 2767-2 conditie-scores ingebouwd.</p>
+        <p>FieldOps is een <strong>compliance-native infrastructure OS</strong> voor gemeenten en infra-aannemers. Eén platform voor het hele werkproces — van melding tot oplevering — met <strong>CROW 146</strong> (wegdek), <strong>NEN 2767-2 + CROW 134</strong> (kunstwerken) en <strong>NEN 3399</strong> (riolering) ingebouwd.</p>
         <h3>Eerste keer inloggen</h3>
         <div class="step-grid">
           <div class="step"><span class="num">1</span>Open <code>app.fieldopsapp.nl</code> in je browser.</div>
           <div class="step"><span class="num">2</span>Log in met je e-mail + wachtwoord uit de uitnodiging.</div>
           <div class="step"><span class="num">3</span>Verplicht: kies een nieuw wachtwoord (3 van 4: hoofdletter, kleine letter, cijfer, symbool).</div>
-          <div class="step"><span class="num">4</span>Pas je profiel aan onder <strong>Instellingen</strong>.</div>
+          <div class="step"><span class="num">4</span>Pas je profiel + taal aan onder <strong>Instellingen</strong>.</div>
         </div>
-        <div class="tip"><strong>Mobiel:</strong> open <code>app.fieldopsapp.nl</code> op je telefoon — installeerbaar als PWA (Chrome → menu → "Toevoegen aan startscherm").</div>
+        <div class="tip"><strong>Mobiel:</strong> open <code>app.fieldopsapp.nl</code> op je telefoon — installeerbaar als PWA (Chrome → menu → "Toevoegen aan startscherm"). Werkt offline tijdens kunstwerk-inspecties.</div>
       </section>
 
       <section id="dashboard">
@@ -169,7 +209,7 @@
       <section id="projecten">
         <h2>3. Projecten</h2>
         <p>Hier registreer je <strong>onderhoudsprojecten</strong> — doorlopende contracten zoals KO Westland, A12-renovatie, riolering Amsterdam-Zuid. Eén project = één werkgebied met een eigen set assets en meldingen.</p>
-        <div class="warn"><strong>Eenmalig werk?</strong> Voor één-keer-opleveringen zonder doorlopend onderhoud gebruik je het tabblad <strong>Opleveren</strong>, niet Projecten.</div>
+        <div class="warn"><strong>Eenmalig werk?</strong> Voor één-keer-opleveringen zonder doorlopend onderhoud gebruik je het tabblad <strong>Opleveren</strong>, niet Projecten. Voor formele NEN/CROW-inspectie van een kunstwerk gebruik je <strong>Kunstwerken</strong>.</div>
         <h3>Project aanmaken</h3>
         <ol>
           <li>Klik <strong>+ Nieuw Project</strong>.</li>
@@ -189,7 +229,7 @@
           <div class="step"><span class="num">3</span><strong>NWB wegvakken</strong> — importeer per gemeente met één klik (Rijkswaterstaat-bron).</div>
         </div>
         <h3>Conditie-score (NEN 2767-2)</h3>
-        <p>Per asset registreer je een conditie-score van 1 (uitstekend) tot 5 (slecht). Combineer met installatiedatum en verwachte levensduur — <strong>Voorspeller</strong> gebruikt deze data.</p>
+        <p>Per asset registreer je een conditie-score van 1 (uitstekend) tot 6 (zeer slecht) volgens NEN 2767-2. Combineer met installatiedatum en verwachte levensduur — <strong>Voorspeller</strong> gebruikt deze data om degradatie te projecteren.</p>
       </section>
 
       <section id="meldingen">
@@ -214,6 +254,7 @@
           <li><strong>Opgelost</strong> → werk klaar, wacht op controle</li>
           <li><strong>Afgerond</strong> → administratief gesloten</li>
         </ul>
+        <div class="tip"><strong>Tip:</strong> tijdens een kunstwerk-inspectie kun je een defect met één klik omzetten naar een melding voor opvolging. Zie <a href="#kunstwerken">Kunstwerken</a>.</div>
       </section>
 
       <section id="mijn-dag">
@@ -243,8 +284,136 @@
         <div class="tip">Voorspeller heeft data nodig: installatiedatum, levensduur, conditie-score. Vul deze velden in via het Assets-tabblad.</div>
       </section>
 
+      <section id="kunstwerken">
+        <h2>8. Kunstwerken <span class="badge">NEN 2767-2 + CROW 134</span></h2>
+        <p>De Kunstwerken-module is bedoeld voor <strong>formele visuele inspectie</strong> van bruggen, viaducten, tunnels, sluizen, duikers, kademuren en gemalen volgens NEN 2767-2 (conditiemeting) en CROW 134 (visuele bruginspectie). Het resultaat is een rapport-ready PDF dat opdrachtgevers en Rekenkamer accepteren.</p>
+
+        <div class="norm">
+          <strong>Wat krijg je?</strong> Per inspectie een <em>13-pagina PDF</em> met cover, executive summary (KPI-tegels + taart-diagram), per-element checklist + defect-tabel en ondertekeningsblok. Inclusief audit-trail (wie/wat/wanneer) en conformiteitsverklaring.
+        </div>
+
+        <h3>Stap 1 — Nieuwe inspectie starten</h3>
+        <div class="step-grid">
+          <div class="step"><span class="num">1</span>Sidebar → <strong>Kunstwerken</strong> → <strong>+ Nieuwe inspectie</strong>.</div>
+          <div class="step"><span class="num">2</span>Kies <em>kunstwerk-type</em> (brug, viaduct, tunnel, sluis, duiker, kademuur, gemaal).</div>
+          <div class="step"><span class="num">3</span>Koppel asset (auto-aanvulling uit Assets) of vul handmatig.</div>
+          <div class="step"><span class="num">4</span>Inspecteur, datum + weersomstandigheden invoeren.</div>
+        </div>
+        <p>Het systeem genereert automatisch de juiste <strong>element-lijst</strong> volgens NEN 2767-2 (bijvoorbeeld voor een brug: onderbouw, pijlers, bovenbouw, brugdek, voegovergangen, opleggingen, leuningen, afwatering, oeverbescherming, verlichting) en per element <strong>4-7 NEN/CROW-conforme vragen</strong>.</p>
+
+        <h3>Stap 2 — Veldwerk: vragen + defecten</h3>
+        <p>Per element doorloop je de checklist. Elke vraag is voorgedefinieerd volgens norm — geen vrije tekst die later moet worden gecategoriseerd.</p>
+        <ul>
+          <li><strong>Score 1-6 vragen</strong> — kies een conditie-score met kleurpicker.</li>
+          <li><strong>Ja/nee vragen</strong> — beantwoord met optionele toelichting. Een 'ja' op een kritieke vraag (bv. CONSTR.SCHEUR? CONSTR.WAPENING?) markeert het element automatisch als <strong>aandachtspunt</strong>.</li>
+          <li><strong>Meting</strong> — getal in mm of %.</li>
+          <li><strong>Defect toevoegen</strong> — per gebrek vul je ernst (1-3), intensiteit (1-3), omvang (klasse 1-5 of %), foto + locatie-binnen-element. De score wordt server-side berekend volgens NEN 2767-2.</li>
+        </ul>
+        <p>De app werkt <strong>offline</strong>: data synchroniseert zodra je weer 4G/wifi hebt.</p>
+
+        <h3>Stap 3 — Score-berekening (automatisch)</h3>
+        <p>Je hoeft geen formules in je hoofd te berekenen. FieldOps doet dat consistent volgens NEN 2767-2:</p>
+        <ol>
+          <li><strong>Defect-score</strong> = ernst × intensiteit × omvang → geclipt naar 1-6.</li>
+          <li><strong>Element-score</strong> = worst-defect rule (slechtste gebrek bepaalt het element).</li>
+          <li><strong>Object-score</strong> = worst-element rule (slechtste element bepaalt de eindscore).</li>
+          <li><strong>Aandachtspunten-floor</strong> = bij meerdere 'ja' op kritieke vragen wordt de element-score automatisch verhoogd zodat je nooit "Score 2 Goed" met 4 aandachtspunten daaronder krijgt.</li>
+        </ol>
+
+        <table class="score-table">
+          <thead><tr><th>Score</th><th>Label</th><th>Categorie</th><th>Termijnadvies</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill pill-1">1</span></td><td>Uitstekend</td><td>Geen onderhoud</td><td>6 jaar</td></tr>
+            <tr><td><span class="pill pill-2">2</span></td><td>Goed</td><td>Preventief</td><td>4 jaar</td></tr>
+            <tr><td><span class="pill pill-3">3</span></td><td>Redelijk</td><td>Klein onderhoud</td><td>2 jaar</td></tr>
+            <tr><td><span class="pill pill-4">4</span></td><td>Matig</td><td>Groot onderhoud</td><td>12 maanden</td></tr>
+            <tr><td><span class="pill pill-5">5</span></td><td>Slecht</td><td>Renovatie/vervanging</td><td>6 maanden</td></tr>
+            <tr><td><span class="pill pill-6">6</span></td><td>Zeer slecht</td><td>Acuut</td><td>Direct + veiligheidsmaatregel</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Stap 4 — Afronden, ondertekenen, PDF</h3>
+        <div class="step-grid">
+          <div class="step"><span class="num">1</span><strong>Voltooi inspectie</strong> — server berekent definitieve eindscore en KPI's.</div>
+          <div class="step"><span class="num">2</span><strong>Ondertekenen</strong> — canvas-handtekening op het scherm (inspecteur + opdrachtgever).</div>
+          <div class="step"><span class="num">3</span><strong>PDF-export</strong> — 13 pagina's: cover met eindconditie, basisgegevens, samenvatting met taart-diagram, top kritieke bevindingen, detail per element, ondertekening, conformiteitsverklaring.</div>
+          <div class="step"><span class="num">4</span><strong>Defect → Melding</strong> — met één klik zet je een defect om in een opvolg-melding voor het reguliere onderhoudsproces.</div>
+        </div>
+
+        <h3>Statussen van een inspectie</h3>
+        <ul>
+          <li><strong>Concept</strong> → in voorbereiding</li>
+          <li><strong>In uitvoering</strong> → veldwerk loopt</li>
+          <li><strong>Voltooid</strong> → veldwerk klaar, score berekend</li>
+          <li><strong>Ondertekend</strong> → ondertekend door inspecteur en opdrachtgever</li>
+          <li><strong>Opgeleverd</strong> → PDF verstuurd, gearchiveerd</li>
+        </ul>
+
+        <div class="tip"><strong>Verschillen met CROW 146 (wegdek):</strong> CROW 146 is voor verharding (asfalt, klinkers). NEN 2767-2 / CROW 134 is voor constructieve kunstwerken. In de praktijk zit op een brug asfalt-rijvloer (CROW 146) bovenop een bovenbouw (NEN 2767-2). FieldOps ondersteunt beide naast elkaar.</div>
+      </section>
+
+      <section id="riolering">
+        <h2>9. Riolering <span class="badge">NEN 3399</span></h2>
+        <p>Riolering wordt anders geïnspecteerd dan een brug. NEN 3399 + NEN-EN 13508-2 hanteren een eigen schade-codering (BAA/BAB/BBF) en een 1-5 strengtoestand-schaal. FieldOps ondersteunt dit als een aparte categorie binnen de Kunstwerken-module.</p>
+
+        <h3>Elementen</h3>
+        <ul>
+          <li><strong>Inspectieputten</strong> — toegang, deksel-conditie, verzakking</li>
+          <li><strong>Vrijverval-rioolleiding</strong> — TV-camera-inspectie</li>
+          <li><strong>Aansluitingen / huisaansluitingen</strong> — vaak zwakke plekken</li>
+          <li><strong>Persleidingen</strong> — onder druk, corrosie, flens-lekkage</li>
+          <li><strong>Overstortputten</strong> — vuilrooster, drempel, hoogwater-marker</li>
+          <li><strong>Rioolgemalen</strong> — pomp, niveau-sensoren, SCADA</li>
+          <li><strong>IBA (buitengebied)</strong> — slibniveau, beluchting, effluent</li>
+          <li><strong>Straatkolken</strong> — eerste opvang</li>
+        </ul>
+
+        <h3>Schade-codering (NEN-EN 13508-2)</h3>
+        <p><strong>BA = constructieve schade</strong>:</p>
+        <ul>
+          <li><code>BAA</code> = langsscheur (lengterichting)</li>
+          <li><code>BAB</code> = dwarsscheur</li>
+          <li><code>BAC</code> = ontbrekend stuk / scherf</li>
+          <li><code>BAJ</code> = vervorming (ovaal)</li>
+          <li><code>BAL</code> = verzakking</li>
+        </ul>
+        <p><strong>BB = functionele schade</strong>:</p>
+        <ul>
+          <li><code>BBA</code> = wortelingroei</li>
+          <li><code>BBC</code> = afzetting / slib / kalk</li>
+          <li><code>BBE</code> = obstakel / blokkade</li>
+          <li><code>BBF</code> = infiltratie / lekkage</li>
+        </ul>
+        <p>Een complete code is bv. <code>BAA·B·12%</code> = langsscheur, gemiddelde scheurbreedte, op 12% van de leiding-lengte.</p>
+
+        <h3>Strengtoestand 1-5</h3>
+        <table class="score-table">
+          <thead><tr><th>Klasse</th><th>Toestand</th><th>Termijnadvies</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill pill-1">1</span></td><td>Uitstekend</td><td>Geen actie</td></tr>
+            <tr><td><span class="pill pill-2">2</span></td><td>Goed</td><td>5+ jaar follow-up</td></tr>
+            <tr><td><span class="pill pill-3">3</span></td><td>Voldoende</td><td>Reiniging + reparatie 2-5 jr</td></tr>
+            <tr><td><span class="pill pill-4">4</span></td><td>Slecht</td><td>Renovatie / relining 1-2 jr</td></tr>
+            <tr><td><span class="pill pill-5">5</span></td><td>Zeer slecht</td><td>Vervangen acuut</td></tr>
+          </tbody>
+        </table>
+
+        <div class="warn"><strong>Let op:</strong> NEN 2767-2 (kunstwerken) gebruikt schaal 1-6, NEN 3399 (riolering) gebruikt 1-5. FieldOps converteert dit consistent naar één eindscore in het rapport.</div>
+
+        <h3>Riolering-specifieke vragen</h3>
+        <ul>
+          <li>Inspectiemethode (visueel / camera / drone) — verplicht</li>
+          <li>Vulgraad / slib-afzetting in %</li>
+          <li>Pomp-rendement bij gemalen</li>
+          <li>Noodoverstort-test datum</li>
+          <li>Aantal overstort-gebeurtenissen afgelopen 12 maanden</li>
+        </ul>
+
+        <div class="tip">Plan de TV-inspectie altijd na een droge periode — een rioolstreng vol regenwater verstoort schade-detectie. Bewaar camera-data met dezelfde naamgeving als het rapport voor latere her-inspectie.</div>
+      </section>
+
       <section id="opleveren">
-        <h2>8. Opleveren</h2>
+        <h2>10. Opleveren</h2>
         <p>Registreer hier <strong>eenmalig werk</strong> en officiële <strong>proces-verbalen</strong>. Per oplevering vul je opdrachtgever, aannemer, locatie, datum, inspectievragen (weer, veiligheid, normen, netheid) en de uitgevoerde restpunten met foto vóór/na.</p>
         <h3>Opleveren is een opleverdocument</h3>
         <p>Elke oplevering kun je downloaden als <strong>PDF-proces-verbaal</strong> via de knop <em>📄 PV (PDF)</em>. Het PDF-document bevat:</p>
@@ -264,29 +433,55 @@
           <li>Status doorloopt: <em>concept → opgeleverd → aanvaard / afgewezen</em>.</li>
           <li>Verstuur per mail of download het PV als PDF voor archivering.</li>
         </ol>
+        <div class="tip"><strong>Verschil met Kunstwerken:</strong> Opleveren is voor eenmalig werk (oplevering van een uitgevoerde reparatie). Kunstwerken is voor periodieke NEN 2767-2 conditiemeting.</div>
       </section>
 
       <section id="kaart">
-        <h2>9. Kaart</h2>
+        <h2>11. Kaart</h2>
         <p>Geografische weergave van al je assets en meldingen. Wegvakken zijn gekleurd op basis van conditie-score (groen → rood). Klik op een pin voor detail of teken een nieuwe melding direct op de kaart.</p>
       </section>
 
       <section id="gebruikers">
-        <h2>10. Gebruikers</h2>
+        <h2>12. Gebruikers</h2>
         <p>Beheer teamleden binnen je organisatie. Rollen bepalen wat iemand mag:</p>
         <ul>
           <li><strong>Beheerder (admin)</strong> — alles, inclusief gebruikersbeheer</li>
-          <li><strong>Projectleider (manager)</strong> — projecten, meldingen, clusters</li>
+          <li><strong>Projectleider (manager)</strong> — projecten, meldingen, clusters, kunstwerk-inspecties</li>
           <li><strong>Aannemer (contractor)</strong> — meldingen oppakken en uitvoeren</li>
-          <li><strong>Toezichthouder (inspector)</strong> — meldingen registreren + inspecteren</li>
+          <li><strong>Toezichthouder (inspector)</strong> — meldingen registreren + inspecties uitvoeren + ondertekenen</li>
           <li><strong>Technicus (technician)</strong> — meldingen oppakken + uitvoeren</li>
           <li><strong>Opdrachtgever (viewer)</strong> — alleen lezen, geen mutaties</li>
         </ul>
         <p>Klik <strong>+ Gebruiker uitnodigen</strong> om een nieuwe te toevoegen. Ze krijgen een mail met eenmalig wachtwoord.</p>
+        <div class="norm"><strong>RBAC bij kunstwerken:</strong> alleen <em>inspector</em>, <em>manager</em> en <em>admin</em> kunnen kunstwerk-inspecties starten en ondertekenen. <em>Viewer</em> kan lezen + PDF exporteren.</div>
+      </section>
+
+      <section id="taal-export">
+        <h2>13. Taal & export</h2>
+        <p>FieldOps is volledig meertalig — UI, vragenlijsten, score-labels én PDF-export.</p>
+        <h3>Beschikbare talen</h3>
+        <ul>
+          <li>🇳🇱 <strong>Nederlands</strong> (standaard)</li>
+          <li>🇬🇧 <strong>English</strong></li>
+          <li>🇩🇪 <strong>Deutsch</strong></li>
+          <li>🇫🇷 <strong>Français</strong></li>
+          <li>🇹🇷 <strong>Türkçe</strong></li>
+        </ul>
+        <p>Verander taal via het globe-icoon rechts boven. Je voorkeur wordt per gebruiker bewaard. <strong>Het hele systeem schakelt mee</strong> — inclusief score-labels (Slecht / Bad / Schlecht / Mauvais / Kötü), categorie-namen, knoppen en PDF-output.</p>
+
+        <h3>PDF-export per module</h3>
+        <ul>
+          <li><strong>Meldingen-rapport</strong> — periode + project-filter, alle CROW-classificaties</li>
+          <li><strong>Oplevering PV</strong> — proces-verbaal per oplevering met handtekeningen</li>
+          <li><strong>Kunstwerk-inspectie</strong> — 13 pagina's, NEN 2767-2 conform, met taart-diagram en conformiteitsverklaring</li>
+        </ul>
+
+        <h3>Audit-trail</h3>
+        <p>Elke mutatie wordt vastgelegd in een append-only audit-log. Bij geschillen of een Rekenkamer-onderzoek kun je per inspectie of melding terugzien wie wat wanneer wijzigde.</p>
       </section>
 
       <section id="faq">
-        <h2>11. FAQ</h2>
+        <h2>14. FAQ</h2>
         <h3>Wachtwoord vergeten?</h3>
         <p>Klik op het login-scherm op "Wachtwoord vergeten" — je krijgt een resetlink per mail.</p>
         <h3>Geen GPS-fix?</h3>
@@ -294,9 +489,17 @@
         <h3>Push-notificaties activeren</h3>
         <p>Klik op het 🔔-icoon rechts boven. Werkt op desktop Chrome/Edge en mobiel (Android + iOS 16.4+ als PWA).</p>
         <h3>Data exporteren</h3>
-        <p>Op <strong>Rapportages</strong> kun je een PDF-rapport genereren voor een periode + project-filter. Voor ruwe data is een CSV-export beschikbaar op de Meldingen-pagina.</p>
+        <p>Op <strong>Rapportages</strong> kun je een PDF-rapport genereren voor een periode + project-filter. Voor ruwe data is een CSV-export beschikbaar op de Meldingen-pagina. Kunstwerk-inspecties exporteer je per stuk als 13-pagina PDF.</p>
         <h3>Cluster verschijnt niet bij Mijn dag</h3>
         <p>Controleer of het cluster aan jou is toegewezen (assigned_to) en status <em>assigned</em> of <em>in_progress</em> heeft. Proposed-clusters wachten op planner-goedkeuring.</p>
+        <h3>Kan ik kunstwerk-inspectie offline doen?</h3>
+        <p>Ja. Open de app vóór vertrek (zodat de PWA en data zijn geladen), zet je telefoon eventueel op vliegtuigmodus en inspecteer. Bij eerste 4G-verbinding synchroniseert alles automatisch.</p>
+        <h3>"Score 2 Goed" met 4 aandachtspunten — kan dat?</h3>
+        <p>Nee, FieldOps blokkeert die combinatie. Bij meerdere 'ja' op kritieke vragen treedt de <strong>aandachtspunten-floor</strong> in werking: de element-score wordt automatisch verhoogd naar minimaal 3 (Redelijk), 4 (Matig) of 5 (Slecht), afhankelijk van het aantal aandachtspunten. Dit voorkomt inconsistente rapporten.</p>
+        <h3>Werkt riolering ook in deze module?</h3>
+        <p>Ja. Riolering wordt behandeld als categorie binnen Kunstwerken, met een eigen element-bibliotheek en NEN 3399-specifieke vragen (BAA/BAB/BBF codering, strengtoestand 1-5). Zie sectie <a href="#riolering">9. Riolering</a>.</p>
+        <h3>Kan ik een defect uit een inspectie omzetten naar een melding?</h3>
+        <p>Ja. In de defect-detail-modal klik je op <strong>Maak melding</strong> — het defect wordt automatisch omgezet naar een melding met dezelfde foto, GPS en CROW-classificatie zodat het meeloopt in het reguliere onderhoudsproces (clusters, Mijn dag).</p>
         <h3>Vraag niet beantwoord?</h3>
         <p>Mail <a href="mailto:info@fieldopsapp.nl">info@fieldopsapp.nl</a> — reactietijd binnen 24 uur op werkdagen.</p>
       </section>
@@ -304,7 +507,7 @@
   </div>
 
   <footer>
-    FieldOps · CROW 146 · NEN 2767-2 · Audit-bound · EU-hosted ·
+    FieldOps · CROW 146 · NEN 2767-2 · CROW 134 · NEN 3399 · Audit-bound · EU-hosted ·
     <a href="https://fieldopsapp.nl" target="_blank">fieldopsapp.nl</a>
   </footer>
 

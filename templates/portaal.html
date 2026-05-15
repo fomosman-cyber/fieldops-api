@@ -2466,7 +2466,6 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="seedDemoData()" title="Vult je org met demo-data: 1 project, 12 assets, 14 meldingen (waarvan 6 cluster-bare scheurvulling). Idempotent.">🎬 Demo-data aanmaken</button>
           <button class="btn-secondary" onclick="seedMeldingenForProject()" title="Genereer realistische test-meldingen op een bestaand project (gebruikt zijn eigen assets). Goed voor clusters/voorspeller/mijn-dag testen op KO-Naaldwijk.">📋 Meldingen op project</button>
-          <button class="btn-secondary" onclick="seedDemoUser()" title="Maakt of reset demo@fieldopsapp.nl met wachtwoord demo2026 (VIEWER-rol). Voor de sandbox demo.html. Idempotent.">👤 Demo-user (sandbox)</button>
           <button class="btn-primary" onclick="openCreateOrgModal()">+ Nieuwe organisatie</button>
         </div>
       </div>
@@ -7081,25 +7080,6 @@
         if (typeof loadMeldingen === 'function') loadMeldingen();
       }).catch(function(err){
         showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
-      });
-    }
-
-    function seedDemoUser() {
-      showConfirm({
-        icon: '👤',
-        title: 'Demo-user aanmaken/resetten?',
-        message: 'Dit maakt of reset <strong>demo@fieldopsapp.nl</strong> met wachtwoord <code>demo2026</code> (VIEWER-rol). Bedoeld voor de sandbox-demo op de marketing-site.',
-        actionLabel: 'Aanmaken/Resetten',
-        danger: false,
-        onConfirm: function() {
-          showToast('Demo-user aanmaken...', 'info');
-          api('POST', '/api/admin/seed-demo-user', {}).then(function(r){
-            var verb = r.mode === 'created' ? 'aangemaakt' : 'gereset';
-            showToast('Demo-user ' + verb + ': ' + r.email + ' (org: ' + r.organization + ')', 'success');
-          }).catch(function(err){
-            showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
-          });
-        }
       });
     }
 
