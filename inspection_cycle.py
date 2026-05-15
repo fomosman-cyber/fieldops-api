@@ -79,7 +79,10 @@ _FIXED_CYCLE_MONTHS = {
     "wegdek": 72,              # alias
     "verharding": 72,          # alias
     "fontein": 24,              # NEN 2767-4 installaties
-    "kunstgrasveld": 36,        # specifiek
+    "kunstgrasveld": 36,        # NEN 2767-4 specifiek
+    "wegmarkering": 24,         # CROW 145 — 2-jaarlijkse retroreflectie-meting
+    "markering": 24,            # alias
+    "belijning": 24,            # alias
 }
 
 # Asset-types die de NEN 2767-2 score-cyclus gebruiken
@@ -285,6 +288,8 @@ def norm_reference(asset_type: Optional[str]) -> str:
         return "CROW 146"
     if key in ("fontein", "kunstgrasveld"):
         return "NEN 2767-4"
+    if key in ("wegmarkering", "markering", "belijning"):
+        return "CROW 145"
     return "NEN 2767"
 
 

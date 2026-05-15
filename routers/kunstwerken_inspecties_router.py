@@ -25,8 +25,11 @@ zodat queries en PDF-rapport altijd identieke waarden tonen.
 from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional, List
+import csv
+import io
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
 from database import get_db
@@ -48,6 +51,7 @@ from permissions import can_create_meldingen
 import kunstwerken_taxonomy as kt
 import nen2767_scoring as scoring
 import inspection_cycle as cycle
+import kunstwerken_i18n as kw_i18n
 
 router = APIRouter(prefix="/api/kunstwerken-inspecties", tags=["Kunstwerken-inspecties"])
 
@@ -445,6 +449,17 @@ def get_kunstwerk_types(current_user: User = Depends(get_current_user)):
     return {"types": [{"key": k, "label": v} for k, v in kt.KUNSTWERK_TYPES.items()]}
 
 
+@router.get("/i18n/{lang}")
+def get_taxonomy_i18n(lang: str, current_user: User = Depends(get_current_user)):
+    """i18n-bundle voor labels (element/groep/vraag/type) in opgegeven taal.
+
+    Frontend gebruikt deze om labels client-side te vertalen zonder
+    server-side de hele taxonomy te dupliceren. Voor NL (bron-taal) wordt
+    een lege bundle teruggegeven.
+    """
+    return kw_i18n.get_i18n_bundle(lang)
+
+
 @router.get("/taxonomy/{kunstwerk_type}")
 def get_taxonomy(kunstwerk_type: str, current_user: User = Depends(get_current_user)):
     """Standaard-elementen + gebreken-bibliotheek voor één kunstwerk-type."""
@@ -797,6 +812,85 @@ def _update_asset_cycle(db: Session, insp: Inspection) -> None:
             # datum heeft gezet
             if not insp.volgende_inspectie_op:
                 insp.volgende_inspectie_op = next_due
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Excel/CSV-export per inspectie — voor RAW/begroting-import
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/{inspection_id}/export.csv")
+def export_inspection_csv(
+    inspection_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Exporteer kunstwerk-inspectie als Excel-vriendelijk CSV.
+
+    Bevat 2 secties: elementen-overzicht + defecten-overzicht. Voor
+    importeren in besteks-software (RAW) of MJOP-spreadsheet.
+    """
+    insp = _get_inspection_or_404(db, inspection_id, current_user)
+    buf = io.StringIO()
+    buf.write("﻿")  # BOM voor Excel UTF-8
+    w = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+
+    # Header-meta
+    w.writerow(["FieldOps Kunstwerk-Inspectie Export"])
+    w.writerow(["Inspectie-ID", insp.id])
+    w.writerow(["Titel", insp.title or ""])
+    w.writerow(["Kunstwerk-type", insp.kunstwerk_type or ""])
+    w.writerow(["Status", insp.status])
+    w.writerow(["Eindscore", insp.conditiescore_overall or ""])
+    w.writerow(["Eindscore-label", scoring.conditie_label(insp.conditiescore_overall)])
+    w.writerow(["Datum", insp.inspectie_datum.isoformat() if insp.inspectie_datum else ""])
+    w.writerow(["Inspecteur", insp.inspecteur_naam or ""])
+    w.writerow([])
+
+    # Sectie 1 — Elementen
+    w.writerow(["=== ELEMENTEN ==="])
+    w.writerow(["Code", "Naam", "Groep", "Conditiescore", "Label",
+                "Defecten", "Aandacht", "Bevindingen", "Aanbevolen actie"])
+    for e in (insp.elementen or []):
+        attn = sum(1 for a in (e.antwoorden or []) if a.requires_attention)
+        w.writerow([
+            e.element_code, e.element_naam, e.element_groep or "",
+            e.conditiescore or "", scoring.conditie_label(e.conditiescore),
+            len(e.defecten or []), attn,
+            e.bevindingen or "", e.aanbevolen_actie or "",
+        ])
+
+    w.writerow([])
+
+    # Sectie 2 — Defecten
+    w.writerow(["=== DEFECTEN ==="])
+    w.writerow(["Element-code", "Gebrek-code", "Gebrek-naam",
+                "Ernst", "Intensiteit", "Omvang-klasse", "Omvang%",
+                "Defect-score", "Toelichting", "Foto-URL"])
+    for e in (insp.elementen or []):
+        for d in (e.defecten or []):
+            w.writerow([
+                e.element_code,
+                d.gebrek_code or "",
+                d.gebrek_naam or "",
+                d.ernst or "", d.intensiteit or "",
+                d.omvang_klasse or "", d.omvang_percentage or "",
+                d.score or "",
+                d.toelichting or "",
+                d.foto_url or "",
+            ])
+
+    w.writerow([])
+    w.writerow([f"Geëxporteerd op {datetime.now(timezone.utc).isoformat()}"])
+    w.writerow([f"Conform NEN 2767-2 + CROW 134"])
+    w.writerow(["LET OP: scores berekend volgens NEN 2767-2 worst-defect-rule"])
+
+    buf.seek(0)
+    fname = f"inspectie-{(insp.title or 'rapport').replace(' ', '-')[:40]}-{datetime.now(timezone.utc).date().isoformat()}.csv"
+    return StreamingResponse(
+        iter([buf.read().encode("utf-8")]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────

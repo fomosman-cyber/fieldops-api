@@ -141,6 +141,32 @@ KOSTEN = {
         5: {"maatregel": "Tussenlaag + deklaag", "min_eur": 80, "max_eur": 150, "unit": "per m2"},
         6: {"maatregel": "Volledige reconstructie wegvak", "min_eur": 150, "max_eur": 300, "unit": "per m2"},
     },
+
+    # ───────── NEN 2767-4 installaties + CROW 145 ─────────
+    "fontein": {
+        1: {"maatregel": "Periodieke inspectie", "min_eur": 500, "max_eur": 1200},
+        2: {"maatregel": "Reiniging + filter-vervanging", "min_eur": 1500, "max_eur": 4000},
+        3: {"maatregel": "Pomp/leidingen klein onderhoud", "min_eur": 5000, "max_eur": 15000},
+        4: {"maatregel": "Pomp-revisie + dichtingen", "min_eur": 15000, "max_eur": 40000},
+        5: {"maatregel": "Renovatie installatie + bassin", "min_eur": 50000, "max_eur": 150000},
+        6: {"maatregel": "Volledige vervanging fontein", "min_eur": 150000, "max_eur": 500000},
+    },
+    "kunstgrasveld": {
+        1: {"maatregel": "Periodieke inspectie + kleine reparatie", "min_eur": 2, "max_eur": 5, "unit": "per m2"},
+        2: {"maatregel": "Reiniging + infill bijvullen", "min_eur": 5, "max_eur": 10, "unit": "per m2"},
+        3: {"maatregel": "Naden + lijnen herstellen", "min_eur": 15, "max_eur": 25, "unit": "per m2"},
+        4: {"maatregel": "Toplaag deelvervanging", "min_eur": 30, "max_eur": 50, "unit": "per m2"},
+        5: {"maatregel": "Toplaag vervangen", "min_eur": 60, "max_eur": 90, "unit": "per m2"},
+        6: {"maatregel": "Toplaag + shockpad vervangen", "min_eur": 80, "max_eur": 120, "unit": "per m2"},
+    },
+    "wegmarkering": {
+        1: {"maatregel": "Periodieke retroreflectie-meting", "min_eur": 0.5, "max_eur": 1, "unit": "per m"},
+        2: {"maatregel": "Cosmetische bijwerking", "min_eur": 1.5, "max_eur": 3, "unit": "per m"},
+        3: {"maatregel": "Markering herstellen (locaal)", "min_eur": 4, "max_eur": 8, "unit": "per m"},
+        4: {"maatregel": "Markering herstrijken", "min_eur": 8, "max_eur": 15, "unit": "per m"},
+        5: {"maatregel": "Vervanging volledige belijning + thermoplast", "min_eur": 15, "max_eur": 30, "unit": "per m"},
+        6: {"maatregel": "Vervanging + reflectie-kralen + kattenogen", "min_eur": 25, "max_eur": 50, "unit": "per m"},
+    },
 }
 
 # Aliassen

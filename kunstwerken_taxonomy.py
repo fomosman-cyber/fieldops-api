@@ -37,6 +37,9 @@ KUNSTWERK_TYPES = {
     "boom": "Boom (VTA)",
     "speeltoestel": "Speeltoestel (NEN-EN 1176)",
     "verlichting": "Openbare verlichting (NEN 3140)",
+    "fontein": "Fontein (NEN 2767-4)",
+    "kunstgrasveld": "Kunstgrasveld (NEN 2767-4)",
+    "wegmarkering": "Wegmarkering (CROW 145)",
 }
 
 # Aliassen — input-normalisatie
@@ -71,6 +74,14 @@ _TYPE_ALIASES = {
     "ov": "verlichting",
     "armatuur": "verlichting",
     "nen3140": "verlichting",
+    "fonteinen": "fontein",
+    "waterelement": "fontein",
+    "kunstgras": "kunstgrasveld",
+    "sportveld": "kunstgrasveld",
+    "markering": "wegmarkering",
+    "wegmarkeringen": "wegmarkering",
+    "belijning": "wegmarkering",
+    "crow145": "wegmarkering",
 }
 
 
@@ -878,6 +889,99 @@ _VERLICHTING_ELEMENTEN = [
 ]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# NEN 2767-4 installaties (fontein, kunstgrasveld)
+# Deel 4 voor gebouw-installaties + buiten-installaties.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_FONTEIN_ELEMENTEN = [
+    {"code": "FONT.POMP", "naam": "Pomp + filter", "groep": "installatie",
+     "gebreken": [
+         {"code": "pomp_lek", "naam": "Lekkage pomp"},
+         {"code": "filter_vuil", "naam": "Vervuild filter"},
+         {"code": "geluid", "naam": "Afwijkend geluid"},
+         {"code": "rendement", "naam": "Verlaagd doorvoer-rendement"},
+     ]},
+    {"code": "FONT.WATERBAK", "naam": "Waterbak / bassin", "groep": "constructief",
+     "gebreken": [
+         {"code": "lekkage_bak", "naam": "Lekkage bak"},
+         {"code": "scheur", "naam": "Scheurvorming"},
+         {"code": "kalkaanslag", "naam": "Kalkaanslag / aanslag"},
+         {"code": "tegels_los", "naam": "Loszittende tegels"},
+     ]},
+    {"code": "FONT.SPROEIERS", "naam": "Sproeiers / nozzles", "groep": "installatie",
+     "gebreken": [
+         {"code": "verstopt", "naam": "Verstopt"},
+         {"code": "scheef_patroon", "naam": "Onregelmatig spuit-patroon"},
+         {"code": "vermist", "naam": "Ontbrekende nozzle"},
+     ]},
+    {"code": "FONT.VERLICHTING", "naam": "Onderwater-verlichting", "groep": "ov_elektrisch",
+     "gebreken": [
+         {"code": "led_kapot", "naam": "Kapotte LED-armatuur"},
+         {"code": "waterdicht", "naam": "Waterdichtheid armatuur"},
+         {"code": "kabel", "naam": "Beschadigde kabel"},
+     ]},
+]
+
+_KUNSTGRAS_ELEMENTEN = [
+    {"code": "KGRAS.MAT", "naam": "Grasmat", "groep": "afwerking",
+     "gebreken": [
+         {"code": "rafel", "naam": "Rafelvorming"},
+         {"code": "naden_los", "naam": "Loszittende naden"},
+         {"code": "kleur", "naam": "Verkleuring / verbleking"},
+         {"code": "infill_uitval", "naam": "Infill-uitspoeling"},
+     ]},
+    {"code": "KGRAS.ONDERBOUW", "naam": "Onderbouw / shockpad", "groep": "constructief",
+     "gebreken": [
+         {"code": "verzakking", "naam": "Lokale verzakking"},
+         {"code": "demping", "naam": "Verminderde valdemping"},
+         {"code": "drainage", "naam": "Slechte drainage"},
+     ]},
+    {"code": "KGRAS.OMRANDING", "naam": "Omranding + lijnen", "groep": "afwerking",
+     "gebreken": [
+         {"code": "lijn_versleten", "naam": "Versleten belijning"},
+         {"code": "rand_los", "naam": "Loszittende rand-/keermuur"},
+     ]},
+    {"code": "KGRAS.MEUBILAIR", "naam": "Doelen / tribunes / netten", "groep": "installatie",
+     "gebreken": [
+         {"code": "doel_kapot", "naam": "Beschadigde doel-constructie"},
+         {"code": "net_kapot", "naam": "Kapot net"},
+         {"code": "stabiel", "naam": "Onstabiele tribune-onderdelen"},
+     ]},
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CROW 145 wegmarkering
+# Beoordeelt zichtbaarheid (nat/droog), slijtage, contrast.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_WEGMARKERING_ELEMENTEN = [
+    {"code": "MARK.LANGS", "naam": "Langs-markering (rij-strepen)", "groep": "afwerking",
+     "gebreken": [
+         {"code": "slijtage", "naam": "Slijtage / dunne lijn"},
+         {"code": "contrast_laag", "naam": "Verlaagd contrast (oud)"},
+         {"code": "onderbreking", "naam": "Onderbroken patroon"},
+         {"code": "nacht_zichtbaarheid", "naam": "Slechte nacht-zichtbaarheid"},
+     ]},
+    {"code": "MARK.DWARS", "naam": "Dwars-markering (zebra/stop)", "groep": "afwerking",
+     "gebreken": [
+         {"code": "slijtage", "naam": "Slijtage"},
+         {"code": "ontbrekend", "naam": "Ontbrekend deel"},
+     ]},
+    {"code": "MARK.SYMBOLEN", "naam": "Symbolen + pijlen", "groep": "afwerking",
+     "gebreken": [
+         {"code": "vervaagd", "naam": "Vervaagd"},
+         {"code": "onleesbaar", "naam": "Onleesbaar"},
+     ]},
+    {"code": "MARK.KATTENOGEN", "naam": "Kattenogen / reflectoren", "groep": "installatie",
+     "gebreken": [
+         {"code": "kapot", "naam": "Kapot reflectorelement"},
+         {"code": "vermist", "naam": "Vermist reflector"},
+         {"code": "vies", "naam": "Vervuild (geen reflectie)"},
+     ]},
+]
+
+
 _ELEMENTEN_PER_TYPE = {
     "brug": _BRUG_ELEMENTEN,
     "viaduct": _VIADUCT_ELEMENTEN,
@@ -891,6 +995,9 @@ _ELEMENTEN_PER_TYPE = {
     "boom": _BOOM_ELEMENTEN,
     "speeltoestel": _SPEELTOESTEL_ELEMENTEN,
     "verlichting": _VERLICHTING_ELEMENTEN,
+    "fontein": _FONTEIN_ELEMENTEN,
+    "kunstgrasveld": _KUNSTGRAS_ELEMENTEN,
+    "wegmarkering": _WEGMARKERING_ELEMENTEN,
 }
 
 
@@ -1512,6 +1619,43 @@ VRAGEN_PER_ELEMENT = {
             "norm_ref": "NTS § 3.1",
             "type": "ja_nee",
             "attention_when": True,
+        },
+    ],
+    "MARK.LANGS": [
+        {
+            "code": "MARK.RETROREFLECTIE",
+            "vraag": "Retroreflectie-meting in mcd/m²/lx (droog)",
+            "uitleg": ("Conform CROW 145: nieuwe markering ≥ 150 mcd, "
+                       "vervangen bij < 80 mcd."),
+            "norm_ref": "CROW 145 § 3.2",
+            "type": "meting",
+            "eenheid": "mcd",
+        },
+        {
+            "code": "MARK.NACHT_ZICHTBAAR",
+            "vraag": "Zichtbaarheid bij dimlicht acceptabel?",
+            "uitleg": ("Visuele check 's nachts of bij regen. Bij 'nee': vervangen plannen."),
+            "norm_ref": "CROW 145",
+            "type": "ja_nee",
+            "attention_when": False,
+        },
+    ],
+    "FONT.POMP": [
+        {
+            "code": "FONT.DRUK",
+            "vraag": "Pomp-werkdruk binnen specificatie?",
+            "uitleg": "Vergelijk met fabrikants-spec. Afwijking > 15% = aandacht.",
+            "norm_ref": "NEN 2767-4 + fabrikant",
+            "type": "ja_nee_nvt",
+        },
+    ],
+    "KGRAS.MAT": [
+        {
+            "code": "KGRAS.SPORTKEUR",
+            "vraag": "Voldoet aan NOC*NSF sportveldnorm?",
+            "uitleg": "Voor competitievelden verplicht. Periodieke sportkeuring nodig.",
+            "norm_ref": "NOC*NSF + NEN 2767-4",
+            "type": "ja_nee_nvt",
         },
     ],
     "BOOM.STANDPLAATS": [

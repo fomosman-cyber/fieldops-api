@@ -2273,6 +2273,7 @@
           </select>
           <button class="btn-secondary" onclick="loadAuditLog(true)" style="font-size:12px;padding:6px 12px;" data-i18n="vernieuwen">↻ Vernieuwen</button>
           <button class="btn-secondary" onclick="exportAuditLogCsv()" style="font-size:12px;padding:6px 12px;" data-i18n="export_csv" title="Exporteer audit-log als CSV (Rekenkamer/ISO27001)">📥 Exporteer CSV</button>
+          <button class="btn-secondary" onclick="exportAuditLogPdf()" style="font-size:12px;padding:6px 12px;" data-i18n="export_pdf" title="Exporteer audit-log als PDF (Rekenkamer-ready)">📄 PDF</button>
         </div>
         <div class="card" style="overflow-x:auto;padding:0;">
           <table class="data-table">
@@ -14081,6 +14082,80 @@
         showToast(t('csv_export_done'), 'success');
       }).catch(function(err) {
         showToast(t('csv_export_failed') + ' ' + (err.message || ''), 'error');
+      });
+    }
+
+    function exportAuditLogPdf() {
+      // PDF-export — Rekenkamer/ISO27001-ready. Fetch laatste 1000 logs via /api/audit/logs
+      // en genereer met jsPDF + autoTable. Client-side voor consistency met
+      // bestaande kunstwerk/oplevering PDFs.
+      var act = document.getElementById('auditFilterAction');
+      var qs = ['limit=1000'];
+      if (act && act.value) qs.push('action=' + encodeURIComponent(act.value));
+      api('GET', '/api/audit/logs?' + qs.join('&')).then(function(res){
+        var logs = res.logs || res.items || [];
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+          showToast('PDF-library niet geladen', 'error'); return;
+        }
+        var jsPDF = window.jspdf.jsPDF;
+        var doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+        // Header
+        doc.setFillColor(2, 132, 199);
+        doc.rect(0, 0, 297, 18, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(13);
+        doc.text('FieldOps · Audit-log export', 12, 11);
+        doc.setFontSize(8); doc.setFont('helvetica', 'normal');
+        var now = new Date();
+        doc.text('Gegenereerd: ' + now.toISOString().slice(0,16).replace('T',' '), 220, 11);
+
+        // Sub-header
+        doc.setTextColor(60, 60, 60);
+        doc.setFontSize(8);
+        doc.text('Onveranderlijk logboek conform ISO27001 / NEN-ISO 27002 / Wbp AVG-art. 5. ' +
+                  'Geëxporteerd door admin van organisatie. Geldig als audit-bewijs.',
+                  12, 23);
+
+        // Tabel
+        var rows = logs.map(function(l){
+          return [
+            (l.created_at||'').replace('T',' ').slice(0,19),
+            l.action || '',
+            l.entity_type || '',
+            (l.entity_id||'').slice(0,12),
+            l.user_email || '',
+            l.ip_address || '',
+            (l.request_id||'').slice(0,8),
+          ];
+        });
+
+        if (window.jspdf && doc.autoTable) {
+          doc.autoTable({
+            startY: 28,
+            head: [['Tijd (UTC)','Actie','Entiteit','ID','Gebruiker','IP','Req-ID']],
+            body: rows,
+            styles: { fontSize: 7, cellPadding: 1.5 },
+            headStyles: { fillColor: [241, 245, 249], textColor: [30, 41, 59], fontStyle: 'bold' },
+            alternateRowStyles: { fillColor: [248, 250, 252] },
+            margin: { left: 8, right: 8 },
+          });
+        }
+
+        // Footer
+        var pageCount = doc.internal.getNumberOfPages();
+        for (var i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+          doc.text('FieldOps Audit-log · pagina ' + i + ' / ' + pageCount +
+                   ' · ' + logs.length + ' regels · audit-bound', 12, 205);
+        }
+
+        doc.save('fieldops-auditlog-' + now.toISOString().slice(0,10) + '.pdf');
+        showToast('PDF-export gedownload (' + logs.length + ' regels)', 'success');
+      }).catch(function(err){
+        showToast('PDF-export mislukt: ' + (err.message || 'Onbekend'), 'error');
       });
     }
 
