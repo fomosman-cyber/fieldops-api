@@ -221,6 +221,69 @@ def list_documents(current_user: User = Depends(get_current_user)):
     }
 
 
+@router.get("/iso-readiness")
+def iso_readiness(current_user: User = Depends(get_current_user)):
+    """ISO 27001:2022 readiness self-assessment.
+
+    Geeft maturity per categorie + roadmap naar formele certificering.
+    Voor sales pre-empt op enterprise-aanbestedings-vragen.
+    """
+    return {
+        "iso_27001_status": "Pad B — aligned (self-assessment), not yet certified",
+        "certification_target": "Q3 2027",
+        "overall_maturity_pct": 82,
+        "by_category": [
+            {"category": "A.5 Organizational", "total": 37,
+             "implemented_pct": 70, "formalizing_pct": 27, "planned_pct": 3},
+            {"category": "A.6 People", "total": 8,
+             "implemented_pct": 100, "formalizing_pct": 0, "planned_pct": 0},
+            {"category": "A.7 Physical (via Render+AWS)", "total": 14,
+             "implemented_pct": 100, "formalizing_pct": 0, "planned_pct": 0,
+             "note": "Outsourced to ISO 27001+SOC 2 certified sub-processors"},
+            {"category": "A.8 Technological", "total": 34,
+             "implemented_pct": 82, "formalizing_pct": 15, "planned_pct": 0},
+        ],
+        "totals": {
+            "controls_total": 93,
+            "fully_implemented": 76,
+            "being_formalized": 15,
+            "planned": 1,
+            "not_applicable": 1,
+        },
+        "roadmap": [
+            {"quarter": "Q3 2026", "milestone": "External pentest + bug-bounty launch",
+             "cost_estimate_eur": "10-17k"},
+            {"quarter": "Q4 2026", "milestone": "ISMS-policy full expansion + internal mock audit",
+             "cost_estimate_eur": "0-5k"},
+            {"quarter": "Q1 2027", "milestone": "Stage 1 audit (DEKRA/Lloyd's/Kiwa)",
+             "cost_estimate_eur": "9-18k"},
+            {"quarter": "Q2 2027", "milestone": "Stage 2 audit",
+             "cost_estimate_eur": "6-12k"},
+            {"quarter": "Q3 2027", "milestone": "Certificate issued + marketing-update",
+             "cost_estimate_eur": "0-1k"},
+        ],
+        "total_cost_pad_a_eur": "27-70k one-time + 5-10k/year surveillance",
+        "what_we_can_share_now": [
+            "Risk Assessment 2026",
+            "ISO 27001:2022 Statement of Applicability",
+            "Self-Assessment Report",
+            "10 ISMS Policies (full text)",
+            "DPA template + Sub-processor list",
+            "Incident Response Procedure",
+            "Penetration Test results (when available, Q3 2026)",
+        ],
+        "sectoral_compliance": {
+            "AVG_GDPR": "Conform — DPA + SCC + EU-hosting",
+            "BIO": "Inherent via ISO 27001 alignment",
+            "NEN_7510": "Not applicable (no health data)",
+            "NIS2": "Scope-check Q3 2026 — likely 'important entity' classification",
+            "CSP_NEN": "Optional add-on Q1 2027",
+        },
+        "request_audit_pack_email": "compliance@fieldopsapp.nl",
+        "documentation_repo": "https://github.com/fomosman-cyber/fieldops-api (private, on request)",
+    }
+
+
 @router.get("/security-posture")
 def security_posture(current_user: User = Depends(get_current_user)):
     """Compact security-overzicht voor aanbestedings-bijlage."""
