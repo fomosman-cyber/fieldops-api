@@ -1185,6 +1185,42 @@
         </div>
       </div>
 
+      <!-- COMPLIANCE & INSPECTIE-CYCLUS STRIP — auto-bijgewerkt via NEN/CROW
+           cyclus-regels. Klikbaar voor detail-overzicht. -->
+      <div id="complianceStrip" style="background:linear-gradient(135deg,#fefce8,#fff7ed);border:1px solid #fde68a;border-radius:14px;padding:14px 20px;margin-bottom:24px;display:none;" class="compliance-strip">
+        <div style="display:grid;grid-template-columns:auto 1fr repeat(4,auto);gap:24px;align-items:center;">
+          <!-- Icon + label -->
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#d97706);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;">📅</div>
+            <div>
+              <div style="font-size:11px;color:#92400e;letter-spacing:0.08em;text-transform:uppercase;font-weight:700;" data-i18n="comp_label">Inspectie-cyclus</div>
+              <div style="font-size:13px;color:#78350f;font-weight:600;" data-i18n="comp_subtitle">NEN 2767 · CROW 134 · NEN 3399 · VTA · NEN-EN 1176 · NEN 3140</div>
+            </div>
+          </div>
+          <div></div>
+          <!-- Verlopen tile (rood) -->
+          <a href="#" onclick="event.preventDefault();showCycleList('overdue');" style="text-decoration:none;text-align:center;padding:6px 16px;border-left:1px solid rgba(146,64,14,0.15);min-width:90px;cursor:pointer;display:block;">
+            <div style="font-size:26px;font-weight:800;color:#dc2626;line-height:1;" id="cycOverdueCount">0</div>
+            <div style="font-size:10px;color:#92400e;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;font-weight:700;" data-i18n="comp_overdue">Verlopen</div>
+          </a>
+          <!-- Komende 30 dagen tile (oranje) -->
+          <a href="#" onclick="event.preventDefault();showCycleList('upcoming');" style="text-decoration:none;text-align:center;padding:6px 16px;border-left:1px solid rgba(146,64,14,0.15);min-width:90px;cursor:pointer;display:block;">
+            <div style="font-size:26px;font-weight:800;color:#ea580c;line-height:1;" id="cycSoonCount">0</div>
+            <div style="font-size:10px;color:#92400e;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;font-weight:700;" data-i18n="comp_due_soon">Komende 30 dgn</div>
+          </a>
+          <!-- Compliant tile (groen) -->
+          <div style="text-align:center;padding:6px 16px;border-left:1px solid rgba(146,64,14,0.15);min-width:90px;">
+            <div style="font-size:26px;font-weight:800;color:#16a34a;line-height:1;" id="cycCompliantCount">0</div>
+            <div style="font-size:10px;color:#92400e;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;font-weight:700;" data-i18n="comp_compliant">Compliant</div>
+          </div>
+          <!-- Compliance % + report-link -->
+          <div style="text-align:right;padding-left:16px;border-left:1px solid rgba(146,64,14,0.15);">
+            <div style="font-size:18px;font-weight:800;color:#15803d;" id="cycPct">100%</div>
+            <button onclick="showComplianceReport()" style="background:linear-gradient(135deg,#16a34a,#15803d);border:none;color:#fff;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-top:4px;font-family:inherit;" data-i18n="comp_view_report">📊 Rapport</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Period Selector -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -8001,6 +8037,130 @@
         }
       }).catch(function(err) {
         console.error('Dashboard laden mislukt:', err);
+      });
+
+      // Inspectie-cyclus compliance strip (NEN/CROW)
+      loadComplianceStrip();
+    }
+
+    // ══════════════════════════════════════
+    // ── INSPECTIE-CYCLUS (NEN/CROW compliance) ──
+    // ══════════════════════════════════════
+
+    function loadComplianceStrip() {
+      api('GET', '/api/inspection-cycle/compliance-report').then(function(r){
+        if (!r || !r.summary) return;
+        var s = r.summary;
+        var strip = document.getElementById('complianceStrip');
+        if (!strip) return;
+        // Toon strip alleen als er assets met cyclus bestaan
+        if (s.total_assets > 0 && (s.compliant + s.due_soon + s.overdue) > 0) {
+          strip.style.display = 'block';
+        }
+        document.getElementById('cycOverdueCount').textContent = s.overdue || 0;
+        document.getElementById('cycSoonCount').textContent = s.due_soon || 0;
+        document.getElementById('cycCompliantCount').textContent = s.compliant || 0;
+        document.getElementById('cycPct').textContent = (s.compliance_pct || 0) + '%';
+        // Kleur het % afhankelijk van waarde
+        var pctEl = document.getElementById('cycPct');
+        if (s.compliance_pct >= 90) pctEl.style.color = '#15803d';
+        else if (s.compliance_pct >= 70) pctEl.style.color = '#ca8a04';
+        else pctEl.style.color = '#b91c1c';
+      }).catch(function(){
+        // Endpoint nog niet beschikbaar (oude server) — strip blijft hidden
+      });
+    }
+
+    function showCycleList(kind) {
+      // kind: 'overdue' | 'upcoming'
+      var endpoint = kind === 'overdue'
+        ? '/api/inspection-cycle/overdue'
+        : '/api/inspection-cycle/upcoming?days=30';
+      var title = kind === 'overdue'
+        ? (t('comp_overdue_title') || 'Verlopen inspecties')
+        : (t('comp_upcoming_title') || 'Inspecties komende 30 dagen');
+      api('GET', endpoint).then(function(r){
+        var items = r.items || [];
+        var rows = items.length === 0
+          ? '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-dim);">Geen assets — alle inspecties zijn op tijd.</td></tr>'
+          : items.map(function(a){
+              var days = a.days_until_due;
+              var daysLabel = days < 0
+                ? '<span style="color:#dc2626;font-weight:700;">' + Math.abs(days) + ' dgn verlopen</span>'
+                : '<span style="color:#ea580c;">over ' + days + ' dgn</span>';
+              return '<tr style="border-bottom:1px solid var(--border);">' +
+                '<td style="padding:10px 12px;"><strong>' + (a.asset_code || '—') + '</strong>' +
+                (a.asset_name ? '<br><span style="font-size:11px;color:var(--text-dim);">' + a.asset_name + '</span>' : '') + '</td>' +
+                '<td style="padding:10px 12px;font-size:13px;">' + (a.asset_type || '—') + '</td>' +
+                '<td style="padding:10px 12px;font-size:12px;color:var(--text-muted);">' + (a.norm_reference || '—') + '</td>' +
+                '<td style="padding:10px 12px;font-size:13px;">' + (a.next_inspection_due ? a.next_inspection_due.substring(0,10) : '—') + '</td>' +
+                '<td style="padding:10px 12px;text-align:right;">' + daysLabel + '</td>' +
+                '</tr>';
+            }).join('');
+        var html = '<div style="background:rgba(0,0,0,0.5);position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;" onclick="if(event.target===this)this.remove()">' +
+          '<div style="background:#fff;border-radius:14px;width:100%;max-width:880px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">' +
+          '<h2 style="margin:0;font-size:20px;">' + title + ' (' + items.length + ')</h2>' +
+          '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-muted);">×</button>' +
+          '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead><tr style="background:rgba(0,0,0,0.03);text-align:left;">' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;">Asset</th>' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;">Type</th>' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;">Norm</th>' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;">Volgende</th>' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;text-align:right;">Termijn</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table>' +
+          '</div></div>';
+        document.body.insertAdjacentHTML('beforeend', html);
+      });
+    }
+
+    function showComplianceReport() {
+      api('GET', '/api/inspection-cycle/compliance-report').then(function(r){
+        if (!r || !r.by_type) return;
+        var s = r.summary;
+        var typeRows = r.by_type.map(function(b){
+          var color = b.compliance_pct >= 90 ? '#16a34a'
+                    : b.compliance_pct >= 70 ? '#ca8a04' : '#b91c1c';
+          return '<tr style="border-bottom:1px solid var(--border);">' +
+            '<td style="padding:10px 12px;"><strong>' + b.asset_type + '</strong><br>' +
+            '<span style="font-size:11px;color:var(--text-dim);">' + b.norm_reference + '</span></td>' +
+            '<td style="padding:10px 12px;text-align:center;">' + b.total + '</td>' +
+            '<td style="padding:10px 12px;text-align:center;color:#16a34a;">' + b.compliant + '</td>' +
+            '<td style="padding:10px 12px;text-align:center;color:#ea580c;">' + b.due_soon + '</td>' +
+            '<td style="padding:10px 12px;text-align:center;color:#dc2626;">' + b.overdue + '</td>' +
+            '<td style="padding:10px 12px;text-align:center;color:var(--text-dim);">' + b.unscheduled + '</td>' +
+            '<td style="padding:10px 12px;text-align:right;font-weight:700;color:' + color + ';">' + b.compliance_pct + '%</td>' +
+            '</tr>';
+        }).join('');
+        var html = '<div style="background:rgba(0,0,0,0.5);position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;" onclick="if(event.target===this)this.remove()">' +
+          '<div style="background:#fff;border-radius:14px;width:100%;max-width:920px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">' +
+          '<div><h2 style="margin:0 0 6px;font-size:20px;">📊 Compliance-rapport</h2>' +
+          '<p style="margin:0;font-size:13px;color:var(--text-muted);">Inspectie-cyclus per asset-type, conform NEN/CROW. Gegenereerd ' + (r.generated_at ? r.generated_at.substring(0,10) : '') + '</p></div>' +
+          '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-muted);">×</button>' +
+          '</div>' +
+          '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">' +
+          '<div style="padding:12px;background:rgba(0,0,0,0.03);border-radius:8px;text-align:center;"><div style="font-size:22px;font-weight:800;">' + s.total_assets + '</div><div style="font-size:11px;color:var(--text-muted);">Totaal assets</div></div>' +
+          '<div style="padding:12px;background:rgba(22,163,74,0.06);border-radius:8px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#16a34a;">' + s.compliant + '</div><div style="font-size:11px;color:#15803d;">Compliant</div></div>' +
+          '<div style="padding:12px;background:rgba(234,88,12,0.06);border-radius:8px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#ea580c;">' + s.due_soon + '</div><div style="font-size:11px;color:#9a3412;">Komende 30 dgn</div></div>' +
+          '<div style="padding:12px;background:rgba(220,38,38,0.06);border-radius:8px;text-align:center;"><div style="font-size:22px;font-weight:800;color:#dc2626;">' + s.overdue + '</div><div style="font-size:11px;color:#991b1b;">Verlopen</div></div>' +
+          '<div style="padding:12px;background:rgba(0,0,0,0.03);border-radius:8px;text-align:center;"><div style="font-size:22px;font-weight:800;color:var(--text-dim);">' + s.unscheduled + '</div><div style="font-size:11px;color:var(--text-muted);">Niet gepland</div></div>' +
+          '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead><tr style="background:rgba(0,0,0,0.03);text-align:left;">' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;">Asset-type</th>' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;text-align:center;">Totaal</th>' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:#16a34a;letter-spacing:0.05em;text-align:center;">OK</th>' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:#ea580c;letter-spacing:0.05em;text-align:center;">30 dgn</th>' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:#dc2626;letter-spacing:0.05em;text-align:center;">Verlopen</th>' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;text-align:center;">Geen plan</th>' +
+          '<th style="padding:10px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.05em;text-align:right;">Score</th>' +
+          '</tr></thead><tbody>' + typeRows + '</tbody></table>' +
+          '<p style="font-size:11px;color:var(--text-dim);margin-top:14px;">Cyclus-regels versie: ' + (r.cycle_rules_version || '—') + ' · Bron normen: NEN 2767-2 · CROW 134 · NEN 3399 · NEN-EN 1176 · NEN 3140 · VTA-Mattheck</p>' +
+          '</div></div>';
+        document.body.insertAdjacentHTML('beforeend', html);
       });
     }
 

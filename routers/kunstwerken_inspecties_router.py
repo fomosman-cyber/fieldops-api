@@ -47,6 +47,7 @@ from permissions import can_create_meldingen
 
 import kunstwerken_taxonomy as kt
 import nen2767_scoring as scoring
+import inspection_cycle as cycle
 
 router = APIRouter(prefix="/api/kunstwerken-inspecties", tags=["Kunstwerken-inspecties"])
 
@@ -743,13 +744,59 @@ def sign_inspection(
     insp.status = "signed"
     if payload.volgende_inspectie_op:
         insp.volgende_inspectie_op = payload.volgende_inspectie_op
+
+    # Auto-update asset met volgende-inspectie-cyclus (norm-conform)
+    _update_asset_cycle(db, insp)
+
     db.commit()
     db.refresh(insp)
     log_action(db, request, current_user,
                action=ACTION.INSPECTION_SIGN,
                entity_type="inspection", entity_id=insp.id,
-               extra={"conditiescore_overall": insp.conditiescore_overall})
+               extra={"conditiescore_overall": insp.conditiescore_overall,
+                      "next_inspection_due": (insp.volgende_inspectie_op.isoformat()
+                                              if insp.volgende_inspectie_op else None)})
     return _inspection_dict_with_metrics(db, insp, include_elements=True)
+
+
+def _update_asset_cycle(db: Session, insp: Inspection) -> None:
+    """Update gekoppelde asset met inspectie-cyclus info.
+
+    Bij elke `sign_inspection` wordt:
+      - Asset.last_inspection_at      = nu
+      - Asset.last_inspection_id      = deze inspectie
+      - Asset.condition_score         = berekende eindscore (NEN 2767)
+      - Asset.inspection_cycle_months = cyclus-duur volgens norm
+      - Asset.next_inspection_due     = nu + cycle_months
+      - Inspection.volgende_inspectie_op idem (als niet handmatig gezet)
+
+    Geen DB-commit hier — caller is verantwoordelijk.
+    """
+    if not insp.asset_id:
+        return  # vrijstaande inspectie zonder asset — niets te updaten
+    asset = db.query(Asset).filter(Asset.id == insp.asset_id).first()
+    if not asset:
+        return
+
+    now = datetime.now(timezone.utc)
+    asset.last_inspection_at = now
+    asset.last_inspection_id = insp.id
+    if insp.conditiescore_overall is not None:
+        asset.condition_score = insp.conditiescore_overall
+
+    # Cyclus-maanden bepalen — kunstwerk-type van inspectie heeft voorrang,
+    # anders asset.asset_type
+    type_key = insp.kunstwerk_type or asset.asset_type
+    months = cycle.cycle_months_for(type_key, insp.conditiescore_overall)
+    if months:
+        asset.inspection_cycle_months = months
+        next_due = cycle.next_due_date(now, months)
+        if next_due:
+            asset.next_inspection_due = next_due
+            # Sync ook op de inspection als de gebruiker geen handmatige
+            # datum heeft gezet
+            if not insp.volgende_inspectie_op:
+                insp.volgende_inspectie_op = next_due
 
 
 # ─────────────────────────────────────────────────────────────────────────────

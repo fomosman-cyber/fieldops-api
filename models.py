@@ -144,6 +144,13 @@ class Asset(Base):
     condition_score = Column(Integer, nullable=True)   # 1-5 (NEN 2767-achtig); validatie in schema
     last_inspection_at = Column(DateTime, nullable=True)
 
+    # Inspectie-cyclus (auto-berekend op basis van asset_type + condition_score
+    # bij sign_inspection). Norm-conform NEN 2767-2 / CROW 134 / NEN 3399 /
+    # NEN-EN 1176 / NEN 3140 / VTA. Zie inspection_cycle.py voor de regels.
+    last_inspection_id = Column(String, ForeignKey("inspections.id"), nullable=True)
+    next_inspection_due = Column(DateTime, nullable=True, index=True)  # index voor overdue-queries
+    inspection_cycle_months = Column(Integer, nullable=True)
+
     # Vrije eigenschappen per asset-type (JSON-string)
     properties_json = Column(Text, nullable=True)
 
