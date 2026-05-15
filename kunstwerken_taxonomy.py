@@ -35,6 +35,8 @@ KUNSTWERK_TYPES = {
     "gemaal": "Gemaal",
     "riolering": "Riolering",
     "boom": "Boom (VTA)",
+    "speeltoestel": "Speeltoestel (NEN-EN 1176)",
+    "verlichting": "Openbare verlichting (NEN 3140)",
 }
 
 # Aliassen — input-normalisatie
@@ -58,6 +60,17 @@ _TYPE_ALIASES = {
     "monumentaal": "boom",
     "park-boom": "boom",
     "vta": "boom",
+    "speeltoestellen": "speeltoestel",
+    "speelplek": "speeltoestel",
+    "schommel": "speeltoestel",
+    "glijbaan": "speeltoestel",
+    "klimrek": "speeltoestel",
+    "lantaarn": "verlichting",
+    "lantaarnpaal": "verlichting",
+    "openbare-verlichting": "verlichting",
+    "ov": "verlichting",
+    "armatuur": "verlichting",
+    "nen3140": "verlichting",
 }
 
 
@@ -741,6 +754,130 @@ _BOOM_ELEMENTEN = [
 ]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Speeltoestellen (NEN-EN 1176/1177)
+# Wettelijke routine-inspectie 1× per jaar (Warenwetbesluit attractie- en
+# speeltoestellen). Elke speeltuin doorloopt visueel-functioneel onderzoek
+# per toestel + valdempende ondergrond.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SPEELTOESTEL_ELEMENTEN = [
+    {
+        "code": "SPEEL.CONSTRUCTIE",
+        "naam": "Constructie / dragend frame",
+        "groep": "speel_constructief",
+        "gebreken": [
+            {"code": "rot_hout", "naam": "Hout-rot / aantasting"},
+            {"code": "corrosie", "naam": "Corrosie staal"},
+            {"code": "loszittend_bout", "naam": "Loszittende bouten / klemmen"},
+            {"code": "scheur", "naam": "Scheurvorming in dragend deel"},
+            {"code": "vervorming", "naam": "Vervorming / verbuiging"},
+        ],
+    },
+    {
+        "code": "SPEEL.BEWEGENDE_DELEN",
+        "naam": "Bewegende delen (kettingen, lagers, scharnieren)",
+        "groep": "speel_constructief",
+        "gebreken": [
+            {"code": "ketting_versleten", "naam": "Versleten ketting / kabel"},
+            {"code": "lager_droog", "naam": "Droog/piepend lager"},
+            {"code": "speling", "naam": "Te veel speling"},
+            {"code": "kapot_scharnier", "naam": "Kapot scharnier"},
+        ],
+    },
+    {
+        "code": "SPEEL.KLIMDELEN",
+        "naam": "Klim-/grijpdelen",
+        "groep": "afwerking",
+        "gebreken": [
+            {"code": "splinters", "naam": "Splinters / scherpe randen"},
+            {"code": "ontbreekt", "naam": "Ontbrekend onderdeel"},
+            {"code": "gladheid", "naam": "Gladde / versleten grip"},
+            {"code": "vandalisme", "naam": "Vandalismeschade"},
+        ],
+    },
+    {
+        "code": "SPEEL.VALDEMPING",
+        "naam": "Valdempende ondergrond (NEN-EN 1177)",
+        "groep": "omgeving",
+        "gebreken": [
+            {"code": "ondergrond_te_dun", "naam": "Te dunne laag (< 30cm zand/schors)"},
+            {"code": "verzakking", "naam": "Verzakking / kuilen in ondergrond"},
+            {"code": "verharding", "naam": "Verharding ondergrond"},
+            {"code": "te_klein_oppervlak", "naam": "Valoppervlak te klein voor valhoogte"},
+            {"code": "rubber_versleten", "naam": "Versleten rubbertegels"},
+        ],
+    },
+    {
+        "code": "SPEEL.VEILIGHEID",
+        "naam": "Veiligheidsafstanden + knelpunten",
+        "groep": "speel_veiligheid",
+        "gebreken": [
+            {"code": "knelpunt", "naam": "Knelpunt voor hoofd / vinger"},
+            {"code": "snoer_risico", "naam": "Risico op verstrikking koord"},
+            {"code": "uitsteeksel", "naam": "Scherp uitsteeksel"},
+            {"code": "valhoogte_te_groot", "naam": "Valhoogte > toegestaan voor leeftijdsgroep"},
+        ],
+    },
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Openbare verlichting (NEN 3140 + NEN 1010)
+# 5-jaarlijkse elektrische keuring + visueel onderhoud
+# ─────────────────────────────────────────────────────────────────────────────
+
+_VERLICHTING_ELEMENTEN = [
+    {
+        "code": "OV.MAST",
+        "naam": "Lichtmast",
+        "groep": "constructief",
+        "gebreken": [
+            {"code": "corrosie_voet", "naam": "Corrosie aan mastvoet (waterlijn)"},
+            {"code": "aanrijdschade", "naam": "Aanrijdschade"},
+            {"code": "scheef", "naam": "Scheefstand mast"},
+            {"code": "fundering_los", "naam": "Loszittende fundering / verzakking"},
+            {"code": "verfschade", "naam": "Verfschade / bescherming weg"},
+        ],
+    },
+    {
+        "code": "OV.ARMATUUR",
+        "naam": "Armatuur",
+        "groep": "ov_elektrisch",
+        "gebreken": [
+            {"code": "led_kapot", "naam": "Kapotte LED / lamp"},
+            {"code": "dichting_lek", "naam": "Lekkende dichting (water in armatuur)"},
+            {"code": "kapje_kapot", "naam": "Kapot of vermist polycarbonaat-kapje"},
+            {"code": "armatuur_los", "naam": "Loszittende armatuur"},
+            {"code": "verkeer_verlichting", "naam": "Onjuiste lichtuitstoot / lichthinder"},
+        ],
+    },
+    {
+        "code": "OV.AANSLUITKAST",
+        "naam": "Aansluitkast / zekering",
+        "groep": "ov_elektrisch",
+        "gebreken": [
+            {"code": "kast_open", "naam": "Aansluitkast niet afgesloten"},
+            {"code": "water_in_kast", "naam": "Water/vocht in aansluitkast"},
+            {"code": "zekering_doorgebrand", "naam": "Doorgebrande zekering"},
+            {"code": "kabel_los", "naam": "Loszittende kabel / klem"},
+            {"code": "isolatie", "naam": "Verslechterde isolatie"},
+        ],
+    },
+    {
+        "code": "OV.AARDING",
+        "naam": "Aarding / aardlek (NEN 3140)",
+        "groep": "ov_elektrisch",
+        "gebreken": [
+            {"code": "aarding_los", "naam": "Loszittende aardingsdraad"},
+            {"code": "aarding_corrosie", "naam": "Corrosie aardingspunt"},
+            {"code": "aarding_te_hoog", "naam": "Te hoge aardingsweerstand"},
+            {"code": "aardlek_defect", "naam": "Defecte aardlekschakelaar"},
+        ],
+    },
+]
+
+
 _ELEMENTEN_PER_TYPE = {
     "brug": _BRUG_ELEMENTEN,
     "viaduct": _VIADUCT_ELEMENTEN,
@@ -752,6 +889,8 @@ _ELEMENTEN_PER_TYPE = {
     "gemaal": _GEMAAL_ELEMENTEN,
     "riolering": _RIOLERING_ELEMENTEN,
     "boom": _BOOM_ELEMENTEN,
+    "speeltoestel": _SPEELTOESTEL_ELEMENTEN,
+    "verlichting": _VERLICHTING_ELEMENTEN,
 }
 
 
@@ -950,6 +1089,78 @@ VRAGEN_PER_GROEP = {
                        "(Japanse duizendknoop, reuzenberenklauw)."),
             "norm_ref": "CROW 134 § 4.7",
             "type": "ja_nee",
+        },
+    ],
+    "speel_constructief": [
+        # Voor speeltoestellen — focus op draagkracht + bewegende delen
+        {
+            "code": "SPEEL.STABIEL",
+            "vraag": "Toestel mechanisch stabiel onder belasting?",
+            "uitleg": ("Test door duwen/schudden: geen onverwachte beweging, "
+                       "geen kraakgeluiden bij belasting. Volgens NEN-EN 1176 § 7."),
+            "norm_ref": "NEN-EN 1176-1 § 7",
+            "type": "ja_nee",
+            "attention_when": False,  # 'nee' = aandacht
+        },
+        {
+            "code": "SPEEL.BOUTAANTREKKEN",
+            "vraag": "Alle zichtbare bouten/klemmen vast aangedraaid?",
+            "uitleg": ("Test met sleutel: geen losse bouten of klemmen. "
+                       "Vaste verbindingen zijn cruciaal voor structurele integriteit."),
+            "norm_ref": "NEN-EN 1176-7",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+    ],
+    "speel_veiligheid": [
+        # Specifiek voor knelpunten + valhoogte
+        {
+            "code": "SPEEL.KNELPUNT_GETEST",
+            "vraag": "Knelpunt-test (hoofd Ø 8.6cm, vinger Ø 8mm) uitgevoerd?",
+            "uitleg": ("NEN-EN 1176 vereist test met meetringen: hoofd-knelpunten "
+                       "8.6 cm, vinger-/teen-knelpunten 8 mm. Bij doorlopen = aandacht."),
+            "norm_ref": "NEN-EN 1176-1 § 4.2.7",
+            "type": "ja_nee",
+            "attention_when": False,
+        },
+        {
+            "code": "SPEEL.VALHOOGTE",
+            "vraag": "Vrije valhoogte (m)",
+            "uitleg": ("Vrije valhoogte van hoogste klimpositie tot ondergrond. "
+                       "Volgens NEN-EN 1177 bepaalt dit minimaal ondergrondstype + dikte."),
+            "norm_ref": "NEN-EN 1177",
+            "type": "meting",
+            "eenheid": "m",
+        },
+    ],
+    "ov_elektrisch": [
+        # Voor openbare verlichting — NEN 3140 + NEN 1010
+        {
+            "code": "OV.AARDING_OK",
+            "vraag": "Aardingsweerstand binnen norm (< 100Ω)?",
+            "uitleg": ("Gemeten aardingsweerstand moet onder 100 Ω blijven volgens "
+                       "NEN 1010. Boven 100Ω = veiligheidsrisico bij kortsluiting."),
+            "norm_ref": "NEN 1010 + NEN 3140",
+            "type": "ja_nee",
+            "attention_when": False,  # 'nee' = aandacht
+        },
+        {
+            "code": "OV.ISOLATIE_OK",
+            "vraag": "Isolatie-weerstand boven 0.5 MΩ?",
+            "uitleg": ("Isolatiemeting met 500V tester. Onder 0.5 MΩ = vochtindringing "
+                       "of beschadiging — risico kortsluiting en doorslag."),
+            "norm_ref": "NEN 3140 § 6.4",
+            "type": "ja_nee",
+            "attention_when": False,
+        },
+        {
+            "code": "OV.AARDLEK_TEST",
+            "vraag": "Aardlek-schakelaar werkt (test-knop)?",
+            "uitleg": ("Functietest aardlek: drukken op test-knop moet circuit "
+                       "binnen 30ms uitschakelen. Werkt niet = direct vervangen."),
+            "norm_ref": "NEN 3140",
+            "type": "ja_nee",
+            "attention_when": False,
         },
     ],
     "vegetatief": [

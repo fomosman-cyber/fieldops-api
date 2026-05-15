@@ -1213,10 +1213,13 @@
             <div style="font-size:26px;font-weight:800;color:#16a34a;line-height:1;" id="cycCompliantCount">0</div>
             <div style="font-size:10px;color:#92400e;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;font-weight:700;" data-i18n="comp_compliant">Compliant</div>
           </div>
-          <!-- Compliance % + report-link -->
+          <!-- Compliance % + report-link + MJOP-export -->
           <div style="text-align:right;padding-left:16px;border-left:1px solid rgba(146,64,14,0.15);">
             <div style="font-size:18px;font-weight:800;color:#15803d;" id="cycPct">100%</div>
-            <button onclick="showComplianceReport()" style="background:linear-gradient(135deg,#16a34a,#15803d);border:none;color:#fff;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;margin-top:4px;font-family:inherit;" data-i18n="comp_view_report">📊 Rapport</button>
+            <div style="display:flex;gap:5px;margin-top:4px;justify-content:flex-end;">
+              <button onclick="showComplianceReport()" style="background:linear-gradient(135deg,#16a34a,#15803d);border:none;color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;" data-i18n="comp_view_report" title="Compliance-rapport (Rekenkamer)">📊 Rapport</button>
+              <button onclick="showMjopModal()" style="background:linear-gradient(135deg,#0284c7,#0369a1);border:none;color:#fff;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;" data-i18n="comp_view_mjop" title="Meerjaren Onderhoudsplan (directie)">💰 MJOP</button>
+            </div>
           </div>
         </div>
       </div>
@@ -8113,6 +8116,79 @@
           '</tr></thead><tbody>' + rows + '</tbody></table>' +
           '</div></div>';
         document.body.insertAdjacentHTML('beforeend', html);
+      });
+    }
+
+    function showMjopModal() {
+      // MJOP-modal — Meerjaren Onderhoudsplan op basis van conditie-scores
+      // + cyclus + kosten-katalogus (CROW 145 / GWW-kostengids 2024)
+      var defaultYears = 10;
+      api('GET', '/api/mjop/summary?years=' + defaultYears).then(function(r){
+        var s = r;
+        // Bouw "per jaar"-rijen
+        var yearRows = (s.by_year || []).map(function(y){
+          return '<tr style="border-bottom:1px solid var(--border);">' +
+            '<td style="padding:10px 12px;font-weight:700;">' + y.year + '</td>' +
+            '<td style="padding:10px 12px;text-align:center;">' + y.count + '</td>' +
+            '<td style="padding:10px 12px;text-align:right;color:#16a34a;">€ ' + (y.min_total || 0).toLocaleString('nl-NL') + '</td>' +
+            '<td style="padding:10px 12px;text-align:right;color:#b91c1c;">€ ' + (y.max_total || 0).toLocaleString('nl-NL') + '</td>' +
+            '</tr>';
+        }).join('');
+        // Bouw "per asset-type"-rijen
+        var typeRows = (s.by_type || []).map(function(b){
+          return '<tr style="border-bottom:1px solid var(--border);">' +
+            '<td style="padding:10px 12px;"><strong>' + b.asset_type + '</strong><br>' +
+            '<span style="font-size:11px;color:var(--text-dim);">' + (b.norm_reference||'—') + '</span></td>' +
+            '<td style="padding:10px 12px;text-align:center;">' + b.count + '</td>' +
+            '<td style="padding:10px 12px;text-align:right;color:#16a34a;">€ ' + (b.min_total || 0).toLocaleString('nl-NL') + '</td>' +
+            '<td style="padding:10px 12px;text-align:right;color:#b91c1c;">€ ' + (b.max_total || 0).toLocaleString('nl-NL') + '</td>' +
+            '</tr>';
+        }).join('');
+        var totMin = (s.grand_total && s.grand_total.min) || 0;
+        var totMax = (s.grand_total && s.grand_total.max) || 0;
+        var html = '<div style="background:rgba(0,0,0,0.5);position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;" onclick="if(event.target===this)this.remove()">' +
+          '<div style="background:#fff;border-radius:14px;width:100%;max-width:960px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">' +
+          '<div><h2 style="margin:0 0 6px;font-size:20px;">💰 Meerjaren Onderhoudsplan (MJOP)</h2>' +
+          '<p style="margin:0;font-size:13px;color:var(--text-muted);">Horizon: 10 jaar · Conform NEN 2767-2 + CROW 145 + GWW-kostengids 2024 · ' + s.total_assets + ' assets meegenomen</p></div>' +
+          '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-muted);">×</button>' +
+          '</div>' +
+          // Grand total
+          '<div style="background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;border-radius:12px;padding:16px 22px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;">' +
+          '<div><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.85;">Totale begroting 10 jaar</div>' +
+          '<div style="font-size:28px;font-weight:800;line-height:1.2;">€ ' + totMin.toLocaleString('nl-NL') + ' — € ' + totMax.toLocaleString('nl-NL') + '</div></div>' +
+          '<a href="/api/mjop/export.csv?years=10" style="background:#fff;color:#0369a1;padding:10px 18px;border-radius:8px;font-weight:700;text-decoration:none;font-size:13px;">📥 Download CSV</a>' +
+          '</div>' +
+          // 2 kolommen: jaren + types
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">' +
+          '<div>' +
+          '<h3 style="margin:0 0 10px;font-size:14px;">Per jaar</h3>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead><tr style="background:rgba(0,0,0,0.03);text-align:left;">' +
+          '<th style="padding:8px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);">Jaar</th>' +
+          '<th style="padding:8px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);text-align:center;">Acties</th>' +
+          '<th style="padding:8px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);text-align:right;">Min €</th>' +
+          '<th style="padding:8px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);text-align:right;">Max €</th>' +
+          '</tr></thead><tbody>' + (yearRows || '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text-dim);">Geen MJOP-data.</td></tr>') + '</tbody></table>' +
+          '</div>' +
+          '<div>' +
+          '<h3 style="margin:0 0 10px;font-size:14px;">Per asset-type</h3>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+          '<thead><tr style="background:rgba(0,0,0,0.03);text-align:left;">' +
+          '<th style="padding:8px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);">Type</th>' +
+          '<th style="padding:8px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);text-align:center;"># </th>' +
+          '<th style="padding:8px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);text-align:right;">Min €</th>' +
+          '<th style="padding:8px 12px;font-size:11px;text-transform:uppercase;color:var(--text-muted);text-align:right;">Max €</th>' +
+          '</tr></thead><tbody>' + (typeRows || '<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text-dim);">—</td></tr>') + '</tbody></table>' +
+          '</div></div>' +
+          '<p style="font-size:11px;color:var(--text-dim);margin-top:18px;line-height:1.5;">' +
+          'Kosten-katalogus versie: ' + (s.kosten_version || '—') + ' · Bronnen: NEN 2767-2 + CROW 134 + CROW 145 + GWW-kostengids 2024.<br>' +
+          '<strong>Let op:</strong> indicatieve kostenranges per maatregel-categorie. Voor exacte ramingen heb je RAW-bestek per project nodig. ' +
+          'Het MJOP is een meerjaren-overzicht voor begrotings-onderbouwing.</p>' +
+          '</div></div>';
+        document.body.insertAdjacentHTML('beforeend', html);
+      }).catch(function(err){
+        showToast('MJOP-data niet beschikbaar: ' + (err.message || 'Onbekend'), 'error');
       });
     }
 

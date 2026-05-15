@@ -184,11 +184,11 @@ def test_create_inspection_zonder_asset_404(client, admin_user):
 
 
 def test_create_inspection_unknown_kunstwerk_type_400(client, admin_user):
-    """Asset met asset_type='lantaarnpaal' is geen kunstwerk."""
+    """Asset met onbekend asset_type krijgt 400 (geen taxonomy-match)."""
     db = SessionLocal()
     try:
         a_id = _make_asset(db, user=admin_user,
-                        code="LP-001", asset_type="lantaarnpaal").id
+                        code="VR-001", asset_type="vuilcontainer").id
     finally:
         db.close()
     r = client.post("/api/kunstwerken-inspecties/", json={

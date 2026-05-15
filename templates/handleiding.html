@@ -413,8 +413,76 @@
         <div class="tip">Plan de TV-inspectie altijd na een droge periode — een rioolstreng vol regenwater verstoort schade-detectie. Bewaar camera-data met dezelfde naamgeving als het rapport voor latere her-inspectie.</div>
       </section>
 
+      <section id="bomen-vta">
+        <h2>10. Bomen (VTA) <span class="badge">VTA · NTS · CROW 200</span></h2>
+        <p>Bomeninspectie volgens <strong>Visual Tree Assessment (VTA)</strong> — de Mattheck-methodiek, NTS (Nederlandse Taxateurs Standaard) en CROW publicatie 200. Voor gemeentes met &gt;5.000 bomen is dit een wettelijke zorgplicht (artikel 6:174 BW): bij omvallende boom met schade ben je aansprakelijk als er geen recent inspectierapport is.</p>
+
+        <div class="norm">
+          <strong>Wat krijg je?</strong> Per boom een conform inspectie-record met 5 VTA-zones, risicoklasse (1-5), berekende eindscore en automatische volgende-inspectie-datum (1-3 jaar afhankelijk van risico).
+        </div>
+
+        <h3>De 5 VTA-zones</h3>
+        <p>Iedere inspectie doorloopt deze 5 elementen, automatisch aangemaakt zodra je een nieuwe boom-inspectie start:</p>
+        <ul>
+          <li><strong>Stam</strong> — scheurvorming, holtes, zwam, kanker, bastbeschadiging, bliksemschade</li>
+          <li><strong>Wortelaanloop</strong> — wortelopdruk, verstikking, uitholling, scheve aanloop, rotting</li>
+          <li><strong>Hoofdtakken / gesteltakken</strong> — plakoksel, dode takken, scheurvorming, hangende takken</li>
+          <li><strong>Kroon</strong> — dood hout, vitaliteitsverlies, top-uitval, plaagdruk, snoeischade</li>
+          <li><strong>Standplaats</strong> — bodemverdichting, droogtestress, zoutschade, aanrijdschade</li>
+        </ul>
+
+        <h3>VTA-specifieke vragen</h3>
+        <p>Anders dan kunstwerken zie je bij bomen geen "wapeningscorrosie" — wel:</p>
+        <ul>
+          <li><code>VTA.STAM_HOLTE_PCT</code> — % holte in stamdoorsnede (&gt;70% = Mattheck t/r-criterium)</li>
+          <li><code>VTA.STAM_ZWAM</code> — houtaantastende zwam (honingzwam, reuzenzwam, tonderzwam)</li>
+          <li><code>VTA.PLAKOKSEL</code> — ingegroeide bast in tak-oksel (verzwakt aanhechtingspunt)</li>
+          <li><code>VTA.DODE_TAK_BOVEN_DOEL</code> — dode tak &gt; 50 mm boven verkeer / wandelroute → directe veiligheid</li>
+          <li><code>VTA.VITALITEIT</code> — NTS-klasse A/B/C/D (vitaliteit kroon)</li>
+          <li><code>VTA.STANDPLAATS_TYPE</code> — doel-risico (verkeer / fietspad / park / wei)</li>
+          <li><code>VTA.DBH</code> — stamdiameter op borsthoogte (cm)</li>
+        </ul>
+
+        <h3>Risicoklasse 1-5</h3>
+        <table class="score-table">
+          <thead><tr><th>Klasse</th><th>Toestand</th><th>Termijnadvies</th></tr></thead>
+          <tbody>
+            <tr><td><span class="pill pill-1">1</span></td><td>Veilig</td><td>Volgende VTA over 3 jaar</td></tr>
+            <tr><td><span class="pill pill-2">2</span></td><td>Veilig, opvolgen</td><td>Volgende VTA over 2 jaar</td></tr>
+            <tr><td><span class="pill pill-3">3</span></td><td>Aandacht, maatregel binnen 1 jaar</td><td>Volgende VTA over 12 maanden</td></tr>
+            <tr><td><span class="pill pill-5">4</span></td><td>Risico, maatregel binnen 3 mnd</td><td>Volgende VTA over 3 maanden</td></tr>
+            <tr><td><span class="pill pill-6">5</span></td><td>Direct risico, snoeien/kappen acuut</td><td>Direct ingrijpen + her-inspectie 1 maand</td></tr>
+          </tbody>
+        </table>
+
+        <div class="warn"><strong>Let op:</strong> VTA-degradatie is niet-lineair. Tussen klasse 3 (aandacht) en klasse 4 (risico) zit weinig tijd — een hangende tak of zichtbare zwam kan binnen weken kritiek worden. Plan her-inspectie strikt volgens advies.</div>
+
+        <h3>Nieuwe boom-inspectie starten</h3>
+        <div class="step-grid">
+          <div class="step"><span class="num">1</span>Sidebar → <strong>Kunstwerken</strong> → <strong>+ Nieuwe inspectie</strong></div>
+          <div class="step"><span class="num">2</span>Kies <em>kunstwerk-type</em> = <strong>Boom (VTA)</strong></div>
+          <div class="step"><span class="num">3</span>Koppel asset (boom-code) of vul handmatig met soort + locatie</div>
+          <div class="step"><span class="num">4</span>5 VTA-zones worden automatisch aangemaakt — beantwoord per zone de checklist</div>
+        </div>
+
+        <h3>Workflow in het veld</h3>
+        <ol>
+          <li>Loop systematisch rondom de boom — gebruik tablet offline</li>
+          <li>Per zone: <strong>Stam → Wortel → Takken → Kroon → Standplaats</strong></li>
+          <li>Klop met rubber hamer op stam — holle klank = verborgen holte, vink <code>VTA.STAM_KLOPTEST</code></li>
+          <li>Maak foto's met scheurliniaal voor zichtbare scheuren</li>
+          <li>Bij hangende of dode tak boven publiek gebied: <strong>directe afzetting + spoedmaatregel</strong></li>
+          <li>Voltooi inspectie → ondertekenen → PDF-rapport rolt eruit</li>
+        </ol>
+
+        <div class="tip"><strong>Tip:</strong> volgende-inspectie-datum wordt automatisch berekend op basis van de risicoklasse. Klasse 4-5 verschijnt direct op het compliance-dashboard onder "Komende 30 dgn" of "Verlopen".</div>
+
+        <h3>Zorgplicht-onderbouwing</h3>
+        <p>Een volledig VTA-rapport in FieldOps bevat audit-trail (wie/wat/wanneer), GPS-locatie, foto's en conformiteitsverklaring. Dat is precies wat je nodig hebt om in een aansprakelijkheidsprocedure aan te tonen dat je <strong>zorgvuldig hebt geïnspecteerd</strong> volgens VTA-Mattheck. Bewaar rapporten minimaal 5 jaar.</p>
+      </section>
+
       <section id="opleveren">
-        <h2>10. Opleveren</h2>
+        <h2>11. Opleveren</h2>
         <p>Registreer hier <strong>eenmalig werk</strong> en officiële <strong>proces-verbalen</strong>. Per oplevering vul je opdrachtgever, aannemer, locatie, datum, inspectievragen (weer, veiligheid, normen, netheid) en de uitgevoerde restpunten met foto vóór/na.</p>
         <h3>Opleveren is een opleverdocument</h3>
         <p>Elke oplevering kun je downloaden als <strong>PDF-proces-verbaal</strong> via de knop <em>📄 PV (PDF)</em>. Het PDF-document bevat:</p>
@@ -438,12 +506,12 @@
       </section>
 
       <section id="kaart">
-        <h2>11. Kaart</h2>
+        <h2>12. Kaart</h2>
         <p>Geografische weergave van al je assets en meldingen. Wegvakken zijn gekleurd op basis van conditie-score (groen → rood). Klik op een pin voor detail of teken een nieuwe melding direct op de kaart.</p>
       </section>
 
       <section id="gebruikers">
-        <h2>12. Gebruikers</h2>
+        <h2>13. Gebruikers</h2>
         <p>Beheer teamleden binnen je organisatie. Rollen bepalen wat iemand mag:</p>
         <ul>
           <li><strong>Beheerder (admin)</strong> — alles, inclusief gebruikersbeheer</li>
@@ -458,7 +526,7 @@
       </section>
 
       <section id="taal-export">
-        <h2>13. Taal & export</h2>
+        <h2>14. Taal & export</h2>
         <p>FieldOps is volledig meertalig — UI, vragenlijsten, score-labels én PDF-export.</p>
         <h3>Beschikbare talen</h3>
         <ul>
@@ -482,7 +550,7 @@
       </section>
 
       <section id="faq">
-        <h2>14. FAQ</h2>
+        <h2>15. FAQ</h2>
         <h3>Wachtwoord vergeten?</h3>
         <p>Klik op het login-scherm op "Wachtwoord vergeten" — je krijgt een resetlink per mail.</p>
         <h3>Geen GPS-fix?</h3>
