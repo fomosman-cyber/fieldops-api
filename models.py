@@ -672,6 +672,253 @@ class Oplevering(Base):
                           order_by="OpleveringPunt.order_index")
 
 
+# ════════════════════════════════════════════════════════════
+# Kunstwerken-inspecties — NEN 2767-2 + CROW 134 (sinds mei 2026)
+# ════════════════════════════════════════════════════════════
+#
+# Een Inspection is een gestructureerde periodieke beoordeling van één
+# kunstwerk (brug/viaduct/tunnel/sluis/duiker/kademuur) volgens NEN 2767-2.
+#
+# Hierarchie:
+#   Inspection
+#     ├── InspectionElement[]   (onderbouw, bovenbouw, voegovergangen, ...)
+#     │     └── InspectionDefect[]  (per element 0..n gebreken)
+#     └── Asset (het kunstwerk zelf)
+#
+# Conditiescore-schaal: 1-6 (NEN 2767-1, hergebruikt in NEN 2767-2):
+#   1 = uitstekend, 2 = goed, 3 = redelijk, 4 = matig, 5 = slecht, 6 = zeer slecht.
+# Per gebrek: ernst (1-3) × intensiteit (1-3) × omvangklasse (1-5).
+# Element-conditie = worst-defect-rule (slechtste gebrek = score van element).
+# Kunstwerk-conditie = gewogen agregatie van element-scores (zie nen2767_scoring.py).
+
+
+class Inspection(Base):
+    """Een formele inspectie van één kunstwerk volgens NEN 2767-2 + CROW 134.
+
+    Gekoppeld aan precies één Asset (het kunstwerk). Bevat header-gegevens,
+    een lijst InspectionElement-records met defecten per element, en een
+    berekende eind-conditiescore.
+
+    Status-flow:
+        draft         → veldwerk bezig
+        in_progress   → minimaal één element met defect ingevuld
+        completed     → alle vereiste elementen beoordeeld, conditie berekend
+        signed        → ondertekend door inspecteur (PDF gegenereerd)
+        delivered     → verstuurd naar opdrachtgever
+    """
+    __tablename__ = "inspections"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    # Kunstwerk waarop deze inspectie betrekking heeft
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=False, index=True)
+    kunstwerk_type = Column(String(32), nullable=False, index=True)
+    # bv. "brug", "viaduct", "tunnel", "sluis", "duiker", "kademuur"
+
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+
+    # Header
+    title = Column(String(255), nullable=False)              # "Eerste-graads inspectie A20 Hooge Bergse Brug"
+    inspectie_type = Column(String(32), nullable=False, default="visueel")
+    # visueel / eerste-graads / tweede-graads / detail / oplevering
+    norm_referenties = Column(String(255), nullable=True, default="NEN 2767-2; CROW 134")
+
+    datum_inspectie = Column(DateTime, nullable=True)        # uitvoeringsdatum veldwerk
+    inspecteur_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    inspecteur_naam = Column(String(120), nullable=True)     # gedenormaliseerd voor rapport
+    inspecteur_certificaat = Column(String(120), nullable=True)  # bv. "VCA Inspecteur 2026"
+
+    weersomstandigheden = Column(String(120), nullable=True) # "droog, 12°C, bewolkt"
+    bijzonderheden = Column(Text, nullable=True)             # toegankelijkheid, gebruikte hulpmiddelen, e.d.
+
+    opdrachtgever_naam = Column(String(255), nullable=True)
+    opdrachtgever_email = Column(String(255), nullable=True)
+
+    # Berekend (door nen2767_scoring.recompute)
+    conditiescore_overall = Column(Integer, nullable=True)   # 1-6 (NEN 2767-2)
+    conditiescore_methode = Column(String(40), nullable=True, default="worst-element")
+    samenvatting = Column(Text, nullable=True)               # AI- of inspecteurs-samenvatting
+    aanbevolen_acties = Column(Text, nullable=True)          # maatregelen-advies (vrije tekst)
+
+    status = Column(String(30), nullable=False, default="draft", index=True)
+    # draft | in_progress | completed | signed | delivered
+
+    # Ondertekening
+    signed_at = Column(DateTime, nullable=True)
+    signed_by = Column(String, ForeignKey("users.id"), nullable=True)
+    signature_data_url = Column(Text, nullable=True)         # base64 PNG van handtekening-canvas
+    pdf_generated_at = Column(DateTime, nullable=True)
+
+    # Volgende inspectie
+    volgende_inspectie_op = Column(DateTime, nullable=True)  # geadviseerde her-inspectie-datum
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    organization = relationship("Organization")
+    asset = relationship("Asset", foreign_keys=[asset_id])
+    project = relationship("Project", foreign_keys=[project_id])
+    inspecteur = relationship("User", foreign_keys=[inspecteur_id])
+    signer = relationship("User", foreign_keys=[signed_by])
+    creator = relationship("User", foreign_keys=[created_by])
+    elementen = relationship("InspectionElement", back_populates="inspection",
+                             cascade="all, delete-orphan",
+                             order_by="InspectionElement.order_index")
+
+
+class InspectionElement(Base):
+    """Eén beoordeeld element binnen een Inspection.
+
+    Elementen komen uit de standaard-bibliotheek per kunstwerk-type
+    (zie kunstwerken_taxonomy.py), bv. voor een brug:
+      - onderbouw, bovenbouw, brugdek, voegovergangen, leuningen, opleggingen,
+        bordessen, taluds, oeverbescherming, voorzieningen.
+    """
+    __tablename__ = "inspection_elements"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    inspection_id = Column(String, ForeignKey("inspections.id", ondelete="CASCADE"),
+                           nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    element_code = Column(String(32), nullable=False)        # bv. "BRUG.ONDERBOUW"
+    element_naam = Column(String(120), nullable=False)       # bv. "Onderbouw / landhoofd"
+    element_groep = Column(String(40), nullable=True)        # bv. "constructief", "afwerking"
+
+    # Beoordeling per element
+    beoordeeld = Column(Boolean, nullable=False, default=False)  # heeft inspecteur element gezien?
+    niet_inspecteerbaar_reden = Column(String(255), nullable=True)
+    # bv. "onder water", "geen toegang zonder hijswerk"
+    conditiescore = Column(Integer, nullable=True)           # 1-6 (worst-defect rule)
+    bevindingen = Column(Text, nullable=True)                # vrije bevindingen-tekst
+    aanbevolen_actie = Column(Text, nullable=True)
+
+    order_index = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    inspection = relationship("Inspection", back_populates="elementen")
+    defecten = relationship("InspectionDefect", back_populates="element",
+                            cascade="all, delete-orphan",
+                            order_by="InspectionDefect.created_at")
+    antwoorden = relationship("InspectionAnswer", back_populates="element",
+                              cascade="all, delete-orphan",
+                              order_by="InspectionAnswer.created_at")
+
+
+class InspectionDefect(Base):
+    """Eén geconstateerd gebrek binnen een InspectionElement.
+
+    NEN 2767-2 classificatie:
+      ernst       1 = gering, 2 = serieus, 3 = ernstig
+      intensiteit 1 = beginstadium, 2 = gevorderd, 3 = eindstadium
+      omvang_klasse  1 = <2% , 2 = 2-10%, 3 = 10-30%, 4 = 30-70%, 5 = >70%
+
+    Defect-score wordt berekend via nen2767_scoring.defect_to_score(...) en
+    bepaalt mee de element-conditie (slechtste gebrek wint).
+    """
+    __tablename__ = "inspection_defects"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    element_id = Column(String, ForeignKey("inspection_elements.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    # Gebrek-typering
+    gebrek_code = Column(String(40), nullable=True)          # bv. "betonschade.dekkingstekort"
+    gebrek_naam = Column(String(120), nullable=False)        # bv. "Scheurvorming in voeg"
+    omschrijving = Column(Text, nullable=True)               # vrije observatie
+
+    # NEN 2767-2 classificatie
+    ernst = Column(Integer, nullable=True)                   # 1-3
+    intensiteit = Column(Integer, nullable=True)             # 1-3
+    omvang_klasse = Column(Integer, nullable=True)           # 1-5
+    omvang_percentage = Column(Float, nullable=True)         # optioneel exact percentage
+    defect_score = Column(Integer, nullable=True)            # 1-6 — berekend uit ernst×int×omv
+
+    # Locatie binnen element
+    locatie_beschrijving = Column(String(255), nullable=True)
+    # bv. "Noordzijde, ter hoogte van pijler 2"
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+
+    # Bewijs
+    photo_url = Column(String(500), nullable=True)
+    photo_url_2 = Column(String(500), nullable=True)         # optionele tweede foto
+    ai_analysis_id = Column(String, ForeignKey("ai_analyses.id"), nullable=True, index=True)
+    # ↑ als gebrek via AI-suggestie is geclassificeerd → audit-trail
+
+    # CROW-koppeling (voor verharding-elementen op kunstwerken, bv. brugdek-asfalt)
+    crow_klasse = Column(String(4), nullable=True)           # L1..E3
+    gw_maatregel = Column(String(120), nullable=True)        # advies-maatregel uit GWWkosten
+
+    # Eventueel auto-gegenereerde melding (orchestration-koppeling)
+    melding_id = Column(String, ForeignKey("meldingen.id"), nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    element = relationship("InspectionElement", back_populates="defecten")
+    ai_analysis = relationship("AIAnalysis", foreign_keys=[ai_analysis_id])
+    melding = relationship("Melding", foreign_keys=[melding_id])
+
+
+class InspectionAnswer(Base):
+    """Antwoord op één NEN/CROW-vraag bij één element binnen een inspectie.
+
+    Wordt automatisch aangemaakt (één rij per vraag) zodra een Inspection wordt
+    gestart, zodat de inspecteur door een vaste checklist kan lopen. Een leeg
+    antwoord blijft staan tot het is ingevuld.
+
+    Antwoord-types (matchen kunstwerken_taxonomy.QUESTIONS schema):
+      score_1_6   → answer_score (1-6, NEN conditie)
+      ja_nee      → answer_bool
+      ja_nee_nvt  → answer_value_text in {"ja","nee","nvt"}
+      keuze       → answer_value_text (één van q.opties)
+      meting      → answer_score (numeriek) + answer_value_text (eenheid)
+      tekst       → answer_value_text
+
+    `requires_attention` wordt server-side gezet zodat metrics-queries
+    geïndexeerd kunnen filteren op aandachtspunten (zonder JSON-parsen).
+    """
+    __tablename__ = "inspection_answers"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    element_id = Column(String, ForeignKey("inspection_elements.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    question_code = Column(String(40), nullable=False, index=True)   # bv. "GEN.STAAT"
+    question_version = Column(String(40), nullable=False)            # voor audit
+    question_text_snapshot = Column(String(500), nullable=True)
+    # ↑ snapshot van de vraagtekst zoals getoond aan inspecteur — verplicht
+    # bij audits ("welke vraag is wanneer beantwoord?")
+
+    answer_type = Column(String(20), nullable=False)
+    # score_1_6 | ja_nee | ja_nee_nvt | keuze | meting | tekst
+
+    answer_score = Column(Integer, nullable=True)
+    answer_bool = Column(Boolean, nullable=True)
+    answer_value_text = Column(Text, nullable=True)
+
+    toelichting = Column(Text, nullable=True)
+    photo_url = Column(String(500), nullable=True)
+
+    requires_attention = Column(Boolean, nullable=False, default=False, index=True)
+    answered_at = Column(DateTime, nullable=True)
+    answered_by = Column(String, ForeignKey("users.id"), nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    element = relationship("InspectionElement", back_populates="antwoorden",
+                           foreign_keys=[element_id])
+
+
 class OpleveringPunt(Base):
     """Eén opleverpunt binnen een Oplevering.
 

@@ -11,7 +11,7 @@ import os
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router, kunstwerken_inspecties_router
 from audit import assign_request_id
 
 # Maak alle tabellen aan
@@ -311,6 +311,7 @@ _OPENAPI_TAGS = [
     {"name": "Assets",                 "description": "Asset-register · CSV-import met MOR+ alias-mapping · cascade-orphan delete · NEN 2767 conditie-veld."},
     {"name": "Meldingen",              "description": "Field-events met CROW 146 + NEN 2767 + GWWkosten-koppeling per record. Cluster-koppeling voor orchestration."},
     {"name": "AI-inspecties",          "description": "Audit-Bound AI™ vision-analyses · Claude vision · norm-bound prompts (CROW 146a v1.2) · mens-in-de-loop accept-flow."},
+    {"name": "Kunstwerken-inspecties", "description": "Formele inspectierapportage volgens NEN 2767-2 + CROW 134 voor bruggen, viaducten, tunnels, sluizen, duikers, kademuren, gemalen. Element-decompositie · defect-classificatie (ernst × intensiteit × omvang) · conditiescore 1-6 · ondertekende PDF."},
     {"name": "Predictive Maintenance", "description": "Risk-Based Operations Model (4-factor): leeftijd × CROW-klasse × NEN-conditie × meldingen-historie."},
     {"name": "Job Orchestration",      "description": "Clustering van homogene maatregelen op gw_term + geo-proximity + skill-based assignment + productiviteit-savings dashboard."},
     {"name": "Webhooks",               "description": "HMAC-SHA256-signed webhook-out (Slack/Teams/eigen ERPs) + delivery-history + retry-mechanisme."},
@@ -408,6 +409,7 @@ app.include_router(nwb_router.router)
 app.include_router(integrations_router.router)
 app.include_router(seo_router.router)
 app.include_router(opleveringen_router.router)
+app.include_router(kunstwerken_inspecties_router.router)
 
 
 # Request-ID middleware — koppelt elke request aan een correlatie-ID dat

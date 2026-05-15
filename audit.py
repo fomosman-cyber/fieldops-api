@@ -89,6 +89,21 @@ class ACTION:
     AI_ANALYSIS_ACCEPT  = "ai.analysis.accept"
     AI_ANALYSIS_REJECT  = "ai.analysis.reject"
 
+    # Kunstwerken-inspecties (NEN 2767-2 + CROW 134)
+    INSPECTION_CREATE        = "inspection.create"
+    INSPECTION_UPDATE        = "inspection.update"
+    INSPECTION_DELETE        = "inspection.delete"
+    INSPECTION_COMPLETE      = "inspection.complete"
+    INSPECTION_SIGN          = "inspection.sign"
+    INSPECTION_DELIVER       = "inspection.deliver"
+    INSPECTION_PDF_GENERATE  = "inspection.pdf.generate"
+    INSPECTION_ELEMENT_UPDATE = "inspection.element.update"
+    INSPECTION_DEFECT_CREATE  = "inspection.defect.create"
+    INSPECTION_DEFECT_UPDATE  = "inspection.defect.update"
+    INSPECTION_DEFECT_DELETE  = "inspection.defect.delete"
+    INSPECTION_DEFECT_TO_MELDING = "inspection.defect.to_melding"
+    INSPECTION_ANSWER_UPDATE = "inspection.answer.update"
+
     # Compliance / GDPR
     AUDIT_EXPORT        = "audit.export.csv"       # admin downloadt audit-log
     DATA_EXPORT_SELF    = "user.data.export.self"  # GDPR Art.15 — DSAR door betrokkene

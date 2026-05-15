@@ -109,6 +109,52 @@ _ASSET_SPECIFIC = {
 - Wapeningscorrosie zichtbaar?
 - Aansluitingen, leuningen, brugdek
 - Roest, opbol-vorming, afgebroken stukken""",
+    "brug": """Specifiek voor bruggen / viaducten (NEN 2767-2 + CROW 134) — let op:
+- Onderbouw/landhoofd: scheurvorming, wapeningscorrosie, dekkingstekort, vochtdoorslag
+- Pijlers: aanvaringsschade, ontvoeging, afspatting beton
+- Bovenbouw: deformatie/doorbuiging, scheuren, lasbreuken (staal), corrosie
+- Brugdek: asfalt-scheurvorming, rafeling, lekkage bij voegovergangen
+- Voegovergangen: voegprofiel-breuk, loszittende ankers, vuilophoping
+- Opleggingen: scheefstand, scheuren in elastomeer, corrosie staalplaten
+- Leuningen/geleiderail: aanvaringsdeuk, corrosie, ontbrekend segment""",
+    "viaduct": """Specifiek voor viaducten (zonder waterpassage) — zelfde aandachts-
+punten als bruggen, plus:
+- Doorrijhoogte-bordjes, aanvaringssporen
+- Wegaansluiting toerit: verzakking, voeg-lek""",
+    "tunnel": """Specifiek voor tunnels (NEN 2767-2 + CROW 134) — let op:
+- Tunneldak: vochtdoorslag, kalkuitbloei, scheurvorming, afspatting
+- Tunnelwanden: vochtplekken, afgebroken beton, graffiti
+- Rijvloer: scheurvorming, spoorvorming, plasvorming bij slechte afwatering
+- Verlichting: uitval armaturen, verlichtingssterkte
+- Ventilatie: defecte ventilatoren, vuile filters, geluid
+- Brandveiligheid: ontbrekende blussers, klemmende vluchtdeuren, noodverlichting
+- Afwatering: volle pompputten, lekken""",
+    "sluis": """Specifiek voor sluizen / stuwen — let op:
+- Sluiskolk (vloer + wanden): scheurvorming, afspatting, wapeningscorrosie, aanvaringsschade
+- Sluisdeuren: lek tussen deurhelften, corrosie staal, versleten afdichtrubber, deur klemt
+- Bewegingswerk: lekkage hydrauliek, motorgeluid, versleten tandwerk, smering
+- Heftoren / draaipunten: scheurvorming, deformatie, versleten lagers
+- Remming/geleidewerk: aanvaringsdeuken, loszittende fenders
+- Wachtplaats / steiger: houtrot, loszittende planken, bolders los""",
+    "stuw": """Specifiek voor stuwen — zelfde aandachtspunten als sluizen.""",
+    "duiker": """Specifiek voor duikers / kokers — let op:
+- Duiker-lichaam: scheurvorming, vervorming/ovaal worden, corrosie (stalen duiker), open voegen
+- In/uitstroom: verzakking inlooprand, verstopping (slib/takken), erosie achter inlaat
+- Bodem: uitspoeling onder duiker, slibafzetting, obstakels
+- Oever-aansluiting: talud-erosie, doorgroeiende begroeiing, omloop water""",
+    "kademuur": """Specifiek voor kademuren / damwanden — let op:
+- Kademuur/damwand: scheurvorming, wapeningscorrosie, perforatie damwand,
+  deformatie/uitbuiging, scheefstand, loszittend trekanker
+- Kespen/dekbalk: houtrot, betonschade, scheurvorming
+- Bolders/kademeubilair: loszittend, corrosie, aanvaringsschade
+- Oeverbescherming: erosie, ondermijning, wortelgroei
+- Bovenverharding: verzakking, scheurvorming, te grote voegen, ontbrekende stenen""",
+    "gemaal": """Specifiek voor gemalen — let op:
+- Gemaalgebouw: scheurvorming, vochtdoorslag, versleten deuren
+- Pompen: lekkage pomphuis, afwijkende trilling, verminderd rendement
+- Leidingen: lek bij flens, corrosie, afzetting/vernauwing
+- Elektro / besturing: isolatiefout, SCADA-storing, defecte noodstroom
+- Rooster: drijfvuil-verstopping, defecte vuilharkmachine""",
     "watergangen": """Specifiek voor watergangen — let op:
 - Oeverbeschoeiing, beschadigingen
 - Verzakkingen, ondermijning

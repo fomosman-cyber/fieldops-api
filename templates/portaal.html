@@ -305,6 +305,16 @@
       color: var(--accent);
       background: rgba(2,132,199,0.08);
     }
+    .nav-badge-new {
+      background: linear-gradient(135deg,#0284c7,#16a34a);
+      color: #fff;
+      font-size: 9px;
+      padding: 1px 6px;
+      border-radius: 6px;
+      margin-left: 4px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
     .sidebar-nav a .icon {
       width: 22px;
       text-align: center;
@@ -1038,31 +1048,34 @@
       <div class="sidebar-label">Hoofdmenu</div>
       <nav class="sidebar-nav" id="sideNav">
         <a data-page="dashboard" class="active" onclick="navigateTo('dashboard')">
-          <span class="icon">&#9632;</span> Dashboard
+          <span class="icon">&#9632;</span> <span data-i18n="dashboard">Dashboard</span>
         </a>
         <a data-page="projecten" onclick="navigateTo('projecten')">
-          <span class="icon">&#128193;</span> Projecten
+          <span class="icon">&#128193;</span> <span data-i18n="projecten">Projecten</span>
         </a>
         <a data-page="assets" onclick="navigateTo('assets')">
-          <span class="icon">&#128302;</span> Assets
+          <span class="icon">&#128302;</span> <span data-i18n="assets">Assets</span>
         </a>
         <a data-page="meldingen" onclick="navigateTo('meldingen')">
-          <span class="icon">&#128276;</span> Meldingen
+          <span class="icon">&#128276;</span> <span data-i18n="meldingen">Meldingen</span>
         </a>
         <a data-page="mijn-dag" onclick="navigateTo('mijn-dag')" id="sideNavMijnDag">
-          <span class="icon">&#128338;</span> Mijn dag <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:700;letter-spacing:.05em;">NIEUW</span>
+          <span class="icon">&#128338;</span> <span data-i18n="nav_mijn_dag">Mijn dag</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
         </a>
         <a data-page="predictive" onclick="navigateTo('predictive')">
-          <span class="icon">&#128202;</span> Voorspeller
+          <span class="icon">&#128202;</span> <span data-i18n="nav_voorspeller">Voorspeller</span>
         </a>
         <a data-page="clusters" onclick="navigateTo('clusters')">
-          <span class="icon">&#129520;</span> Clusters <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:700;letter-spacing:.05em;">NIEUW</span>
+          <span class="icon">&#129520;</span> <span data-i18n="nav_clusters">Clusters</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
         </a>
         <a data-page="opleveren" onclick="navigateTo('opleveren')">
-          <span class="icon">&#128203;</span> Opleveren <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;margin-left:4px;font-weight:700;letter-spacing:.05em;">NIEUW</span>
+          <span class="icon">&#128203;</span> <span data-i18n="nav_opleveren">Opleveren</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
+        </a>
+        <a data-page="kunstwerken" onclick="navigateTo('kunstwerken')">
+          <span class="icon">&#127753;</span> <span data-i18n="nav_kunstwerken">Kunstwerken</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
         </a>
         <a data-page="kaart" onclick="navigateTo('kaart')">
-          <span class="icon">&#127758;</span> Kaart
+          <span class="icon">&#127758;</span> <span data-i18n="kaart">Kaart</span>
         </a>
       </nav>
     </div>
@@ -1942,6 +1955,59 @@
       </div>
     </div>
 
+    <!-- ═══ KUNSTWERKEN-INSPECTIES (NEN 2767-2 + CROW 134) ═══ -->
+    <div class="page-section" id="page-kunstwerken">
+      <div class="page-header">
+        <div>
+          <h1 data-i18n="ph_kunstwerken">Kunstwerken inspecties</h1>
+          <p data-i18n="ph_kunstwerken_sub">Formele inspectierapportage volgens <strong>NEN 2767-2</strong> en <strong>CROW 134</strong> voor bruggen, viaducten, tunnels, sluizen, duikers, kademuren en gemalen. Per kunstwerk: element-decompositie, gebrek-classificatie (ernst × intensiteit × omvang), conditiescore 1-6, ondertekend PDF-rapport.</p>
+        </div>
+        <button class="btn-primary" onclick="openNieuweKunstwerkInspectieModal()">+ <span data-i18n="kw_nieuwe_inspectie">Nieuwe inspectie</span></button>
+      </div>
+
+      <!-- Filter + samenvatting -->
+      <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+        <select id="kwFilterType" class="btn-secondary" style="cursor:pointer;" onchange="loadKunstwerkInspecties()">
+          <option value="" data-i18n="kw_filter_alle">Alle types</option>
+        </select>
+        <select id="kwFilterStatus" class="btn-secondary" style="cursor:pointer;" onchange="loadKunstwerkInspecties()">
+          <option value="" data-i18n="kw_filter_alle_status">Alle statussen</option>
+          <option value="draft" data-i18n="kw_status_draft">Concept</option>
+          <option value="in_progress" data-i18n="kw_status_in_progress">In uitvoering</option>
+          <option value="completed" data-i18n="kw_status_completed">Afgerond</option>
+          <option value="signed" data-i18n="kw_status_signed">Ondertekend</option>
+        </select>
+        <div id="kwSamenvatting" style="margin-left:auto;color:var(--text-muted);font-size:13px;"></div>
+      </div>
+
+      <div id="kunstwerkenEmpty" class="empty-state" style="display:none;">
+        <div class="empty-icon">&#127753;</div>
+        <h3 data-i18n="es_geen_kunstwerken">Nog geen inspecties</h3>
+        <p data-i18n="es_geen_kunstwerken_sub">Start een eerste NEN 2767-2 inspectie voor een brug, tunnel, sluis of duiker.</p>
+        <button class="btn-primary" onclick="openNieuweKunstwerkInspectieModal()">+ <span data-i18n="kw_eerste_inspectie">Eerste inspectie starten</span></button>
+      </div>
+
+      <div id="kunstwerkenList" style="display:none;">
+        <div class="card" style="overflow-x:auto;padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th data-i18n="kw_col_titel">Titel</th>
+                <th data-i18n="kw_col_type">Type</th>
+                <th data-i18n="kw_col_asset">Kunstwerk</th>
+                <th data-i18n="kw_col_inspecteur">Inspecteur</th>
+                <th data-i18n="kw_col_datum">Datum</th>
+                <th style="text-align:center;" data-i18n="kw_col_conditie">Conditie</th>
+                <th data-i18n="kw_col_status">Status</th>
+                <th style="width:120px;text-align:right;"></th>
+              </tr>
+            </thead>
+            <tbody id="kunstwerkenBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══ KAART ═══ -->
     <div class="page-section" id="page-kaart">
       <div class="page-header" style="margin-bottom:16px;">
@@ -2702,6 +2768,157 @@
     </div>
   </div>
 
+  <!-- ═══════ KUNSTWERKEN-INSPECTIE MODALS ═══════ -->
+
+  <!-- Nieuwe inspectie -->
+  <div class="modal-overlay" id="nieuweKunstwerkModal">
+    <div class="modal" style="max-width:560px;">
+      <button class="modal-close" onclick="closeNieuweKunstwerkModal()" aria-label="Sluiten">&times;</button>
+      <h2 data-i18n="kwm_new_title">Nieuwe kunstwerk-inspectie</h2>
+      <p class="subtitle" data-i18n="kwm_new_subtitle">Selecteer het kunstwerk en type. We bouwen automatisch de element-checklist op volgens NEN 2767-2.</p>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_titel">Titel</label>
+          <input id="kwNewTitle" placeholder="bv. Eerste-graads inspectie Brug A20" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_asset">Kunstwerk (asset)</label>
+          <select id="kwNewAsset" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <option value="">— Laden —</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_type">Type (override)</label>
+          <select id="kwNewType" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <option value="">— Auto (uit asset_type) —</option>
+          </select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div>
+            <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_datum">Inspectiedatum</label>
+            <input id="kwNewDatum" type="date" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_weer">Weersomstandigheden</label>
+            <input id="kwNewWeer" placeholder="droog, 12°C, bewolkt" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_inspecteur">Inspecteur-naam (op rapport)</label>
+          <input id="kwNewInspecteurNaam" placeholder="standaard: jouw naam" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_opdrachtgever">Opdrachtgever</label>
+          <input id="kwNewOpdrachtgever" placeholder="bv. Gemeente Westland" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end;">
+        <button class="btn-secondary" onclick="closeNieuweKunstwerkModal()" data-i18n="btn_annuleren">Annuleren</button>
+        <button class="btn-primary" onclick="submitNieuweKunstwerkInspectie()" data-i18n="kwm_btn_start">Start inspectie</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail-modal -->
+  <div class="modal-overlay" id="kunstwerkDetailModal">
+    <div class="modal" style="max-width:920px;max-height:92vh;overflow-y:auto;">
+      <button class="modal-close" onclick="closeKunstwerkDetail()" aria-label="Sluiten">&times;</button>
+      <div id="kwDetailHeader"></div>
+      <div id="kwDetailActions" style="margin:16px 0;"></div>
+      <hr style="border:0;border-top:1px solid var(--border);margin:12px 0 20px;">
+      <div id="kwDetailElements"></div>
+    </div>
+  </div>
+
+  <!-- Defect toevoegen -->
+  <div class="modal-overlay" id="kwDefectModal">
+    <div class="modal" style="max-width:560px;">
+      <button class="modal-close" onclick="closeKwDefectModal()" aria-label="Sluiten">&times;</button>
+      <h2 data-i18n="kwd_title">Defect registreren</h2>
+      <p class="subtitle" data-i18n="kwd_subtitle">Classificatie volgens NEN 2767-2: ernst × intensiteit × omvang → defect-score 1-6.</p>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_suggestie">Suggesties</label>
+          <select id="kwDefectGebrekSuggesties" onchange="kwDefectSuggestieKies()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <option value="">— vrije invoer —</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_naam">Gebrek-naam</label>
+          <input id="kwDefectGebrekNaam" placeholder="bv. Scheurvorming in beton" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+          <div>
+            <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_ernst">Ernst (1-3)</label>
+            <select id="kwDefectErnst" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+              <option value="1">1 — gering</option>
+              <option value="2" selected>2 — serieus</option>
+              <option value="3">3 — ernstig</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_intens">Intensiteit (1-3)</label>
+            <select id="kwDefectIntensiteit" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+              <option value="1">1 — begin</option>
+              <option value="2" selected>2 — gevorderd</option>
+              <option value="3">3 — eindstadium</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_omvang">Omvang-klasse</label>
+            <select id="kwDefectOmvang" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+              <option value="1">1 — &lt;2%</option>
+              <option value="2" selected>2 — 2-10%</option>
+              <option value="3">3 — 10-30%</option>
+              <option value="4">4 — 30-70%</option>
+              <option value="5">5 — &gt;70%</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_locatie">Locatie binnen element</label>
+          <input id="kwDefectLocatie" placeholder="bv. Noordzijde, pijler 2" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_omschr">Aanvullende observatie</label>
+          <textarea id="kwDefectOmschrijving" rows="2" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;"></textarea>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_foto">Foto (optioneel)</label>
+          <input id="kwDefectPhoto" type="file" accept="image/*" capture="environment" onchange="kwDefectPhotoPreview()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+          <div id="kwDefectPhotoPreview"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end;">
+        <button class="btn-secondary" onclick="closeKwDefectModal()" data-i18n="btn_annuleren">Annuleren</button>
+        <button class="btn-primary" onclick="submitKwDefect()" data-i18n="kwd_btn_save">Defect opslaan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ondertekening -->
+  <div class="modal-overlay" id="kwSignModal">
+    <div class="modal" style="max-width:560px;">
+      <button class="modal-close" onclick="closeKwSignModal()" aria-label="Sluiten">&times;</button>
+      <h2 data-i18n="kws_title">Inspectie ondertekenen</h2>
+      <p class="subtitle" data-i18n="kws_subtitle">Plaats hieronder je handtekening. Hierna wordt het rapport bevroren en kan het als PDF worden geëxporteerd.</p>
+      <div style="margin-top:16px;">
+        <canvas id="kwSignCanvas" style="width:100%;height:180px;border:1px solid var(--border);border-radius:8px;background:#fff;touch-action:none;cursor:crosshair;"></canvas>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="kwSignClear()" data-i18n="kws_clear">Wissen</button>
+        </div>
+      </div>
+      <div style="margin-top:12px;">
+        <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kws_label_volgende">Volgende inspectie op (optioneel)</label>
+        <input id="kwSignVolgende" type="date" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end;">
+        <button class="btn-secondary" onclick="closeKwSignModal()" data-i18n="btn_annuleren">Annuleren</button>
+        <button class="btn-primary" onclick="kwSignSubmit()" data-i18n="kws_btn_sign">Ondertekenen &amp; bevriezen</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════ SUPPORT / CONTACT MODAL ═══════ -->
   <div class="modal-overlay" id="supportModal">
     <div class="modal">
@@ -3207,6 +3424,7 @@
   <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
   <!-- ═══════ jsPDF voor rapportage ═══════ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 
   <!-- ═══════ SCRIPTS ═══════ -->
   <script>
@@ -3577,6 +3795,165 @@
         st_concept: 'Concept', st_opgeleverd: 'Opgeleverd',
         st_aanvaard: 'Aanvaard', st_afgewezen: 'Afgewezen',
         st_restpunt: 'Restpunt', st_gereed: 'Gereed', st_afgekeurd: 'Afgekeurd',
+        // Kunstwerken-inspecties (NEN 2767-2 + CROW 134)
+        nav_kunstwerken: 'Kunstwerken',
+        ph_kunstwerken: 'Kunstwerken inspecties',
+        ph_kunstwerken_sub: 'Formele inspectierapportage volgens NEN 2767-2 en CROW 134 voor bruggen, viaducten, tunnels, sluizen, duikers, kademuren en gemalen.',
+        kw_nieuwe_inspectie: 'Nieuwe inspectie',
+        kw_filter_alle: 'Alle types', kw_filter_alle_status: 'Alle statussen',
+        kw_status_draft: 'Concept', kw_status_in_progress: 'In uitvoering',
+        kw_status_completed: 'Afgerond', kw_status_signed: 'Ondertekend',
+        es_geen_kunstwerken: 'Nog geen inspecties',
+        es_geen_kunstwerken_sub: 'Start een eerste NEN 2767-2 inspectie voor een brug, tunnel, sluis of duiker.',
+        kw_eerste_inspectie: 'Eerste inspectie starten',
+        kw_col_titel: 'Titel', kw_col_type: 'Type', kw_col_asset: 'Kunstwerk',
+        kw_col_inspecteur: 'Inspecteur', kw_col_datum: 'Datum',
+        kw_col_conditie: 'Conditie', kw_col_status: 'Status',
+        kwm_new_title: 'Nieuwe kunstwerk-inspectie',
+        kwm_new_subtitle: 'Selecteer het kunstwerk en type. We bouwen automatisch de element-checklist op volgens NEN 2767-2.',
+        kwm_label_titel: 'Titel', kwm_label_asset: 'Kunstwerk (asset)',
+        kwm_label_type: 'Type (override)', kwm_label_datum: 'Inspectiedatum',
+        kwm_label_weer: 'Weersomstandigheden', kwm_label_inspecteur: 'Inspecteur-naam (op rapport)',
+        kwm_label_opdrachtgever: 'Opdrachtgever', kwm_btn_start: 'Start inspectie',
+        kwd_title: 'Defect registreren',
+        kwd_subtitle: 'Classificatie volgens NEN 2767-2: ernst × intensiteit × omvang → defect-score 1-6.',
+        kwd_label_suggestie: 'Suggesties', kwd_label_naam: 'Gebrek-naam',
+        kwd_label_ernst: 'Ernst (1-3)', kwd_label_intens: 'Intensiteit (1-3)',
+        kwd_label_omvang: 'Omvang-klasse', kwd_label_locatie: 'Locatie binnen element',
+        kwd_label_omschr: 'Aanvullende observatie', kwd_label_foto: 'Foto (optioneel)',
+        kwd_btn_save: 'Defect opslaan',
+        kws_title: 'Inspectie ondertekenen',
+        kws_subtitle: 'Plaats hieronder je handtekening. Hierna wordt het rapport bevroren en kan het als PDF worden geëxporteerd.',
+        kws_clear: 'Wissen', kws_label_volgende: 'Volgende inspectie op (optioneel)',
+        kws_btn_sign: 'Ondertekenen & bevriezen',
+        btn_annuleren: 'Annuleren',
+        assets: 'Assets',
+        nav_mijn_dag: 'Mijn dag',
+        nav_voorspeller: 'Voorspeller',
+        nav_clusters: 'Clusters',
+        nav_opleveren: 'Opleveren',
+        badge_nieuw: 'NIEUW',
+        kw_cond_1: 'Uitstekend',
+        kw_cond_2: 'Goed',
+        kw_cond_3: 'Redelijk',
+        kw_cond_4: 'Matig',
+        kw_cond_5: 'Slecht',
+        kw_cond_6: 'Zeer slecht',
+        kw_status_delivered: 'Afgeleverd',
+        kw_kpi_voortgang: 'Voortgang',
+        kw_kpi_vragen: 'Vragen',
+        kw_kpi_aandacht: 'Aandacht',
+        kw_kpi_kritiek: 'Kritiek',
+        kw_elementen: 'elementen',
+        kw_pct_beantwoord: 'beantwoord',
+        kw_punten_risico: 'punten met risico',
+        kw_defecten_kritiek_sub: 'defecten score 5 of hoger',
+        kw_conditie_verdeling: 'Conditie-verdeling',
+        kw_checklist_header: 'NEN/CROW-checklist',
+        kw_ingevuld: 'ingevuld',
+        kw_aandacht_short: 'aandacht',
+        kw_ja: 'Ja',
+        kw_nee: 'Nee',
+        kw_nvt: 'N.v.t.',
+        kw_toelichting_placeholder: 'Toelichting (verplicht bij ja)',
+        kw_maak_keuze: '— maak keuze —',
+        kw_waarde: 'Waarde',
+        kw_antwoord_placeholder: 'Antwoord...',
+        kw_keuze_volledig: 'volledig',
+        kw_keuze_gedeeltelijk: 'gedeeltelijk',
+        kw_keuze_niet: 'niet inspecteerbaar',
+        kw_keuze_geen: 'geen',
+        kw_keuze_regulier: 'regulier',
+        kw_keuze_verkort: 'verkort',
+        kw_keuze_acuut: 'acuut',
+        kw_advies_prefix: 'Advies',
+        kw_termijn_jaar: 'jaar termijn',
+        kw_constructief: 'Constructieve elementen',
+        kw_afwerking: 'Afwerking',
+        kw_installatie: 'Installaties',
+        kw_omgeving: 'Omgeving',
+        kw_overig: 'Overig',
+        kw_btn_afronden: '✓ Afronden',
+        kw_btn_onderteken: 'Onderteken',
+        kw_btn_pdf: 'PDF-rapport',
+        kw_defect_count_1: 'defect',
+        kw_defect_count_n: 'defecten',
+        kw_aandachtspunt_1: 'aandachtspunt',
+        kw_aandachtspunt_n: 'aandachtspunten',
+        kw_geen_bijzonderheden: 'geen bijzonderheden',
+        kw_nog_niet_beoordeeld: 'nog niet beoordeeld',
+        kw_algemene_bevindingen: 'Algemene bevindingen',
+        kw_bevindingen_placeholder: 'Vrije observaties die niet in de checklist passen...',
+        kw_btn_opslaan: 'Opslaan',
+        kw_defecten_header: 'Defecten',
+        kw_btn_add_defect: '+ Defect',
+        kw_chk_beoordeeld_geen_bijzonderheden: 'Element beoordeeld zonder bijzonderheden',
+        kw_norm_referenties_default: 'NEN 2767-2 + CROW 134',
+        kw_geen_elementen: 'Geen elementen — voeg ze handmatig toe.',
+        kw_pdf_intro_score: 'Het element {naam} maakt deel uit van de {groep} en is bij deze inspectie beoordeeld op conditiescore {score} — {label}.',
+        kw_pdf_intro_no_score: 'Het element {naam} maakt deel uit van de {groep} en is bij deze inspectie nog niet volledig beoordeeld.',
+        kw_pdf_intro_checklist: 'De inspecteur heeft {n} van {total} checklist-vragen beantwoord.',
+        kw_pdf_intro_aandacht: 'Op {n} {label} is door de inspecteur expliciet aandacht gevestigd voor opvolging.',
+        kw_pdf_intro_geen_aandacht: 'Bij dit element zijn geen aandachtspunten geconstateerd.',
+        kw_pdf_intro_defect: 'Daarnaast is {n} {label} formeel geregistreerd met volledige NEN 2767-2 classificatie.',
+        kw_pdf_pie_title: 'Conditie-verdeling',
+        kw_pdf_kpi_kritiek_long: 'defecten met score 5 of hoger',
+        kw_pdf_eyebrow: 'INSPECTIERAPPORT KUNSTWERK',
+        kw_pdf_section_samenvatting: 'Samenvatting',
+        kw_pdf_section_basisgegevens: 'Basisgegevens',
+        kw_pdf_section_aanbevolen_acties: 'Aanbevolen acties',
+        kw_pdf_section_kritieke_bevindingen: 'Kritieke bevindingen',
+        kw_pdf_section_detail: 'Detail per element',
+        kw_pdf_section_ondertekening: 'Ondertekening',
+        kw_pdf_section_vervolg: 'Vervolg',
+        kw_pdf_eindconditie: 'EINDCONDITIE NEN 2767-2',
+        kw_pdf_categorie: 'Categorie',
+        kw_pdf_termijn: 'Termijn {n} jaar',
+        kw_pdf_termijn_0: 'Termijn 0 jaar',
+        kw_pdf_maatregel_advies: 'MAATREGEL-ADVIES',
+        kw_pdf_volgende_inspectie: 'VOLGENDE INSPECTIE AANBEVOLEN',
+        kw_pdf_aanbevolen_acties_lbl: 'AANBEVOLEN ACTIES',
+        kw_pdf_inspecteur: 'INSPECTEUR',
+        kw_pdf_opdrachtgever: 'OPDRACHTGEVER',
+        kw_pdf_ondertekend_op: 'Ondertekend op',
+        kw_pdf_voor_akkoord: 'Voor akkoord namens opdrachtgever:',
+        kw_pdf_datum_handtekening: 'datum / handtekening',
+        kw_pdf_nog_niet_ondertekend: '— Nog niet ondertekend —',
+        kw_pdf_tbl_nr: '#',
+        kw_pdf_tbl_element: 'Element',
+        kw_pdf_tbl_gebrek: 'Gebrek',
+        kw_pdf_tbl_locatie: 'Locatie',
+        kw_pdf_tbl_classificatie: 'Classificatie',
+        kw_pdf_tbl_score: 'Score',
+        kw_pdf_tbl_vraag: 'Vraag',
+        kw_pdf_tbl_antwoord: 'Antwoord',
+        kw_pdf_tbl_norm_referentie: 'Norm-referentie',
+        kw_pdf_checklist_label: 'NEN/CROW-CHECKLIST',
+        kw_pdf_gebreken_label: 'GECONSTATEERDE GEBREKEN',
+        kw_pdf_vrije_bevindingen: 'VRIJE BEVINDINGEN',
+        kw_pdf_niet_inspecteerbaar_lbl: 'NIET INSPECTEERBAAR',
+        kw_pdf_lbl_kunstwerktype: 'Kunstwerk-type',
+        kw_pdf_lbl_object: 'Object',
+        kw_pdf_lbl_project: 'Project',
+        kw_pdf_lbl_inspectiedatum: 'Inspectiedatum',
+        kw_pdf_lbl_inspectietype: 'Inspectietype',
+        kw_pdf_lbl_inspecteur: 'Inspecteur',
+        kw_pdf_lbl_certificaat: 'Certificaat',
+        kw_pdf_lbl_weer: 'Weersomstandigheden',
+        kw_pdf_lbl_bijzonderheden: 'Bijzonderheden',
+        kw_pdf_lbl_opdrachtgever: 'Opdrachtgever',
+        kw_pdf_lbl_norm_refs: 'Norm-referenties',
+        kw_pdf_lbl_status: 'Status',
+        kw_pdf_lbl_rapport_gegenereerd: 'Rapport gegenereerd',
+        kw_pdf_lbl_handtekening: 'Handtekening',
+        kw_pdf_conformiteit_footer: 'Dit rapport is opgesteld conform NEN 2767-2 (Conditiemeting infrastructuur) en CROW 134 (Visuele inspectie van vaste en beweegbare bruggen). Conditiescore-schaal: 1 (uitstekend) – 6 (zeer slecht). Aandachtspunten resulteren uit antwoorden die directe aandacht of opvolging vragen. Volledige audit-trail (wie, wat, wanneer) is beschikbaar in het FieldOps-portaal.',
+        kw_pdf_conformiteit_cover_footer: 'Conform NEN 2767-2 (Conditiemeting infrastructuur) en CROW 134 (Inspectie kunstwerken). Audit-trail beschikbaar in het FieldOps-portaal.',
+        kw_pdf_header_band: 'Inspectierapport · NEN 2767-2 + CROW 134',
+        kw_pdf_advies_prefix: 'Advies',
+        kw_inspecties_label: 'inspecties',
+        kw_gem_conditie: 'gemiddelde conditie',
+        kw_btn_open: 'Openen',
+        integraties: 'Integraties',
       },
       en: {
         dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
@@ -3876,6 +4253,165 @@
         st_concept: 'Draft', st_opgeleverd: 'Delivered',
         st_aanvaard: 'Accepted', st_afgewezen: 'Rejected',
         st_restpunt: 'Remaining', st_gereed: 'Done', st_afgekeurd: 'Rejected',
+        // Kunstwerken-inspecties (civil structures — NEN 2767-2 + CROW 134)
+        nav_kunstwerken: 'Structures',
+        ph_kunstwerken: 'Civil structure inspections',
+        ph_kunstwerken_sub: 'Formal inspection reporting per NEN 2767-2 and CROW 134 for bridges, viaducts, tunnels, locks, culverts, quay walls and pumping stations.',
+        kw_nieuwe_inspectie: 'New inspection',
+        kw_filter_alle: 'All types', kw_filter_alle_status: 'All statuses',
+        kw_status_draft: 'Draft', kw_status_in_progress: 'In progress',
+        kw_status_completed: 'Completed', kw_status_signed: 'Signed',
+        es_geen_kunstwerken: 'No inspections yet',
+        es_geen_kunstwerken_sub: 'Start a first NEN 2767-2 inspection for a bridge, tunnel, lock or culvert.',
+        kw_eerste_inspectie: 'Start first inspection',
+        kw_col_titel: 'Title', kw_col_type: 'Type', kw_col_asset: 'Structure',
+        kw_col_inspecteur: 'Inspector', kw_col_datum: 'Date',
+        kw_col_conditie: 'Condition', kw_col_status: 'Status',
+        kwm_new_title: 'New structure inspection',
+        kwm_new_subtitle: 'Select the structure and type. The element checklist is built automatically per NEN 2767-2.',
+        kwm_label_titel: 'Title', kwm_label_asset: 'Structure (asset)',
+        kwm_label_type: 'Type (override)', kwm_label_datum: 'Inspection date',
+        kwm_label_weer: 'Weather conditions', kwm_label_inspecteur: 'Inspector name (on report)',
+        kwm_label_opdrachtgever: 'Client', kwm_btn_start: 'Start inspection',
+        kwd_title: 'Register defect',
+        kwd_subtitle: 'NEN 2767-2 classification: severity × intensity × extent → defect score 1-6.',
+        kwd_label_suggestie: 'Suggestions', kwd_label_naam: 'Defect name',
+        kwd_label_ernst: 'Severity (1-3)', kwd_label_intens: 'Intensity (1-3)',
+        kwd_label_omvang: 'Extent class', kwd_label_locatie: 'Location within element',
+        kwd_label_omschr: 'Additional observation', kwd_label_foto: 'Photo (optional)',
+        kwd_btn_save: 'Save defect',
+        kws_title: 'Sign inspection',
+        kws_subtitle: 'Place your signature below. The report will be frozen and can be exported as PDF.',
+        kws_clear: 'Clear', kws_label_volgende: 'Next inspection on (optional)',
+        kws_btn_sign: 'Sign & freeze',
+        btn_annuleren: 'Cancel',
+        assets: 'Assets',
+        nav_mijn_dag: 'My day',
+        nav_voorspeller: 'Predictive',
+        nav_clusters: 'Clusters',
+        nav_opleveren: 'Handovers',
+        badge_nieuw: 'NEW',
+        kw_cond_1: 'Excellent',
+        kw_cond_2: 'Good',
+        kw_cond_3: 'Fair',
+        kw_cond_4: 'Moderate',
+        kw_cond_5: 'Poor',
+        kw_cond_6: 'Very poor',
+        kw_status_delivered: 'Delivered',
+        kw_kpi_voortgang: 'Progress',
+        kw_kpi_vragen: 'Questions',
+        kw_kpi_aandacht: 'Attention',
+        kw_kpi_kritiek: 'Critical',
+        kw_elementen: 'elements',
+        kw_pct_beantwoord: 'answered',
+        kw_punten_risico: 'risk points',
+        kw_defecten_kritiek_sub: 'defects with score 5 or higher',
+        kw_conditie_verdeling: 'Condition distribution',
+        kw_checklist_header: 'NEN/CROW checklist',
+        kw_ingevuld: 'completed',
+        kw_aandacht_short: 'attention',
+        kw_ja: 'Yes',
+        kw_nee: 'No',
+        kw_nvt: 'N/A',
+        kw_toelichting_placeholder: 'Explanation (required for Yes)',
+        kw_maak_keuze: '— select —',
+        kw_waarde: 'Value',
+        kw_antwoord_placeholder: 'Answer...',
+        kw_keuze_volledig: 'fully',
+        kw_keuze_gedeeltelijk: 'partially',
+        kw_keuze_niet: 'not inspectable',
+        kw_keuze_geen: 'none',
+        kw_keuze_regulier: 'regular',
+        kw_keuze_verkort: 'shortened',
+        kw_keuze_acuut: 'acute',
+        kw_advies_prefix: 'Advice',
+        kw_termijn_jaar: 'years term',
+        kw_constructief: 'Structural elements',
+        kw_afwerking: 'Finishing',
+        kw_installatie: 'Installations',
+        kw_omgeving: 'Environment',
+        kw_overig: 'Other',
+        kw_btn_afronden: '✓ Complete',
+        kw_btn_onderteken: 'Sign',
+        kw_btn_pdf: 'PDF report',
+        kw_defect_count_1: 'defect',
+        kw_defect_count_n: 'defects',
+        kw_aandachtspunt_1: 'attention point',
+        kw_aandachtspunt_n: 'attention points',
+        kw_geen_bijzonderheden: 'no findings',
+        kw_nog_niet_beoordeeld: 'not yet inspected',
+        kw_algemene_bevindingen: 'General findings',
+        kw_bevindingen_placeholder: 'Free-form observations not covered by the checklist...',
+        kw_btn_opslaan: 'Save',
+        kw_defecten_header: 'Defects',
+        kw_btn_add_defect: '+ Defect',
+        kw_chk_beoordeeld_geen_bijzonderheden: 'Element inspected without findings',
+        kw_norm_referenties_default: 'NEN 2767-2 + CROW 134',
+        kw_geen_elementen: 'No elements — add them manually.',
+        kw_pdf_intro_score: 'The element {naam} belongs to {groep} and has been assessed at condition score {score} — {label}.',
+        kw_pdf_intro_no_score: 'The element {naam} belongs to {groep} and has not yet been fully assessed.',
+        kw_pdf_intro_checklist: 'The inspector has answered {n} of {total} checklist questions.',
+        kw_pdf_intro_aandacht: 'The inspector has explicitly flagged {n} {label} for follow-up.',
+        kw_pdf_intro_geen_aandacht: 'No attention points were identified for this element.',
+        kw_pdf_intro_defect: 'In addition, {n} {label} has been formally registered with full NEN 2767-2 classification.',
+        kw_pdf_pie_title: 'Condition distribution',
+        kw_pdf_kpi_kritiek_long: 'defects with score 5 or higher',
+        kw_pdf_eyebrow: 'CIVIL STRUCTURE INSPECTION REPORT',
+        kw_pdf_section_samenvatting: 'Summary',
+        kw_pdf_section_basisgegevens: 'Basic information',
+        kw_pdf_section_aanbevolen_acties: 'Recommended actions',
+        kw_pdf_section_kritieke_bevindingen: 'Critical findings',
+        kw_pdf_section_detail: 'Element details',
+        kw_pdf_section_ondertekening: 'Signature',
+        kw_pdf_section_vervolg: 'Follow-up',
+        kw_pdf_eindconditie: 'OVERALL CONDITION NEN 2767-2',
+        kw_pdf_categorie: 'Category',
+        kw_pdf_termijn: 'Term {n} years',
+        kw_pdf_termijn_0: 'Term 0 years',
+        kw_pdf_maatregel_advies: 'RECOMMENDED MEASURE',
+        kw_pdf_volgende_inspectie: 'NEXT INSPECTION RECOMMENDED',
+        kw_pdf_aanbevolen_acties_lbl: 'RECOMMENDED ACTIONS',
+        kw_pdf_inspecteur: 'INSPECTOR',
+        kw_pdf_opdrachtgever: 'CLIENT',
+        kw_pdf_ondertekend_op: 'Signed on',
+        kw_pdf_voor_akkoord: 'For approval on behalf of the client:',
+        kw_pdf_datum_handtekening: 'date / signature',
+        kw_pdf_nog_niet_ondertekend: '— Not yet signed —',
+        kw_pdf_tbl_nr: '#',
+        kw_pdf_tbl_element: 'Element',
+        kw_pdf_tbl_gebrek: 'Defect',
+        kw_pdf_tbl_locatie: 'Location',
+        kw_pdf_tbl_classificatie: 'Classification',
+        kw_pdf_tbl_score: 'Score',
+        kw_pdf_tbl_vraag: 'Question',
+        kw_pdf_tbl_antwoord: 'Answer',
+        kw_pdf_tbl_norm_referentie: 'Standard reference',
+        kw_pdf_checklist_label: 'NEN/CROW CHECKLIST',
+        kw_pdf_gebreken_label: 'REGISTERED DEFECTS',
+        kw_pdf_vrije_bevindingen: 'GENERAL FINDINGS',
+        kw_pdf_niet_inspecteerbaar_lbl: 'NOT INSPECTABLE',
+        kw_pdf_lbl_kunstwerktype: 'Structure type',
+        kw_pdf_lbl_object: 'Object',
+        kw_pdf_lbl_project: 'Project',
+        kw_pdf_lbl_inspectiedatum: 'Inspection date',
+        kw_pdf_lbl_inspectietype: 'Inspection type',
+        kw_pdf_lbl_inspecteur: 'Inspector',
+        kw_pdf_lbl_certificaat: 'Certificate',
+        kw_pdf_lbl_weer: 'Weather conditions',
+        kw_pdf_lbl_bijzonderheden: 'Notes',
+        kw_pdf_lbl_opdrachtgever: 'Client',
+        kw_pdf_lbl_norm_refs: 'Standard references',
+        kw_pdf_lbl_status: 'Status',
+        kw_pdf_lbl_rapport_gegenereerd: 'Report generated',
+        kw_pdf_lbl_handtekening: 'Signature',
+        kw_pdf_conformiteit_footer: 'This report has been compiled in accordance with NEN 2767-2 (Infrastructure condition measurement) and CROW 134 (Visual inspection of fixed and movable bridges). Condition score scale: 1 (excellent) – 6 (very poor). Attention points result from answers that require immediate attention or follow-up. The complete audit trail (who, what, when) is available in the FieldOps portal.',
+        kw_pdf_conformiteit_cover_footer: 'Compliant with NEN 2767-2 (Infrastructure condition measurement) and CROW 134 (Civil structure inspection). Audit trail available in the FieldOps portal.',
+        kw_pdf_header_band: 'Inspection report · NEN 2767-2 + CROW 134',
+        kw_pdf_advies_prefix: 'Advice',
+        kw_inspecties_label: 'inspections',
+        kw_gem_conditie: 'avg condition',
+        kw_btn_open: 'Open',
+        integraties: 'Integrations',
       },
       de: {
         dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
@@ -4175,6 +4711,165 @@
         st_concept: 'Entwurf', st_opgeleverd: 'Übergeben',
         st_aanvaard: 'Akzeptiert', st_afgewezen: 'Abgelehnt',
         st_restpunt: 'Restpunkt', st_gereed: 'Fertig', st_afgekeurd: 'Abgelehnt',
+        // Kunstbauwerk-Inspektionen (NEN 2767-2 + CROW 134)
+        nav_kunstwerken: 'Kunstbauwerke',
+        ph_kunstwerken: 'Kunstbauwerk-Inspektionen',
+        ph_kunstwerken_sub: 'Formelle Inspektionsberichte nach NEN 2767-2 und CROW 134 für Brücken, Viadukte, Tunnel, Schleusen, Durchlässe, Kaimauern und Pumpwerke.',
+        kw_nieuwe_inspectie: 'Neue Inspektion',
+        kw_filter_alle: 'Alle Typen', kw_filter_alle_status: 'Alle Status',
+        kw_status_draft: 'Entwurf', kw_status_in_progress: 'In Bearbeitung',
+        kw_status_completed: 'Abgeschlossen', kw_status_signed: 'Unterzeichnet',
+        es_geen_kunstwerken: 'Noch keine Inspektionen',
+        es_geen_kunstwerken_sub: 'Starten Sie eine erste NEN 2767-2 Inspektion für eine Brücke, Tunnel, Schleuse oder Durchlass.',
+        kw_eerste_inspectie: 'Erste Inspektion starten',
+        kw_col_titel: 'Titel', kw_col_type: 'Typ', kw_col_asset: 'Bauwerk',
+        kw_col_inspecteur: 'Inspektor', kw_col_datum: 'Datum',
+        kw_col_conditie: 'Zustand', kw_col_status: 'Status',
+        kwm_new_title: 'Neue Kunstbauwerk-Inspektion',
+        kwm_new_subtitle: 'Wählen Sie das Bauwerk und den Typ. Die Element-Checkliste wird automatisch nach NEN 2767-2 erstellt.',
+        kwm_label_titel: 'Titel', kwm_label_asset: 'Bauwerk (Asset)',
+        kwm_label_type: 'Typ (überschreiben)', kwm_label_datum: 'Inspektionsdatum',
+        kwm_label_weer: 'Wetterbedingungen', kwm_label_inspecteur: 'Inspektor-Name (im Bericht)',
+        kwm_label_opdrachtgever: 'Auftraggeber', kwm_btn_start: 'Inspektion starten',
+        kwd_title: 'Mangel erfassen',
+        kwd_subtitle: 'NEN 2767-2 Klassifizierung: Schwere × Intensität × Umfang → Mangel-Score 1-6.',
+        kwd_label_suggestie: 'Vorschläge', kwd_label_naam: 'Mangel-Bezeichnung',
+        kwd_label_ernst: 'Schwere (1-3)', kwd_label_intens: 'Intensität (1-3)',
+        kwd_label_omvang: 'Umfangsklasse', kwd_label_locatie: 'Lage im Element',
+        kwd_label_omschr: 'Zusätzliche Beobachtung', kwd_label_foto: 'Foto (optional)',
+        kwd_btn_save: 'Mangel speichern',
+        kws_title: 'Inspektion unterzeichnen',
+        kws_subtitle: 'Setzen Sie Ihre Unterschrift unten. Der Bericht wird eingefroren und kann als PDF exportiert werden.',
+        kws_clear: 'Löschen', kws_label_volgende: 'Nächste Inspektion am (optional)',
+        kws_btn_sign: 'Unterzeichnen & einfrieren',
+        btn_annuleren: 'Abbrechen',
+        assets: 'Assets',
+        nav_mijn_dag: 'Mein Tag',
+        nav_voorspeller: 'Voraussage',
+        nav_clusters: 'Cluster',
+        nav_opleveren: 'Abnahme',
+        badge_nieuw: 'NEU',
+        kw_cond_1: 'Ausgezeichnet',
+        kw_cond_2: 'Gut',
+        kw_cond_3: 'Maessig',
+        kw_cond_4: 'Befriedigend',
+        kw_cond_5: 'Schlecht',
+        kw_cond_6: 'Sehr schlecht',
+        kw_status_delivered: 'Uebergeben',
+        kw_kpi_voortgang: 'Fortschritt',
+        kw_kpi_vragen: 'Fragen',
+        kw_kpi_aandacht: 'Aufmerksamkeit',
+        kw_kpi_kritiek: 'Kritisch',
+        kw_elementen: 'Elemente',
+        kw_pct_beantwoord: 'beantwortet',
+        kw_punten_risico: 'Risikopunkte',
+        kw_defecten_kritiek_sub: 'Maengel mit Score 5 oder hoeher',
+        kw_conditie_verdeling: 'Zustandsverteilung',
+        kw_checklist_header: 'NEN/CROW-Checkliste',
+        kw_ingevuld: 'ausgefuellt',
+        kw_aandacht_short: 'Aufmerksamkeit',
+        kw_ja: 'Ja',
+        kw_nee: 'Nein',
+        kw_nvt: 'N.z.',
+        kw_toelichting_placeholder: 'Erlaeuterung (bei Ja erforderlich)',
+        kw_maak_keuze: '— Auswahl —',
+        kw_waarde: 'Wert',
+        kw_antwoord_placeholder: 'Antwort...',
+        kw_keuze_volledig: 'vollstaendig',
+        kw_keuze_gedeeltelijk: 'teilweise',
+        kw_keuze_niet: 'nicht inspizierbar',
+        kw_keuze_geen: 'keine',
+        kw_keuze_regulier: 'regulaer',
+        kw_keuze_verkort: 'verkuerzt',
+        kw_keuze_acuut: 'akut',
+        kw_advies_prefix: 'Empfehlung',
+        kw_termijn_jaar: 'Jahre Frist',
+        kw_constructief: 'Konstruktive Elemente',
+        kw_afwerking: 'Ausfuehrung',
+        kw_installatie: 'Installationen',
+        kw_omgeving: 'Umgebung',
+        kw_overig: 'Sonstiges',
+        kw_btn_afronden: '✓ Abschliessen',
+        kw_btn_onderteken: 'Unterzeichnen',
+        kw_btn_pdf: 'PDF-Bericht',
+        kw_defect_count_1: 'Mangel',
+        kw_defect_count_n: 'Maengel',
+        kw_aandachtspunt_1: 'Achtungspunkt',
+        kw_aandachtspunt_n: 'Achtungspunkte',
+        kw_geen_bijzonderheden: 'keine Auffaelligkeiten',
+        kw_nog_niet_beoordeeld: 'noch nicht bewertet',
+        kw_algemene_bevindingen: 'Allgemeine Befunde',
+        kw_bevindingen_placeholder: 'Freie Beobachtungen ausserhalb der Checkliste...',
+        kw_btn_opslaan: 'Speichern',
+        kw_defecten_header: 'Maengel',
+        kw_btn_add_defect: '+ Mangel',
+        kw_chk_beoordeeld_geen_bijzonderheden: 'Element ohne Befunde geprueft',
+        kw_norm_referenties_default: 'NEN 2767-2 + CROW 134',
+        kw_geen_elementen: 'Keine Elemente — bitte manuell hinzufuegen.',
+        kw_pdf_intro_score: 'Das Element {naam} gehoert zur Gruppe {groep} und wurde bei dieser Inspektion mit Zustandsnote {score} — {label} bewertet.',
+        kw_pdf_intro_no_score: 'Das Element {naam} gehoert zur Gruppe {groep} und wurde bei dieser Inspektion noch nicht vollstaendig bewertet.',
+        kw_pdf_intro_checklist: 'Der Inspektor hat {n} von {total} Checklisten-Fragen beantwortet.',
+        kw_pdf_intro_aandacht: 'Bei {n} {label} hat der Inspektor ausdruecklich auf Nachverfolgung hingewiesen.',
+        kw_pdf_intro_geen_aandacht: 'Bei diesem Element wurden keine Achtungspunkte festgestellt.',
+        kw_pdf_intro_defect: 'Darueber hinaus wurde {n} {label} formal mit vollstaendiger NEN 2767-2 Klassifizierung erfasst.',
+        kw_pdf_pie_title: 'Zustandsverteilung',
+        kw_pdf_kpi_kritiek_long: 'Maengel mit Score 5 oder hoeher',
+        kw_pdf_eyebrow: 'INSPEKTIONSBERICHT KUNSTBAUWERK',
+        kw_pdf_section_samenvatting: 'Zusammenfassung',
+        kw_pdf_section_basisgegevens: 'Grunddaten',
+        kw_pdf_section_aanbevolen_acties: 'Empfohlene Massnahmen',
+        kw_pdf_section_kritieke_bevindingen: 'Kritische Befunde',
+        kw_pdf_section_detail: 'Detail pro Element',
+        kw_pdf_section_ondertekening: 'Unterzeichnung',
+        kw_pdf_section_vervolg: 'Folgemassnahmen',
+        kw_pdf_eindconditie: 'GESAMTZUSTAND NEN 2767-2',
+        kw_pdf_categorie: 'Kategorie',
+        kw_pdf_termijn: 'Frist {n} Jahre',
+        kw_pdf_termijn_0: 'Frist 0 Jahre',
+        kw_pdf_maatregel_advies: 'EMPFOHLENE MASSNAHME',
+        kw_pdf_volgende_inspectie: 'NAECHSTE INSPEKTION EMPFOHLEN',
+        kw_pdf_aanbevolen_acties_lbl: 'EMPFOHLENE MASSNAHMEN',
+        kw_pdf_inspecteur: 'INSPEKTOR',
+        kw_pdf_opdrachtgever: 'AUFTRAGGEBER',
+        kw_pdf_ondertekend_op: 'Unterzeichnet am',
+        kw_pdf_voor_akkoord: 'Zur Genehmigung im Namen des Auftraggebers:',
+        kw_pdf_datum_handtekening: 'Datum / Unterschrift',
+        kw_pdf_nog_niet_ondertekend: '— Noch nicht unterzeichnet —',
+        kw_pdf_tbl_nr: '#',
+        kw_pdf_tbl_element: 'Element',
+        kw_pdf_tbl_gebrek: 'Mangel',
+        kw_pdf_tbl_locatie: 'Lage',
+        kw_pdf_tbl_classificatie: 'Klassifizierung',
+        kw_pdf_tbl_score: 'Score',
+        kw_pdf_tbl_vraag: 'Frage',
+        kw_pdf_tbl_antwoord: 'Antwort',
+        kw_pdf_tbl_norm_referentie: 'Normreferenz',
+        kw_pdf_checklist_label: 'NEN/CROW-CHECKLISTE',
+        kw_pdf_gebreken_label: 'ERFASSTE MAENGEL',
+        kw_pdf_vrije_bevindingen: 'ALLGEMEINE BEFUNDE',
+        kw_pdf_niet_inspecteerbaar_lbl: 'NICHT INSPIZIERBAR',
+        kw_pdf_lbl_kunstwerktype: 'Bauwerktyp',
+        kw_pdf_lbl_object: 'Objekt',
+        kw_pdf_lbl_project: 'Projekt',
+        kw_pdf_lbl_inspectiedatum: 'Inspektionsdatum',
+        kw_pdf_lbl_inspectietype: 'Inspektionsart',
+        kw_pdf_lbl_inspecteur: 'Inspektor',
+        kw_pdf_lbl_certificaat: 'Zertifikat',
+        kw_pdf_lbl_weer: 'Wetterbedingungen',
+        kw_pdf_lbl_bijzonderheden: 'Anmerkungen',
+        kw_pdf_lbl_opdrachtgever: 'Auftraggeber',
+        kw_pdf_lbl_norm_refs: 'Normreferenzen',
+        kw_pdf_lbl_status: 'Status',
+        kw_pdf_lbl_rapport_gegenereerd: 'Bericht erstellt',
+        kw_pdf_lbl_handtekening: 'Unterschrift',
+        kw_pdf_conformiteit_footer: 'Dieser Bericht wurde gemaess NEN 2767-2 (Zustandsmessung Infrastruktur) und CROW 134 (Visuelle Inspektion fester und beweglicher Bruecken) erstellt. Zustandsskala: 1 (ausgezeichnet) – 6 (sehr schlecht). Achtungspunkte resultieren aus Antworten, die unmittelbare Aufmerksamkeit oder Nachverfolgung erfordern. Vollstaendige Audit-Trail im FieldOps-Portal verfuegbar.',
+        kw_pdf_conformiteit_cover_footer: 'Konform mit NEN 2767-2 (Zustandsmessung Infrastruktur) und CROW 134 (Kunstbauwerk-Inspektion). Audit-Trail im FieldOps-Portal verfuegbar.',
+        kw_pdf_header_band: 'Inspektionsbericht · NEN 2767-2 + CROW 134',
+        kw_pdf_advies_prefix: 'Empfehlung',
+        kw_inspecties_label: 'Inspektionen',
+        kw_gem_conditie: 'durchschn. Zustand',
+        kw_btn_open: 'Oeffnen',
+        integraties: 'Integrationen',
       },
       fr: {
         dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
@@ -4474,6 +5169,165 @@
         st_concept: 'Brouillon', st_opgeleverd: 'Livré',
         st_aanvaard: 'Accepté', st_afgewezen: 'Rejeté',
         st_restpunt: 'Restant', st_gereed: 'Terminé', st_afgekeurd: 'Rejeté',
+        // Inspections d'ouvrages d'art (NEN 2767-2 + CROW 134)
+        nav_kunstwerken: 'Ouvrages d\'art',
+        ph_kunstwerken: 'Inspections d\'ouvrages d\'art',
+        ph_kunstwerken_sub: 'Rapports d\'inspection formels selon NEN 2767-2 et CROW 134 pour ponts, viaducs, tunnels, écluses, buses, quais et stations de pompage.',
+        kw_nieuwe_inspectie: 'Nouvelle inspection',
+        kw_filter_alle: 'Tous les types', kw_filter_alle_status: 'Tous les statuts',
+        kw_status_draft: 'Brouillon', kw_status_in_progress: 'En cours',
+        kw_status_completed: 'Terminée', kw_status_signed: 'Signée',
+        es_geen_kunstwerken: 'Aucune inspection',
+        es_geen_kunstwerken_sub: 'Démarrez une première inspection NEN 2767-2 pour un pont, tunnel, écluse ou buse.',
+        kw_eerste_inspectie: 'Première inspection',
+        kw_col_titel: 'Titre', kw_col_type: 'Type', kw_col_asset: 'Ouvrage',
+        kw_col_inspecteur: 'Inspecteur', kw_col_datum: 'Date',
+        kw_col_conditie: 'État', kw_col_status: 'Statut',
+        kwm_new_title: 'Nouvelle inspection d\'ouvrage',
+        kwm_new_subtitle: 'Sélectionnez l\'ouvrage et le type. La liste des éléments est construite automatiquement selon NEN 2767-2.',
+        kwm_label_titel: 'Titre', kwm_label_asset: 'Ouvrage (asset)',
+        kwm_label_type: 'Type (forçage)', kwm_label_datum: 'Date d\'inspection',
+        kwm_label_weer: 'Conditions météo', kwm_label_inspecteur: 'Nom de l\'inspecteur (rapport)',
+        kwm_label_opdrachtgever: 'Donneur d\'ordre', kwm_btn_start: 'Démarrer',
+        kwd_title: 'Enregistrer un défaut',
+        kwd_subtitle: 'Classification NEN 2767-2: gravité × intensité × étendue → score 1-6.',
+        kwd_label_suggestie: 'Suggestions', kwd_label_naam: 'Nom du défaut',
+        kwd_label_ernst: 'Gravité (1-3)', kwd_label_intens: 'Intensité (1-3)',
+        kwd_label_omvang: 'Classe d\'étendue', kwd_label_locatie: 'Localisation dans l\'élément',
+        kwd_label_omschr: 'Observation complémentaire', kwd_label_foto: 'Photo (optionnel)',
+        kwd_btn_save: 'Enregistrer',
+        kws_title: 'Signer l\'inspection',
+        kws_subtitle: 'Signez ci-dessous. Le rapport sera figé et exportable en PDF.',
+        kws_clear: 'Effacer', kws_label_volgende: 'Prochaine inspection (optionnel)',
+        kws_btn_sign: 'Signer & figer',
+        btn_annuleren: 'Annuler',
+        assets: 'Actifs',
+        nav_mijn_dag: 'Ma journée',
+        nav_voorspeller: 'Prédictif',
+        nav_clusters: 'Clusters',
+        nav_opleveren: 'Livraisons',
+        badge_nieuw: 'NOUVEAU',
+        kw_cond_1: 'Excellent',
+        kw_cond_2: 'Bon',
+        kw_cond_3: 'Acceptable',
+        kw_cond_4: 'Mediocre',
+        kw_cond_5: 'Mauvais',
+        kw_cond_6: 'Tres mauvais',
+        kw_status_delivered: 'Livree',
+        kw_kpi_voortgang: 'Progression',
+        kw_kpi_vragen: 'Questions',
+        kw_kpi_aandacht: 'Attention',
+        kw_kpi_kritiek: 'Critique',
+        kw_elementen: 'elements',
+        kw_pct_beantwoord: 'repondu',
+        kw_punten_risico: 'points a risque',
+        kw_defecten_kritiek_sub: 'defauts de score 5 ou plus',
+        kw_conditie_verdeling: 'Repartition de l etat',
+        kw_checklist_header: 'Checklist NEN/CROW',
+        kw_ingevuld: 'complete',
+        kw_aandacht_short: 'attention',
+        kw_ja: 'Oui',
+        kw_nee: 'Non',
+        kw_nvt: 'S/O',
+        kw_toelichting_placeholder: 'Explication (obligatoire si oui)',
+        kw_maak_keuze: '— choisir —',
+        kw_waarde: 'Valeur',
+        kw_antwoord_placeholder: 'Reponse...',
+        kw_keuze_volledig: 'complet',
+        kw_keuze_gedeeltelijk: 'partiel',
+        kw_keuze_niet: 'non inspectable',
+        kw_keuze_geen: 'aucun',
+        kw_keuze_regulier: 'regulier',
+        kw_keuze_verkort: 'court terme',
+        kw_keuze_acuut: 'urgent',
+        kw_advies_prefix: 'Conseil',
+        kw_termijn_jaar: 'ans (echeance)',
+        kw_constructief: 'Elements structurels',
+        kw_afwerking: 'Finitions',
+        kw_installatie: 'Installations',
+        kw_omgeving: 'Environnement',
+        kw_overig: 'Autre',
+        kw_btn_afronden: '✓ Terminer',
+        kw_btn_onderteken: 'Signer',
+        kw_btn_pdf: 'Rapport PDF',
+        kw_defect_count_1: 'defaut',
+        kw_defect_count_n: 'defauts',
+        kw_aandachtspunt_1: 'point d attention',
+        kw_aandachtspunt_n: 'points d attention',
+        kw_geen_bijzonderheden: 'aucun fait particulier',
+        kw_nog_niet_beoordeeld: 'pas encore evalue',
+        kw_algemene_bevindingen: 'Observations generales',
+        kw_bevindingen_placeholder: 'Observations libres hors checklist...',
+        kw_btn_opslaan: 'Enregistrer',
+        kw_defecten_header: 'Defauts',
+        kw_btn_add_defect: '+ Defaut',
+        kw_chk_beoordeeld_geen_bijzonderheden: 'Element inspecte sans observation',
+        kw_norm_referenties_default: 'NEN 2767-2 + CROW 134',
+        kw_geen_elementen: 'Aucun element — ajoutez-les manuellement.',
+        kw_pdf_intro_score: 'L\'element {naam} fait partie de {groep} et a ete evalue avec un score de {score} — {label} lors de cette inspection.',
+        kw_pdf_intro_no_score: 'L\'element {naam} fait partie de {groep} et n\'a pas encore ete pleinement evalue.',
+        kw_pdf_intro_checklist: 'L\'inspecteur a repondu a {n} questions sur {total} de la checklist.',
+        kw_pdf_intro_aandacht: 'L\'inspecteur a explicitement signale {n} {label} a suivre.',
+        kw_pdf_intro_geen_aandacht: 'Aucun point d\'attention n\'a ete identifie pour cet element.',
+        kw_pdf_intro_defect: 'De plus, {n} {label} a ete formellement enregistre avec la classification NEN 2767-2 complete.',
+        kw_pdf_pie_title: 'Repartition de l\'etat',
+        kw_pdf_kpi_kritiek_long: 'defauts avec score 5 ou plus',
+        kw_pdf_eyebrow: 'RAPPORT D\'INSPECTION OUVRAGE D\'ART',
+        kw_pdf_section_samenvatting: 'Resume',
+        kw_pdf_section_basisgegevens: 'Donnees de base',
+        kw_pdf_section_aanbevolen_acties: 'Actions recommandees',
+        kw_pdf_section_kritieke_bevindingen: 'Constats critiques',
+        kw_pdf_section_detail: 'Detail par element',
+        kw_pdf_section_ondertekening: 'Signature',
+        kw_pdf_section_vervolg: 'Suite',
+        kw_pdf_eindconditie: 'ETAT GLOBAL NEN 2767-2',
+        kw_pdf_categorie: 'Categorie',
+        kw_pdf_termijn: 'Delai {n} ans',
+        kw_pdf_termijn_0: 'Delai 0 an',
+        kw_pdf_maatregel_advies: 'MESURE RECOMMANDEE',
+        kw_pdf_volgende_inspectie: 'PROCHAINE INSPECTION RECOMMANDEE',
+        kw_pdf_aanbevolen_acties_lbl: 'ACTIONS RECOMMANDEES',
+        kw_pdf_inspecteur: 'INSPECTEUR',
+        kw_pdf_opdrachtgever: 'CLIENT',
+        kw_pdf_ondertekend_op: 'Signe le',
+        kw_pdf_voor_akkoord: 'Pour accord au nom du client :',
+        kw_pdf_datum_handtekening: 'date / signature',
+        kw_pdf_nog_niet_ondertekend: '— Pas encore signe —',
+        kw_pdf_tbl_nr: '#',
+        kw_pdf_tbl_element: 'Element',
+        kw_pdf_tbl_gebrek: 'Defaut',
+        kw_pdf_tbl_locatie: 'Localisation',
+        kw_pdf_tbl_classificatie: 'Classification',
+        kw_pdf_tbl_score: 'Score',
+        kw_pdf_tbl_vraag: 'Question',
+        kw_pdf_tbl_antwoord: 'Reponse',
+        kw_pdf_tbl_norm_referentie: 'Reference de norme',
+        kw_pdf_checklist_label: 'CHECKLIST NEN/CROW',
+        kw_pdf_gebreken_label: 'DEFAUTS ENREGISTRES',
+        kw_pdf_vrije_bevindingen: 'OBSERVATIONS GENERALES',
+        kw_pdf_niet_inspecteerbaar_lbl: 'NON INSPECTABLE',
+        kw_pdf_lbl_kunstwerktype: 'Type d\'ouvrage',
+        kw_pdf_lbl_object: 'Objet',
+        kw_pdf_lbl_project: 'Projet',
+        kw_pdf_lbl_inspectiedatum: 'Date d\'inspection',
+        kw_pdf_lbl_inspectietype: 'Type d\'inspection',
+        kw_pdf_lbl_inspecteur: 'Inspecteur',
+        kw_pdf_lbl_certificaat: 'Certificat',
+        kw_pdf_lbl_weer: 'Conditions meteo',
+        kw_pdf_lbl_bijzonderheden: 'Notes',
+        kw_pdf_lbl_opdrachtgever: 'Client',
+        kw_pdf_lbl_norm_refs: 'References normes',
+        kw_pdf_lbl_status: 'Statut',
+        kw_pdf_lbl_rapport_gegenereerd: 'Rapport genere',
+        kw_pdf_lbl_handtekening: 'Signature',
+        kw_pdf_conformiteit_footer: 'Ce rapport est etabli conformement aux normes NEN 2767-2 (mesure d\'etat d\'infrastructure) et CROW 134 (inspection visuelle des ponts fixes et mobiles). Echelle de score: 1 (excellent) – 6 (tres mauvais). Les points d\'attention resultent de reponses necessitant une attention ou un suivi immediat. La piste d\'audit complete (qui, quoi, quand) est disponible dans le portail FieldOps.',
+        kw_pdf_conformiteit_cover_footer: 'Conforme aux normes NEN 2767-2 (mesure d\'etat d\'infrastructure) et CROW 134 (inspection d\'ouvrages d\'art). Piste d\'audit disponible dans le portail FieldOps.',
+        kw_pdf_header_band: 'Rapport d\'inspection · NEN 2767-2 + CROW 134',
+        kw_pdf_advies_prefix: 'Conseil',
+        kw_inspecties_label: 'inspections',
+        kw_gem_conditie: 'etat moyen',
+        kw_btn_open: 'Ouvrir',
+        integraties: 'Integrations',
       },
       tr: {
         dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
@@ -4773,6 +5627,165 @@
         st_concept: 'Taslak', st_opgeleverd: 'Teslim edildi',
         st_aanvaard: 'Kabul edildi', st_afgewezen: 'Reddedildi',
         st_restpunt: 'Kalan', st_gereed: 'Tamam', st_afgekeurd: 'Reddedildi',
+        // Sanat yapıları muayeneleri (NEN 2767-2 + CROW 134)
+        nav_kunstwerken: 'Sanat Yapıları',
+        ph_kunstwerken: 'Sanat yapıları muayeneleri',
+        ph_kunstwerken_sub: 'Köprüler, viyadükler, tüneller, kilitler, menfezler, rıhtım duvarları ve pompa istasyonları için NEN 2767-2 ve CROW 134\'e göre resmi muayene raporları.',
+        kw_nieuwe_inspectie: 'Yeni muayene',
+        kw_filter_alle: 'Tüm türler', kw_filter_alle_status: 'Tüm durumlar',
+        kw_status_draft: 'Taslak', kw_status_in_progress: 'Devam ediyor',
+        kw_status_completed: 'Tamamlandı', kw_status_signed: 'İmzalandı',
+        es_geen_kunstwerken: 'Henüz muayene yok',
+        es_geen_kunstwerken_sub: 'Bir köprü, tünel, kilit veya menfez için ilk NEN 2767-2 muayenesini başlatın.',
+        kw_eerste_inspectie: 'İlk muayeneyi başlat',
+        kw_col_titel: 'Başlık', kw_col_type: 'Tür', kw_col_asset: 'Yapı',
+        kw_col_inspecteur: 'Müfettiş', kw_col_datum: 'Tarih',
+        kw_col_conditie: 'Durum', kw_col_status: 'Aşama',
+        kwm_new_title: 'Yeni yapı muayenesi',
+        kwm_new_subtitle: 'Yapıyı ve türünü seçin. Element kontrol listesi NEN 2767-2\'ye göre otomatik oluşturulur.',
+        kwm_label_titel: 'Başlık', kwm_label_asset: 'Yapı (varlık)',
+        kwm_label_type: 'Tür (geçersiz kıl)', kwm_label_datum: 'Muayene tarihi',
+        kwm_label_weer: 'Hava koşulları', kwm_label_inspecteur: 'Müfettiş adı (rapor)',
+        kwm_label_opdrachtgever: 'İşveren', kwm_btn_start: 'Muayeneyi başlat',
+        kwd_title: 'Kusur kaydet',
+        kwd_subtitle: 'NEN 2767-2 sınıflandırması: ciddiyet × yoğunluk × kapsam → kusur skoru 1-6.',
+        kwd_label_suggestie: 'Öneriler', kwd_label_naam: 'Kusur adı',
+        kwd_label_ernst: 'Ciddiyet (1-3)', kwd_label_intens: 'Yoğunluk (1-3)',
+        kwd_label_omvang: 'Kapsam sınıfı', kwd_label_locatie: 'Element içindeki konum',
+        kwd_label_omschr: 'Ek gözlem', kwd_label_foto: 'Fotoğraf (opsiyonel)',
+        kwd_btn_save: 'Kusuru kaydet',
+        kws_title: 'Muayeneyi imzala',
+        kws_subtitle: 'Aşağıya imzanızı atın. Rapor donacak ve PDF olarak dışa aktarılabilecek.',
+        kws_clear: 'Temizle', kws_label_volgende: 'Sonraki muayene tarihi (opsiyonel)',
+        kws_btn_sign: 'İmzala & dondur',
+        btn_annuleren: 'İptal',
+        assets: 'Varlıklar',
+        nav_mijn_dag: 'Günüm',
+        nav_voorspeller: 'Tahmin',
+        nav_clusters: 'Kümeler',
+        nav_opleveren: 'Teslim',
+        badge_nieuw: 'YENİ',
+        kw_cond_1: 'Mukemmel',
+        kw_cond_2: 'Iyi',
+        kw_cond_3: 'Orta',
+        kw_cond_4: 'Vasat',
+        kw_cond_5: 'Kotu',
+        kw_cond_6: 'Cok kotu',
+        kw_status_delivered: 'Teslim edildi',
+        kw_kpi_voortgang: 'Ilerleme',
+        kw_kpi_vragen: 'Sorular',
+        kw_kpi_aandacht: 'Dikkat',
+        kw_kpi_kritiek: 'Kritik',
+        kw_elementen: 'eleman',
+        kw_pct_beantwoord: 'cevaplandi',
+        kw_punten_risico: 'risk noktasi',
+        kw_defecten_kritiek_sub: '5 veya daha yuksek skorlu kusur',
+        kw_conditie_verdeling: 'Durum dagilimi',
+        kw_checklist_header: 'NEN/CROW kontrol listesi',
+        kw_ingevuld: 'dolduruldu',
+        kw_aandacht_short: 'dikkat',
+        kw_ja: 'Evet',
+        kw_nee: 'Hayir',
+        kw_nvt: 'YOK',
+        kw_toelichting_placeholder: 'Aciklama (evet icin zorunlu)',
+        kw_maak_keuze: '— secim —',
+        kw_waarde: 'Deger',
+        kw_antwoord_placeholder: 'Cevap...',
+        kw_keuze_volledig: 'tam',
+        kw_keuze_gedeeltelijk: 'kismen',
+        kw_keuze_niet: 'denetlenemez',
+        kw_keuze_geen: 'yok',
+        kw_keuze_regulier: 'duzenli',
+        kw_keuze_verkort: 'kisaltilmis',
+        kw_keuze_acuut: 'acil',
+        kw_advies_prefix: 'Tavsiye',
+        kw_termijn_jaar: 'yil sure',
+        kw_constructief: 'Yapisal elemanlar',
+        kw_afwerking: 'Bitirme',
+        kw_installatie: 'Tesisat',
+        kw_omgeving: 'Cevre',
+        kw_overig: 'Diger',
+        kw_btn_afronden: '✓ Tamamla',
+        kw_btn_onderteken: 'Imzala',
+        kw_btn_pdf: 'PDF raporu',
+        kw_defect_count_1: 'kusur',
+        kw_defect_count_n: 'kusur',
+        kw_aandachtspunt_1: 'dikkat noktasi',
+        kw_aandachtspunt_n: 'dikkat noktasi',
+        kw_geen_bijzonderheden: 'tespit yok',
+        kw_nog_niet_beoordeeld: 'henuz degerlendirilmedi',
+        kw_algemene_bevindingen: 'Genel bulgular',
+        kw_bevindingen_placeholder: 'Kontrol listesi disi serbest gozlemler...',
+        kw_btn_opslaan: 'Kaydet',
+        kw_defecten_header: 'Kusurlar',
+        kw_btn_add_defect: '+ Kusur',
+        kw_chk_beoordeeld_geen_bijzonderheden: 'Eleman bulgu olmadan denetlendi',
+        kw_norm_referenties_default: 'NEN 2767-2 + CROW 134',
+        kw_geen_elementen: 'Eleman yok — manuel olarak ekleyin.',
+        kw_pdf_intro_score: '{naam} elemani {groep} grubuna aittir ve bu denetimde durum puani {score} — {label} olarak degerlendirilmistir.',
+        kw_pdf_intro_no_score: '{naam} elemani {groep} grubuna aittir ve bu denetimde henuz tam olarak degerlendirilmemistir.',
+        kw_pdf_intro_checklist: 'Mufettis {total} kontrol listesi sorusundan {n} tanesini yanitlamistir.',
+        kw_pdf_intro_aandacht: 'Mufettis {n} {label} icin acikca takip onerisinde bulunmustur.',
+        kw_pdf_intro_geen_aandacht: 'Bu eleman icin dikkat noktasi tespit edilmemistir.',
+        kw_pdf_intro_defect: 'Ayrica, {n} {label} tam NEN 2767-2 siniflandirmasi ile resmi olarak kaydedilmistir.',
+        kw_pdf_pie_title: 'Durum dagilimi',
+        kw_pdf_kpi_kritiek_long: '5 veya daha yuksek skorlu kusur',
+        kw_pdf_eyebrow: 'SANAT YAPISI DENETIM RAPORU',
+        kw_pdf_section_samenvatting: 'Ozet',
+        kw_pdf_section_basisgegevens: 'Temel bilgiler',
+        kw_pdf_section_aanbevolen_acties: 'Onerilen eylemler',
+        kw_pdf_section_kritieke_bevindingen: 'Kritik bulgular',
+        kw_pdf_section_detail: 'Eleman detayi',
+        kw_pdf_section_ondertekening: 'Imza',
+        kw_pdf_section_vervolg: 'Sonraki adimlar',
+        kw_pdf_eindconditie: 'GENEL DURUM NEN 2767-2',
+        kw_pdf_categorie: 'Kategori',
+        kw_pdf_termijn: 'Sure {n} yil',
+        kw_pdf_termijn_0: 'Sure 0 yil',
+        kw_pdf_maatregel_advies: 'ONERILEN ONLEM',
+        kw_pdf_volgende_inspectie: 'BIR SONRAKI DENETIM ONERILIR',
+        kw_pdf_aanbevolen_acties_lbl: 'ONERILEN EYLEMLER',
+        kw_pdf_inspecteur: 'MUFETTIS',
+        kw_pdf_opdrachtgever: 'ISVEREN',
+        kw_pdf_ondertekend_op: 'Imzalanma tarihi',
+        kw_pdf_voor_akkoord: 'Isveren adina onay icin:',
+        kw_pdf_datum_handtekening: 'tarih / imza',
+        kw_pdf_nog_niet_ondertekend: '— Henuz imzalanmadi —',
+        kw_pdf_tbl_nr: '#',
+        kw_pdf_tbl_element: 'Eleman',
+        kw_pdf_tbl_gebrek: 'Kusur',
+        kw_pdf_tbl_locatie: 'Konum',
+        kw_pdf_tbl_classificatie: 'Siniflandirma',
+        kw_pdf_tbl_score: 'Skor',
+        kw_pdf_tbl_vraag: 'Soru',
+        kw_pdf_tbl_antwoord: 'Cevap',
+        kw_pdf_tbl_norm_referentie: 'Norm referansi',
+        kw_pdf_checklist_label: 'NEN/CROW KONTROL LISTESI',
+        kw_pdf_gebreken_label: 'KAYITLI KUSURLAR',
+        kw_pdf_vrije_bevindingen: 'GENEL BULGULAR',
+        kw_pdf_niet_inspecteerbaar_lbl: 'DENETLENEMEZ',
+        kw_pdf_lbl_kunstwerktype: 'Yapi turu',
+        kw_pdf_lbl_object: 'Nesne',
+        kw_pdf_lbl_project: 'Proje',
+        kw_pdf_lbl_inspectiedatum: 'Denetim tarihi',
+        kw_pdf_lbl_inspectietype: 'Denetim turu',
+        kw_pdf_lbl_inspecteur: 'Mufettis',
+        kw_pdf_lbl_certificaat: 'Sertifika',
+        kw_pdf_lbl_weer: 'Hava kosullari',
+        kw_pdf_lbl_bijzonderheden: 'Notlar',
+        kw_pdf_lbl_opdrachtgever: 'Isveren',
+        kw_pdf_lbl_norm_refs: 'Norm referanslari',
+        kw_pdf_lbl_status: 'Durum',
+        kw_pdf_lbl_rapport_gegenereerd: 'Rapor olusturuldu',
+        kw_pdf_lbl_handtekening: 'Imza',
+        kw_pdf_conformiteit_footer: 'Bu rapor NEN 2767-2 (Altyapi durum olcumu) ve CROW 134 (Sabit ve hareketli koprulerin gorsel denetimi) normlarina uygun olarak hazirlanmistir. Skor olcegi: 1 (mukemmel) – 6 (cok kotu). Dikkat noktalari, acil ilgi veya takip gerektiren cevaplardan kaynaklanir. Tam denetim izi FieldOps portalinda mevcuttur.',
+        kw_pdf_conformiteit_cover_footer: 'NEN 2767-2 (Altyapi durum olcumu) ve CROW 134 (Sanat yapisi denetimi) uyumludur. Denetim izi FieldOps portalinda mevcuttur.',
+        kw_pdf_header_band: 'Denetim raporu · NEN 2767-2 + CROW 134',
+        kw_pdf_advies_prefix: 'Tavsiye',
+        kw_inspecties_label: 'denetim',
+        kw_gem_conditie: 'ortalama durum',
+        kw_btn_open: 'Ac',
+        integraties: 'Entegrasyonlar',
       }
     };
 
@@ -5482,6 +6495,7 @@
       if (page === 'predictive') loadPredictive();
       if (page === 'clusters') loadClusters();
       if (page === 'opleveren') loadOpleveringen();
+      if (page === 'kunstwerken') loadKunstwerkInspecties();
       if (page === 'mijn-dag') loadMijnDag();
       if (page === 'dashboard') loadDashboardPredictiveWidget();
       if (page === 'integraties') loadIntegrations();
@@ -10298,6 +11312,1581 @@
           });
         },
       });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // ── KUNSTWERKEN-INSPECTIES (NEN 2767-2 + CROW 134) ──────────
+    // ══════════════════════════════════════════════════════════════
+    var _kunstwerkInspecties = [];
+    var _currentKunstwerk = null;        // huidige inspectie-detail
+    var _kunstwerkTaxonomy = {};         // cache per type
+    var _kunstwerkTypes = null;          // labels per type-key
+
+    var KW_CONDITIE_KLEUR = {
+      1: '#16a34a', 2: '#65a30d', 3: '#ca8a04',
+      4: '#ea580c', 5: '#dc2626', 6: '#7f1d1d',
+    };
+    // Conditie- en statuslabels worden via t() opgevraagd zodat ze meeschalen
+    // met de gekozen interface-taal. Helpers retourneren strings/objects in de
+    // huidige taal — niet cachen, want lang switcht runtime.
+    function kwConditieLabel(score) {
+      if (score == null) return '—';
+      return t('kw_cond_' + score) || '—';
+    }
+    var KW_STATUS_KLEUR = {
+      draft:       {bg:'#f1f5f9', color:'#475569'},
+      in_progress: {bg:'#dbeafe', color:'#1e40af'},
+      completed:   {bg:'#dcfce7', color:'#166534'},
+      signed:      {bg:'#e0e7ff', color:'#4338ca'},
+      delivered:   {bg:'#fae8ff', color:'#7e22ce'},
+    };
+    function kwStatusLabel(status) {
+      var k = KW_STATUS_KLEUR[status] || KW_STATUS_KLEUR.draft;
+      return { label: t('kw_status_' + status) || status, bg: k.bg, color: k.color };
+    }
+    // Backwards-compat zodat oude callsites blijven werken
+    var KW_CONDITIE_LABEL = new Proxy({}, { get: function(_, k){ return kwConditieLabel(parseInt(k,10)); } });
+    var KW_STATUS_LABEL = new Proxy({}, { get: function(_, k){ return kwStatusLabel(k); } });
+
+    function _kwMetricsStrip(m) {
+      if (!m || !m.elementen_totaal) return '';
+      var tile = function(label, val, color, sub) {
+        return '<div style="flex:1;min-width:120px;padding:10px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">'
+          + '<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600;">' + label + '</div>'
+          + '<div style="font-size:22px;font-weight:700;color:' + (color || 'var(--text)') + ';margin-top:2px;line-height:1.1;">' + val + '</div>'
+          + (sub ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + sub + '</div>' : '')
+          + '</div>';
+      };
+      var voortgangColor = m.voortgang_pct >= 100 ? '#16a34a' : (m.voortgang_pct >= 50 ? '#ca8a04' : '#0284c7');
+      var aandachtColor = m.vragen_aandacht > 0 ? '#ea580c' : 'var(--text)';
+      var kritiekColor = m.defecten_kritiek > 0 ? '#dc2626' : 'var(--text)';
+
+      // Mini-bar: conditie-verdeling 1-6 als horizontale gestapelde balk
+      var totaal = 0;
+      for (var s = 1; s <= 6; s++) totaal += (m.elementen_per_conditie[String(s)] || 0);
+      var bar = '<div style="display:flex;height:8px;border-radius:100px;overflow:hidden;background:#e2e8f0;margin-top:6px;">';
+      for (var s2 = 1; s2 <= 6; s2++) {
+        var cnt = m.elementen_per_conditie[String(s2)] || 0;
+        if (cnt > 0) {
+          var pct = (cnt / totaal * 100).toFixed(1);
+          bar += '<div title="Score ' + s2 + ': ' + cnt + ' (' + pct + '%)" style="width:' + pct + '%;background:' + KW_CONDITIE_KLEUR[s2] + ';"></div>';
+        }
+      }
+      bar += '</div>';
+      var bar_legend = '<div style="display:flex;gap:8px;font-size:10px;margin-top:4px;color:var(--text-dim);flex-wrap:wrap;">';
+      for (var s3 = 1; s3 <= 6; s3++) {
+        var c = m.elementen_per_conditie[String(s3)] || 0;
+        if (c > 0) bar_legend += '<span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + KW_CONDITIE_KLEUR[s3] + ';"></span> ' + s3 + ': ' + c + '</span>';
+      }
+      bar_legend += '</div>';
+
+      return '<div style="margin:14px 0;">'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;">'
+        +   tile(t('kw_kpi_voortgang'), m.voortgang_pct + '%', voortgangColor, m.elementen_beoordeeld + '/' + m.elementen_totaal + ' ' + t('kw_elementen'))
+        +   tile(t('kw_kpi_vragen'), m.vragen_beantwoord + '/' + m.vragen_totaal, voortgangColor, m.vragen_voortgang_pct + '% ' + t('kw_pct_beantwoord'))
+        +   tile(t('kw_kpi_aandacht'), m.vragen_aandacht, aandachtColor, t('kw_punten_risico'))
+        +   tile(t('kw_kpi_kritiek'), m.defecten_kritiek, kritiekColor, t('kw_defecten_kritiek_sub'))
+        + '</div>'
+        + (totaal > 0 ? '<div style="margin-top:10px;padding:10px 14px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">'
+            + '<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:4px;">' + t('kw_conditie_verdeling') + '</div>'
+            + bar + bar_legend
+          + '</div>' : '')
+        + '</div>';
+    }
+
+    function _kwVragenSectie(element, locked) {
+      var vragen = element.vragen || [];
+      if (!vragen.length) return '';
+      var beantwoord = vragen.filter(function(v){ return v.answer && v.answer.answered; }).length;
+      var aandacht = vragen.filter(function(v){ return v.answer && v.answer.requires_attention; }).length;
+
+      var rows = vragen.map(function(v, idx){
+        return _kwVraagRow(element.id, v, idx, locked);
+      }).join('');
+
+      return '<div style="margin:14px 0;padding:12px;background:rgba(2,132,199,0.04);border:1px solid rgba(2,132,199,0.2);border-radius:10px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'
+        +   '<strong style="font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#0284c7;">📋 ' + t('kw_checklist_header') + '</strong>'
+        +   '<span style="font-size:11px;color:var(--text-muted);">' + beantwoord + '/' + vragen.length + ' ' + t('kw_ingevuld')
+        +     (aandacht > 0 ? ' · <span style="color:#ea580c;font-weight:700;">' + aandacht + ' ' + t('kw_aandacht_short') + '</span>' : '')
+        +   '</span>'
+        + '</div>'
+        + rows
+        + '</div>';
+    }
+
+    function _kwVraagRow(elementId, vraagItem, idx, locked) {
+      var q = vraagItem.question || {};
+      var a = vraagItem.answer || {};
+      var ans = a || {};
+      var inputId = 'kwAns-' + elementId + '-' + q.code;
+      var attentionBadge = ans.requires_attention
+        ? '<span style="background:#fed7aa;color:#9a3412;font-size:10px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.03em;">AANDACHT</span>'
+        : (ans.answered ? '<span style="background:#dcfce7;color:#166534;font-size:10px;padding:1px 6px;border-radius:6px;font-weight:700;">✓</span>' : '');
+      var normRef = q.norm_ref ? '<span title="' + escapeHtml(q.uitleg || '') + '" style="background:#f1f5f9;color:#475569;font-size:9px;padding:1px 6px;border-radius:4px;font-family:JetBrains Mono,monospace;cursor:help;">' + escapeHtml(q.norm_ref) + '</span>' : '';
+
+      // Input afhankelijk van type
+      var input = '';
+      var disAttr = locked ? 'disabled' : '';
+      if (q.type === 'score_1_6') {
+        var btns = '';
+        for (var s = 1; s <= 6; s++) {
+          var active = ans.answer_score === s;
+          var c = KW_CONDITIE_KLEUR[s];
+          btns += '<button type="button" ' + disAttr + ' onclick="saveKwAnswer(\'' + elementId + '\',\'' + q.code + '\',{answer_score:' + s + '})" '
+            + 'style="flex:1;padding:6px;border:2px solid ' + (active ? c : 'transparent') + ';background:' + (active ? c + '22' : 'var(--bg)') + ';color:' + c + ';border-radius:6px;font-weight:700;cursor:' + (locked ? 'not-allowed' : 'pointer') + ';font-size:13px;">' + s + '</button>';
+        }
+        input = '<div style="display:flex;gap:4px;margin-top:4px;">' + btns + '</div>'
+          + '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-dim);margin-top:2px;"><span>1 = ' + t('kw_cond_1').toLowerCase() + '</span><span>6 = ' + t('kw_cond_6').toLowerCase() + '</span></div>';
+      } else if (q.type === 'ja_nee') {
+        var jaActive = ans.answer_bool === true;
+        var neeActive = ans.answer_bool === false;
+        input = '<div style="display:flex;gap:6px;margin-top:4px;">'
+          + '<button type="button" ' + disAttr + ' onclick="saveKwAnswer(\'' + elementId + '\',\'' + q.code + '\',{answer_bool:true})" '
+          +   'style="flex:1;padding:6px 14px;border:2px solid ' + (jaActive ? '#dc2626' : 'transparent') + ';background:' + (jaActive ? '#fee2e2' : 'var(--bg)') + ';color:' + (jaActive ? '#dc2626' : 'var(--text)') + ';border-radius:6px;font-weight:600;cursor:' + (locked ? 'not-allowed' : 'pointer') + ';font-size:12px;">' + t('kw_ja') + '</button>'
+          + '<button type="button" ' + disAttr + ' onclick="saveKwAnswer(\'' + elementId + '\',\'' + q.code + '\',{answer_bool:false})" '
+          +   'style="flex:1;padding:6px 14px;border:2px solid ' + (neeActive ? '#16a34a' : 'transparent') + ';background:' + (neeActive ? '#dcfce7' : 'var(--bg)') + ';color:' + (neeActive ? '#166534' : 'var(--text)') + ';border-radius:6px;font-weight:600;cursor:' + (locked ? 'not-allowed' : 'pointer') + ';font-size:12px;">' + t('kw_nee') + '</button>'
+          + '</div>';
+        if (jaActive && q.attention_when !== false) {
+          input += '<input type="text" placeholder="' + t('kw_toelichting_placeholder') + '" id="' + inputId + '-toel" value="' + escapeHtml(ans.toelichting || '') + '" '
+            + 'onblur="saveKwAnswer(\'' + elementId + '\',\'' + q.code + '\',{toelichting:this.value})" '
+            + 'style="width:100%;margin-top:4px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;" ' + disAttr + '>';
+        }
+      } else if (q.type === 'ja_nee_nvt') {
+        var keuze = ans.answer_value_text || '';
+        var mkBtn = function(val, label, color) {
+          var act = keuze === val;
+          return '<button type="button" ' + disAttr + ' onclick="saveKwAnswer(\'' + elementId + '\',\'' + q.code + '\',{answer_value_text:\'' + val + '\',answer_bool:' + (val==='ja'?'true':(val==='nee'?'false':'null')) + '})" '
+            + 'style="flex:1;padding:6px 10px;border:2px solid ' + (act ? color : 'transparent') + ';background:' + (act ? color + '22' : 'var(--bg)') + ';color:' + (act ? color : 'var(--text)') + ';border-radius:6px;font-weight:600;cursor:' + (locked ? 'not-allowed' : 'pointer') + ';font-size:12px;">' + label + '</button>';
+        };
+        input = '<div style="display:flex;gap:6px;margin-top:4px;">'
+          + mkBtn('ja', t('kw_ja'), '#dc2626')
+          + mkBtn('nee', t('kw_nee'), '#16a34a')
+          + mkBtn('nvt', t('kw_nvt'), '#64748b')
+          + '</div>';
+      } else if (q.type === 'keuze') {
+        var opts = q.opties || [];
+        var sel = ans.answer_value_text || '';
+        input = '<select ' + disAttr + ' onchange="saveKwAnswer(\'' + elementId + '\',\'' + q.code + '\',{answer_value_text:this.value})" '
+          + 'style="width:100%;margin-top:4px;padding:8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;">'
+          + '<option value="">' + t('kw_maak_keuze') + '</option>';
+        opts.forEach(function(o){
+          input += '<option value="' + escapeHtml(o) + '"' + (sel === o ? ' selected' : '') + '>' + escapeHtml(t('kw_keuze_' + o) || o) + '</option>';
+        });
+        input += '</select>';
+      } else if (q.type === 'meting') {
+        var eenheid = q.eenheid || '';
+        input = '<div style="display:flex;gap:6px;margin-top:4px;align-items:center;">'
+          + '<input type="number" step="0.1" ' + disAttr + ' value="' + (ans.answer_score != null ? ans.answer_score : '') + '" '
+          +   'onblur="saveKwAnswer(\'' + elementId + '\',\'' + q.code + '\',{answer_score:this.value === \'\' ? null : parseFloat(this.value),answer_value_text:\'' + eenheid + '\'})" '
+          +   'placeholder="' + t('kw_waarde') + '" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;">'
+          + '<span style="color:var(--text-muted);font-size:13px;font-weight:600;min-width:30px;">' + escapeHtml(eenheid) + '</span>'
+          + '</div>';
+      } else {  // tekst / fallback
+        input = '<input type="text" ' + disAttr + ' value="' + escapeHtml(ans.answer_value_text || '') + '" '
+          + 'onblur="saveKwAnswer(\'' + elementId + '\',\'' + q.code + '\',{answer_value_text:this.value})" '
+          + 'placeholder="' + t('kw_antwoord_placeholder') + '" style="width:100%;margin-top:4px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:13px;">';
+      }
+
+      return '<div style="padding:10px 12px;margin-bottom:6px;background:var(--card-bg);border:1px solid ' + (ans.requires_attention ? '#fed7aa' : 'var(--border)') + ';border-radius:8px;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:2px;">'
+        +   '<div style="flex:1;min-width:0;">'
+        +     '<div style="font-size:13px;font-weight:600;color:var(--text);">' + escapeHtml(q.vraag || q.code) + '</div>'
+        +     (q.uitleg ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;line-height:1.4;">' + escapeHtml(q.uitleg) + '</div>' : '')
+        +   '</div>'
+        +   '<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-end;flex-shrink:0;">'
+        +     attentionBadge
+        +     normRef
+        +   '</div>'
+        + '</div>'
+        + input
+        + '</div>';
+    }
+
+    function saveKwAnswer(elementId, questionCode, fields) {
+      if (!_currentKunstwerk) return;
+      api('PATCH', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + elementId + '/vragen/' + questionCode, fields)
+        .then(function(ans){
+          // Refresh detail om metrics + andere stats bij te werken
+          return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+        }).then(function(insp){
+          if (insp) {
+            _currentKunstwerk = insp;
+            // Bewaar welk element open was → blijft open na re-render
+            var openIds = [];
+            document.querySelectorAll('[id^="kwEl-"]').forEach(function(el){
+              if (el.style.display !== 'none') openIds.push(el.id);
+            });
+            renderKunstwerkDetail(insp);
+            openIds.forEach(function(id){
+              var el = document.getElementById(id);
+              if (el) el.style.display = '';
+            });
+          }
+        }).catch(function(err){
+          showToast('Antwoord-fout: ' + (err.message || 'onbekend'), 'error');
+        });
+    }
+
+    function _kwBadge(score) {
+      if (score == null) {
+        return '<span style="display:inline-block;padding:2px 10px;border-radius:100px;background:#f1f5f9;color:#64748b;font-size:11px;font-weight:700;">—</span>';
+      }
+      var c = KW_CONDITIE_KLEUR[score] || '#64748b';
+      var l = kwConditieLabel(score) || ('Score ' + score);
+      return '<span style="display:inline-block;padding:2px 10px;border-radius:100px;background:' + c + '22;color:' + c + ';border:1px solid ' + c + '55;font-size:11px;font-weight:700;letter-spacing:.03em;">' + score + ' · ' + l + '</span>';
+    }
+
+    function loadKunstwerkInspecties() {
+      // Lazy-load type-lijst voor filter (één keer)
+      if (!_kunstwerkTypes) {
+        api('GET', '/api/kunstwerken-inspecties/taxonomy/types').then(function(d){
+          _kunstwerkTypes = d.types || [];
+          var sel = document.getElementById('kwFilterType');
+          if (sel) {
+            var current = sel.value;
+            _kunstwerkTypes.forEach(function(t){
+              if (![].slice.call(sel.options).some(function(o){ return o.value === t.key; })) {
+                var o = document.createElement('option');
+                o.value = t.key; o.textContent = t.label;
+                sel.appendChild(o);
+              }
+            });
+            sel.value = current;
+          }
+        }).catch(function(){});
+      }
+
+      var empty = document.getElementById('kunstwerkenEmpty');
+      var list = document.getElementById('kunstwerkenList');
+      var tbody = document.getElementById('kunstwerkenBody');
+      var sum = document.getElementById('kwSamenvatting');
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-dim);">Laden...</td></tr>';
+
+      var typeF = (document.getElementById('kwFilterType')||{}).value || '';
+      var statusF = (document.getElementById('kwFilterStatus')||{}).value || '';
+      var q = [];
+      if (typeF) q.push('kunstwerk_type=' + encodeURIComponent(typeF));
+      if (statusF) q.push('status=' + encodeURIComponent(statusF));
+      var url = '/api/kunstwerken-inspecties/' + (q.length ? '?' + q.join('&') : '');
+
+      api('GET', url).then(function(items){
+        _kunstwerkInspecties = items || [];
+        if (!_kunstwerkInspecties.length) {
+          empty.style.display = 'flex';
+          list.style.display = 'none';
+          if (sum) sum.textContent = '';
+          return;
+        }
+        empty.style.display = 'none';
+        list.style.display = 'block';
+
+        // Samenvatting
+        if (sum) {
+          var avg = 0, n = 0;
+          _kunstwerkInspecties.forEach(function(i){
+            if (i.conditiescore_overall != null) { avg += i.conditiescore_overall; n++; }
+          });
+          var avgTxt = n ? (avg / n).toFixed(1) : '—';
+          sum.textContent = _kunstwerkInspecties.length + ' ' + (t('kw_inspecties_label') || 'inspecties') + ' · ' + (t('kw_gem_conditie') || 'gemiddelde conditie') + ' ' + avgTxt;
+        }
+
+        tbody.innerHTML = _kunstwerkInspecties.map(function(i){
+          var st = KW_STATUS_LABEL[i.status] || KW_STATUS_LABEL.draft;
+          var date = i.datum_inspectie ? new Date(i.datum_inspectie).toLocaleDateString('nl-NL') : '—';
+          var typeLabel = i.kunstwerk_type ? (i.kunstwerk_type.charAt(0).toUpperCase() + i.kunstwerk_type.slice(1)) : '—';
+          return '<tr style="cursor:pointer;" onclick="openKunstwerkDetail(\'' + i.id + '\')">'
+            + '<td style="font-weight:600;">' + escapeHtml(i.title) + '</td>'
+            + '<td>' + escapeHtml(typeLabel) + '</td>'
+            + '<td>' + escapeHtml(i.asset_name || i.asset_code || '—') + '</td>'
+            + '<td>' + escapeHtml(i.inspecteur_naam || '—') + '</td>'
+            + '<td>' + date + '</td>'
+            + '<td style="text-align:center;">' + _kwBadge(i.conditiescore_overall) + '</td>'
+            + '<td><span style="background:' + st.bg + ';color:' + st.color + ';font-size:10px;padding:2px 8px;border-radius:100px;font-weight:700;letter-spacing:.05em;">' + st.label.toUpperCase() + '</span></td>'
+            + '<td style="text-align:right;">'
+            +   '<button class="btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="event.stopPropagation();openKunstwerkDetail(\'' + i.id + '\')">' + (t('kw_btn_open') || 'Open') + '</button>'
+            + '</td>'
+            + '</tr>';
+        }).join('');
+      }).catch(function(err){
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#dc2626;">Laden mislukt: ' + escapeHtml(err.message || 'onbekend') + '</td></tr>';
+      });
+    }
+
+    // ── Nieuwe inspectie modal ──────────────────────────────────
+    function openNieuweKunstwerkInspectieModal() {
+      // Reset velden
+      document.getElementById('kwNewTitle').value = '';
+      document.getElementById('kwNewType').value = '';
+      document.getElementById('kwNewAsset').value = '';
+      document.getElementById('kwNewAsset').innerHTML = '<option value="">— Laden —</option>';
+      document.getElementById('kwNewDatum').value = new Date().toISOString().slice(0,10);
+      document.getElementById('kwNewInspecteurNaam').value = '';
+      document.getElementById('kwNewWeer').value = '';
+      document.getElementById('kwNewOpdrachtgever').value = '';
+
+      // Vul type-dropdown (zelfde lijst als filter)
+      var typeSel = document.getElementById('kwNewType');
+      typeSel.innerHTML = '<option value="">— Kies type —</option>';
+      if (_kunstwerkTypes) {
+        _kunstwerkTypes.forEach(function(t){
+          typeSel.innerHTML += '<option value="' + t.key + '">' + t.label + '</option>';
+        });
+      } else {
+        api('GET', '/api/kunstwerken-inspecties/taxonomy/types').then(function(d){
+          _kunstwerkTypes = d.types || [];
+          _kunstwerkTypes.forEach(function(t){
+            typeSel.innerHTML += '<option value="' + t.key + '">' + t.label + '</option>';
+          });
+        });
+      }
+
+      // Laad assets — filter op kunstwerk-types (asset_type kan al matchen)
+      api('GET', '/api/assets/').then(function(items){
+        var sel = document.getElementById('kwNewAsset');
+        sel.innerHTML = '<option value="">— Kies kunstwerk —</option>';
+        (items || []).forEach(function(a){
+          sel.innerHTML += '<option value="' + a.id + '" data-type="' + escapeHtml(a.asset_type || '') + '">'
+            + escapeHtml(a.code + (a.name ? ' — ' + a.name : '') + ' (' + (a.asset_type || '') + ')') + '</option>';
+        });
+      });
+
+      document.getElementById('nieuweKunstwerkModal').classList.add('active');
+    }
+    function closeNieuweKunstwerkModal() {
+      document.getElementById('nieuweKunstwerkModal').classList.remove('active');
+    }
+
+    function submitNieuweKunstwerkInspectie() {
+      var title = document.getElementById('kwNewTitle').value.trim();
+      var asset_id = document.getElementById('kwNewAsset').value;
+      var kunstwerk_type = document.getElementById('kwNewType').value;
+      var datum = document.getElementById('kwNewDatum').value;
+      var insp = document.getElementById('kwNewInspecteurNaam').value.trim();
+      var weer = document.getElementById('kwNewWeer').value.trim();
+      var opdr = document.getElementById('kwNewOpdrachtgever').value.trim();
+      if (!title || !asset_id) {
+        showToast('Vul titel en kunstwerk in', 'error');
+        return;
+      }
+      var payload = {
+        asset_id: asset_id,
+        title: title,
+        auto_elements: true,
+      };
+      if (kunstwerk_type) payload.kunstwerk_type = kunstwerk_type;
+      if (datum) payload.datum_inspectie = new Date(datum).toISOString();
+      if (insp) payload.inspecteur_naam = insp;
+      if (weer) payload.weersomstandigheden = weer;
+      if (opdr) payload.opdrachtgever_naam = opdr;
+
+      api('POST', '/api/kunstwerken-inspecties/', payload).then(function(insp){
+        showToast('Inspectie gestart — ' + (insp.elementen_count || 0) + ' elementen klaar', 'success');
+        closeNieuweKunstwerkModal();
+        openKunstwerkDetail(insp.id);
+        loadKunstwerkInspecties();
+      }).catch(function(err){
+        showToast('Aanmaken mislukt: ' + (err.message || 'onbekend'), 'error');
+      });
+    }
+
+    // ── Detail-modal ────────────────────────────────────────────
+    function openKunstwerkDetail(id) {
+      api('GET', '/api/kunstwerken-inspecties/' + id).then(function(insp){
+        _currentKunstwerk = insp;
+        renderKunstwerkDetail(insp);
+        document.getElementById('kunstwerkDetailModal').classList.add('active');
+      }).catch(function(err){
+        showToast('Niet geladen: ' + (err.message || 'fout'), 'error');
+      });
+    }
+    function closeKunstwerkDetail() {
+      document.getElementById('kunstwerkDetailModal').classList.remove('active');
+      _currentKunstwerk = null;
+    }
+
+    function renderKunstwerkDetail(insp) {
+      var headerEl = document.getElementById('kwDetailHeader');
+      var actionsEl = document.getElementById('kwDetailActions');
+      var elementsEl = document.getElementById('kwDetailElements');
+      var st = KW_STATUS_LABEL[insp.status] || KW_STATUS_LABEL.draft;
+      var advies = insp.maatregel_advies || {};
+      var m = insp.metrics || {};
+
+      headerEl.innerHTML =
+          '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">'
+        +   '<div style="flex:1;min-width:240px;">'
+        +     '<h2 style="margin:0 0 6px;font-size:22px;">' + escapeHtml(insp.title) + '</h2>'
+        +     '<div style="font-size:13px;color:var(--text-muted);">'
+        +       (insp.kunstwerk_type ? '<strong>' + insp.kunstwerk_type.toUpperCase() + '</strong> · ' : '')
+        +       escapeHtml(insp.asset_name || insp.asset_code || '—') + ' · '
+        +       (insp.datum_inspectie ? new Date(insp.datum_inspectie).toLocaleDateString('nl-NL') : '—')
+        +     '</div>'
+        +     '<div style="font-size:12px;color:var(--text-dim);margin-top:4px;">'
+        +       t('kw_norm_referenties_default') + ' · ' + t('kwm_label_inspecteur').toLowerCase() + ': ' + escapeHtml(insp.inspecteur_naam || '—')
+        +     '</div>'
+        +   '</div>'
+        +   '<div style="text-align:right;">'
+        +     '<div style="margin-bottom:8px;">' + _kwBadge(insp.conditiescore_overall) + '</div>'
+        +     '<span style="background:' + st.bg + ';color:' + st.color + ';font-size:11px;padding:3px 10px;border-radius:100px;font-weight:700;letter-spacing:.05em;">' + st.label.toUpperCase() + '</span>'
+        +   '</div>'
+        + '</div>'
+        // ── Metrics-strip met KPI's en mini conditie-verdeling ──
+        + _kwMetricsStrip(m)
+        + (advies.actie ? '<div style="margin-top:12px;padding:10px 14px;background:rgba(2,132,199,0.08);border-left:3px solid #0284c7;border-radius:6px;font-size:13px;color:var(--text);"><strong>' + t('kw_advies_prefix') + ':</strong> ' + escapeHtml(advies.actie) + (advies.termijn_jaren!=null ? ' · ' + advies.termijn_jaren + ' ' + t('kw_termijn_jaar') : '') + '</div>' : '');
+
+      // Actions
+      var locked = insp.status === 'signed' || insp.status === 'delivered';
+      var canComplete = !locked && (insp.status === 'draft' || insp.status === 'in_progress');
+      var canSign = !locked && insp.status === 'completed';
+      var html = '';
+      if (canComplete) html += '<button class="btn-secondary" onclick="completeCurrentKunstwerk()" style="margin-right:8px;">' + t('kw_btn_afronden') + '</button>';
+      if (canSign) html += '<button class="btn-primary" onclick="openKwSignModal()" style="margin-right:8px;">' + t('kw_btn_onderteken') + '</button>';
+      html += '<button class="btn-secondary" onclick="exportKunstwerkPDF()" style="margin-right:8px;">' + t('kw_btn_pdf') + '</button>';
+      if (!locked) {
+        html += '<button class="btn-secondary" onclick="deleteCurrentKunstwerk()" style="color:#dc2626;border-color:#fee2e2;">🗑️</button>';
+      }
+      actionsEl.innerHTML = html;
+
+      // Elementen-tree
+      var elementen = insp.elementen || [];
+      if (!elementen.length) {
+        elementsEl.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:20px;">' + t('kw_geen_elementen') + '</p>';
+        return;
+      }
+      // Groepeer per element_groep
+      var groups = {};
+      elementen.forEach(function(e){
+        var g = e.element_groep || 'overig';
+        if (!groups[g]) groups[g] = [];
+        groups[g].push(e);
+      });
+      var groupOrder = ['constructief', 'afwerking', 'installatie', 'omgeving', 'overig'];
+      var groupLabels = {
+        constructief: t('kw_constructief'),
+        afwerking:    t('kw_afwerking'),
+        installatie:  t('kw_installatie'),
+        omgeving:     t('kw_omgeving'),
+        overig:       t('kw_overig'),
+      };
+      elementsEl.innerHTML = groupOrder.filter(function(g){ return groups[g]; }).map(function(g){
+        var items = groups[g];
+        var groupHtml = '<div style="margin-bottom:18px;">'
+          + '<h3 style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin:0 0 8px;">' + groupLabels[g] + '</h3>';
+        groupHtml += items.map(function(e){
+          var hasDefects = (e.defecten || []).length > 0;
+          var aandachtCount = e.aandacht_count || 0;
+          var parts = [];
+          if (hasDefects) parts.push(e.defecten.length + ' ' + (e.defecten.length === 1 ? t('kw_defect_count_1') : t('kw_defect_count_n')));
+          if (aandachtCount > 0) parts.push(aandachtCount + ' ' + (aandachtCount === 1 ? t('kw_aandachtspunt_1') : t('kw_aandachtspunt_n')));
+          if (!parts.length) parts.push(e.beoordeeld ? t('kw_geen_bijzonderheden') : t('kw_nog_niet_beoordeeld'));
+          var summary = parts.join(' · ');
+          var aandachtBadge = aandachtCount > 0
+            ? '<span style="display:inline-block;padding:2px 8px;margin-left:6px;border-radius:100px;background:#fed7aa;color:#9a3412;font-size:11px;font-weight:700;letter-spacing:.03em;">⚠ ' + aandachtCount + '</span>'
+            : '';
+          var elementHtml = '<div style="border:1px solid var(--border);border-radius:10px;margin-bottom:8px;background:var(--card-bg);">'
+            + '<div style="padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;" onclick="toggleKwElement(\'' + e.id + '\')">'
+            +   '<div style="flex:1;min-width:0;">'
+            +     '<div style="font-weight:600;color:var(--text);font-size:14px;">' + escapeHtml(e.element_naam) + '</div>'
+            +     '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">' + summary + '</div>'
+            +   '</div>'
+            +   '<div style="display:flex;align-items:center;">' + _kwBadge(e.conditiescore) + aandachtBadge + '</div>'
+            +   '<div style="font-size:18px;color:var(--text-dim);">▾</div>'
+            + '</div>'
+            + '<div id="kwEl-' + e.id + '" style="display:none;padding:0 14px 14px;border-top:1px solid var(--border);">'
+            // ─── Vragenlijst (NEN/CROW-conform) ───
+            +   _kwVragenSectie(e, locked)
+            +   '<div style="margin:12px 0 6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'
+            +     '<label style="font-size:12px;color:var(--text-muted);">' + t('kw_algemene_bevindingen') + ':</label>'
+            +     '<textarea id="kwElBev-' + e.id + '" style="width:100%;min-height:50px;padding:8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:var(--bg);color:var(--text);" placeholder="' + t('kw_bevindingen_placeholder') + '" ' + (locked ? 'disabled' : '') + '>' + escapeHtml(e.bevindingen || '') + '</textarea>'
+            +     (!locked ? '<button class="btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="saveKwElementBev(\'' + e.id + '\')">' + t('kw_btn_opslaan') + '</button>' : '')
+            +   '</div>'
+            +   '<div style="margin:14px 0 8px;display:flex;justify-content:space-between;align-items:center;">'
+            +     '<strong style="font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-muted);">' + t('kw_defecten_header') + '</strong>'
+            +     (!locked ? '<button class="btn-primary" style="font-size:11px;padding:5px 12px;" onclick="openKwDefectModal(\'' + e.id + '\')">' + t('kw_btn_add_defect') + '</button>' : '')
+            +   '</div>';
+          if (e.defecten && e.defecten.length) {
+            elementHtml += e.defecten.map(function(d){
+              var photoTile = d.photo_url
+                ? '<a href="' + escapeHtml(d.photo_url) + '" target="_blank"><img src="' + escapeHtml(d.photo_url) + '" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border);"></a>'
+                : '<div style="width:64px;height:64px;border:1px dashed var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:10px;">geen<br>foto</div>';
+              var meldingBadge = d.melding_id
+                ? '<span style="background:#dbeafe;color:#1e40af;font-size:10px;padding:2px 8px;border-radius:6px;font-weight:700;">Melding ↗</span>'
+                : (!locked ? '<button class="btn-secondary" style="font-size:10px;padding:3px 8px;" onclick="defectToMelding(\'' + e.id + '\',\'' + d.id + '\')">→ Melding</button>' : '');
+              return '<div style="display:flex;gap:10px;padding:8px;margin-bottom:6px;background:var(--bg);border:1px solid var(--border);border-radius:8px;align-items:flex-start;">'
+                + photoTile
+                + '<div style="flex:1;min-width:0;">'
+                +   '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:3px;">'
+                +     '<strong style="font-size:13px;">' + escapeHtml(d.gebrek_naam) + '</strong>'
+                +     _kwBadge(d.defect_score)
+                +     meldingBadge
+                +   '</div>'
+                +   '<div style="font-size:11px;color:var(--text-dim);font-family:JetBrains Mono,monospace;">'
+                +     'ernst=' + (d.ernst||'?') + ' · int=' + (d.intensiteit||'?') + ' · omv=' + (d.omvang_klasse||'?')
+                +     (d.locatie_beschrijving ? ' · ' + escapeHtml(d.locatie_beschrijving) : '')
+                +   '</div>'
+                +   (d.omschrijving ? '<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">' + escapeHtml(d.omschrijving) + '</div>' : '')
+                + '</div>'
+                + (!locked ? '<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:#dc2626;border-color:#fee2e2;" onclick="deleteKwDefect(\'' + e.id + '\',\'' + d.id + '\')">🗑️</button>' : '')
+                + '</div>';
+            }).join('');
+          } else {
+            elementHtml += '<p style="color:var(--text-dim);font-size:13px;margin:8px 0;">Nog geen defecten geregistreerd.</p>';
+          }
+          if (!locked) {
+            elementHtml += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:12px;">'
+              + '<label style="color:var(--text-muted);"><input type="checkbox" ' + (e.beoordeeld ? 'checked' : '') + ' onchange="toggleKwBeoordeeld(\'' + e.id + '\', this.checked)"> ' + t('kw_chk_beoordeeld_geen_bijzonderheden') + '</label>'
+              + '</div>';
+          }
+          elementHtml += '</div></div>';
+          return elementHtml;
+        }).join('');
+        groupHtml += '</div>';
+        return groupHtml;
+      }).join('');
+    }
+
+    function toggleKwElement(elId) {
+      var box = document.getElementById('kwEl-' + elId);
+      if (!box) return;
+      box.style.display = box.style.display === 'none' ? '' : 'none';
+    }
+
+    function saveKwElementBev(elId) {
+      if (!_currentKunstwerk) return;
+      var bev = document.getElementById('kwElBev-' + elId).value;
+      api('PATCH', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + elId, {
+        bevindingen: bev,
+      }).then(function(){
+        showToast('Bevindingen opgeslagen', 'success');
+        return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+      }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); var b=document.getElementById('kwEl-'+elId); if(b)b.style.display=''; } })
+        .catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+    }
+
+    function toggleKwBeoordeeld(elId, beoordeeld) {
+      if (!_currentKunstwerk) return;
+      api('PATCH', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + elId, {
+        beoordeeld: beoordeeld,
+      }).then(function(){
+        return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+      }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } });
+    }
+
+    // ── Defect-modal ────────────────────────────────────────────
+    var _kwDefectElementId = null;
+    function openKwDefectModal(elId) {
+      _kwDefectElementId = elId;
+      document.getElementById('kwDefectGebrekNaam').value = '';
+      document.getElementById('kwDefectErnst').value = '2';
+      document.getElementById('kwDefectIntensiteit').value = '2';
+      document.getElementById('kwDefectOmvang').value = '2';
+      document.getElementById('kwDefectLocatie').value = '';
+      document.getElementById('kwDefectOmschrijving').value = '';
+      document.getElementById('kwDefectPhoto').value = '';
+      document.getElementById('kwDefectPhotoPreview').innerHTML = '';
+      // Vul gebrek-suggesties uit taxonomy
+      var sugSel = document.getElementById('kwDefectGebrekSuggesties');
+      sugSel.innerHTML = '<option value="">— vrije invoer —</option>';
+      if (_currentKunstwerk && _currentKunstwerk.kunstwerk_type) {
+        // Cache via taxonomy-API
+        var type = _currentKunstwerk.kunstwerk_type;
+        var loadDone = function(elementen) {
+          var el = (_currentKunstwerk.elementen || []).find(function(x){ return x.id === elId; });
+          if (!el) return;
+          var entry = (elementen || []).find(function(e){ return e.code === el.element_code; });
+          if (entry && entry.gebreken) {
+            entry.gebreken.forEach(function(g){
+              sugSel.innerHTML += '<option value="' + escapeHtml(g.code) + '" data-naam="' + escapeHtml(g.naam) + '">' + escapeHtml(g.naam) + '</option>';
+            });
+          }
+        };
+        if (_kunstwerkTaxonomy[type]) {
+          loadDone(_kunstwerkTaxonomy[type]);
+        } else {
+          api('GET', '/api/kunstwerken-inspecties/taxonomy/' + type).then(function(d){
+            _kunstwerkTaxonomy[type] = d.elementen || [];
+            loadDone(_kunstwerkTaxonomy[type]);
+          });
+        }
+      }
+      document.getElementById('kwDefectModal').classList.add('active');
+    }
+    function closeKwDefectModal() {
+      document.getElementById('kwDefectModal').classList.remove('active');
+      _kwDefectElementId = null;
+    }
+
+    function kwDefectSuggestieKies() {
+      var sel = document.getElementById('kwDefectGebrekSuggesties');
+      var opt = sel.options[sel.selectedIndex];
+      if (opt && opt.dataset.naam) {
+        document.getElementById('kwDefectGebrekNaam').value = opt.dataset.naam;
+      }
+    }
+
+    function kwDefectPhotoPreview() {
+      var input = document.getElementById('kwDefectPhoto');
+      var prev = document.getElementById('kwDefectPhotoPreview');
+      prev.innerHTML = '';
+      if (input.files && input.files[0]) {
+        var f = input.files[0];
+        var url = URL.createObjectURL(f);
+        prev.innerHTML = '<img src="' + url + '" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid var(--border);margin-top:8px;">';
+      }
+    }
+
+    function submitKwDefect() {
+      if (!_currentKunstwerk || !_kwDefectElementId) return;
+      var naam = document.getElementById('kwDefectGebrekNaam').value.trim();
+      if (!naam) { showToast('Gebrek-naam is verplicht', 'error'); return; }
+      var ernst = parseInt(document.getElementById('kwDefectErnst').value, 10);
+      var intensiteit = parseInt(document.getElementById('kwDefectIntensiteit').value, 10);
+      var omvang = parseInt(document.getElementById('kwDefectOmvang').value, 10);
+      var locatie = document.getElementById('kwDefectLocatie').value.trim();
+      var omschr = document.getElementById('kwDefectOmschrijving').value.trim();
+      var code = document.getElementById('kwDefectGebrekSuggesties').value || null;
+
+      var fileInput = document.getElementById('kwDefectPhoto');
+      var hasFile = fileInput.files && fileInput.files[0];
+
+      var doSubmit = function(photoUrl) {
+        var payload = {
+          gebrek_naam: naam,
+          gebrek_code: code,
+          omschrijving: omschr || null,
+          ernst: ernst, intensiteit: intensiteit, omvang_klasse: omvang,
+          locatie_beschrijving: locatie || null,
+        };
+        if (photoUrl) payload.photo_url = photoUrl;
+        api('POST', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + _kwDefectElementId + '/defecten', payload)
+          .then(function(){
+            showToast('Defect geregistreerd', 'success');
+            closeKwDefectModal();
+            return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+          }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
+          .catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+      };
+
+      if (hasFile) {
+        // Foto's worden in dit systeem als base64-dataURL bewaard in photo_url
+        // (zelfde patroon als melding.photo_url / oplevering-foto's).
+        var reader = new FileReader();
+        reader.onload = function(ev){ doSubmit(ev.target.result); };
+        reader.onerror = function(){ showToast('Foto-lezen mislukt', 'error'); doSubmit(null); };
+        reader.readAsDataURL(fileInput.files[0]);
+      } else {
+        doSubmit(null);
+      }
+    }
+
+    function deleteKwDefect(elId, defectId) {
+      if (!_currentKunstwerk) return;
+      showConfirm({
+        icon: '🗑️', danger: true,
+        title: 'Defect verwijderen?',
+        message: 'Dit gebrek wordt uit het rapport gehaald — element-score wordt herberekend.',
+        actionLabel: 'Verwijderen',
+        onConfirm: function(){
+          api('DELETE', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + elId + '/defecten/' + defectId)
+            .then(function(){
+              showToast('Defect verwijderd', 'success');
+              return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+            }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } });
+        },
+      });
+    }
+
+    function defectToMelding(elId, defectId) {
+      if (!_currentKunstwerk) return;
+      api('POST', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + elId + '/defecten/' + defectId + '/to-melding', {})
+        .then(function(d){
+          showToast('Melding aangemaakt — prioriteit: ' + (d.priority || 'normaal'), 'success');
+          return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+        }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
+        .catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+    }
+
+    // ── Status-overgangen ────────────────────────────────────────
+    function completeCurrentKunstwerk() {
+      if (!_currentKunstwerk) return;
+      showConfirm({
+        icon: '✓',
+        title: 'Inspectie afronden?',
+        message: 'Alle scores worden berekend en de inspectie wordt gemarkeerd als afgerond. Daarna kan je ondertekenen.',
+        actionLabel: 'Afronden',
+        onConfirm: function(){
+          api('POST', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/complete', {})
+            .then(function(insp){
+              showToast('Conditiescore: ' + insp.conditiescore_overall + ' (' + insp.conditiescore_label + ')', 'success');
+              _currentKunstwerk = insp;
+              renderKunstwerkDetail(insp);
+              loadKunstwerkInspecties();
+            }).catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+        },
+      });
+    }
+
+    function deleteCurrentKunstwerk() {
+      if (!_currentKunstwerk) return;
+      showConfirm({
+        icon: '🗑️', danger: true,
+        title: 'Inspectie verwijderen?',
+        message: 'Alle elementen en defecten worden verwijderd.',
+        actionLabel: 'Verwijderen',
+        onConfirm: function(){
+          api('DELETE', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id)
+            .then(function(){
+              showToast('Inspectie verwijderd', 'success');
+              closeKunstwerkDetail();
+              loadKunstwerkInspecties();
+            }).catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+        },
+      });
+    }
+
+    // ── Handtekening-modal ─────────────────────────────────────
+    var _kwSigCtx = null;
+    var _kwSigDrawing = false;
+    function openKwSignModal() {
+      document.getElementById('kwSignVolgende').value = '';
+      var modal = document.getElementById('kwSignModal');
+      modal.classList.add('active');
+      // Init canvas
+      setTimeout(function(){
+        var canvas = document.getElementById('kwSignCanvas');
+        if (!canvas) return;
+        canvas.width = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+        _kwSigCtx = canvas.getContext('2d');
+        _kwSigCtx.fillStyle = '#fff';
+        _kwSigCtx.fillRect(0,0,canvas.width,canvas.height);
+        _kwSigCtx.lineWidth = 2;
+        _kwSigCtx.strokeStyle = '#0f172a';
+        _kwSigCtx.lineCap = 'round';
+        canvas.onmousedown = function(e){ _kwSigDrawing=true; var r=canvas.getBoundingClientRect(); _kwSigCtx.beginPath(); _kwSigCtx.moveTo(e.clientX-r.left, e.clientY-r.top); };
+        canvas.onmousemove = function(e){ if(!_kwSigDrawing) return; var r=canvas.getBoundingClientRect(); _kwSigCtx.lineTo(e.clientX-r.left, e.clientY-r.top); _kwSigCtx.stroke(); };
+        canvas.onmouseup = function(){ _kwSigDrawing=false; };
+        canvas.onmouseleave = function(){ _kwSigDrawing=false; };
+        // Touch-support
+        canvas.ontouchstart = function(e){ e.preventDefault(); _kwSigDrawing=true; var r=canvas.getBoundingClientRect(); var t=e.touches[0]; _kwSigCtx.beginPath(); _kwSigCtx.moveTo(t.clientX-r.left, t.clientY-r.top); };
+        canvas.ontouchmove = function(e){ e.preventDefault(); if(!_kwSigDrawing) return; var r=canvas.getBoundingClientRect(); var t=e.touches[0]; _kwSigCtx.lineTo(t.clientX-r.left, t.clientY-r.top); _kwSigCtx.stroke(); };
+        canvas.ontouchend = function(){ _kwSigDrawing=false; };
+      }, 100);
+    }
+    function closeKwSignModal() {
+      document.getElementById('kwSignModal').classList.remove('active');
+    }
+    function kwSignClear() {
+      var canvas = document.getElementById('kwSignCanvas');
+      if (canvas && _kwSigCtx) {
+        _kwSigCtx.fillStyle = '#fff';
+        _kwSigCtx.fillRect(0,0,canvas.width,canvas.height);
+      }
+    }
+    function kwSignSubmit() {
+      if (!_currentKunstwerk) return;
+      var canvas = document.getElementById('kwSignCanvas');
+      var dataUrl = canvas.toDataURL('image/png');
+      var volgende = document.getElementById('kwSignVolgende').value;
+      var payload = { signature_data_url: dataUrl };
+      if (volgende) payload.volgende_inspectie_op = new Date(volgende).toISOString();
+      api('POST', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/sign', payload)
+        .then(function(insp){
+          showToast('Inspectie ondertekend', 'success');
+          _currentKunstwerk = insp;
+          renderKunstwerkDetail(insp);
+          closeKwSignModal();
+          loadKunstwerkInspecties();
+        }).catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // PDF-RAPPORT — formeel inspectierapport NEN 2767-2 + CROW 134
+    // Volledig herontwerp met clean layout voor gemeente-publiek.
+    // ══════════════════════════════════════════════════════════════
+    function exportKunstwerkPDF() {
+      if (!_currentKunstwerk) { showToast('Geen inspectie geselecteerd', 'error'); return; }
+      if (!window.jspdf || !window.jspdf.jsPDF) { showToast('PDF-library niet geladen', 'error'); return; }
+      try {
+        var jsPDF = window.jspdf.jsPDF;
+        var doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4', compress: true });
+        var W = 210, H = 297, M = 18;
+        var insp = _currentKunstwerk;
+        var m = insp.metrics || {};
+        var adv = insp.maatregel_advies || {};
+        var elementen = insp.elementen || [];
+
+        var T = function(v) { return (v == null || v === '') ? '—' : String(v); };
+        var fmtDate = function(d, withTime) {
+          if (!d) return '—';
+          var dt = new Date(d);
+          if (isNaN(dt.getTime())) return '—';
+          if (withTime) return dt.toLocaleDateString('nl-NL') + ' ' + dt.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit'});
+          return dt.toLocaleDateString('nl-NL');
+        };
+
+        // ── Brand palette ────────────────────────────────────────
+        var C = {
+          primary:   '#0284c7',
+          primaryDk: '#075985',
+          accent:    '#16a34a',
+          dark:      '#0f172a',
+          body:      '#334155',
+          muted:     '#64748b',
+          dim:       '#94a3b8',
+          border:    '#e2e8f0',
+          bgLight:   '#f8fafc',
+          bgBlue:    '#eff6ff',
+          white:     '#ffffff',
+        };
+        // Score colors — rustig palet, voldoende contrast
+        var SC = {
+          1: { fg: '#15803d', bg: '#dcfce7', label: 'Uitstekend' },
+          2: { fg: '#4d7c0f', bg: '#ecfccb', label: 'Goed' },
+          3: { fg: '#a16207', bg: '#fef9c3', label: 'Redelijk' },
+          4: { fg: '#c2410c', bg: '#ffedd5', label: 'Matig' },
+          5: { fg: '#b91c1c', bg: '#fee2e2', label: 'Slecht' },
+          6: { fg: '#7f1d1d', bg: '#fecaca', label: 'Zeer slecht' },
+        };
+        var scoreColor = function(s) { return s && SC[s] ? SC[s] : { fg: C.muted, bg: C.bgLight, label: '—' }; };
+
+        // ── Helpers ──────────────────────────────────────────────
+        var setFill = function(hex) { doc.setFillColor(hex); };
+        var setText = function(hex) { doc.setTextColor(hex); };
+        var setDraw = function(hex) { doc.setDrawColor(hex); };
+
+        function brandHeader(pageNo) {
+          // Smalle gradient-strook bovenaan
+          setFill(C.dark);
+          doc.rect(0, 0, W, 7, 'F');
+          setFill(C.primary);
+          doc.rect(0, 7, W, 0.6, 'F');
+          // Linker brand-mark
+          setText(C.white);
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.text('FieldOps', M, 4.8);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7.5);
+          setText('#cbd5e1');
+          doc.text(t('kw_pdf_header_band'), M + 16, 4.8);
+          // Rechter datum
+          doc.text(fmtDate(new Date(), false), W - M, 4.8, { align: 'right' });
+        }
+
+        function sectionHeader(label, y) {
+          setText(C.dark);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(13);
+          doc.text(label, M, y);
+          setDraw(C.primary);
+          doc.setLineWidth(0.8);
+          doc.line(M, y + 1.6, M + 30, y + 1.6);
+          setDraw(C.border);
+          doc.setLineWidth(0.2);
+          doc.line(M + 30, y + 1.6, W - M, y + 1.6);
+          return y + 9;
+        }
+
+        // Genereer een taart-diagram als PNG-dataURL via off-screen canvas.
+        // items: [{value, color, label}]; size in pixels (square).
+        function makePieDataURL(items, size) {
+          var canvas = document.createElement('canvas');
+          canvas.width = size; canvas.height = size;
+          var ctx = canvas.getContext('2d');
+          var cx = size/2, cy = size/2, r = size/2 - 4;
+          var total = items.reduce(function(s, it){ return s + it.value; }, 0);
+          if (total === 0) return null;
+          var start = -Math.PI/2;
+          items.forEach(function(it){
+            if (it.value <= 0) return;
+            var slice = (it.value/total) * Math.PI * 2;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.arc(cx, cy, r, start, start + slice);
+            ctx.closePath();
+            ctx.fillStyle = it.color;
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            // Percentage-label in segment (alleen als segment groot genoeg)
+            if (slice > 0.18) {
+              var mid = start + slice/2;
+              var lx = cx + Math.cos(mid) * r * 0.62;
+              var ly = cy + Math.sin(mid) * r * 0.62;
+              ctx.fillStyle = '#ffffff';
+              ctx.font = 'bold ' + Math.round(size * 0.07) + 'px Helvetica';
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(Math.round(it.value / total * 100) + '%', lx, ly);
+            }
+            start += slice;
+          });
+          // Donut-gat in het midden voor 'centerstone' look (optioneel)
+          ctx.beginPath();
+          ctx.arc(cx, cy, r * 0.42, 0, Math.PI * 2);
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+          // Totaal-getal in centrum
+          ctx.fillStyle = '#0f172a';
+          ctx.font = 'bold ' + Math.round(size * 0.16) + 'px Helvetica';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(String(total), cx, cy - size * 0.025);
+          ctx.fillStyle = '#64748b';
+          ctx.font = Math.round(size * 0.06) + 'px Helvetica';
+          ctx.fillText(t('kw_elementen'), cx, cy + size * 0.085);
+          return canvas.toDataURL('image/png');
+        }
+
+        function rounded(x, y, w, h, r, fillHex, borderHex) {
+          if (fillHex) { setFill(fillHex); }
+          if (borderHex) { setDraw(borderHex); doc.setLineWidth(0.2); }
+          var style = fillHex && borderHex ? 'FD' : (fillHex ? 'F' : 'D');
+          doc.roundedRect(x, y, w, h, r, r, style);
+        }
+
+        // ──────────────────────────────────────────────────────────
+        // PAGINA 1 — COVERPAGINA
+        // ──────────────────────────────────────────────────────────
+        brandHeader(1);
+
+        // Vertical accent bar links (max 200mm)
+        setFill(C.primary);
+        doc.rect(0, 50, 4, 60, 'F');
+
+        // Eyebrow text
+        setText(C.primary);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9);
+        doc.text(t('kw_pdf_eyebrow'), M, 58);
+
+        // Grote titel
+        setText(C.dark);
+        doc.setFontSize(28);
+        doc.setFont('helvetica', 'bold');
+        var titleLines = doc.splitTextToSize(T(insp.title), W - 2*M);
+        doc.text(titleLines, M, 70);
+
+        // Object + type info
+        setText(C.body);
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'normal');
+        var typeLabel = (insp.kunstwerk_type || 'kunstwerk').charAt(0).toUpperCase() + (insp.kunstwerk_type || '').slice(1);
+        doc.text(typeLabel + ' · ' + T(insp.asset_code) + (insp.asset_name ? ' — ' + insp.asset_name : ''), M, 70 + titleLines.length * 9 + 4);
+
+        // Lange horizontale lijn
+        setDraw(C.border);
+        doc.setLineWidth(0.3);
+        var lineY = 70 + titleLines.length * 9 + 14;
+        doc.line(M, lineY, W - M, lineY);
+
+        // Info-tabel met twee kolommen
+        var tableY = lineY + 10;
+        var infoRows = [
+          [t('kw_pdf_lbl_inspectiedatum'),     fmtDate(insp.datum_inspectie, false)],
+          [t('kw_pdf_lbl_inspectietype'),      T(insp.inspectie_type)],
+          [t('kw_pdf_lbl_inspecteur'),         T(insp.inspecteur_naam)],
+          [t('kw_pdf_lbl_certificaat'),        T(insp.inspecteur_certificaat)],
+          [t('kw_pdf_lbl_weer'),T(insp.weersomstandigheden)],
+          [t('kw_pdf_lbl_opdrachtgever'),      T(insp.opdrachtgever_naam)],
+          [t('kw_pdf_lbl_norm_refs'),   T(insp.norm_referenties)],
+          [t('kw_pdf_lbl_rapport_gegenereerd'),fmtDate(new Date(), true)],
+        ];
+        doc.autoTable({
+          startY: tableY,
+          body: infoRows,
+          theme: 'plain',
+          styles: { font: 'helvetica', fontSize: 10, cellPadding: { top: 2.5, bottom: 2.5, left: 0, right: 4 }, textColor: C.body },
+          columnStyles: {
+            0: { fontStyle: 'bold', textColor: C.dark, cellWidth: 55 },
+            1: { textColor: C.body },
+          },
+          margin: { left: M, right: M },
+        });
+        var afterY = doc.lastAutoTable.finalY + 14;
+
+        // Eind-conditie stempel rechts-onder
+        var score = insp.conditiescore_overall;
+        var sc = scoreColor(score);
+        var stempY = afterY;
+        if (stempY > H - 70) stempY = H - 70;
+        var stempH = 38, stempX = M, stempW = W - 2*M;
+        rounded(stempX, stempY, stempW, stempH, 3, sc.bg, sc.fg);
+        setText(sc.fg);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text(t('kw_pdf_eindconditie'), stempX + 6, stempY + 9);
+        doc.setFontSize(42);
+        doc.text(score ? String(score) : '—', stempX + 6, stempY + 28);
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'normal');
+        doc.text(score ? sc.label : t('kw_nog_niet_beoordeeld'), stempX + 28, stempY + 28);
+        // Categorie rechts
+        if (adv.categorie) {
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(10);
+          doc.text(t('kw_pdf_categorie'), stempX + stempW - 6, stempY + 9, { align: 'right' });
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(14);
+          doc.text(String(adv.categorie).toUpperCase(), stempX + stempW - 6, stempY + 18, { align: 'right' });
+          if (adv.termijn_jaren != null) {
+            doc.setFontSize(9);
+            setText(sc.fg);
+            doc.text(t('kw_pdf_termijn').replace('{n}', adv.termijn_jaren), stempX + stempW - 6, stempY + 25, { align: 'right' });
+          }
+        }
+
+        // Footer cover
+        setText(C.dim);
+        doc.setFontSize(7.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text(t('kw_pdf_conformiteit_cover_footer'), M, H - 12, { maxWidth: W - 2*M });
+
+        // ──────────────────────────────────────────────────────────
+        // PAGINA 2 — SAMENVATTING
+        // ──────────────────────────────────────────────────────────
+        doc.addPage();
+        brandHeader(2);
+        var y = 22;
+        y = sectionHeader(t('kw_pdf_section_samenvatting'), y);
+
+        // KPI-cards in 4-kolom rij
+        var cardW = (W - 2*M - 9) / 4;  // 3mm gap × 3 = 9
+        var kpis = [
+          { label: t('kw_kpi_voortgang'),  value: (m.voortgang_pct || 0) + '%',
+            sub: (m.elementen_beoordeeld || 0) + ' / ' + (m.elementen_totaal || 0) + ' ' + t('kw_elementen'),
+            fg: C.primary, bg: '#eff6ff' },
+          { label: t('kw_kpi_vragen'),     value: (m.vragen_beantwoord || 0) + '/' + (m.vragen_totaal || 0),
+            sub: (m.vragen_voortgang_pct || 0) + '% ' + t('kw_pct_beantwoord'),
+            fg: C.primary, bg: '#eff6ff' },
+          { label: t('kw_kpi_aandacht'),   value: String(m.vragen_aandacht || 0),
+            sub: t('kw_punten_risico'),
+            fg: (m.vragen_aandacht || 0) > 0 ? '#ea580c' : C.accent,
+            bg: (m.vragen_aandacht || 0) > 0 ? '#fff7ed' : '#f0fdf4' },
+          { label: t('kw_kpi_kritiek'),    value: String(m.defecten_kritiek || 0),
+            sub: t('kw_pdf_kpi_kritiek_long'),
+            fg: (m.defecten_kritiek || 0) > 0 ? '#dc2626' : C.accent,
+            bg: (m.defecten_kritiek || 0) > 0 ? '#fef2f2' : '#f0fdf4' },
+        ];
+        kpis.forEach(function(k, i) {
+          var x = M + i * (cardW + 3);
+          rounded(x, y, cardW, 28, 2.5, k.bg, '#e2e8f0');
+          setText(C.muted);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(8);
+          doc.text(k.label.toUpperCase(), x + 4, y + 7);
+          setText(k.fg);
+          doc.setFontSize(22);
+          doc.setFont('helvetica', 'bold');
+          doc.text(k.value, x + 4, y + 18);
+          setText(C.muted);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7.5);
+          doc.text(k.sub, x + 4, y + 24);
+        });
+        y += 36;
+
+        // Conditie-verdeling als TAART-DIAGRAM met legenda + tekstuele duiding
+        setText(C.dark);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(11);
+        doc.text(t('kw_pdf_pie_title'), M, y);
+        y += 5;
+        var totaal = 0;
+        for (var s = 1; s <= 6; s++) totaal += (m.elementen_per_conditie && m.elementen_per_conditie[String(s)] || 0);
+        if (totaal > 0) {
+          // Bouw pie-data
+          var pieItems = [];
+          for (var s2 = 1; s2 <= 6; s2++) {
+            var cnt = m.elementen_per_conditie[String(s2)] || 0;
+            if (cnt > 0) {
+              pieItems.push({ value: cnt, color: scoreColor(s2).fg, label: scoreColor(s2).label, score: s2 });
+            }
+          }
+          // Render canvas → PNG → inbed in PDF (links 60mm × 60mm; legenda + tekst rechts)
+          var pieDataURL = makePieDataURL(pieItems, 400);
+          if (pieDataURL) {
+            try { doc.addImage(pieDataURL, 'PNG', M, y, 60, 60); }
+            catch (e) { console.warn('Pie render fail', e); }
+          }
+          // Legenda + tekstuele duiding rechts naast de taart
+          var lx = M + 66;
+          var ly = y + 4;
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          setText(C.dark);
+          doc.text(totaal + ' ' + t('kw_elementen'), lx, ly);
+          ly += 6;
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8.5);
+          pieItems.forEach(function(it) {
+            // Vierkant + label-regel
+            setFill(it.color);
+            rounded(lx, ly - 2.6, 3.5, 3.5, 0.5, it.color);
+            setText(C.body);
+            var pct = Math.round(it.value / totaal * 100);
+            var rij = ' Score ' + it.score + ' — ' + it.label + ' · ' + it.value + ' ' + t('kw_elementen') + ' (' + pct + '%)';
+            doc.text(rij, lx + 5, ly);
+            ly += 5.5;
+          });
+          // Verschuif y onder taart
+          y += 64;
+        } else {
+          setText(C.muted);
+          doc.setFontSize(9);
+          doc.text(t('kw_nog_niet_beoordeeld'), M, y);
+          y += 8;
+        }
+
+        // Advies/maatregel-blok
+        if (adv.actie) {
+          y += 2;
+          rounded(M, y, W - 2*M, 18, 2, C.bgBlue, '#bfdbfe');
+          setText(C.primaryDk);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          doc.text(t('kw_pdf_maatregel_advies'), M + 5, y + 6);
+          setText(C.dark);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(10);
+          var advLines = doc.splitTextToSize(adv.actie, W - 2*M - 10);
+          doc.text(advLines, M + 5, y + 12);
+          y += Math.max(18, 6 + advLines.length * 4.5) + 4;
+        }
+
+        // Top bevindingen
+        var alleDefecten = [];
+        elementen.forEach(function(e) {
+          (e.defecten || []).forEach(function(d) {
+            alleDefecten.push({ el: e.element_naam, code: e.element_code, d: d });
+          });
+        });
+        alleDefecten.sort(function(a, b) { return (b.d.defect_score || 0) - (a.d.defect_score || 0); });
+        var top5 = alleDefecten.slice(0, 5);
+        if (top5.length > 0) {
+          y = sectionHeader(t('kw_pdf_section_kritieke_bevindingen'), y + 4);
+          doc.autoTable({
+            startY: y,
+            head: [[t('kw_pdf_tbl_nr'), t('kw_pdf_tbl_element'), t('kw_pdf_tbl_gebrek'), t('kw_pdf_tbl_score')]],
+            body: top5.map(function(it, i) {
+              return [i + 1, it.el, it.d.gebrek_naam, it.d.defect_score != null ? it.d.defect_score + ' · ' + (KW_CONDITIE_LABEL[it.d.defect_score] || '') : '—'];
+            }),
+            theme: 'striped',
+            headStyles: { fillColor: C.dark, textColor: C.white, fontSize: 9, fontStyle: 'bold' },
+            styles: { font: 'helvetica', fontSize: 9, cellPadding: 3, textColor: C.body },
+            alternateRowStyles: { fillColor: C.bgLight },
+            columnStyles: {
+              0: { cellWidth: 10, halign: 'center', fontStyle: 'bold' },
+              1: { cellWidth: 55, fontStyle: 'bold', textColor: C.dark },
+              3: { cellWidth: 35, fontStyle: 'bold' },
+            },
+            didParseCell: function(d) {
+              if (d.section === 'body' && d.column.index === 3) {
+                var s = top5[d.row.index].d.defect_score;
+                if (s) {
+                  d.cell.styles.fillColor = scoreColor(s).bg;
+                  d.cell.styles.textColor = scoreColor(s).fg;
+                }
+              }
+            },
+            margin: { left: M, right: M },
+          });
+        }
+
+        // ──────────────────────────────────────────────────────────
+        // PAGINA 3+ — PER ELEMENT
+        // ──────────────────────────────────────────────────────────
+        elementen.forEach(function(el, elIdx) {
+          doc.addPage();
+          brandHeader(3 + elIdx);
+          y = 22;
+
+          // Element-header met side-stripe
+          var sc2 = scoreColor(el.conditiescore);
+          setFill(sc2.fg);
+          doc.rect(M, y, 1.5, 24, 'F');
+
+          setText(C.dark);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(16);
+          doc.text(T(el.element_naam), M + 5, y + 7);
+
+          setText(C.muted);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(8.5);
+          var meta = el.element_code + (el.element_groep ? ' · ' + el.element_groep : '');
+          doc.text(meta, M + 5, y + 13);
+
+          // Status-tekstje
+          var aandachtCount = el.aandacht_count || 0;
+          var defCount = (el.defecten || []).length;
+          var statusParts = [];
+          if (defCount > 0) statusParts.push(defCount + ' ' + (defCount === 1 ? t('kw_defect_count_1') : t('kw_defect_count_n')));
+          if (aandachtCount > 0) statusParts.push(aandachtCount + ' ' + (aandachtCount === 1 ? t('kw_aandachtspunt_1') : t('kw_aandachtspunt_n')));
+          if (!statusParts.length) statusParts.push(el.beoordeeld ? t('kw_geen_bijzonderheden') : t('kw_nog_niet_beoordeeld'));
+          setText(C.body);
+          doc.setFontSize(9);
+          doc.text(statusParts.join(' · '), M + 5, y + 19);
+
+          // Score-badge rechts — alleen score zonder symbool-chip eronder; details in narratieve tekst hieronder
+          if (el.conditiescore != null) {
+            var badgeW = 50, badgeH = 14;
+            rounded(W - M - badgeW, y + 2, badgeW, badgeH, 2, sc2.bg, sc2.fg);
+            setText(sc2.fg);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.text(t('kw_kpi_voortgang') === 'Voortgang' ? 'Score ' + el.conditiescore : 'Score ' + el.conditiescore, W - M - badgeW + 4, y + 7);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.text(sc2.label, W - M - badgeW + 4, y + 12);
+          } else {
+            setText(C.muted);
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'italic');
+            doc.text(t('kw_nog_niet_beoordeeld'), W - M, y + 12, { align: 'right' });
+          }
+          y += 30;
+
+          // ── Narratieve inleiding (tekstueel rapport) ────────────────────
+          var introLines = [];
+          var groepLbl = ({constructief:t('kw_constructief'),afwerking:t('kw_afwerking'),installatie:t('kw_installatie'),omgeving:t('kw_omgeving'),overig:t('kw_overig')}[el.element_groep] || t('kw_overig')).toLowerCase();
+          if (el.conditiescore != null) {
+            introLines.push(t('kw_pdf_intro_score')
+              .replace('{naam}', el.element_naam)
+              .replace('{groep}', groepLbl)
+              .replace('{score}', el.conditiescore)
+              .replace('{label}', sc2.label));
+          } else {
+            introLines.push(t('kw_pdf_intro_no_score')
+              .replace('{naam}', el.element_naam)
+              .replace('{groep}', groepLbl));
+          }
+          var vragenTotal = (el.vragen || []).length;
+          var vragenBeantwoord = (el.vragen || []).filter(function(v){ return v.answer && v.answer.answered; }).length;
+          if (vragenTotal > 0) {
+            introLines.push(t('kw_pdf_intro_checklist')
+              .replace('{n}', vragenBeantwoord)
+              .replace('{total}', vragenTotal));
+          }
+          if (aandachtCount > 0) {
+            introLines.push(t('kw_pdf_intro_aandacht')
+              .replace('{n}', aandachtCount)
+              .replace('{label}', aandachtCount === 1 ? t('kw_aandachtspunt_1') : t('kw_aandachtspunt_n')));
+          } else if (el.beoordeeld) {
+            introLines.push(t('kw_pdf_intro_geen_aandacht'));
+          }
+          if (defCount > 0) {
+            introLines.push(t('kw_pdf_intro_defect')
+              .replace('{n}', defCount)
+              .replace('{label}', defCount === 1 ? t('kw_defect_count_1') : t('kw_defect_count_n')));
+          }
+          var introTekst = introLines.join(' ');
+          setText(C.body);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(9.5);
+          var introWrapped = doc.splitTextToSize(introTekst, W - 2*M);
+          doc.text(introWrapped, M, y);
+          y += introWrapped.length * 4.5 + 4;
+
+          // Niet-inspecteerbaar reden
+          if (el.niet_inspecteerbaar_reden) {
+            rounded(M, y, W - 2*M, 12, 2, '#fef3c7', '#fcd34d');
+            setText('#92400e');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8.5);
+            doc.text('NIET INSPECTEERBAAR', M + 4, y + 4.5);
+            setText(C.body);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.text(T(el.niet_inspecteerbaar_reden), M + 4, y + 9);
+            y += 16;
+          }
+
+          // CHECKLIST TABLE
+          var vragen = el.vragen || [];
+          if (vragen.length > 0) {
+            setText(C.muted);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.text('NEN/CROW-CHECKLIST', M, y);
+            y += 4;
+            var rows = vragen.map(function(v) {
+              var q = v.question || {};
+              var a = v.answer || {};
+              return {
+                vraag: q.vraag || q.code,
+                antwoord: _pdfAnswerStr(q, a),
+                norm: q.norm_ref || '',
+                attention: a && a.requires_attention,
+                toelichting: a && a.toelichting,
+                answered: a && a.answered,
+                qtype: q.type,
+                answerScore: a && a.answer_score,
+              };
+            });
+            doc.autoTable({
+              startY: y,
+              head: [[t('kw_pdf_tbl_vraag'), t('kw_pdf_tbl_antwoord'), t('kw_pdf_tbl_norm_referentie')]],
+              body: rows.map(function(r) {
+                return [
+                  r.vraag + (r.toelichting ? '\n' + r.toelichting : ''),
+                  r.antwoord,
+                  r.norm,
+                ];
+              }),
+              theme: 'plain',
+              headStyles: { fillColor: C.bgLight, textColor: C.dark, fontSize: 8.5, fontStyle: 'bold',
+                            cellPadding: { top: 4, bottom: 4, left: 4, right: 4 },
+                            lineColor: C.border, lineWidth: { bottom: 0.3 } },
+              styles: { font: 'helvetica', fontSize: 9, cellPadding: { top: 3.5, bottom: 3.5, left: 4, right: 4 },
+                        textColor: C.body, lineColor: C.border, lineWidth: { bottom: 0.15 } },
+              columnStyles: {
+                0: { cellWidth: 88 },
+                1: { cellWidth: 52, fontStyle: 'bold', textColor: C.dark },
+                2: { cellWidth: 'auto', fontSize: 7.5, textColor: C.muted },
+              },
+              didParseCell: function(d) {
+                if (d.section === 'body') {
+                  var r = rows[d.row.index];
+                  // Aandachtspunten: oranje achtergrond op rij
+                  if (r.attention) {
+                    d.cell.styles.fillColor = '#fff7ed';
+                  } else if (!r.answered) {
+                    d.cell.styles.fillColor = '#fafafa';
+                  }
+                  // Toelichting in kleinere/kleurde tekst — splitsen
+                  if (d.column.index === 0 && r.toelichting) {
+                    // Tweede regel = toelichting (smaller, muted)
+                    d.cell.styles.fontSize = 9;
+                  }
+                  // Antwoord-cel: score-kleur als score_1_6
+                  if (d.column.index === 1 && r.qtype === 'score_1_6' && r.answerScore) {
+                    d.cell.styles.fillColor = scoreColor(r.answerScore).bg;
+                    d.cell.styles.textColor = scoreColor(r.answerScore).fg;
+                  }
+                  // Antwoord-cel: rood als attention
+                  if (d.column.index === 1 && r.attention && r.qtype !== 'score_1_6') {
+                    d.cell.styles.textColor = '#9a3412';
+                  }
+                }
+              },
+              margin: { left: M, right: M },
+            });
+            y = doc.lastAutoTable.finalY + 6;
+          }
+
+          // BEVINDINGEN
+          if (el.bevindingen) {
+            setText(C.muted);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.text('VRIJE BEVINDINGEN', M, y);
+            y += 4;
+            rounded(M, y, W - 2*M, 0, 2);  // dummy to set positioning
+            var bevText = doc.splitTextToSize(el.bevindingen, W - 2*M - 8);
+            rounded(M, y, W - 2*M, bevText.length * 4 + 6, 2, C.bgLight, C.border);
+            setText(C.body);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.text(bevText, M + 4, y + 5);
+            y += bevText.length * 4 + 10;
+          }
+
+          // DEFECTEN
+          var defs = el.defecten || [];
+          if (defs.length > 0) {
+            setText(C.muted);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.text('GECONSTATEERDE GEBREKEN', M, y);
+            y += 4;
+            doc.autoTable({
+              startY: y,
+              head: [[t('kw_pdf_tbl_gebrek'), t('kw_pdf_tbl_locatie'), t('kw_pdf_tbl_classificatie'), t('kw_pdf_tbl_score')]],
+              body: defs.map(function(d) {
+                var cls = 'ernst ' + (d.ernst || '?') + ' · int ' + (d.intensiteit || '?') + ' · omv ' + (d.omvang_klasse || '?');
+                return [
+                  d.gebrek_naam + (d.omschrijving ? '\n' + d.omschrijving : '') + (d.gw_maatregel ? '\n→ ' + d.gw_maatregel : ''),
+                  d.locatie_beschrijving || '—',
+                  cls,
+                  d.defect_score != null ? d.defect_score + ' · ' + (KW_CONDITIE_LABEL[d.defect_score] || '') : '—',
+                ];
+              }),
+              theme: 'striped',
+              headStyles: { fillColor: C.dark, textColor: C.white, fontSize: 8.5, fontStyle: 'bold' },
+              styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 3, textColor: C.body },
+              alternateRowStyles: { fillColor: C.bgLight },
+              columnStyles: {
+                0: { cellWidth: 70, fontStyle: 'bold', textColor: C.dark },
+                1: { cellWidth: 40, fontSize: 8 },
+                2: { cellWidth: 38, fontSize: 8, textColor: C.muted },
+                3: { cellWidth: 'auto', fontStyle: 'bold' },
+              },
+              didParseCell: function(d) {
+                if (d.section === 'body' && d.column.index === 3) {
+                  var s = defs[d.row.index].defect_score;
+                  if (s) {
+                    d.cell.styles.fillColor = scoreColor(s).bg;
+                    d.cell.styles.textColor = scoreColor(s).fg;
+                  }
+                }
+              },
+              margin: { left: M, right: M },
+            });
+          }
+        });
+
+        // ──────────────────────────────────────────────────────────
+        // LAATSTE PAGINA — ONDERTEKENING
+        // ──────────────────────────────────────────────────────────
+        doc.addPage();
+        brandHeader(99);
+        y = 22;
+        y = sectionHeader(t('kw_pdf_section_ondertekening'), y);
+
+        // Two-column layout: inspecteur (links) en opdrachtgever (rechts)
+        var colW = (W - 2*M - 8) / 2;
+        var colH = 70;
+
+        // INSPECTEUR
+        rounded(M, y, colW, colH, 2.5, C.white, C.border);
+        setText(C.primary);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.text(t('kw_pdf_inspecteur'), M + 5, y + 7);
+
+        setText(C.dark);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text(T(insp.inspecteur_naam), M + 5, y + 14);
+        setText(C.muted);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        if (insp.inspecteur_certificaat) doc.text(T(insp.inspecteur_certificaat), M + 5, y + 19);
+        if (insp.signed_at) doc.text(t('kw_pdf_ondertekend_op') + ': ' + fmtDate(insp.signed_at, true), M + 5, y + 24);
+
+        // Handtekening-box
+        var sigY = y + 30;
+        var sigH = colH - 35;
+        rounded(M + 5, sigY, colW - 10, sigH, 2, '#fafafa', C.border);
+        if (insp.has_signature && insp.signature_data_url) {
+          try { doc.addImage(insp.signature_data_url, 'PNG', M + 7, sigY + 2, colW - 14, sigH - 4); }
+          catch (e) { console.warn('Sig render fail', e); }
+        } else {
+          setText(C.dim);
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(8.5);
+          doc.text(t('kw_pdf_nog_niet_ondertekend'), M + 5 + (colW - 10) / 2, sigY + sigH / 2 + 1, { align: 'center' });
+        }
+
+        // OPDRACHTGEVER
+        var col2x = M + colW + 8;
+        rounded(col2x, y, colW, colH, 2.5, C.white, C.border);
+        setText(C.primary);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(8.5);
+        doc.text(t('kw_pdf_opdrachtgever'), col2x + 5, y + 7);
+
+        setText(C.dark);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'bold');
+        doc.text(T(insp.opdrachtgever_naam), col2x + 5, y + 14);
+        setText(C.muted);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(9);
+        if (insp.opdrachtgever_email) doc.text(T(insp.opdrachtgever_email), col2x + 5, y + 19);
+
+        // Lege handtekening-box rechts
+        rounded(col2x + 5, sigY, colW - 10, sigH, 2, '#fafafa', C.border);
+        setText(C.dim);
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(8.5);
+        doc.text(t('kw_pdf_voor_akkoord'), col2x + 5 + (colW - 10) / 2, sigY + sigH / 2 - 4, { align: 'center' });
+        doc.text(t('kw_pdf_datum_handtekening'), col2x + 5 + (colW - 10) / 2, sigY + sigH / 2 + 1, { align: 'center' });
+
+        y += colH + 10;
+
+        // Vervolgactie blok
+        if (insp.volgende_inspectie_op || insp.aanbevolen_acties) {
+          y = sectionHeader(t('kw_pdf_section_vervolg'), y);
+          rounded(M, y, W - 2*M, 26, 2.5, C.bgBlue, '#bfdbfe');
+          setText(C.primaryDk);
+          doc.setFont('helvetica', 'bold');
+          doc.setFontSize(9);
+          if (insp.volgende_inspectie_op) {
+            doc.text(t('kw_pdf_volgende_inspectie'), M + 5, y + 7);
+            setText(C.dark);
+            doc.setFontSize(13);
+            doc.text(fmtDate(insp.volgende_inspectie_op, false), M + 5, y + 15);
+          }
+          if (insp.aanbevolen_acties) {
+            setText(C.primaryDk);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(8.5);
+            doc.text(t('kw_pdf_aanbevolen_acties_lbl'), M + 70, y + 7);
+            setText(C.body);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            var acLines = doc.splitTextToSize(insp.aanbevolen_acties, W - M - 78);
+            doc.text(acLines, M + 70, y + 13);
+          }
+          y += 32;
+        }
+
+        // Norm-conformiteit afsluitend
+        setText(C.muted);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(7.5);
+        var footTxt = t('kw_pdf_conformiteit_footer');
+        var footLines = doc.splitTextToSize(footTxt, W - 2*M);
+        doc.text(footLines, M, H - 30);
+
+        // ── Footer op elke pagina ────────────────────────────────
+        var pages = doc.internal.getNumberOfPages();
+        for (var p = 1; p <= pages; p++) {
+          doc.setPage(p);
+          setText(C.dim);
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(7);
+          doc.text(T(insp.title).slice(0, 60), M, H - 6);
+          doc.text('NEN 2767-2 + CROW 134', W / 2, H - 6, { align: 'center' });
+          doc.text(p + ' / ' + pages, W - M, H - 6, { align: 'right' });
+        }
+
+        var safe = (insp.title || 'inspectie').replace(/[^A-Za-z0-9\-_]+/g, '_').slice(0, 50);
+        doc.save('Inspectierapport_' + safe + '.pdf');
+        showToast('PDF-rapport gegenereerd (' + pages + ' pagina\'s)', 'success');
+      } catch (e) {
+        console.error(e);
+        showToast('PDF-fout: ' + (e.message || 'onbekend'), 'error');
+      }
+    }
+
+    function _pdfAnswerStr(q, a) {
+      if (!a || (!a.answered && a.answer_score == null && a.answer_bool == null && !a.answer_value_text)) {
+        return 'niet beantwoord';
+      }
+      if (q.type === 'score_1_6' && a.answer_score != null) {
+        return 'Score ' + a.answer_score + ' · ' + (KW_CONDITIE_LABEL[a.answer_score] || '');
+      }
+      if (q.type === 'ja_nee') {
+        return a.answer_bool === true ? 'Ja' : (a.answer_bool === false ? 'Nee' : 'niet beantwoord');
+      }
+      if (q.type === 'ja_nee_nvt') {
+        var v = (a.answer_value_text || (a.answer_bool === true ? 'ja' : (a.answer_bool === false ? 'nee' : '—')));
+        return v.charAt(0).toUpperCase() + v.slice(1);
+      }
+      if (q.type === 'keuze') {
+        var k = a.answer_value_text || '—';
+        return k.charAt(0).toUpperCase() + k.slice(1);
+      }
+      if (q.type === 'meting') {
+        return (a.answer_score != null ? a.answer_score : '—') + ' ' + (q.eenheid || '');
+      }
+      return a.answer_value_text || '—';
     }
 
     function openSkillsModal() {

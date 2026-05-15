@@ -29,6 +29,7 @@ from models import (  # noqa: E402
     Organization, User, Project, Asset, Melding, AIAnalysis, AuditLog,
     WebhookEndpoint, WebhookDelivery, IncomingWebhook, PasswordResetToken,
     Invitation, DemoRequest, AccountStatus, SubscriptionPlan, UserRole,
+    Inspection, InspectionElement, InspectionDefect, InspectionAnswer,
 )
 from auth import hash_password, create_access_token  # noqa: E402
 
@@ -49,6 +50,7 @@ def clean_db():
         # Volgorde: kinderen vóór ouders om FK-constraints te respecteren
         for model in (
             WebhookDelivery, WebhookEndpoint, IncomingWebhook,
+            InspectionAnswer, InspectionDefect, InspectionElement, Inspection,
             AIAnalysis, AuditLog, PasswordResetToken,
             Melding, Asset, Project, Invitation, DemoRequest,
             User, Organization,

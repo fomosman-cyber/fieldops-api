@@ -317,6 +317,131 @@ class InspectionRejectRequest(BaseModel):
     reason: str
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Kunstwerken-inspecties — NEN 2767-2 + CROW 134
+# ─────────────────────────────────────────────────────────────────────────────
+
+class KunstwerkInspectionCreate(BaseModel):
+    """Nieuwe inspectie opzetten voor één kunstwerk (asset).
+
+    De server haalt kunstwerk_type uit de Asset of valt terug op de meegegeven
+    waarde. Elementen worden auto-aangemaakt op basis van de taxonomy als
+    `auto_elements=True`.
+    """
+    asset_id: str
+    title: str
+    kunstwerk_type: Optional[str] = None        # override van Asset.asset_type
+    project_id: Optional[str] = None
+    inspectie_type: str = "visueel"
+    datum_inspectie: Optional[datetime] = None
+    inspecteur_id: Optional[str] = None          # default = current_user
+    inspecteur_naam: Optional[str] = None
+    inspecteur_certificaat: Optional[str] = None
+    weersomstandigheden: Optional[str] = None
+    bijzonderheden: Optional[str] = None
+    opdrachtgever_naam: Optional[str] = None
+    opdrachtgever_email: Optional[str] = None
+    auto_elements: bool = True
+
+
+class KunstwerkInspectionUpdate(BaseModel):
+    title: Optional[str] = None
+    inspectie_type: Optional[str] = None
+    datum_inspectie: Optional[datetime] = None
+    inspecteur_naam: Optional[str] = None
+    inspecteur_certificaat: Optional[str] = None
+    weersomstandigheden: Optional[str] = None
+    bijzonderheden: Optional[str] = None
+    opdrachtgever_naam: Optional[str] = None
+    opdrachtgever_email: Optional[str] = None
+    samenvatting: Optional[str] = None
+    aanbevolen_acties: Optional[str] = None
+    status: Optional[str] = None                 # draft|in_progress|completed|signed|delivered
+    volgende_inspectie_op: Optional[datetime] = None
+
+
+class InspectionElementUpdate(BaseModel):
+    beoordeeld: Optional[bool] = None
+    niet_inspecteerbaar_reden: Optional[str] = None
+    bevindingen: Optional[str] = None
+    aanbevolen_actie: Optional[str] = None
+    order_index: Optional[int] = None
+
+
+class InspectionElementCreate(BaseModel):
+    """Handmatig element toevoegen (buiten taxonomy)."""
+    element_code: str
+    element_naam: str
+    element_groep: Optional[str] = None
+    order_index: int = 100
+
+
+class InspectionDefectCreate(BaseModel):
+    gebrek_naam: str
+    gebrek_code: Optional[str] = None
+    omschrijving: Optional[str] = None
+    ernst: Optional[int] = None                 # 1-3
+    intensiteit: Optional[int] = None           # 1-3
+    omvang_klasse: Optional[int] = None         # 1-5
+    omvang_percentage: Optional[float] = None
+    locatie_beschrijving: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    photo_url: Optional[str] = None
+    photo_url_2: Optional[str] = None
+    ai_analysis_id: Optional[str] = None
+    crow_klasse: Optional[str] = None
+    gw_maatregel: Optional[str] = None
+
+
+class InspectionDefectUpdate(BaseModel):
+    gebrek_naam: Optional[str] = None
+    gebrek_code: Optional[str] = None
+    omschrijving: Optional[str] = None
+    ernst: Optional[int] = None
+    intensiteit: Optional[int] = None
+    omvang_klasse: Optional[int] = None
+    omvang_percentage: Optional[float] = None
+    locatie_beschrijving: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    photo_url: Optional[str] = None
+    photo_url_2: Optional[str] = None
+    ai_analysis_id: Optional[str] = None
+    crow_klasse: Optional[str] = None
+    gw_maatregel: Optional[str] = None
+
+
+class InspectionSignRequest(BaseModel):
+    """Onderteken een afgeronde inspectie."""
+    signature_data_url: str                     # base64 PNG van canvas
+    volgende_inspectie_op: Optional[datetime] = None
+
+
+class DefectToMeldingRequest(BaseModel):
+    """Genereer een melding uit een gevonden defect.
+
+    Het defect blijft in de inspectie staan; via melding_id wordt 't gekoppeld
+    zodat opvolging (orchestration/cluster) automatisch wordt opgepakt.
+    """
+    priority: Optional[str] = None              # override; default = afgeleid van score
+    extra_description: Optional[str] = None
+
+
+class InspectionAnswerUpdate(BaseModel):
+    """Antwoord op één NEN/CROW-vraag updaten.
+
+    Velden zijn allemaal optioneel — alleen wat de inspecteur invult komt mee.
+    De server bepaalt `requires_attention` op basis van de question-definitie
+    + het antwoord (zie router._answer_attention).
+    """
+    answer_score: Optional[int] = None
+    answer_bool: Optional[bool] = None
+    answer_value_text: Optional[str] = None
+    toelichting: Optional[str] = None
+    photo_url: Optional[str] = None
+
+
 # Webhooks
 class WebhookEndpointCreate(BaseModel):
     name: str
