@@ -819,3 +819,127 @@ def test_metrics_elementen_per_conditie_keys_zijn_strings(client, admin_user):
                    headers=auth(admin_user))
     epc = r.json()["elementen_per_conditie"]
     assert set(epc.keys()) == {"1", "2", "3", "4", "5", "6"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bomen-VTA flow tests (NEN-conform via shared Inspection-architectuur)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_boom_type_in_taxonomy():
+    """Boom moet beschikbaar zijn naast kunstwerken."""
+    assert "boom" in kt.KUNSTWERK_TYPES
+    assert kt.KUNSTWERK_TYPES["boom"] == "Boom (VTA)"
+
+
+def test_boom_aliases_normalize():
+    """Variaties op 'boom' moeten naar de canonieke key normaliseren."""
+    for alias in ("bomen", "laanboom", "monumentale-boom", "park-boom", "VTA", "vta"):
+        assert kt.normalize_type(alias) == "boom", f"alias '{alias}' faalde"
+
+
+def test_boom_elementen_compleet():
+    """5 verplichte VTA-elementen aanwezig."""
+    elems = kt.elementen_voor("boom")
+    codes = {e["code"] for e in elems}
+    expected = {"BOOM.STAM", "BOOM.WORTELAANLOOP", "BOOM.HOOFDTAKKEN",
+                "BOOM.KROON", "BOOM.STANDPLAATS"}
+    assert codes == expected
+
+
+def test_boom_stam_vragenlijst_geen_beton():
+    """BOOM.STAM krijgt VTA-vragen, GEEN beton/wapening vragen."""
+    qs = kt.vragen_voor("boom", "BOOM.STAM")
+    codes = [q["code"] for q in qs]
+    # Wapeningscorrosie-vraag is constructief (beton) en mag NIET bij bomen
+    assert "CONSTR.WAPENING" not in codes
+    # In plaats daarvan: vegetatief-groep vragen
+    assert "VEG.SCHEUR" in codes
+    assert "VEG.SCHEEF" in codes
+    # Plus element-specifieke VTA-vragen
+    assert "VTA.STAM_HOLTE_PCT" in codes
+    assert "VTA.STAM_ZWAM" in codes
+    assert "VTA.STAM_KLOPTEST" in codes
+
+
+def test_boom_kroon_heeft_vitaliteit():
+    """Kroon-element heeft NTS vitaliteitsklasse."""
+    qs = kt.vragen_voor("boom", "BOOM.KROON")
+    codes = [q["code"] for q in qs]
+    assert "VTA.VITALITEIT" in codes
+    assert "VTA.DOOD_HOUT_PCT" in codes
+
+
+def test_boom_standplaats_heeft_dbh_en_doel_risico():
+    """Standplaats vraagt om DBH en doel-risico-type voor risicoberekening."""
+    qs = kt.vragen_voor("boom", "BOOM.STANDPLAATS")
+    codes = [q["code"] for q in qs]
+    assert "VTA.DBH" in codes
+    assert "VTA.STANDPLAATS_TYPE" in codes
+
+
+def test_boom_gebreken_bibliotheek():
+    """BOOM.STAM heeft VTA-specifieke gebreken (zwam, holte, etc)."""
+    gebreken = kt.gebreken_voor("boom", "BOOM.STAM")
+    codes = {g["code"] for g in gebreken}
+    assert "zwam" in codes
+    assert "holte" in codes
+    assert "kanker" in codes
+    assert "bliksem" in codes
+
+
+def test_kunstwerk_flow_geen_vta_pollution():
+    """Regression: kunstwerk-flow mag GEEN VTA-vragen krijgen."""
+    qs_brug = kt.vragen_voor("brug", "BRUG.ONDERBOUW")
+    codes = [q["code"] for q in qs_brug]
+    assert "CONSTR.WAPENING" in codes  # brug heeft beton-vragen
+    for c in codes:
+        assert not c.startswith("VTA."), f"Kunstwerk kreeg VTA-vraag: {c}"
+        assert not c.startswith("VEG."), f"Kunstwerk kreeg vegetatief-vraag: {c}"
+
+
+def test_boom_taxonomy_types_endpoint(client, admin_user):
+    """API /taxonomy/types geeft boom-type terug."""
+    r = client.get("/api/kunstwerken-inspecties/taxonomy/types",
+                   headers=auth(admin_user))
+    assert r.status_code == 200
+    keys = [t["key"] for t in r.json()["types"]]
+    assert "boom" in keys
+
+
+def test_boom_inspection_creates_with_auto_elements(client, admin_user):
+    """Boom-inspectie maakt 5 elementen automatisch aan."""
+    db = SessionLocal()
+    try:
+        a_id = _make_asset(db, user=admin_user, asset_type="boom", code="BOOM-001").id
+    finally:
+        db.close()
+    insp = _new_inspection(client, admin_user, a_id, kunstwerk_type="boom")
+    assert insp["kunstwerk_type"] == "boom"
+    # Elementen-lijst via detail-endpoint
+    r = client.get(f"/api/kunstwerken-inspecties/{insp['id']}",
+                   headers=auth(admin_user))
+    assert r.status_code == 200
+    elems = r.json().get("elementen", [])
+    codes = {e["element_code"] for e in elems}
+    assert codes == {"BOOM.STAM", "BOOM.WORTELAANLOOP", "BOOM.HOOFDTAKKEN",
+                     "BOOM.KROON", "BOOM.STANDPLAATS"}
+
+
+def test_boom_vragen_endpoint(client, admin_user):
+    """API /vragen geeft VTA-specifieke vragen voor boom-elementen."""
+    db = SessionLocal()
+    try:
+        a_id = _make_asset(db, user=admin_user, asset_type="boom", code="BOOM-002").id
+    finally:
+        db.close()
+    insp = _new_inspection(client, admin_user, a_id, kunstwerk_type="boom")
+    # Pak BOOM.STAM via detail
+    detail = client.get(f"/api/kunstwerken-inspecties/{insp['id']}",
+                       headers=auth(admin_user)).json()
+    elems = detail.get("elementen", [])
+    stam = next(e for e in elems if e["element_code"] == "BOOM.STAM")
+    # Vragen zitten al in element-detail (via include_antwoorden)
+    vragen_codes = [v["question"]["code"] for v in stam.get("vragen", [])]
+    assert "VTA.STAM_HOLTE_PCT" in vragen_codes
+    assert "VTA.STAM_ZWAM" in vragen_codes
+    assert "CONSTR.WAPENING" not in vragen_codes  # geen beton-vragen voor bomen

@@ -34,6 +34,7 @@ KUNSTWERK_TYPES = {
     "kademuur": "Kademuur",
     "gemaal": "Gemaal",
     "riolering": "Riolering",
+    "boom": "Boom (VTA)",
 }
 
 # Aliassen — input-normalisatie
@@ -51,6 +52,12 @@ _TYPE_ALIASES = {
     "riool": "riolering",
     "rioolstelsel": "riolering",
     "vrijvervalriool": "riolering",
+    "bomen": "boom",
+    "laanboom": "boom",
+    "monumentale-boom": "boom",
+    "monumentaal": "boom",
+    "park-boom": "boom",
+    "vta": "boom",
 }
 
 
@@ -655,6 +662,85 @@ _RIOLERING_ELEMENTEN = [
 ]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Bomen (VTA — Visual Tree Assessment)
+# Methodiek: Mattheck VTA, NTS (Nederlandse Taxateurs Standaard),
+# CROW publicatie 200 (handboek beheer openbare ruimte voor bomen),
+# en de BBA-bomenkeuring. De boom-elementen-bibliotheek volgt de
+# 5 standaard inspectie-zones die elke VTA-inspecteur doorloopt.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_BOOM_ELEMENTEN = [
+    {
+        "code": "BOOM.STAM",
+        "naam": "Stam",
+        "groep": "vegetatief",
+        "gebreken": [
+            {"code": "langsscheur", "naam": "Langsscheur in stam"},
+            {"code": "dwarsscheur", "naam": "Dwarsscheur / barst"},
+            {"code": "holte", "naam": "Stam-holte / rotting"},
+            {"code": "zwam", "naam": "Houtzwam / parasitaire schimmel"},
+            {"code": "kanker", "naam": "Bastkanker / tumor"},
+            {"code": "bastbeschadiging", "naam": "Bastbeschadiging (mechanisch)"},
+            {"code": "bliksem", "naam": "Bliksemschade"},
+            {"code": "opslag_basaal", "naam": "Opslag aan stamvoet (stress-indicator)"},
+        ],
+    },
+    {
+        "code": "BOOM.WORTELAANLOOP",
+        "naam": "Wortelaanloop / wortelopdruk",
+        "groep": "vegetatief",
+        "gebreken": [
+            {"code": "wortelopdruk", "naam": "Wortelopdruk (verhardingsschade)"},
+            {"code": "wortelverstikking", "naam": "Wortel-verstikking (verharding/bouw)"},
+            {"code": "uitholling", "naam": "Uitholling rond stamvoet"},
+            {"code": "wortelafwijking", "naam": "Scheve wortelaanloop / instabiel"},
+            {"code": "rotting_wortel", "naam": "Wortelrotting zichtbaar"},
+            {"code": "verzakking", "naam": "Verzakking van stamvoet"},
+        ],
+    },
+    {
+        "code": "BOOM.HOOFDTAKKEN",
+        "naam": "Hoofdtakken / gesteltakken",
+        "groep": "vegetatief",
+        "gebreken": [
+            {"code": "plakoksel", "naam": "Plakoksel (ingegroeide bast)"},
+            {"code": "scheurvorming_tak", "naam": "Scheurvorming in oksel"},
+            {"code": "dode_tak", "naam": "Dode hoofdtak"},
+            {"code": "afgebroken_tak", "naam": "Afgebroken takstomp"},
+            {"code": "ophanging", "naam": "Loszittende / hangende tak"},
+            {"code": "stam_vork", "naam": "Risicovolle stamvork"},
+        ],
+    },
+    {
+        "code": "BOOM.KROON",
+        "naam": "Kroon / bladvolume",
+        "groep": "afwerking",
+        "gebreken": [
+            {"code": "dood_hout", "naam": "Dood hout in kroon"},
+            {"code": "scheef", "naam": "Scheefstand kroon"},
+            {"code": "vitaliteitsverlies", "naam": "Vitaliteitsverlies / spaarzaam blad"},
+            {"code": "uitval_top", "naam": "Top-uitval (top-sterven)"},
+            {"code": "snoeischade", "naam": "Snoeischade / open wonden"},
+            {"code": "plaagdruk", "naam": "Plaagdruk (rups, kever, mineerder)"},
+        ],
+    },
+    {
+        "code": "BOOM.STANDPLAATS",
+        "naam": "Standplaats / groei-omstandigheden",
+        "groep": "omgeving",
+        "gebreken": [
+            {"code": "verdichting", "naam": "Bodem-verdichting"},
+            {"code": "droogtestress", "naam": "Droogtestress / waterstress"},
+            {"code": "zoutschade", "naam": "Zoutschade (strooizout)"},
+            {"code": "te_klein", "naam": "Te krappe groeiplaats"},
+            {"code": "infectiedruk", "naam": "Hoge infectiedruk omgeving"},
+            {"code": "aanrijdschade", "naam": "Aanrijdschade door verkeer"},
+        ],
+    },
+]
+
+
 _ELEMENTEN_PER_TYPE = {
     "brug": _BRUG_ELEMENTEN,
     "viaduct": _VIADUCT_ELEMENTEN,
@@ -665,6 +751,7 @@ _ELEMENTEN_PER_TYPE = {
     "kademuur": _KADEMUUR_ELEMENTEN,
     "gemaal": _GEMAAL_ELEMENTEN,
     "riolering": _RIOLERING_ELEMENTEN,
+    "boom": _BOOM_ELEMENTEN,
 }
 
 
@@ -720,7 +807,7 @@ def type_beschikbaar(kunstwerk_type: Optional[str]) -> bool:
 #
 # Versie wordt meegelogd in InspectionAnswer.question_version voor audit-trail.
 
-QUESTIONS_VERSION = "kw-vragen.v1.0-2026-05"
+QUESTIONS_VERSION = "kw-vragen.v1.1-2026-05-bomen"
 
 GENERIEKE_VRAGEN = [
     {
@@ -863,6 +950,39 @@ VRAGEN_PER_GROEP = {
                        "(Japanse duizendknoop, reuzenberenklauw)."),
             "norm_ref": "CROW 134 § 4.7",
             "type": "ja_nee",
+        },
+    ],
+    "vegetatief": [
+        # Voor bomen — vervangt 'constructief' om beton-specifieke vragen
+        # (wapeningscorrosie etc.) te vermijden. VTA-conform.
+        {
+            "code": "VEG.SCHEUR",
+            "vraag": "Zichtbare scheurvorming in het houtweefsel?",
+            "uitleg": ("Langs- of dwarsscheuren in stam, takken of wortelaanloop. "
+                       "Bij twijfel: meet breedte met scheurliniaal. Scheuren > 5 mm "
+                       "of door de bast heen verdienen aandacht."),
+            "norm_ref": "VTA + NTS",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+        {
+            "code": "VEG.SCHEEF",
+            "vraag": "Afwijkende scheefstand of kanteling?",
+            "uitleg": ("Boomstam wijkt > 5° af van verticaal, of recent toegenomen "
+                       "scheefstand. Vergelijk met eerdere inspectie-fotos indien "
+                       "beschikbaar. Windworp-risico."),
+            "norm_ref": "Mattheck statica",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+        {
+            "code": "VEG.MECHANISCH",
+            "vraag": "Recente mechanische beschadiging of breuk?",
+            "uitleg": ("Verse schade door storm, bouwverkeer of vandalisme. Bij ja: "
+                       "infectie- en breuk-risico verhoogd, ook al lijkt boom OK."),
+            "norm_ref": "VTA § 4.4",
+            "type": "ja_nee",
+            "attention_when": False,
         },
     ],
 }
@@ -1056,6 +1176,161 @@ VRAGEN_PER_ELEMENT = {
                        "Onbekend of > 18 mnd geleden = aandacht."),
             "norm_ref": "Gemeentelijk reinigingsplan",
             "type": "tekst",
+        },
+    ],
+    # ─────────────── VTA Bomeninspectie ───────────────
+    # VTA-classificatie volgens Mattheck + CROW 200. De inspecteur beoordeelt
+    # per element op faalkans en schadepotentieel. Risicoklasse 1-5 wordt
+    # via de NEN-schaal opgeslagen als score 1-6 (vta1=1, vta2=2, vta3=3,
+    # vta4=5, vta5=6 — geen score 4 voor bomen, springt van regulier naar
+    # acuut omdat boomdegradatie niet-lineair is).
+    "BOOM.STAM": [
+        {
+            "code": "VTA.STAM_HOLTE_PCT",
+            "vraag": "Geschat percentage holte/rotting in stamdoorsnede",
+            "uitleg": ("VTA-vuistregel: bij > 70% holte resterend wandhout < t/r=0,3 "
+                       "(Mattheck) — verhoogd breukrisico. Meet of schat percentage "
+                       "van de doorsnede dat verloren is."),
+            "norm_ref": "Mattheck VTA — t/r criterium",
+            "type": "meting",
+            "eenheid": "%",
+        },
+        {
+            "code": "VTA.STAM_ZWAM",
+            "vraag": "Houtaantastende zwam aanwezig?",
+            "uitleg": ("Vooral hardhout-zwammen (honingzwam, reuzenzwam, tonderzwam) "
+                       "verzwakken het houtweefsel. Soort + hoeveelheid noteren in "
+                       "toelichting voor specialist."),
+            "norm_ref": "VTA + NTS soortlijst",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+        {
+            "code": "VTA.STAM_KLOPTEST",
+            "vraag": "Klop-test: holle klank zonder visuele holte?",
+            "uitleg": ("Verborgen holte indicator. Bij ja: aanvullend onderzoek "
+                       "(boorweerstand of geluidstomografie) plannen."),
+            "norm_ref": "VTA § 4.2",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+    ],
+    "BOOM.WORTELAANLOOP": [
+        {
+            "code": "VTA.WORTEL_VERSTIKKING",
+            "vraag": "Verstikkende verharding/bouwwerk binnen 1m van stam?",
+            "uitleg": ("Asfalt, beton of fundering binnen 1m van de stam beperkt "
+                       "wortelgroei en is hoog-risico standplaats."),
+            "norm_ref": "CROW 200 § 3.4",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+        {
+            "code": "VTA.WORTEL_OPSLAG",
+            "vraag": "Schimmel-vruchtlichaam op of bij stamvoet?",
+            "uitleg": ("Indicator van wortelrotting. Bij paddenstoel-cluster of "
+                       "ophoping fruitlichamen: directe specialist-keuring nodig."),
+            "norm_ref": "VTA + NTS",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+        {
+            "code": "VTA.WORTEL_AFWIJKING",
+            "vraag": "Wortelaanloop asymmetrisch / kantelt boom?",
+            "uitleg": ("Symptomen: ene zijde uitgehold, andere zijde verheven, of "
+                       "kantelhoek > 5°. Hoog windworp-risico."),
+            "norm_ref": "Mattheck statica",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+    ],
+    "BOOM.HOOFDTAKKEN": [
+        {
+            "code": "VTA.PLAKOKSEL",
+            "vraag": "Plakoksel met ingegroeide bast aanwezig?",
+            "uitleg": ("Twee gesteltakken die samenwassen met bast tussen — "
+                       "verzwakt aanhechtingspunt. Bij diameter > 100mm tak: "
+                       "preventief snoeien of stutten."),
+            "norm_ref": "VTA — Mattheck",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+        {
+            "code": "VTA.DODE_TAK_BOVEN_DOEL",
+            "vraag": "Dode tak (Ø > 50mm) boven verkeer/wandelroute?",
+            "uitleg": ("Combinatie van dode tak + onder-doel = directe veiligheid. "
+                       "Tak ≥ 50mm met val van ≥ 3m kan dodelijk letsel veroorzaken."),
+            "norm_ref": "Zorgplicht artikel 6:174 BW",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+        {
+            "code": "VTA.HANGENDE_TAK",
+            "vraag": "Loszittende of hangende tak boven publiek gebied?",
+            "uitleg": ("Bij ja: directe afzetting + spoedreparatie. Veiligheids-"
+                       "voorrang boven plan-onderhoud."),
+            "norm_ref": "Zorgplicht artikel 6:174 BW",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+    ],
+    "BOOM.KROON": [
+        {
+            "code": "VTA.DOOD_HOUT_PCT",
+            "vraag": "Percentage dood hout in kroon",
+            "uitleg": ("Visuele schatting kroonvolume. <10% = normaal, 10-25% = "
+                       "aandacht, >25% = vitaliteitsprobleem (mogelijk wortel-issue)."),
+            "norm_ref": "NTS kroonklasse",
+            "type": "meting",
+            "eenheid": "%",
+        },
+        {
+            "code": "VTA.VITALITEIT",
+            "vraag": "Vitaliteitsklasse volgens NTS",
+            "uitleg": ("Klasse A = goed (sterke jaarscheuten), B = redelijk, "
+                       "C = afnemend, D = slecht (kandidaat-rooien)."),
+            "norm_ref": "NTS § 2.3",
+            "type": "keuze",
+            "opties": ["A", "B", "C", "D"],
+        },
+        {
+            "code": "VTA.TOP_UITVAL",
+            "vraag": "Top-uitval / topsterven zichtbaar?",
+            "uitleg": ("Sterven van de bovenste meter(s) — vaak vroege indicator "
+                       "van wortelschade of langdurige droogtestress."),
+            "norm_ref": "NTS § 3.1",
+            "type": "ja_nee",
+            "attention_when": True,
+        },
+    ],
+    "BOOM.STANDPLAATS": [
+        {
+            "code": "VTA.STANDPLAATS_TYPE",
+            "vraag": "Type standplaats / doel-risico",
+            "uitleg": ("Bepaalt het schadepotentieel bij falen. Drukke verkeerszone "
+                       "of fietspad = hoog. Park = midden. Wei = laag."),
+            "norm_ref": "CROW 200 risicoclassificatie",
+            "type": "keuze",
+            "opties": ["verkeer", "fietspad", "voetganger", "park", "wei", "afgelegen"],
+            "verplicht": True,
+        },
+        {
+            "code": "VTA.AANRIJD",
+            "vraag": "Aanrijdschade / mechanische beschadiging recent?",
+            "uitleg": ("Verse stam-beschadiging door bouwverkeer/auto's. Bij ja: "
+                       "infectie-risico verhoogd, ook al lijkt boom OK."),
+            "norm_ref": "VTA",
+            "type": "ja_nee",
+            "attention_when": False,
+        },
+        {
+            "code": "VTA.DBH",
+            "vraag": "Stamdiameter op 1.30 m (DBH in cm)",
+            "uitleg": ("Stamdiameter op borsthoogte — standaard inventarisatie-"
+                       "parameter. Nodig voor risico-berekening en herinventarisatie."),
+            "norm_ref": "NTS / NEN",
+            "type": "meting",
+            "eenheid": "cm",
         },
     ],
 }
