@@ -72,7 +72,7 @@ _VTA_CYCLE_MONTHS = {
 
 # Vaste cycli per object-type — geen score-afhankelijkheid
 _FIXED_CYCLE_MONTHS = {
-    "speeltoestel": 12,        # NEN-EN 1176 jaarlijks verplicht
+    "speeltoestel": 12,        # NEN-EN 1176 hoofdinspectie jaarlijks verplicht
     "verlichting": 60,         # NEN 3140 — 5 jaar elektrische keuring
     "lantaarnpaal": 60,        # alias voor verlichting
     "wegvak": 72,              # CROW 146 — 6 jaar visueel
@@ -84,6 +84,35 @@ _FIXED_CYCLE_MONTHS = {
     "markering": 24,            # alias
     "belijning": 24,            # alias
 }
+
+# NEN-EN 1176 multi-cyclus voor speeltoestellen — kies kind per inspectie.
+# Bron: NEN-EN 1176-7 § 6 + Warenwetbesluit Attractie- en Speeltoestellen art. 13.
+#   routine      = visuele inspectie (vandalisme, schoonmaak, zwerfvuil)
+#                  -> wekelijks voor druk-bezochte, anders 2-wekelijks
+#   operationeel = functionele test (beweegbare delen, slijtage, bevestiging)
+#                  -> maandelijks tot driemaandelijks
+#   hoofd        = uitgebreide inspectie inclusief constructieve onderdelen
+#                  -> jaarlijks verplicht
+NEN1176_CYCLE_DAYS = {
+    "routine": 7,
+    "operationeel": 30,
+    "hoofd": 365,
+}
+
+
+def nen1176_next_due_days(kind: Optional[str]) -> Optional[int]:
+    """Geef het aantal dagen tot de volgende NEN-EN 1176 inspectie van dit kind.
+
+    >>> nen1176_next_due_days("routine")
+    7
+    >>> nen1176_next_due_days("hoofd")
+    365
+    >>> nen1176_next_due_days(None) is None
+    True
+    """
+    if not kind:
+        return None
+    return NEN1176_CYCLE_DAYS.get(kind.strip().lower())
 
 # Asset-types die de NEN 2767-2 score-cyclus gebruiken
 _NEN2767_TYPES = {

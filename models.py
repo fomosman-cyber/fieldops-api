@@ -731,6 +731,12 @@ class Inspection(Base):
     # visueel / eerste-graads / tweede-graads / detail / oplevering
     norm_referenties = Column(String(255), nullable=True, default="NEN 2767-2; CROW 134")
 
+    # NEN-EN 1176 inspectie-categorie (alleen voor kunstwerk_type=speeltoestel).
+    # routine     = dagelijks/wekelijks visueel (vandalisme, schoonmaak)
+    # operationeel = maandelijks functioneel (slijtage, beweegbare delen)
+    # hoofd       = jaarlijks uitgebreid (structureel + onderdelen-vervanging)
+    nen1176_inspectie_kind = Column(String(16), nullable=True, index=True)
+
     datum_inspectie = Column(DateTime, nullable=True)        # uitvoeringsdatum veldwerk
     inspecteur_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     inspecteur_naam = Column(String(120), nullable=True)     # gedenormaliseerd voor rapport
@@ -862,6 +868,44 @@ class InspectionDefect(Base):
     # CROW-koppeling (voor verharding-elementen op kunstwerken, bv. brugdek-asfalt)
     crow_klasse = Column(String(4), nullable=True)           # L1..E3
     gw_maatregel = Column(String(120), nullable=True)        # advies-maatregel uit GWWkosten
+
+    # NEN-EN 1176 speeltoestel-classificatie (alleen bij kunstwerk_type=speeltoestel).
+    # Vervangt NEN 2767-2 ernst×intensiteit×omvang voor speeltoestellen omdat
+    # die methodiek niet geschikt is voor veiligheids-classificatie.
+    #   A = veilig, geen actie
+    #   B = klein gebrek, herstel binnen 30 dagen
+    #   C = direct gebruik beperken (afzetting / waarschuwing)
+    #   D = afgesloten / weggehaald (acute valgevaar, scherp, knelpunt)
+    en1176_categorie = Column(String(1), nullable=True)
+    en1176_acute_afsluiting = Column(Boolean, default=False, nullable=False)
+
+    # VTA boom-classificatie (alleen bij kunstwerk_type=boom).
+    # Risicoklasse volgens Mattheck/VTA: 1=geen aandacht .. 5=acuut velgevaar.
+    # holte_pct = percentage stamholte (Tomografie / klopprobe).
+    # t_r_ratio = wand/straal-verhouding; < 0.30 = breukrisico (Mattheck-criterium).
+    vta_risicoklasse = Column(Integer, nullable=True)
+    vta_holte_pct = Column(Float, nullable=True)
+    vta_t_r_ratio = Column(Float, nullable=True)
+
+    # NEN 3140 elektrische meetwaarden (alleen bij kunstwerk_type=verlichting).
+    # Gemeten met 500V dc test conform NEN 3140 § 6.4 + NEN 1010.
+    nen3140_isolatie_megaohm = Column(Float, nullable=True)         # minimaal 0.5 MΩ
+    nen3140_aardingsweerstand_ohm = Column(Float, nullable=True)    # minimaal <100Ω typisch
+    nen3140_aardlek_ms = Column(Integer, nullable=True)             # uitschakeltijd in ms
+    nen3140_aardlek_ma = Column(Float, nullable=True)               # uitschakelstroom in mA
+
+    # CROW 145 retroreflectie wegmarkering (alleen bij kunstwerk_type=wegmarkering).
+    # Eenheid mcd/m²/lx. CROW 145 § 4.2: wit droog ≥ 100, nat ≥ 30 (stroomweg).
+    # Vervang-drempel bij droog < 80 mcd.
+    crow145_rl_droog_mcd = Column(Integer, nullable=True)
+    crow145_rl_nat_mcd = Column(Integer, nullable=True)
+
+    # NEN 3399 riolering-schadecodes (alleen bij kunstwerk_type=riolering).
+    # 3-letter NEN-EN 13508-2 code: BAA langsscheur, BAB dwarsscheur, BAC scherf,
+    # BAF chemische aantasting, BAH wortelingroei, BAJ vervorming, BAO infiltratie,
+    # BAP exfiltratie. Eindklasse 1-5 op zwaarste schade per streng.
+    nen3399_code = Column(String(4), nullable=True)
+    nen3399_klasse = Column(Integer, nullable=True)
 
     # Eventueel auto-gegenereerde melding (orchestration-koppeling)
     melding_id = Column(String, ForeignKey("meldingen.id"), nullable=True)

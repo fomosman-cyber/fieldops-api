@@ -2889,7 +2889,147 @@
           <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_naam">Gebrek-naam</label>
           <input id="kwDefectGebrekNaam" placeholder="bv. Scheurvorming in beton" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+        <!-- NEN-EN 1176 classificatie — alleen voor speeltoestel-defecten -->
+        <div id="kwDefectEn1176Section" style="display:none;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:10px;padding:14px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <span style="font-size:18px;">🛝</span>
+            <strong style="font-size:13px;color:#92400e;" data-i18n="kwd_en1176_title">NEN-EN 1176 veiligheids-classificatie</strong>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px;">
+            <label style="display:flex;align-items:flex-start;gap:6px;padding:8px;background:#fff;border-radius:6px;border:2px solid transparent;cursor:pointer;" onclick="kwDefectEn1176Pick('A')">
+              <input type="radio" name="kwDefectEn1176" id="kwDefectEn1176_A" value="A">
+              <div><div style="font-weight:700;color:#16a34a;font-size:12px;">A · Veilig</div><div style="font-size:10px;color:#666;">Geen actie</div></div>
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:6px;padding:8px;background:#fff;border-radius:6px;border:2px solid transparent;cursor:pointer;" onclick="kwDefectEn1176Pick('B')">
+              <input type="radio" name="kwDefectEn1176" id="kwDefectEn1176_B" value="B">
+              <div><div style="font-weight:700;color:#eab308;font-size:12px;">B · Klein gebrek</div><div style="font-size:10px;color:#666;">Herstel binnen 30 dagen</div></div>
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:6px;padding:8px;background:#fff;border-radius:6px;border:2px solid transparent;cursor:pointer;" onclick="kwDefectEn1176Pick('C')">
+              <input type="radio" name="kwDefectEn1176" id="kwDefectEn1176_C" value="C">
+              <div><div style="font-weight:700;color:#f97316;font-size:12px;">C · Direct beperken</div><div style="font-size:10px;color:#666;">Afzetting + waarschuwing</div></div>
+            </label>
+            <label style="display:flex;align-items:flex-start;gap:6px;padding:8px;background:#fff;border-radius:6px;border:2px solid transparent;cursor:pointer;" onclick="kwDefectEn1176Pick('D')">
+              <input type="radio" name="kwDefectEn1176" id="kwDefectEn1176_D" value="D">
+              <div><div style="font-weight:700;color:#dc2626;font-size:12px;">D · Afgesloten</div><div style="font-size:10px;color:#666;">Acuut valgevaar/scherp</div></div>
+            </label>
+          </div>
+          <label id="kwDefectEn1176AcuteRow" style="display:none;align-items:center;gap:8px;background:#fee2e2;border:1px solid #dc2626;border-radius:6px;padding:8px 10px;font-size:12px;color:#991b1b;cursor:pointer;">
+            <input type="checkbox" id="kwDefectEn1176Acute" checked>
+            <strong data-i18n="kwd_en1176_acute">🚨 Toestel direct afsluiten — gebruik blokkeren tot herstel</strong>
+          </label>
+        </div>
+
+        <!-- VTA boom — Mattheck risicoklasse (alleen voor kunstwerk_type=boom) -->
+        <div id="kwDefectVtaSection" style="display:none;background:linear-gradient(135deg,#dcfce7,#bbf7d0);border:1px solid #16a34a;border-radius:10px;padding:14px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <span style="font-size:18px;">🌳</span>
+            <strong style="font-size:13px;color:#14532d;">VTA boom-classificatie (Mattheck)</strong>
+          </div>
+          <div style="margin-bottom:10px;">
+            <label style="font-size:11px;color:#14532d;font-weight:600;display:block;margin-bottom:4px;">Risicoklasse</label>
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;">
+              <button type="button" onclick="kwDefectVtaPick(1)" id="kwDefectVtaBtn_1" style="padding:8px 4px;border:2px solid transparent;background:#fff;border-radius:6px;cursor:pointer;font-size:11px;font-family:inherit;"><strong>1</strong><br><span style="font-size:9px;color:#666;">geen aandacht</span></button>
+              <button type="button" onclick="kwDefectVtaPick(2)" id="kwDefectVtaBtn_2" style="padding:8px 4px;border:2px solid transparent;background:#fff;border-radius:6px;cursor:pointer;font-size:11px;font-family:inherit;"><strong>2</strong><br><span style="font-size:9px;color:#666;">attent</span></button>
+              <button type="button" onclick="kwDefectVtaPick(3)" id="kwDefectVtaBtn_3" style="padding:8px 4px;border:2px solid transparent;background:#fff;border-radius:6px;cursor:pointer;font-size:11px;font-family:inherit;"><strong>3</strong><br><span style="font-size:9px;color:#666;">nader onderz.</span></button>
+              <button type="button" onclick="kwDefectVtaPick(4)" id="kwDefectVtaBtn_4" style="padding:8px 4px;border:2px solid transparent;background:#fff;border-radius:6px;cursor:pointer;font-size:11px;font-family:inherit;"><strong>4</strong><br><span style="font-size:9px;color:#666;">snoei/maatr.</span></button>
+              <button type="button" onclick="kwDefectVtaPick(5)" id="kwDefectVtaBtn_5" style="padding:8px 4px;border:2px solid transparent;background:#fff;border-radius:6px;cursor:pointer;font-size:11px;font-family:inherit;"><strong>5</strong><br><span style="font-size:9px;color:#666;">acute velg.</span></button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:#14532d;font-weight:600;display:block;margin-bottom:4px;">Stamholte (%)</label>
+              <input type="number" id="kwDefectVtaHolte" min="0" max="100" step="1" placeholder="0-100" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#14532d;font-weight:600;display:block;margin-bottom:4px;">t/r-ratio (Mattheck)</label>
+              <input type="number" id="kwDefectVtaTr" min="0" step="0.01" placeholder="bv. 0.30" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+            </div>
+          </div>
+          <div style="font-size:10px;color:#666;margin-top:6px;">t/r &lt; 0,30 = breukrisico volgens Mattheck-criterium</div>
+        </div>
+
+        <!-- NEN 3140 verlichting — elektrische meetwaarden -->
+        <div id="kwDefectNen3140Section" style="display:none;background:linear-gradient(135deg,#fef9c3,#fde68a);border:1px solid #eab308;border-radius:10px;padding:14px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <span style="font-size:18px;">💡</span>
+            <strong style="font-size:13px;color:#713f12;">NEN 3140 elektrische metingen (500V dc)</strong>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:#713f12;font-weight:600;display:block;margin-bottom:4px;">Isolatieweerstand (MΩ)</label>
+              <input type="number" id="kwDefectNen3140Iso" min="0" step="0.01" placeholder="≥ 0,5 MΩ" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#713f12;font-weight:600;display:block;margin-bottom:4px;">Aardingsweerstand (Ω)</label>
+              <input type="number" id="kwDefectNen3140Aarde" min="0" step="0.1" placeholder="bv. 25" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#713f12;font-weight:600;display:block;margin-bottom:4px;">Aardlek uitschakeltijd (ms)</label>
+              <input type="number" id="kwDefectNen3140LekMs" min="0" step="1" placeholder="bv. 200" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#713f12;font-weight:600;display:block;margin-bottom:4px;">Aardlek-stroom (mA)</label>
+              <input type="number" id="kwDefectNen3140LekMa" min="0" step="0.1" placeholder="bv. 30" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+            </div>
+          </div>
+          <div style="font-size:10px;color:#713f12;margin-top:6px;">Conform NEN 3140 § 6.4. Inspecteur moet VOP/VP/VIOP-gekwalificeerd zijn.</div>
+        </div>
+
+        <!-- CROW 145 wegmarkering — retroreflectie -->
+        <div id="kwDefectCrow145Section" style="display:none;background:linear-gradient(135deg,#fed7aa,#fdba74);border:1px solid #f97316;border-radius:10px;padding:14px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <span style="font-size:18px;">🛣️</span>
+            <strong style="font-size:13px;color:#7c2d12;">CROW 145 retroreflectie (mcd/m²/lx)</strong>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:#7c2d12;font-weight:600;display:block;margin-bottom:4px;">RL droog</label>
+              <input type="number" id="kwDefectCrow145Droog" min="0" step="1" placeholder="≥ 100 (wit)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:#7c2d12;font-weight:600;display:block;margin-bottom:4px;">RL nat</label>
+              <input type="number" id="kwDefectCrow145Nat" min="0" step="1" placeholder="≥ 30 (wit)" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+            </div>
+          </div>
+          <div style="font-size:10px;color:#7c2d12;margin-top:6px;">Vervangen bij RL droog &lt; 80 mcd. Meten met gekalibreerde reflectometer (CROW 145 § 4.2).</div>
+        </div>
+
+        <!-- NEN 3399 riolering — BAA-BAQ schadecode + eindklasse -->
+        <div id="kwDefectNen3399Section" style="display:none;background:linear-gradient(135deg,#e0e7ff,#c7d2fe);border:1px solid #6366f1;border-radius:10px;padding:14px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <span style="font-size:18px;">🚰</span>
+            <strong style="font-size:13px;color:#312e81;">NEN 3399 schadecode (NEN-EN 13508-2)</strong>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:#312e81;font-weight:600;display:block;margin-bottom:4px;">Schadecode</label>
+              <select id="kwDefectNen3399Code" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+                <option value="">— kies —</option>
+                <option value="BAA">BAA — Langsscheur</option>
+                <option value="BAB">BAB — Dwarsscheur</option>
+                <option value="BAC">BAC — Scherf</option>
+                <option value="BAF">BAF — Chemische aantasting</option>
+                <option value="BAH">BAH — Wortelingroei</option>
+                <option value="BAJ">BAJ — Vervorming</option>
+                <option value="BAO">BAO — Infiltratie</option>
+                <option value="BAP">BAP — Exfiltratie</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:#312e81;font-weight:600;display:block;margin-bottom:4px;">Eindklasse (1-5)</label>
+              <select id="kwDefectNen3399Klasse" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:13px;">
+                <option value="">— kies —</option>
+                <option value="1">1 — geen actie</option>
+                <option value="2">2 — monitoren</option>
+                <option value="3">3 — onderhoud</option>
+                <option value="4">4 — vervangen 5-10j</option>
+                <option value="5">5 — vervangen direct</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div id="kwDefectNen2767Grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
           <div>
             <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_ernst">Ernst (1-3)</label>
             <select id="kwDefectErnst" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
@@ -12258,8 +12398,54 @@
 
     // ── Defect-modal ────────────────────────────────────────────
     var _kwDefectElementId = null;
+    var _kwDefectEn1176 = null;   // 'A'|'B'|'C'|'D'|null
+    var _kwDefectVta = null;      // 1..5 |null
+
+    function kwDefectEn1176Pick(cat) {
+      _kwDefectEn1176 = cat;
+      ['A','B','C','D'].forEach(function(k){
+        var radio = document.getElementById('kwDefectEn1176_' + k);
+        if (radio) {
+          radio.checked = (k === cat);
+          var lbl = radio.closest('label');
+          if (lbl) lbl.style.borderColor = (k === cat) ? '#0284c7' : 'transparent';
+        }
+      });
+      var acuteRow = document.getElementById('kwDefectEn1176AcuteRow');
+      if (acuteRow) acuteRow.style.display = (cat === 'C' || cat === 'D') ? 'flex' : 'none';
+      var acuteCb = document.getElementById('kwDefectEn1176Acute');
+      if (acuteCb) acuteCb.checked = (cat === 'C' || cat === 'D');
+    }
+
+    function kwDefectVtaPick(klasse) {
+      _kwDefectVta = klasse;
+      var colors = {1:'#16a34a',2:'#84cc16',3:'#eab308',4:'#f97316',5:'#dc2626'};
+      for (var k = 1; k <= 5; k++) {
+        var btn = document.getElementById('kwDefectVtaBtn_' + k);
+        if (btn) {
+          btn.style.borderColor = (k === klasse) ? colors[k] : 'transparent';
+          btn.style.background = (k === klasse) ? colors[k] + '22' : '#fff';
+        }
+      }
+    }
+
+    // Map kunstwerk_type -> welke type-specifieke sectie tonen (de rest verbergt).
+    // Null = NEN 2767-modal (default voor brug/viaduct/tunnel/etc.).
+    var KW_DEFECT_SECTION_MAP = {
+      speeltoestel: 'kwDefectEn1176Section',
+      boom:         'kwDefectVtaSection',
+      verlichting:  'kwDefectNen3140Section',
+      wegmarkering: 'kwDefectCrow145Section',
+      riolering:    'kwDefectNen3399Section',
+    };
+    var KW_DEFECT_ALL_SECTIONS = ['kwDefectEn1176Section','kwDefectVtaSection',
+                                   'kwDefectNen3140Section','kwDefectCrow145Section',
+                                   'kwDefectNen3399Section'];
+
     function openKwDefectModal(elId) {
       _kwDefectElementId = elId;
+      _kwDefectEn1176 = null;
+      _kwDefectVta = null;
       document.getElementById('kwDefectGebrekNaam').value = '';
       document.getElementById('kwDefectErnst').value = '2';
       document.getElementById('kwDefectIntensiteit').value = '2';
@@ -12268,6 +12454,37 @@
       document.getElementById('kwDefectOmschrijving').value = '';
       document.getElementById('kwDefectPhoto').value = '';
       document.getElementById('kwDefectPhotoPreview').innerHTML = '';
+      // Reset EN-1176 radio's + acute-rij
+      ['A','B','C','D'].forEach(function(k){
+        var r = document.getElementById('kwDefectEn1176_' + k);
+        if (r) { r.checked = false; var lbl = r.closest('label'); if (lbl) lbl.style.borderColor = 'transparent'; }
+      });
+      var acuteRow = document.getElementById('kwDefectEn1176AcuteRow');
+      if (acuteRow) acuteRow.style.display = 'none';
+      // Reset VTA-knoppen + numerieke velden
+      for (var k = 1; k <= 5; k++) {
+        var btn = document.getElementById('kwDefectVtaBtn_' + k);
+        if (btn) { btn.style.borderColor = 'transparent'; btn.style.background = '#fff'; }
+      }
+      ['kwDefectVtaHolte','kwDefectVtaTr',
+       'kwDefectNen3140Iso','kwDefectNen3140Aarde','kwDefectNen3140LekMs','kwDefectNen3140LekMa',
+       'kwDefectCrow145Droog','kwDefectCrow145Nat'].forEach(function(id){
+        var el = document.getElementById(id); if (el) el.value = '';
+      });
+      var nen3399Code = document.getElementById('kwDefectNen3399Code');
+      if (nen3399Code) nen3399Code.value = '';
+      var nen3399Kl = document.getElementById('kwDefectNen3399Klasse');
+      if (nen3399Kl) nen3399Kl.value = '';
+
+      // Toon EXACT één type-specifieke sectie; NEN 2767-grid alleen als geen match.
+      var ktype = (_currentKunstwerk && _currentKunstwerk.kunstwerk_type) || '';
+      var targetSection = KW_DEFECT_SECTION_MAP[ktype] || null;
+      KW_DEFECT_ALL_SECTIONS.forEach(function(id){
+        var el = document.getElementById(id);
+        if (el) el.style.display = (id === targetSection) ? 'block' : 'none';
+      });
+      var nen2767Grid = document.getElementById('kwDefectNen2767Grid');
+      if (nen2767Grid) nen2767Grid.style.display = targetSection ? 'none' : 'grid';
       // Vul gebrek-suggesties uit taxonomy
       var sugSel = document.getElementById('kwDefectGebrekSuggesties');
       sugSel.innerHTML = '<option value="">— vrije invoer —</option>';
@@ -12333,14 +12550,62 @@
       var fileInput = document.getElementById('kwDefectPhoto');
       var hasFile = fileInput.files && fileInput.files[0];
 
+      var ktype = (_currentKunstwerk && _currentKunstwerk.kunstwerk_type) || '';
+      var targetSection = KW_DEFECT_SECTION_MAP[ktype] || null;
+
+      // Verplichte selectie per type — alleen voor de classificatie-velden
+      if (ktype === 'speeltoestel' && !_kwDefectEn1176) {
+        showToast('Kies een NEN-EN 1176 categorie (A/B/C/D)', 'error');
+        return;
+      }
+      if (ktype === 'boom' && !_kwDefectVta) {
+        showToast('Kies een VTA-risicoklasse (1-5)', 'error');
+        return;
+      }
+
       var doSubmit = function(photoUrl) {
         var payload = {
           gebrek_naam: naam,
           gebrek_code: code,
           omschrijving: omschr || null,
-          ernst: ernst, intensiteit: intensiteit, omvang_klasse: omvang,
           locatie_beschrijving: locatie || null,
         };
+        // Per type: vul de juiste classificatie-velden, sla NEN 2767 over indien type-specifiek
+        if (!targetSection) {
+          // Kunstwerken / fontein / kunstgrasveld / etc. → standaard NEN 2767-2
+          payload.ernst = ernst;
+          payload.intensiteit = intensiteit;
+          payload.omvang_klasse = omvang;
+        } else if (ktype === 'speeltoestel') {
+          payload.en1176_categorie = _kwDefectEn1176;
+          var acuteCb = document.getElementById('kwDefectEn1176Acute');
+          payload.en1176_acute_afsluiting = !!(acuteCb && acuteCb.checked);
+        } else if (ktype === 'boom') {
+          payload.vta_risicoklasse = _kwDefectVta;
+          var vh = parseFloat(document.getElementById('kwDefectVtaHolte').value);
+          if (!isNaN(vh)) payload.vta_holte_pct = vh;
+          var vtr = parseFloat(document.getElementById('kwDefectVtaTr').value);
+          if (!isNaN(vtr)) payload.vta_t_r_ratio = vtr;
+        } else if (ktype === 'verlichting') {
+          var iso = parseFloat(document.getElementById('kwDefectNen3140Iso').value);
+          if (!isNaN(iso)) payload.nen3140_isolatie_megaohm = iso;
+          var aarde = parseFloat(document.getElementById('kwDefectNen3140Aarde').value);
+          if (!isNaN(aarde)) payload.nen3140_aardingsweerstand_ohm = aarde;
+          var lekMs = parseInt(document.getElementById('kwDefectNen3140LekMs').value, 10);
+          if (!isNaN(lekMs)) payload.nen3140_aardlek_ms = lekMs;
+          var lekMa = parseFloat(document.getElementById('kwDefectNen3140LekMa').value);
+          if (!isNaN(lekMa)) payload.nen3140_aardlek_ma = lekMa;
+        } else if (ktype === 'wegmarkering') {
+          var rlD = parseInt(document.getElementById('kwDefectCrow145Droog').value, 10);
+          if (!isNaN(rlD)) payload.crow145_rl_droog_mcd = rlD;
+          var rlN = parseInt(document.getElementById('kwDefectCrow145Nat').value, 10);
+          if (!isNaN(rlN)) payload.crow145_rl_nat_mcd = rlN;
+        } else if (ktype === 'riolering') {
+          var codeSel = document.getElementById('kwDefectNen3399Code').value;
+          if (codeSel) payload.nen3399_code = codeSel;
+          var klasseSel = document.getElementById('kwDefectNen3399Klasse').value;
+          if (klasseSel) payload.nen3399_klasse = parseInt(klasseSel, 10);
+        }
         if (photoUrl) payload.photo_url = photoUrl;
         api('POST', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + _kwDefectElementId + '/defecten', payload)
           .then(function(){
