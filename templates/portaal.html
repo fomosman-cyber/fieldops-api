@@ -6434,8 +6434,26 @@
           window.location.href = 'https://fieldopsapp.nl';
           return;
         }
-        if (!res.ok) return res.json().then(function(e) { throw new Error(e.detail || t('fout_laden')); });
-        return res.json();
+        // Robuuste body-parse — handelt zowel JSON als plain-text 5xx-responses af
+        // zodat een 500 met body "Internal Server Error" geen JSON.parse crash veroorzaakt.
+        return res.text().then(function(text) {
+          var parsed = null;
+          if (text) {
+            try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
+          }
+          if (!res.ok) {
+            var msg;
+            if (parsed && parsed.detail) {
+              msg = typeof parsed.detail === 'string' ? parsed.detail : JSON.stringify(parsed.detail);
+            } else if (text) {
+              msg = 'Server fout ' + res.status + ': ' + text.substring(0, 140);
+            } else {
+              msg = t('fout_laden') || ('HTTP ' + res.status);
+            }
+            throw new Error(msg);
+          }
+          return parsed;
+        });
       });
     }
 
