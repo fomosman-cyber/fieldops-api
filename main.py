@@ -143,6 +143,56 @@ def _run_migrations():
                         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_next_inspection_due ON assets(next_inspection_due)"))
                 print("[migration] assets inspectie-kolommen toegevoegd.")
 
+        # NEN-EN 1176 — speeltoestel-classificatie velden (v3.6)
+        if "inspections" in insp.get_table_names():
+            icols = [c["name"] for c in insp.get_columns("inspections")]
+            if "nen1176_inspectie_kind" not in icols:
+                print("[migration] inspections.nen1176_inspectie_kind toevoegen...")
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE inspections ADD COLUMN nen1176_inspectie_kind VARCHAR(16)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_inspections_nen1176_kind ON inspections(nen1176_inspectie_kind)"))
+
+        if "inspection_defects" in insp.get_table_names():
+            dcols = [c["name"] for c in insp.get_columns("inspection_defects")]
+            # NEN-EN 1176 (speeltoestel)
+            en1176_missing = []
+            if "en1176_categorie" not in dcols:
+                en1176_missing.append("en1176_categorie")
+            if "en1176_acute_afsluiting" not in dcols:
+                en1176_missing.append("en1176_acute_afsluiting")
+            if en1176_missing:
+                print(f"[migration] inspection_defects NEN-EN 1176 kolommen toevoegen: {en1176_missing}")
+                with engine.begin() as conn:
+                    if "en1176_categorie" in en1176_missing:
+                        conn.execute(text("ALTER TABLE inspection_defects ADD COLUMN en1176_categorie VARCHAR(1)"))
+                    if "en1176_acute_afsluiting" in en1176_missing:
+                        try:
+                            conn.execute(text("ALTER TABLE inspection_defects ADD COLUMN en1176_acute_afsluiting BOOLEAN DEFAULT FALSE NOT NULL"))
+                        except Exception:
+                            # SQLite fallback
+                            conn.execute(text("ALTER TABLE inspection_defects ADD COLUMN en1176_acute_afsluiting BOOLEAN DEFAULT 0 NOT NULL"))
+
+            # VTA (boom) + NEN 3140 (verlichting) + CROW 145 (markering) + NEN 3399 (riolering)
+            type_specific_cols = {
+                "vta_risicoklasse":              "INTEGER",
+                "vta_holte_pct":                 "FLOAT",
+                "vta_t_r_ratio":                 "FLOAT",
+                "nen3140_isolatie_megaohm":      "FLOAT",
+                "nen3140_aardingsweerstand_ohm": "FLOAT",
+                "nen3140_aardlek_ms":            "INTEGER",
+                "nen3140_aardlek_ma":            "FLOAT",
+                "crow145_rl_droog_mcd":          "INTEGER",
+                "crow145_rl_nat_mcd":            "INTEGER",
+                "nen3399_code":                  "VARCHAR(4)",
+                "nen3399_klasse":                "INTEGER",
+            }
+            type_missing = [c for c in type_specific_cols if c not in dcols]
+            if type_missing:
+                print(f"[migration] inspection_defects type-specifieke kolommen toevoegen: {type_missing}")
+                with engine.begin() as conn:
+                    for col in type_missing:
+                        conn.execute(text(f"ALTER TABLE inspection_defects ADD COLUMN {col} {type_specific_cols[col]}"))
+
         # OpleveringPunt — photo_url_after (foto na uitvoering, toegevoegd 2026-05-11
         # voor voor/na-vergelijking bij opleverpunten)
         if "opleveringspunten" in insp.get_table_names():
@@ -410,8 +460,9 @@ app.add_middleware(
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Global exception handler — vervangt anonieme "Internal Server Error"
-# plain-text response met een JSON-payload zodat de frontend de oorzaak kan
-# tonen (en wij in de Render-logs de volledige traceback zien).
+# plain-text response met JSON zodat de frontend geen JSON-parse crash krijgt.
+# Volledige traceback gaat naar stderr (Render logs); aan de client alleen
+# een korte exception-class + bericht (geen file-paths, geen stack-frames).
 # ─────────────────────────────────────────────────────────────────────────────
 import traceback as _traceback
 from fastapi.responses import JSONResponse as _JSONResponse
@@ -419,25 +470,14 @@ from fastapi.responses import JSONResponse as _JSONResponse
 
 @app.exception_handler(Exception)
 async def _global_exception_handler(request: Request, exc: Exception):
-    tb = _traceback.format_exc()
-    # Naar Render logs (volledige traceback)
+    # Naar Render logs (volledige traceback voor diagnose)
     print(f"[UNCAUGHT] {request.method} {request.url.path}", flush=True)
-    print(tb, flush=True)
+    print(_traceback.format_exc(), flush=True)
 
-    # Aan de client: korte beschrijving + 3 relevante frames uit eigen code
-    # (filters site-packages weg) zodat de frontend zinvolle context kan tonen.
-    own_frames = []
-    for line in tb.split("\n"):
-        stripped = line.strip()
-        if stripped.startswith('File "') and "site-packages" not in line and "/usr/" not in line:
-            own_frames.append(stripped[:160])
+    # Aan de client: minimaal — geen paden, geen stack-info
     return _JSONResponse(
         status_code=500,
-        content={
-            "detail": f"{type(exc).__name__}: {str(exc)[:240]}",
-            "frames": own_frames[-3:],
-            "path": str(request.url.path),
-        },
+        content={"detail": f"{type(exc).__name__}: {str(exc)[:200]}"},
     )
 
 

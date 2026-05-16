@@ -342,6 +342,9 @@ class KunstwerkInspectionCreate(BaseModel):
     opdrachtgever_naam: Optional[str] = None
     opdrachtgever_email: Optional[str] = None
     auto_elements: bool = True
+    # NEN-EN 1176 — alleen voor kunstwerk_type=speeltoestel
+    # routine | operationeel | hoofd
+    nen1176_inspectie_kind: Optional[str] = None
 
 
 class KunstwerkInspectionUpdate(BaseModel):
@@ -392,6 +395,24 @@ class InspectionDefectCreate(BaseModel):
     ai_analysis_id: Optional[str] = None
     crow_klasse: Optional[str] = None
     gw_maatregel: Optional[str] = None
+    # NEN-EN 1176 — speeltoestel (A=veilig, B=klein 30d, C=direct beperken, D=afgesloten)
+    en1176_categorie: Optional[str] = None
+    en1176_acute_afsluiting: Optional[bool] = None
+    # VTA boom (Mattheck): risicoklasse 1-5, holte %, t/r-ratio
+    vta_risicoklasse: Optional[int] = None
+    vta_holte_pct: Optional[float] = None
+    vta_t_r_ratio: Optional[float] = None
+    # NEN 3140 verlichting: numerieke meetwaarden (500V dc test)
+    nen3140_isolatie_megaohm: Optional[float] = None
+    nen3140_aardingsweerstand_ohm: Optional[float] = None
+    nen3140_aardlek_ms: Optional[int] = None
+    nen3140_aardlek_ma: Optional[float] = None
+    # CROW 145 wegmarkering: retroreflectie droog + nat in mcd/m²/lx
+    crow145_rl_droog_mcd: Optional[int] = None
+    crow145_rl_nat_mcd: Optional[int] = None
+    # NEN 3399 riolering: BAA-BAQ schadecode + eindklasse 1-5
+    nen3399_code: Optional[str] = None
+    nen3399_klasse: Optional[int] = None
 
 
 class InspectionDefectUpdate(BaseModel):
@@ -410,6 +431,19 @@ class InspectionDefectUpdate(BaseModel):
     ai_analysis_id: Optional[str] = None
     crow_klasse: Optional[str] = None
     gw_maatregel: Optional[str] = None
+    en1176_categorie: Optional[str] = None
+    en1176_acute_afsluiting: Optional[bool] = None
+    vta_risicoklasse: Optional[int] = None
+    vta_holte_pct: Optional[float] = None
+    vta_t_r_ratio: Optional[float] = None
+    nen3140_isolatie_megaohm: Optional[float] = None
+    nen3140_aardingsweerstand_ohm: Optional[float] = None
+    nen3140_aardlek_ms: Optional[int] = None
+    nen3140_aardlek_ma: Optional[float] = None
+    crow145_rl_droog_mcd: Optional[int] = None
+    crow145_rl_nat_mcd: Optional[int] = None
+    nen3399_code: Optional[str] = None
+    nen3399_klasse: Optional[int] = None
 
 
 class InspectionSignRequest(BaseModel):

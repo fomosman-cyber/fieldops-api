@@ -82,6 +82,19 @@ def _defect_dict(d: InspectionDefect) -> dict:
         "crow_klasse": d.crow_klasse,
         "gw_maatregel": d.gw_maatregel,
         "melding_id": d.melding_id,
+        "en1176_categorie": d.en1176_categorie,
+        "en1176_acute_afsluiting": bool(d.en1176_acute_afsluiting),
+        "vta_risicoklasse": d.vta_risicoklasse,
+        "vta_holte_pct": d.vta_holte_pct,
+        "vta_t_r_ratio": d.vta_t_r_ratio,
+        "nen3140_isolatie_megaohm": d.nen3140_isolatie_megaohm,
+        "nen3140_aardingsweerstand_ohm": d.nen3140_aardingsweerstand_ohm,
+        "nen3140_aardlek_ms": d.nen3140_aardlek_ms,
+        "nen3140_aardlek_ma": d.nen3140_aardlek_ma,
+        "crow145_rl_droog_mcd": d.crow145_rl_droog_mcd,
+        "crow145_rl_nat_mcd": d.crow145_rl_nat_mcd,
+        "nen3399_code": d.nen3399_code,
+        "nen3399_klasse": d.nen3399_klasse,
         "created_at": d.created_at.isoformat() if d.created_at else None,
     }
 
@@ -134,6 +147,7 @@ def _inspection_dict(i: Inspection, *, include_elements: bool = False) -> dict:
         "project_name": i.project.name if i.project else None,
         "title": i.title,
         "inspectie_type": i.inspectie_type,
+        "nen1176_inspectie_kind": i.nen1176_inspectie_kind,
         "norm_referenties": i.norm_referenties,
         "datum_inspectie": i.datum_inspectie.isoformat() if i.datum_inspectie else None,
         "inspecteur_id": i.inspecteur_id,
@@ -541,6 +555,22 @@ def create_inspection(
             raise HTTPException(status_code=400, detail="Inspecteur niet gevonden in organisatie")
     inspecteur_naam = payload.inspecteur_naam or f"{current_user.first_name} {current_user.last_name}".strip()
 
+    # NEN-EN 1176 — valideer inspectie-kind alleen voor speeltoestellen
+    nen1176_kind = None
+    if payload.nen1176_inspectie_kind:
+        if kunstwerk_type != "speeltoestel":
+            raise HTTPException(
+                status_code=400,
+                detail="nen1176_inspectie_kind is alleen geldig voor kunstwerk_type=speeltoestel",
+            )
+        kind = payload.nen1176_inspectie_kind.strip().lower()
+        if kind not in {"routine", "operationeel", "hoofd"}:
+            raise HTTPException(
+                status_code=400,
+                detail="nen1176_inspectie_kind moet 'routine', 'operationeel' of 'hoofd' zijn",
+            )
+        nen1176_kind = kind
+
     insp = Inspection(
         organization_id=current_user.organization_id,
         asset_id=asset.id,
@@ -548,6 +578,7 @@ def create_inspection(
         project_id=payload.project_id or asset.project_id,
         title=payload.title,
         inspectie_type=payload.inspectie_type or "visueel",
+        nen1176_inspectie_kind=nen1176_kind,
         datum_inspectie=payload.datum_inspectie or datetime.now(timezone.utc),
         inspecteur_id=inspecteur_id,
         inspecteur_naam=inspecteur_naam,
@@ -1087,6 +1118,86 @@ def add_defect(
     data = payload.model_dump(exclude_unset=True)
     _normalize_defect_inputs(data)
 
+    # NEN-EN 1176 — valideer A/B/C/D classificatie (alleen voor speeltoestellen)
+    en1176_cat = data.get("en1176_categorie")
+    en1176_acute = data.get("en1176_acute_afsluiting")
+    if en1176_cat is not None:
+        if insp.kunstwerk_type != "speeltoestel":
+            raise HTTPException(
+                status_code=400,
+                detail="en1176_categorie is alleen geldig voor kunstwerk_type=speeltoestel",
+            )
+        en1176_cat = en1176_cat.upper().strip()
+        if en1176_cat not in {"A", "B", "C", "D"}:
+            raise HTTPException(
+                status_code=400,
+                detail="en1176_categorie moet 'A', 'B', 'C' of 'D' zijn (NEN-EN 1176 § 8.2)",
+            )
+        # Server-side enforcement: categorie C of D = acute afsluiting verplicht
+        # tenzij de inspecteur expliciet false geeft (met motivering elders)
+        if en1176_cat in {"C", "D"} and en1176_acute is None:
+            en1176_acute = True
+
+    # VTA boom (Mattheck) — risicoklasse alleen voor boom
+    vta_klasse = data.get("vta_risicoklasse")
+    if vta_klasse is not None:
+        if insp.kunstwerk_type != "boom":
+            raise HTTPException(
+                status_code=400,
+                detail="vta_risicoklasse is alleen geldig voor kunstwerk_type=boom",
+            )
+        if not (1 <= int(vta_klasse) <= 5):
+            raise HTTPException(
+                status_code=400,
+                detail="vta_risicoklasse moet 1-5 zijn (Mattheck VTA)",
+            )
+    vta_holte = data.get("vta_holte_pct")
+    if vta_holte is not None and not (0 <= float(vta_holte) <= 100):
+        raise HTTPException(status_code=400, detail="vta_holte_pct moet 0-100 zijn")
+
+    # NEN 3140 elektrische meetwaarden — alleen voor verlichting
+    nen3140_fields = ("nen3140_isolatie_megaohm", "nen3140_aardingsweerstand_ohm",
+                       "nen3140_aardlek_ms", "nen3140_aardlek_ma")
+    if any(data.get(f) is not None for f in nen3140_fields):
+        if insp.kunstwerk_type != "verlichting":
+            raise HTTPException(
+                status_code=400,
+                detail="NEN 3140 meetvelden zijn alleen geldig voor kunstwerk_type=verlichting",
+            )
+        # Sanity-check: isolatie < 0.5 MΩ is direct gevaar (NEN 3140 § 6.4)
+        iso = data.get("nen3140_isolatie_megaohm")
+        if iso is not None and iso < 0:
+            raise HTTPException(status_code=400, detail="nen3140_isolatie_megaohm moet >= 0 zijn")
+
+    # CROW 145 retroreflectie — alleen voor wegmarkering
+    crow_fields = ("crow145_rl_droog_mcd", "crow145_rl_nat_mcd")
+    if any(data.get(f) is not None for f in crow_fields):
+        if insp.kunstwerk_type != "wegmarkering":
+            raise HTTPException(
+                status_code=400,
+                detail="CROW 145 retroreflectie-velden zijn alleen geldig voor wegmarkering",
+            )
+
+    # NEN 3399 schadecodes — alleen voor riolering
+    nen3399_code = data.get("nen3399_code")
+    nen3399_klasse = data.get("nen3399_klasse")
+    if nen3399_code is not None or nen3399_klasse is not None:
+        if insp.kunstwerk_type != "riolering":
+            raise HTTPException(
+                status_code=400,
+                detail="NEN 3399 velden zijn alleen geldig voor kunstwerk_type=riolering",
+            )
+        if nen3399_code is not None:
+            nen3399_code = nen3399_code.upper().strip()
+            # NEN-EN 13508-2 codes: BAA..BAZ (3-letter codes)
+            if not (len(nen3399_code) == 3 and nen3399_code.startswith("BA")):
+                raise HTTPException(
+                    status_code=400,
+                    detail="nen3399_code moet 3 chars zijn beginnend met 'BA' (bv. BAA, BAB, BAJ)",
+                )
+        if nen3399_klasse is not None and not (1 <= int(nen3399_klasse) <= 5):
+            raise HTTPException(status_code=400, detail="nen3399_klasse moet 1-5 zijn")
+
     d = InspectionDefect(
         element_id=el.id,
         organization_id=current_user.organization_id,
@@ -1108,6 +1219,19 @@ def add_defect(
         ai_analysis_id=data.get("ai_analysis_id"),
         crow_klasse=data.get("crow_klasse"),
         gw_maatregel=data.get("gw_maatregel"),
+        en1176_categorie=en1176_cat,
+        en1176_acute_afsluiting=bool(en1176_acute) if en1176_acute is not None else False,
+        vta_risicoklasse=data.get("vta_risicoklasse"),
+        vta_holte_pct=data.get("vta_holte_pct"),
+        vta_t_r_ratio=data.get("vta_t_r_ratio"),
+        nen3140_isolatie_megaohm=data.get("nen3140_isolatie_megaohm"),
+        nen3140_aardingsweerstand_ohm=data.get("nen3140_aardingsweerstand_ohm"),
+        nen3140_aardlek_ms=data.get("nen3140_aardlek_ms"),
+        nen3140_aardlek_ma=data.get("nen3140_aardlek_ma"),
+        crow145_rl_droog_mcd=data.get("crow145_rl_droog_mcd"),
+        crow145_rl_nat_mcd=data.get("crow145_rl_nat_mcd"),
+        nen3399_code=nen3399_code,
+        nen3399_klasse=data.get("nen3399_klasse"),
     )
     db.add(d)
     db.flush()
