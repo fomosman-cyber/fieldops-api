@@ -1072,7 +1072,7 @@
           <span class="icon">&#128203;</span> <span data-i18n="nav_opleveren">Opleveren</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
         </a>
         <a data-page="kunstwerken" onclick="navigateTo('kunstwerken')">
-          <span class="icon">&#127753;</span> <span data-i18n="nav_kunstwerken">Kunstwerken</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
+          <span class="icon">&#128269;</span> <span data-i18n="nav_kunstwerken">Inspecties</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
         </a>
         <a data-page="kaart" onclick="navigateTo('kaart')">
           <span class="icon">&#127758;</span> <span data-i18n="kaart">Kaart</span>
@@ -1994,15 +1994,18 @@
       </div>
     </div>
 
-    <!-- ═══ KUNSTWERKEN-INSPECTIES (NEN 2767-2 + CROW 134) ═══ -->
+    <!-- ═══ INSPECTIE (NEN 2767-2 + CROW 134 + NEN 3399 + VTA + NEN-EN 1176 + NEN 3140 + CROW 145) ═══ -->
     <div class="page-section" id="page-kunstwerken">
       <div class="page-header">
         <div>
-          <h1 data-i18n="ph_kunstwerken">Kunstwerken inspecties</h1>
-          <p data-i18n="ph_kunstwerken_sub">Formele inspectierapportage volgens <strong>NEN 2767-2</strong> + <strong>CROW 134</strong> (kunstwerken), <strong>NEN 3399</strong> (riolering) en <strong>VTA</strong> (bomen). Per object: element-decompositie, gebrek-classificatie (ernst × intensiteit × omvang), conditiescore 1-6 of risicoklasse 1-5, ondertekend PDF-rapport.</p>
+          <h1 data-i18n="ph_kunstwerken">Inspecties</h1>
+          <p data-i18n="ph_kunstwerken_sub">Formele inspecties per categorie: <strong>Kunstwerken</strong> (NEN 2767-2 + CROW 134), <strong>Groen</strong> (VTA + NEN-EN 1176 + NEN 2767-4), <strong>Markering</strong> (CROW 145), <strong>Verlichting</strong> (NEN 3140) en <strong>Ondergronds</strong> (NEN 3399). Element-decompositie, gebrek-classificatie, conditiescore 1-6 of risicoklasse 1-5, ondertekend PDF-rapport.</p>
         </div>
         <button class="btn-primary" onclick="openNieuweKunstwerkInspectieModal()">+ <span data-i18n="kw_nieuwe_inspectie">Nieuwe inspectie</span></button>
       </div>
+
+      <!-- Categorie-tegels -->
+      <div id="kwCategoryTiles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;"></div>
 
       <!-- Filter + samenvatting -->
       <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
@@ -3834,10 +3837,13 @@
         st_concept: 'Concept', st_opgeleverd: 'Opgeleverd',
         st_aanvaard: 'Aanvaard', st_afgewezen: 'Afgewezen',
         st_restpunt: 'Restpunt', st_gereed: 'Gereed', st_afgekeurd: 'Afgekeurd',
-        // Kunstwerken-inspecties (NEN 2767-2 + CROW 134)
-        nav_kunstwerken: 'Kunstwerken',
-        ph_kunstwerken: 'Kunstwerken inspecties',
-        ph_kunstwerken_sub: 'Formele inspectierapportage volgens NEN 2767-2 + CROW 134 (kunstwerken), NEN 3399 (riolering) en VTA (bomen). Element-decompositie, conditiescore 1-6 of risicoklasse 1-5, ondertekend PDF-rapport.',
+        // Inspectie (Kunstwerken, Groen, Markering, Verlichting, Ondergronds)
+        nav_kunstwerken: 'Inspecties',
+        ph_kunstwerken: 'Inspecties',
+        ph_kunstwerken_sub: 'Formele inspecties per categorie: Kunstwerken (NEN 2767-2 + CROW 134), Groen (VTA + NEN-EN 1176 + NEN 2767-4), Markering (CROW 145), Verlichting (NEN 3140) en Ondergronds (NEN 3399).',
+        kwcat_kunstwerken: 'Kunstwerken', kwcat_groen: 'Groen', kwcat_markering: 'Markering',
+        kwcat_verlichting: 'Verlichting', kwcat_ondergronds: 'Ondergronds',
+        kwcat_aantal: 'inspecties', kwcat_types: 'types', kwm_kies_type: '— Kies type —',
         kw_nieuwe_inspectie: 'Nieuwe inspectie',
         kw_filter_alle: 'Alle types', kw_filter_alle_status: 'Alle statussen',
         kw_status_draft: 'Concept', kw_status_in_progress: 'In uitvoering',
@@ -4292,10 +4298,13 @@
         st_concept: 'Draft', st_opgeleverd: 'Delivered',
         st_aanvaard: 'Accepted', st_afgewezen: 'Rejected',
         st_restpunt: 'Remaining', st_gereed: 'Done', st_afgekeurd: 'Rejected',
-        // Kunstwerken-inspecties (civil structures — NEN 2767-2 + CROW 134)
-        nav_kunstwerken: 'Structures',
-        ph_kunstwerken: 'Civil structure inspections',
-        ph_kunstwerken_sub: 'Formal inspection reporting per NEN 2767-2 and CROW 134 for bridges, viaducts, tunnels, locks, culverts, quay walls and pumping stations.',
+        // Inspection (Civil structures, Green, Markings, Lighting, Underground)
+        nav_kunstwerken: 'Inspections',
+        ph_kunstwerken: 'Inspections',
+        ph_kunstwerken_sub: 'Formal inspections by category: Civil structures (NEN 2767-2 + CROW 134), Green (VTA + NEN-EN 1176 + NEN 2767-4), Markings (CROW 145), Lighting (NEN 3140) and Underground (NEN 3399).',
+        kwcat_kunstwerken: 'Civil structures', kwcat_groen: 'Green', kwcat_markering: 'Markings',
+        kwcat_verlichting: 'Lighting', kwcat_ondergronds: 'Underground',
+        kwcat_aantal: 'inspections', kwcat_types: 'types', kwm_kies_type: '— Select type —',
         kw_nieuwe_inspectie: 'New inspection',
         kw_filter_alle: 'All types', kw_filter_alle_status: 'All statuses',
         kw_status_draft: 'Draft', kw_status_in_progress: 'In progress',
@@ -4750,10 +4759,13 @@
         st_concept: 'Entwurf', st_opgeleverd: 'Übergeben',
         st_aanvaard: 'Akzeptiert', st_afgewezen: 'Abgelehnt',
         st_restpunt: 'Restpunkt', st_gereed: 'Fertig', st_afgekeurd: 'Abgelehnt',
-        // Kunstbauwerk-Inspektionen (NEN 2767-2 + CROW 134)
-        nav_kunstwerken: 'Kunstbauwerke',
-        ph_kunstwerken: 'Kunstbauwerk-Inspektionen',
-        ph_kunstwerken_sub: 'Formelle Inspektionsberichte nach NEN 2767-2 und CROW 134 für Brücken, Viadukte, Tunnel, Schleusen, Durchlässe, Kaimauern und Pumpwerke.',
+        // Inspektion (Kunstbauwerke, Grün, Markierung, Beleuchtung, Untergrund)
+        nav_kunstwerken: 'Inspektionen',
+        ph_kunstwerken: 'Inspektionen',
+        ph_kunstwerken_sub: 'Formelle Inspektionen nach Kategorie: Kunstbauwerke (NEN 2767-2 + CROW 134), Grün (VTA + NEN-EN 1176 + NEN 2767-4), Markierung (CROW 145), Beleuchtung (NEN 3140) und Untergrund (NEN 3399).',
+        kwcat_kunstwerken: 'Kunstbauwerke', kwcat_groen: 'Grün', kwcat_markering: 'Markierung',
+        kwcat_verlichting: 'Beleuchtung', kwcat_ondergronds: 'Untergrund',
+        kwcat_aantal: 'Inspektionen', kwcat_types: 'Typen', kwm_kies_type: '— Typ wählen —',
         kw_nieuwe_inspectie: 'Neue Inspektion',
         kw_filter_alle: 'Alle Typen', kw_filter_alle_status: 'Alle Status',
         kw_status_draft: 'Entwurf', kw_status_in_progress: 'In Bearbeitung',
@@ -5208,10 +5220,13 @@
         st_concept: 'Brouillon', st_opgeleverd: 'Livré',
         st_aanvaard: 'Accepté', st_afgewezen: 'Rejeté',
         st_restpunt: 'Restant', st_gereed: 'Terminé', st_afgekeurd: 'Rejeté',
-        // Inspections d'ouvrages d'art (NEN 2767-2 + CROW 134)
-        nav_kunstwerken: 'Ouvrages d\'art',
-        ph_kunstwerken: 'Inspections d\'ouvrages d\'art',
-        ph_kunstwerken_sub: 'Rapports d\'inspection formels selon NEN 2767-2 et CROW 134 pour ponts, viaducs, tunnels, écluses, buses, quais et stations de pompage.',
+        // Inspection (Ouvrages d'art, Espaces verts, Marquage, Éclairage, Souterrain)
+        nav_kunstwerken: 'Inspections',
+        ph_kunstwerken: 'Inspections',
+        ph_kunstwerken_sub: 'Inspections formelles par catégorie : Ouvrages d\'art (NEN 2767-2 + CROW 134), Espaces verts (VTA + NEN-EN 1176 + NEN 2767-4), Marquage (CROW 145), Éclairage (NEN 3140) et Souterrain (NEN 3399).',
+        kwcat_kunstwerken: 'Ouvrages d\'art', kwcat_groen: 'Espaces verts', kwcat_markering: 'Marquage',
+        kwcat_verlichting: 'Éclairage', kwcat_ondergronds: 'Souterrain',
+        kwcat_aantal: 'inspections', kwcat_types: 'types', kwm_kies_type: '— Choisir un type —',
         kw_nieuwe_inspectie: 'Nouvelle inspection',
         kw_filter_alle: 'Tous les types', kw_filter_alle_status: 'Tous les statuts',
         kw_status_draft: 'Brouillon', kw_status_in_progress: 'En cours',
@@ -5666,10 +5681,13 @@
         st_concept: 'Taslak', st_opgeleverd: 'Teslim edildi',
         st_aanvaard: 'Kabul edildi', st_afgewezen: 'Reddedildi',
         st_restpunt: 'Kalan', st_gereed: 'Tamam', st_afgekeurd: 'Reddedildi',
-        // Sanat yapıları muayeneleri (NEN 2767-2 + CROW 134)
-        nav_kunstwerken: 'Sanat Yapıları',
-        ph_kunstwerken: 'Sanat yapıları muayeneleri',
-        ph_kunstwerken_sub: 'Köprüler, viyadükler, tüneller, kilitler, menfezler, rıhtım duvarları ve pompa istasyonları için NEN 2767-2 ve CROW 134\'e göre resmi muayene raporları.',
+        // Muayene (Sanat yapıları, Yeşil alan, İşaretleme, Aydınlatma, Yeraltı)
+        nav_kunstwerken: 'Muayeneler',
+        ph_kunstwerken: 'Muayeneler',
+        ph_kunstwerken_sub: 'Kategoriye göre resmi muayeneler: Sanat yapıları (NEN 2767-2 + CROW 134), Yeşil alan (VTA + NEN-EN 1176 + NEN 2767-4), İşaretleme (CROW 145), Aydınlatma (NEN 3140) ve Yeraltı (NEN 3399).',
+        kwcat_kunstwerken: 'Sanat yapıları', kwcat_groen: 'Yeşil alan', kwcat_markering: 'İşaretleme',
+        kwcat_verlichting: 'Aydınlatma', kwcat_ondergronds: 'Yeraltı',
+        kwcat_aantal: 'muayene', kwcat_types: 'tip', kwm_kies_type: '— Tip seçin —',
         kw_nieuwe_inspectie: 'Yeni muayene',
         kw_filter_alle: 'Tüm türler', kw_filter_alle_status: 'Tüm durumlar',
         kw_status_draft: 'Taslak', kw_status_in_progress: 'Devam ediyor',
@@ -11754,24 +11772,104 @@
       return '<span style="display:inline-block;padding:2px 10px;border-radius:100px;background:' + c + '22;color:' + c + ';border:1px solid ' + c + '55;font-size:11px;font-weight:700;letter-spacing:.03em;">' + score + ' · ' + l + '</span>';
     }
 
+    // ── Categorieën — groepering van de 15 inspectie-types ──────
+    var KUNSTWERK_CATEGORIES = {
+      kunstwerken: { label: 'Kunstwerken', icon: '🌉', color: '#0284c7', types: ['brug','viaduct','tunnel','sluis','stuw','duiker','kademuur','gemaal'] },
+      groen:       { label: 'Groen',       icon: '🌳', color: '#16a34a', types: ['boom','kunstgrasveld','speeltoestel','fontein'] },
+      markering:   { label: 'Markering',   icon: '🛣️',  color: '#f59e0b', types: ['wegmarkering'] },
+      verlichting: { label: 'Verlichting', icon: '💡', color: '#eab308', types: ['verlichting'] },
+      ondergronds: { label: 'Ondergronds', icon: '🚰', color: '#64748b', types: ['riolering'] },
+    };
+    var KUNSTWERK_CATEGORY_ORDER = ['kunstwerken','groen','markering','verlichting','ondergronds'];
+    var _kwCategoryFilter = ''; // '' = alle, anders categorie-key
+
+    function kunstwerkCategoryForType(typeKey) {
+      for (var k in KUNSTWERK_CATEGORIES) {
+        if (KUNSTWERK_CATEGORIES[k].types.indexOf(typeKey) !== -1) return k;
+      }
+      return null;
+    }
+
+    function setKunstwerkCategorie(cat) {
+      _kwCategoryFilter = (_kwCategoryFilter === cat) ? '' : (cat || '');
+      // reset type-filter als die buiten categorie valt
+      var typeSel = document.getElementById('kwFilterType');
+      if (typeSel && typeSel.value && _kwCategoryFilter) {
+        if (kunstwerkCategoryForType(typeSel.value) !== _kwCategoryFilter) typeSel.value = '';
+      }
+      renderKunstwerkCategoryTiles();
+      _populateKwFilterType();
+      loadKunstwerkInspecties();
+    }
+
+    function renderKunstwerkCategoryTiles() {
+      var host = document.getElementById('kwCategoryTiles');
+      if (!host) return;
+      // Tellingen per categorie uit huidige inspecties (alle, vóór filter)
+      var counts = {};
+      KUNSTWERK_CATEGORY_ORDER.forEach(function(k){ counts[k] = 0; });
+      (_kunstwerkInspecties || []).forEach(function(i){
+        var c = kunstwerkCategoryForType(i.kunstwerk_type);
+        if (c) counts[c] = (counts[c] || 0) + 1;
+      });
+      var html = KUNSTWERK_CATEGORY_ORDER.map(function(k){
+        var c = KUNSTWERK_CATEGORIES[k];
+        var actief = (_kwCategoryFilter === k);
+        var label = (window.t ? t('kwcat_' + k) : '') || c.label;
+        var aantalLabel = (window.t ? t('kwcat_aantal') : '') || 'inspecties';
+        var typesLabel = (window.t ? t('kwcat_types') : '') || 'types';
+        return '<div onclick="setKunstwerkCategorie(\'' + k + '\')" '
+          + 'style="cursor:pointer;background:' + (actief ? c.color + '15' : 'var(--card-bg)')
+          + ';border:1px solid ' + (actief ? c.color : 'var(--border)')
+          + ';border-radius:12px;padding:16px;transition:all .2s;'
+          + (actief ? 'box-shadow:0 4px 14px ' + c.color + '33;' : 'box-shadow:0 1px 3px rgba(0,0,0,0.06);')
+          + '" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'translateY(0)\'">'
+          + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">'
+          +   '<div style="width:36px;height:36px;border-radius:9px;background:' + c.color + '1a;color:' + c.color + ';display:flex;align-items:center;justify-content:center;font-size:18px;">' + c.icon + '</div>'
+          +   '<div style="font-weight:700;font-size:15px;color:var(--text);">' + label + '</div>'
+          + '</div>'
+          + '<div style="display:flex;justify-content:space-between;align-items:baseline;">'
+          +   '<div><span style="font-size:24px;font-weight:700;color:' + c.color + ';letter-spacing:-0.5px;">' + counts[k] + '</span> '
+          +     '<span style="font-size:12px;color:var(--text-muted);">' + aantalLabel + '</span></div>'
+          +   '<div style="font-size:11px;color:var(--text-muted);font-family:JetBrains Mono,monospace;">' + c.types.length + ' ' + typesLabel + '</div>'
+          + '</div>'
+          + '</div>';
+      }).join('');
+      host.innerHTML = html;
+    }
+
+    function _populateKwFilterType() {
+      var sel = document.getElementById('kwFilterType');
+      if (!sel || !_kunstwerkTypes) return;
+      var current = sel.value;
+      // bouw opnieuw op met optgroups, gefilterd op actieve categorie
+      var alleLabel = (window.t ? t('kw_filter_alle') : '') || 'Alle types';
+      var html = '<option value="">' + alleLabel + '</option>';
+      KUNSTWERK_CATEGORY_ORDER.forEach(function(k){
+        if (_kwCategoryFilter && _kwCategoryFilter !== k) return;
+        var c = KUNSTWERK_CATEGORIES[k];
+        var catLabel = (window.t ? t('kwcat_' + k) : '') || c.label;
+        var typesInCat = _kunstwerkTypes.filter(function(t){ return c.types.indexOf(t.key) !== -1; });
+        if (!typesInCat.length) return;
+        html += '<optgroup label="' + catLabel + '">';
+        typesInCat.forEach(function(t){
+          html += '<option value="' + t.key + '">' + t.label + '</option>';
+        });
+        html += '</optgroup>';
+      });
+      sel.innerHTML = html;
+      sel.value = current;
+    }
+
     function loadKunstwerkInspecties() {
       // Lazy-load type-lijst voor filter (één keer)
       if (!_kunstwerkTypes) {
         api('GET', '/api/kunstwerken-inspecties/taxonomy/types').then(function(d){
           _kunstwerkTypes = d.types || [];
-          var sel = document.getElementById('kwFilterType');
-          if (sel) {
-            var current = sel.value;
-            _kunstwerkTypes.forEach(function(t){
-              if (![].slice.call(sel.options).some(function(o){ return o.value === t.key; })) {
-                var o = document.createElement('option');
-                o.value = t.key; o.textContent = t.label;
-                sel.appendChild(o);
-              }
-            });
-            sel.value = current;
-          }
+          _populateKwFilterType();
         }).catch(function(){});
+      } else {
+        _populateKwFilterType();
       }
 
       var empty = document.getElementById('kunstwerkenEmpty');
@@ -11779,6 +11877,8 @@
       var tbody = document.getElementById('kunstwerkenBody');
       var sum = document.getElementById('kwSamenvatting');
       tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-dim);">Laden...</td></tr>';
+      // Render tegels direct met huidige data (lege array bij eerste laad — counts = 0)
+      renderKunstwerkCategoryTiles();
 
       var typeF = (document.getElementById('kwFilterType')||{}).value || '';
       var statusF = (document.getElementById('kwFilterStatus')||{}).value || '';
@@ -11789,7 +11889,15 @@
 
       api('GET', url).then(function(items){
         _kunstwerkInspecties = items || [];
-        if (!_kunstwerkInspecties.length) {
+        // Render tegels altijd (counts baseren op volle dataset minus status-filter)
+        renderKunstwerkCategoryTiles();
+        // Filter op categorie clientside (server kent geen categorie-concept)
+        var filtered = _kunstwerkInspecties;
+        if (_kwCategoryFilter) {
+          var allowedTypes = KUNSTWERK_CATEGORIES[_kwCategoryFilter].types;
+          filtered = filtered.filter(function(i){ return allowedTypes.indexOf(i.kunstwerk_type) !== -1; });
+        }
+        if (!filtered.length) {
           empty.style.display = 'flex';
           list.style.display = 'none';
           if (sum) sum.textContent = '';
@@ -11798,17 +11906,17 @@
         empty.style.display = 'none';
         list.style.display = 'block';
 
-        // Samenvatting
+        // Samenvatting (op gefilterde set)
         if (sum) {
           var avg = 0, n = 0;
-          _kunstwerkInspecties.forEach(function(i){
+          filtered.forEach(function(i){
             if (i.conditiescore_overall != null) { avg += i.conditiescore_overall; n++; }
           });
           var avgTxt = n ? (avg / n).toFixed(1) : '—';
-          sum.textContent = _kunstwerkInspecties.length + ' ' + (t('kw_inspecties_label') || 'inspecties') + ' · ' + (t('kw_gem_conditie') || 'gemiddelde conditie') + ' ' + avgTxt;
+          sum.textContent = filtered.length + ' ' + (t('kw_inspecties_label') || 'inspecties') + ' · ' + (t('kw_gem_conditie') || 'gemiddelde conditie') + ' ' + avgTxt;
         }
 
-        tbody.innerHTML = _kunstwerkInspecties.map(function(i){
+        tbody.innerHTML = filtered.map(function(i){
           var st = KW_STATUS_LABEL[i.status] || KW_STATUS_LABEL.draft;
           var date = i.datum_inspectie ? new Date(i.datum_inspectie).toLocaleDateString('nl-NL') : '—';
           var typeLabel = i.kunstwerk_type ? (i.kunstwerk_type.charAt(0).toUpperCase() + i.kunstwerk_type.slice(1)) : '—';
@@ -11842,19 +11950,32 @@
       document.getElementById('kwNewWeer').value = '';
       document.getElementById('kwNewOpdrachtgever').value = '';
 
-      // Vul type-dropdown (zelfde lijst als filter)
+      // Vul type-dropdown — optgroups per categorie + respecteer actieve categorie-filter
       var typeSel = document.getElementById('kwNewType');
-      typeSel.innerHTML = '<option value="">— Kies type —</option>';
-      if (_kunstwerkTypes) {
-        _kunstwerkTypes.forEach(function(t){
-          typeSel.innerHTML += '<option value="' + t.key + '">' + t.label + '</option>';
+      function _fillKwNewType(types) {
+        var kiesLabel = (window.t ? t('kwm_kies_type') : '') || '— Kies type —';
+        var html = '<option value="">' + kiesLabel + '</option>';
+        KUNSTWERK_CATEGORY_ORDER.forEach(function(k){
+          if (_kwCategoryFilter && _kwCategoryFilter !== k) return;
+          var c = KUNSTWERK_CATEGORIES[k];
+          var catLabel = (window.t ? t('kwcat_' + k) : '') || c.label;
+          var typesInCat = types.filter(function(t){ return c.types.indexOf(t.key) !== -1; });
+          if (!typesInCat.length) return;
+          html += '<optgroup label="' + catLabel + '">';
+          typesInCat.forEach(function(t){
+            html += '<option value="' + t.key + '">' + t.label + '</option>';
+          });
+          html += '</optgroup>';
         });
+        typeSel.innerHTML = html;
+      }
+      if (_kunstwerkTypes) {
+        _fillKwNewType(_kunstwerkTypes);
       } else {
+        typeSel.innerHTML = '<option value="">— Laden —</option>';
         api('GET', '/api/kunstwerken-inspecties/taxonomy/types').then(function(d){
           _kunstwerkTypes = d.types || [];
-          _kunstwerkTypes.forEach(function(t){
-            typeSel.innerHTML += '<option value="' + t.key + '">' + t.label + '</option>';
-          });
+          _fillKwNewType(_kunstwerkTypes);
         });
       }
 
