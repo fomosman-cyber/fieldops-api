@@ -2831,10 +2831,25 @@
         </div>
         <div>
           <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_type">Type (override)</label>
-          <select id="kwNewType" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+          <select id="kwNewType" onchange="onKwNewTypeChange()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
             <option value="">— Auto (uit asset_type) —</option>
           </select>
         </div>
+
+        <!-- NEN-EN 1176 inspectie-kind (alleen zichtbaar bij type=speeltoestel) -->
+        <div id="kwNewNen1176Kind" style="display:none;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:10px;padding:12px;">
+          <label style="font-size:12px;color:#92400e;font-weight:700;display:block;margin-bottom:6px;">🛝 NEN-EN 1176 inspectie-soort</label>
+          <select id="kwNewNen1176KindValue" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);">
+            <option value="hoofd">Hoofdinspectie — jaarlijks (uitgebreid, structureel)</option>
+            <option value="operationeel">Operationeel — maandelijks (slijtage, beweegbare delen)</option>
+            <option value="routine">Routine — wekelijks (visueel, vandalisme, schoonmaak)</option>
+          </select>
+          <div style="font-size:10px;color:#92400e;margin-top:6px;">Hoofdinspectie wettelijk verplicht 1×/jaar (Warenwetbesluit Attractie- en Speeltoestellen).</div>
+        </div>
+
+        <!-- Norm-hint per type (compacte info-balk) -->
+        <div id="kwNewNormHint" style="display:none;font-size:11px;color:var(--text-muted);padding:8px 12px;background:rgba(0,0,0,0.03);border-radius:6px;"></div>
+
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
           <div>
             <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_datum">Inspectiedatum</label>
@@ -11957,6 +11972,90 @@
       return '<span style="display:inline-block;padding:2px 10px;border-radius:100px;background:' + c + '22;color:' + c + ';border:1px solid ' + c + '55;font-size:11px;font-weight:700;letter-spacing:.03em;">' + score + ' · ' + l + '</span>';
     }
 
+    // Type-specifieke classificatie-badge naast (of i.p.v.) NEN 2767 score-badge.
+    // Toont de juiste norm-categorisering per defect-type.
+    var EN1176_KLEUR = { A:'#16a34a', B:'#eab308', C:'#f97316', D:'#dc2626' };
+    var VTA_KLEUR    = { 1:'#16a34a', 2:'#84cc16', 3:'#eab308', 4:'#f97316', 5:'#dc2626' };
+
+    function _badgeWrap(bg, fg, label, title) {
+      return '<span title="' + (title || '') + '" style="display:inline-block;padding:2px 8px;border-radius:100px;background:' + bg + ';color:' + fg + ';border:1px solid ' + fg + '55;font-size:10px;font-weight:700;letter-spacing:.04em;">' + label + '</span>';
+    }
+
+    function _kwDefectClassBadge(d) {
+      // NEN-EN 1176 (speeltoestel): A/B/C/D + eventuele AFSLUITING
+      if (d.en1176_categorie) {
+        var c = EN1176_KLEUR[d.en1176_categorie] || '#64748b';
+        var html = _badgeWrap(c + '22', c, d.en1176_categorie + ' · NEN-EN 1176', 'NEN-EN 1176 § 8.2 risicoklasse');
+        if (d.en1176_acute_afsluiting) {
+          html += ' <span title="Toestel afgesloten" style="background:#fee2e2;color:#991b1b;border:1px solid #dc2626;padding:2px 7px;border-radius:100px;font-size:10px;font-weight:700;">🚨 AFGESLOTEN</span>';
+        }
+        return html;
+      }
+      // VTA boom: risicoklasse 1-5 (Mattheck)
+      if (d.vta_risicoklasse) {
+        var v = VTA_KLEUR[d.vta_risicoklasse] || '#64748b';
+        return _badgeWrap(v + '22', v, 'VTA ' + d.vta_risicoklasse, 'Mattheck VTA risicoklasse');
+      }
+      // NEN 3140 verlichting: kleur op isolatie-veiligheid (<0.5 MΩ = rood)
+      if (d.nen3140_isolatie_megaohm != null || d.nen3140_aardingsweerstand_ohm != null) {
+        var iso = d.nen3140_isolatie_megaohm;
+        var unsafe = iso != null && iso < 0.5;
+        var col = unsafe ? '#dc2626' : '#16a34a';
+        return _badgeWrap(col + '22', col, 'NEN 3140' + (unsafe ? ' ⚠' : ' ✓'), 'NEN 3140 elektrische meting');
+      }
+      // CROW 145 wegmarkering: drempel-toets op droog-meting
+      if (d.crow145_rl_droog_mcd != null || d.crow145_rl_nat_mcd != null) {
+        var droog = d.crow145_rl_droog_mcd;
+        var lowDroog = droog != null && droog < 80;
+        var lowNat = d.crow145_rl_nat_mcd != null && d.crow145_rl_nat_mcd < 30;
+        var problem = lowDroog || lowNat;
+        var c2 = problem ? '#dc2626' : '#16a34a';
+        return _badgeWrap(c2 + '22', c2, 'CROW 145' + (problem ? ' ⚠' : ' ✓'), 'CROW 145 retroreflectie');
+      }
+      // NEN 3399 riolering: BAA-code + klasse
+      if (d.nen3399_code || d.nen3399_klasse) {
+        var label = (d.nen3399_code || '') + (d.nen3399_klasse ? ' · K' + d.nen3399_klasse : '');
+        return _badgeWrap('#e0e7ff', '#312e81', label, 'NEN 3399 schadecode');
+      }
+      // Default: geen type-specifieke badge — NEN 2767 score-badge volstaat
+      return '';
+    }
+
+    function _kwDefectDetailsLine(d) {
+      // Compacte detail-regel onder het defect — toont de relevante meetwaarden
+      // per type i.p.v. de standaard ernst/int/omv.
+      if (d.en1176_categorie) {
+        return 'NEN-EN 1176 categorie ' + d.en1176_categorie
+             + (d.en1176_acute_afsluiting ? ' · acute afsluiting actief' : '');
+      }
+      if (d.vta_risicoklasse) {
+        var bits = ['risicoklasse=' + d.vta_risicoklasse];
+        if (d.vta_holte_pct != null) bits.push('holte=' + d.vta_holte_pct + '%');
+        if (d.vta_t_r_ratio != null) bits.push('t/r=' + d.vta_t_r_ratio);
+        return bits.join(' · ');
+      }
+      if (d.nen3140_isolatie_megaohm != null || d.nen3140_aardingsweerstand_ohm != null
+           || d.nen3140_aardlek_ms != null || d.nen3140_aardlek_ma != null) {
+        var p = [];
+        if (d.nen3140_isolatie_megaohm != null)      p.push('iso=' + d.nen3140_isolatie_megaohm + 'MΩ');
+        if (d.nen3140_aardingsweerstand_ohm != null) p.push('aarde=' + d.nen3140_aardingsweerstand_ohm + 'Ω');
+        if (d.nen3140_aardlek_ms != null)            p.push('lek=' + d.nen3140_aardlek_ms + 'ms');
+        if (d.nen3140_aardlek_ma != null)            p.push(d.nen3140_aardlek_ma + 'mA');
+        return p.join(' · ');
+      }
+      if (d.crow145_rl_droog_mcd != null || d.crow145_rl_nat_mcd != null) {
+        var p2 = [];
+        if (d.crow145_rl_droog_mcd != null) p2.push('RL droog=' + d.crow145_rl_droog_mcd + 'mcd');
+        if (d.crow145_rl_nat_mcd != null)   p2.push('nat=' + d.crow145_rl_nat_mcd + 'mcd');
+        return p2.join(' · ');
+      }
+      if (d.nen3399_code || d.nen3399_klasse) {
+        return 'NEN 3399 ' + (d.nen3399_code || '?') + (d.nen3399_klasse ? ' · eindklasse ' + d.nen3399_klasse : '');
+      }
+      // Default: klassieke NEN 2767-detail
+      return 'ernst=' + (d.ernst||'?') + ' · int=' + (d.intensiteit||'?') + ' · omv=' + (d.omvang_klasse||'?');
+    }
+
     // ── Categorieën — groepering van de 15 inspectie-types ──────
     var KUNSTWERK_CATEGORIES = {
       kunstwerken: { label: 'Kunstwerken', icon: '🌉', color: '#0284c7', types: ['brug','viaduct','tunnel','sluis','stuw','duiker','kademuur','gemaal'] },
@@ -12172,9 +12271,58 @@
           sel.innerHTML += '<option value="' + a.id + '" data-type="' + escapeHtml(a.asset_type || '') + '">'
             + escapeHtml(a.code + (a.name ? ' — ' + a.name : '') + ' (' + (a.asset_type || '') + ')') + '</option>';
         });
+        // Re-bind onchange zodat type-hint update bij asset-selectie
+        sel.onchange = onKwNewTypeChange;
       });
 
+      // Reset NEN-EN 1176 sectie en norm-hint
+      var kindBlock = document.getElementById('kwNewNen1176Kind');
+      if (kindBlock) kindBlock.style.display = 'none';
+      var hint = document.getElementById('kwNewNormHint');
+      if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
+
       document.getElementById('nieuweKunstwerkModal').classList.add('active');
+    }
+
+    // Bepaal effectief type: type-override > asset.data-type. Toon kind-selector
+    // alleen bij speeltoestel, plus een korte norm-hint per categorie.
+    var KW_NORM_HINTS = {
+      speeltoestel: '🛝 NEN-EN 1176 + Warenwetbesluit Attractie-/Speeltoestellen. Hoofdinspectie 1×/jaar verplicht.',
+      boom:         '🌳 VTA (Visual Tree Assessment) volgens Mattheck. Risicoklasse 1-5; cyclus afhankelijk van klasse.',
+      verlichting:  '💡 NEN 3140 elektrische keuring 5-jaarlijks. Inspecteur moet VOP/VP/VIOP-gekwalificeerd zijn.',
+      wegmarkering: '🛣️ CROW 145 retroreflectie-meting. Hoofdwegen jaarlijks; vervangen bij RL droog < 80 mcd.',
+      riolering:    '🚰 NEN 3399 + NEN-EN 13508-2 schadecodes. Visuele camera-inspectie; eindklasse per streng.',
+      brug: '🌉 NEN 2767-2 + CROW 134. Hoofdinspectie 6-jaarlijks; defect-score uit ernst × intensiteit × omvang.',
+      viaduct: '🌉 NEN 2767-2 + CROW 134. Hoofdinspectie 6-jaarlijks.',
+      tunnel: '🌉 NEN 2767-2. Periodieke inspectie afhankelijk van condition-score.',
+      sluis: '🌉 NEN 2767-2. Periodieke inspectie waterbouwkundige onderdelen.',
+      stuw: '🌉 NEN 2767-2.', duiker: '🌉 NEN 2767-2.', kademuur: '🌉 NEN 2767-2.', gemaal: '🌉 NEN 2767-2.',
+      fontein: '⛲ NEN 2767-4 terrein-objecten.',
+      kunstgrasveld: '🌱 NEN 2767-4 sportveld-conditie.',
+    };
+
+    function onKwNewTypeChange() {
+      var typeSel = document.getElementById('kwNewType');
+      var assetSel = document.getElementById('kwNewAsset');
+      var override = typeSel ? typeSel.value : '';
+      var fromAsset = '';
+      if (assetSel && assetSel.selectedIndex >= 0) {
+        var opt = assetSel.options[assetSel.selectedIndex];
+        fromAsset = (opt && opt.dataset && opt.dataset.type) ? opt.dataset.type.toLowerCase() : '';
+      }
+      var effective = (override || fromAsset || '').toLowerCase();
+
+      // NEN-EN 1176 kind-selector alleen bij speeltoestel
+      var kindBlock = document.getElementById('kwNewNen1176Kind');
+      if (kindBlock) kindBlock.style.display = (effective === 'speeltoestel') ? 'block' : 'none';
+
+      // Norm-hint
+      var hint = document.getElementById('kwNewNormHint');
+      var msg = KW_NORM_HINTS[effective];
+      if (hint) {
+        if (msg) { hint.style.display = 'block'; hint.textContent = msg; }
+        else     { hint.style.display = 'none';  hint.textContent = ''; }
+      }
     }
     function closeNieuweKunstwerkModal() {
       document.getElementById('nieuweKunstwerkModal').classList.remove('active');
@@ -12202,6 +12350,13 @@
       if (insp) payload.inspecteur_naam = insp;
       if (weer) payload.weersomstandigheden = weer;
       if (opdr) payload.opdrachtgever_naam = opdr;
+
+      // NEN-EN 1176 kind alleen meesturen als kind-block zichtbaar is (= speeltoestel)
+      var kindBlock = document.getElementById('kwNewNen1176Kind');
+      if (kindBlock && kindBlock.style.display !== 'none') {
+        var kindVal = document.getElementById('kwNewNen1176KindValue');
+        if (kindVal && kindVal.value) payload.nen1176_inspectie_kind = kindVal.value;
+      }
 
       api('POST', '/api/kunstwerken-inspecties/', payload).then(function(insp){
         showToast('Inspectie gestart — ' + (insp.elementen_count || 0) + ' elementen klaar', 'success');
@@ -12336,16 +12491,18 @@
               var meldingBadge = d.melding_id
                 ? '<span style="background:#dbeafe;color:#1e40af;font-size:10px;padding:2px 8px;border-radius:6px;font-weight:700;">Melding ↗</span>'
                 : (!locked ? '<button class="btn-secondary" style="font-size:10px;padding:3px 8px;" onclick="defectToMelding(\'' + e.id + '\',\'' + d.id + '\')">→ Melding</button>' : '');
+              var classBadge = _kwDefectClassBadge(d);
+              var detailsLine = _kwDefectDetailsLine(d);
               return '<div style="display:flex;gap:10px;padding:8px;margin-bottom:6px;background:var(--bg);border:1px solid var(--border);border-radius:8px;align-items:flex-start;">'
                 + photoTile
                 + '<div style="flex:1;min-width:0;">'
                 +   '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:3px;">'
                 +     '<strong style="font-size:13px;">' + escapeHtml(d.gebrek_naam) + '</strong>'
-                +     _kwBadge(d.defect_score)
+                +     (classBadge || _kwBadge(d.defect_score))
                 +     meldingBadge
                 +   '</div>'
                 +   '<div style="font-size:11px;color:var(--text-dim);font-family:JetBrains Mono,monospace;">'
-                +     'ernst=' + (d.ernst||'?') + ' · int=' + (d.intensiteit||'?') + ' · omv=' + (d.omvang_klasse||'?')
+                +     detailsLine
                 +     (d.locatie_beschrijving ? ' · ' + escapeHtml(d.locatie_beschrijving) : '')
                 +   '</div>'
                 +   (d.omschrijving ? '<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">' + escapeHtml(d.omschrijving) + '</div>' : '')
