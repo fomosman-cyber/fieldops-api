@@ -3,6 +3,7 @@
 Endpoints:
   GET /api/mjop/preview                  Preview MJOP-data (JSON)
   GET /api/mjop/export.csv               Excel-import vriendelijk CSV
+  GET /api/mjop/export.pdf               CROW + NEN conform PDF-rapport
   GET /api/mjop/summary                  Aggregaten per jaar + asset-type
 
 Query-params:
@@ -30,7 +31,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Asset
+from models import User, Asset, Project, Organization
 from auth import get_current_user
 
 import mjop_kosten as mjop
@@ -271,5 +272,187 @@ def export_mjop_csv(
     return StreamingResponse(
         iter([buf.read()]),
         media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PDF export — CROW + NEN conform rapport voor directie / Rekenkamer
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _fmt_eur(n: float) -> str:
+    """NL-stijl euro-formatting zonder symbool (fpdf2 default font is latin-1)."""
+    return f"{n:,.0f}".replace(",", ".")
+
+
+@router.get("/export.pdf")
+def export_mjop_pdf(
+    years: int = Query(10, ge=1, le=25),
+    project_id: Optional[str] = Query(None),
+    asset_type: Optional[str] = Query(None),
+    include_score_2: bool = Query(False),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """PDF-rapport (A4) — CROW 134 + 145 + NEN 2767-2 conform.
+
+    Bevat cover, projectinfo, totalen-per-jaar tabel, detail-regels, bronnen +
+    disclaimer. Voor directie- en begrotings-doeleinden.
+    """
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return StreamingResponse(
+            iter([b"PDF-generator niet geinstalleerd: pip install fpdf2"]),
+            status_code=500, media_type="text/plain",
+        )
+
+    rows = _build_mjop_rows(
+        db, organization_id=current_user.organization_id,
+        years=years, project_id=project_id, asset_type=asset_type,
+        include_score_2=include_score_2,
+    )
+
+    project_name = None
+    if project_id:
+        p = db.query(Project).filter(
+            Project.id == project_id,
+            Project.organization_id == current_user.organization_id,
+        ).first()
+        if p:
+            project_name = p.name
+    org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
+    org_name = org.name if org else "—"
+
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.alias_nb_pages()
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.add_page()
+
+    # ── Cover ──
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.cell(0, 12, "MEERJAREN ONDERHOUDSPLAN", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.set_font("Helvetica", "", 14)
+    pdf.cell(0, 8, "(MJOP)", new_x="LMARGIN", new_y="NEXT", align="C")
+    pdf.ln(12)
+
+    def _info_row(label: str, value: str) -> None:
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(50, 7, label)
+        pdf.set_font("Helvetica", "", 11)
+        pdf.cell(0, 7, value, new_x="LMARGIN", new_y="NEXT")
+
+    _info_row("Organisatie:", org_name)
+    _info_row("Project:", project_name or "Alle projecten (organisatie-breed)")
+    _info_row("Horizon:", f"{years} jaar")
+    _info_row("Inclusief score 2:", "ja (preventief)" if include_score_2 else "nee (alleen actionable)")
+    _info_row("Gegenereerd:", datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M UTC"))
+    _info_row("Kosten-versie:", mjop.KOSTEN_VERSION)
+
+    pdf.ln(10)
+
+    # ── Samenvatting ──
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 8, "Samenvatting", new_x="LMARGIN", new_y="NEXT", border="B")
+    pdf.ln(3)
+
+    total_min = sum(r["min_total"] for r in rows)
+    total_max = sum(r["max_total"] for r in rows)
+    assets_count = len({r["asset_id"] for r in rows})
+
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 7, f"Aantal regels in plan: {len(rows)}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, f"Aantal unieke assets met maatregel: {assets_count}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, f"Totaal indicatieve kosten: EUR {_fmt_eur(total_min)}  -  EUR {_fmt_eur(total_max)}",
+             new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(6)
+
+    # ── Per-jaar tabel ──
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 8, "Totalen per jaar", new_x="LMARGIN", new_y="NEXT", border="B")
+    pdf.ln(2)
+
+    by_year: dict[int, dict] = {}
+    for r in rows:
+        d = by_year.setdefault(r["year"], {"count": 0, "min": 0.0, "max": 0.0})
+        d["count"] += 1
+        d["min"] += r["min_total"]
+        d["max"] += r["max_total"]
+
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_fill_color(230, 230, 230)
+    pdf.cell(25, 7, "Jaar", border=1, fill=True)
+    pdf.cell(30, 7, "Regels", border=1, fill=True, align="R")
+    pdf.cell(60, 7, "Min totaal (EUR)", border=1, fill=True, align="R")
+    pdf.cell(60, 7, "Max totaal (EUR)", border=1, fill=True, align="R")
+    pdf.ln()
+
+    pdf.set_font("Helvetica", "", 10)
+    if by_year:
+        for y in sorted(by_year):
+            d = by_year[y]
+            pdf.cell(25, 6, str(y), border=1)
+            pdf.cell(30, 6, str(d["count"]), border=1, align="R")
+            pdf.cell(60, 6, _fmt_eur(d["min"]), border=1, align="R")
+            pdf.cell(60, 6, _fmt_eur(d["max"]), border=1, align="R")
+            pdf.ln()
+    else:
+        pdf.cell(0, 6, "Geen MJOP-regels gevonden voor deze filter-combinatie.",
+                 new_x="LMARGIN", new_y="NEXT")
+
+    # ── Detail-regels (nieuwe pagina) ──
+    if rows:
+        pdf.add_page()
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.cell(0, 8, "Detail-regels (per asset, per jaar)",
+                 new_x="LMARGIN", new_y="NEXT", border="B")
+        pdf.ln(3)
+
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_fill_color(230, 230, 230)
+        pdf.cell(15, 6, "Jaar", border=1, fill=True)
+        pdf.cell(28, 6, "Asset-code", border=1, fill=True)
+        pdf.cell(28, 6, "Type", border=1, fill=True)
+        pdf.cell(13, 6, "Cond.", border=1, fill=True, align="C")
+        pdf.cell(58, 6, "Maatregel", border=1, fill=True)
+        pdf.cell(25, 6, "Min EUR", border=1, fill=True, align="R")
+        pdf.cell(25, 6, "Max EUR", border=1, fill=True, align="R")
+        pdf.ln()
+
+        pdf.set_font("Helvetica", "", 7)
+        for r in rows:
+            pdf.cell(15, 5, str(r["year"]), border=1)
+            pdf.cell(28, 5, str(r["asset_code"] or "")[:16], border=1)
+            pdf.cell(28, 5, str(r["asset_type"] or "")[:16], border=1)
+            pdf.cell(13, 5, str(r["condition_score"]), border=1, align="C")
+            pdf.cell(58, 5, str(r["maatregel"])[:38], border=1)
+            pdf.cell(25, 5, _fmt_eur(r["min_total"]), border=1, align="R")
+            pdf.cell(25, 5, _fmt_eur(r["max_total"]), border=1, align="R")
+            pdf.ln()
+
+    # ── Disclaimers + bronnen ──
+    pdf.ln(6)
+    pdf.set_font("Helvetica", "I", 8)
+    pdf.multi_cell(0, 4,
+        "Bronnen: NEN 2767-2 (conditiemeting infrastructuur), CROW 134 "
+        "(inspectie van bruggen en viaducten), CROW 145 (wegmarkering), "
+        "GWW-kostengids 2024.\n\n"
+        "Maatregel-bibliotheek versie: " + str(mjop.KOSTEN_VERSION) + "\n\n"
+        "LET OP: Indicatieve kostenranges. Voor onderbouwing van aanbestedingen "
+        "is een eigen RAW-besteksraming per project vereist. Dit MJOP-rapport "
+        "is bedoeld voor begrotings- en directie-doeleinden, niet als "
+        "contractdocument."
+    )
+
+    pdf_bytes = bytes(pdf.output())
+    today = datetime.now(timezone.utc).date().isoformat()
+    slug = (project_name or "all").replace(" ", "-").lower()
+    # Houd filename veilig: alleen alfanum + dash
+    slug = "".join(c if c.isalnum() or c == "-" else "-" for c in slug)[:30].strip("-") or "all"
+    filename = f"mjop-{slug}-{today}.pdf"
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

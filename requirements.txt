@@ -12,5 +12,6 @@ psycopg2-binary
 anthropic>=0.40.0
 pywebpush>=2.0
 cryptography>=42
+fpdf2>=2.7
 pytest>=8.0
 pytest-asyncio>=0.23
