@@ -384,6 +384,40 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Global exception handler — vervangt anonieme "Internal Server Error"
+# plain-text response met een JSON-payload zodat de frontend de oorzaak kan
+# tonen (en wij in de Render-logs de volledige traceback zien).
+# ─────────────────────────────────────────────────────────────────────────────
+import traceback as _traceback
+from fastapi.responses import JSONResponse as _JSONResponse
+
+
+@app.exception_handler(Exception)
+async def _global_exception_handler(request: Request, exc: Exception):
+    tb = _traceback.format_exc()
+    # Naar Render logs (volledige traceback)
+    print(f"[UNCAUGHT] {request.method} {request.url.path}", flush=True)
+    print(tb, flush=True)
+
+    # Aan de client: korte beschrijving + 3 relevante frames uit eigen code
+    # (filters site-packages weg) zodat de frontend zinvolle context kan tonen.
+    own_frames = []
+    for line in tb.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith('File "') and "site-packages" not in line and "/usr/" not in line:
+            own_frames.append(stripped[:160])
+    return _JSONResponse(
+        status_code=500,
+        content={
+            "detail": f"{type(exc).__name__}: {str(exc)[:240]}",
+            "frames": own_frames[-3:],
+            "path": str(request.url.path),
+        },
+    )
+
+
 # Routers
 app.include_router(auth_router.router)
 app.include_router(demo_router.router)
