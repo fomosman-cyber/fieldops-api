@@ -120,6 +120,29 @@ def _run_migrations():
                     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_is_segment ON assets(is_segment)"))
                 print("[migration] assets NWB-kolommen toegevoegd.")
 
+            # Inspectie-cyclus + levensduur kolommen (toegevoegd v3.5+)
+            # Deze ontbraken op bestaande databases waardoor SELECT op assets
+            # crasht met "column does not exist" — fix die mismatch.
+            inspection_cols = {
+                "installed_at":             "TIMESTAMP",
+                "expected_lifespan_years":  "INTEGER",
+                "condition_score":          "INTEGER",
+                "last_inspection_at":       "TIMESTAMP",
+                "last_inspection_id":       "VARCHAR",
+                "next_inspection_due":      "TIMESTAMP",
+                "inspection_cycle_months":  "INTEGER",
+                "properties_json":          "TEXT",
+            }
+            insp_missing = [c for c in inspection_cols if c not in acols]
+            if insp_missing:
+                print(f"[migration] assets inspectie-kolommen toevoegen: {insp_missing}")
+                with engine.begin() as conn:
+                    for col in insp_missing:
+                        conn.execute(text(f"ALTER TABLE assets ADD COLUMN {col} {inspection_cols[col]}"))
+                    if "next_inspection_due" in insp_missing:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_next_inspection_due ON assets(next_inspection_due)"))
+                print("[migration] assets inspectie-kolommen toegevoegd.")
+
         # OpleveringPunt — photo_url_after (foto na uitvoering, toegevoegd 2026-05-11
         # voor voor/na-vergelijking bij opleverpunten)
         if "opleveringspunten" in insp.get_table_names():
