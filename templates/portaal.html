@@ -8156,6 +8156,30 @@
       });
     }
 
+    function downloadMjopPdf(years) {
+      // PDF-download met Bearer-token via fetch + blob (een gewone <a href>
+      // kan geen Authorization-header meesturen, dus fetch + objectURL).
+      var url = '/api/mjop/export.pdf?years=' + (years || 10);
+      fetch(API_URL + url, { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function(res) {
+          if (!res.ok) return res.text().then(function(t) { throw new Error('Server fout ' + res.status + ': ' + t.substring(0, 120)); });
+          return res.blob().then(function(blob) {
+            var disp = res.headers.get('Content-Disposition') || '';
+            var m = disp.match(/filename="?([^";]+)"?/);
+            var fname = m ? m[1] : ('mjop-' + new Date().toISOString().slice(0,10) + '.pdf');
+            var blobUrl = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = blobUrl; a.download = fname;
+            document.body.appendChild(a); a.click();
+            setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(blobUrl); }, 100);
+            showToast('MJOP-PDF gedownload', 'success');
+          });
+        })
+        .catch(function(err) {
+          showToast('PDF mislukt: ' + (err.message || 'Onbekend'), 'error');
+        });
+    }
+
     function showMjopModal() {
       // MJOP-modal — Meerjaren Onderhoudsplan op basis van conditie-scores
       // + cyclus + kosten-katalogus (CROW 145 / GWW-kostengids 2024)
@@ -8194,7 +8218,10 @@
           '<div style="background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;border-radius:12px;padding:16px 22px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;">' +
           '<div><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.85;">Totale begroting 10 jaar</div>' +
           '<div style="font-size:28px;font-weight:800;line-height:1.2;">€ ' + totMin.toLocaleString('nl-NL') + ' — € ' + totMax.toLocaleString('nl-NL') + '</div></div>' +
-          '<a href="/api/mjop/export.csv?years=10" style="background:#fff;color:#0369a1;padding:10px 18px;border-radius:8px;font-weight:700;text-decoration:none;font-size:13px;">📥 Download CSV</a>' +
+          '<div style="display:flex;gap:8px;flex-shrink:0;">' +
+          '<a href="/api/mjop/export.csv?years=10" style="background:#fff;color:#0369a1;padding:10px 18px;border-radius:8px;font-weight:700;text-decoration:none;font-size:13px;">📥 CSV</a>' +
+          '<button onclick="downloadMjopPdf(10)" style="background:#fff;color:#0369a1;padding:10px 18px;border-radius:8px;font-weight:700;border:none;cursor:pointer;font-size:13px;font-family:inherit;">📄 PDF</button>' +
+          '</div>' +
           '</div>' +
           // 2 kolommen: jaren + types
           '<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">' +
