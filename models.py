@@ -731,6 +731,12 @@ class Inspection(Base):
     # visueel / eerste-graads / tweede-graads / detail / oplevering
     norm_referenties = Column(String(255), nullable=True, default="NEN 2767-2; CROW 134")
 
+    # NEN-EN 1176 inspectie-categorie (alleen voor kunstwerk_type=speeltoestel).
+    # routine     = dagelijks/wekelijks visueel (vandalisme, schoonmaak)
+    # operationeel = maandelijks functioneel (slijtage, beweegbare delen)
+    # hoofd       = jaarlijks uitgebreid (structureel + onderdelen-vervanging)
+    nen1176_inspectie_kind = Column(String(16), nullable=True, index=True)
+
     datum_inspectie = Column(DateTime, nullable=True)        # uitvoeringsdatum veldwerk
     inspecteur_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     inspecteur_naam = Column(String(120), nullable=True)     # gedenormaliseerd voor rapport
@@ -862,6 +868,16 @@ class InspectionDefect(Base):
     # CROW-koppeling (voor verharding-elementen op kunstwerken, bv. brugdek-asfalt)
     crow_klasse = Column(String(4), nullable=True)           # L1..E3
     gw_maatregel = Column(String(120), nullable=True)        # advies-maatregel uit GWWkosten
+
+    # NEN-EN 1176 speeltoestel-classificatie (alleen bij kunstwerk_type=speeltoestel).
+    # Vervangt NEN 2767-2 ernst×intensiteit×omvang voor speeltoestellen omdat
+    # die methodiek niet geschikt is voor veiligheids-classificatie.
+    #   A = veilig, geen actie
+    #   B = klein gebrek, herstel binnen 30 dagen
+    #   C = direct gebruik beperken (afzetting / waarschuwing)
+    #   D = afgesloten / weggehaald (acute valgevaar, scherp, knelpunt)
+    en1176_categorie = Column(String(1), nullable=True)
+    en1176_acute_afsluiting = Column(Boolean, default=False, nullable=False)
 
     # Eventueel auto-gegenereerde melding (orchestration-koppeling)
     melding_id = Column(String, ForeignKey("meldingen.id"), nullable=True)

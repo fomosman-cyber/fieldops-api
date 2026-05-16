@@ -342,6 +342,9 @@ class KunstwerkInspectionCreate(BaseModel):
     opdrachtgever_naam: Optional[str] = None
     opdrachtgever_email: Optional[str] = None
     auto_elements: bool = True
+    # NEN-EN 1176 — alleen voor kunstwerk_type=speeltoestel
+    # routine | operationeel | hoofd
+    nen1176_inspectie_kind: Optional[str] = None
 
 
 class KunstwerkInspectionUpdate(BaseModel):
@@ -392,6 +395,10 @@ class InspectionDefectCreate(BaseModel):
     ai_analysis_id: Optional[str] = None
     crow_klasse: Optional[str] = None
     gw_maatregel: Optional[str] = None
+    # NEN-EN 1176 — alleen voor speeltoestel-defecten
+    # A=veilig, B=klein gebrek (30d), C=direct beperken, D=afgesloten
+    en1176_categorie: Optional[str] = None
+    en1176_acute_afsluiting: Optional[bool] = None
 
 
 class InspectionDefectUpdate(BaseModel):
@@ -410,6 +417,8 @@ class InspectionDefectUpdate(BaseModel):
     ai_analysis_id: Optional[str] = None
     crow_klasse: Optional[str] = None
     gw_maatregel: Optional[str] = None
+    en1176_categorie: Optional[str] = None
+    en1176_acute_afsluiting: Optional[bool] = None
 
 
 class InspectionSignRequest(BaseModel):

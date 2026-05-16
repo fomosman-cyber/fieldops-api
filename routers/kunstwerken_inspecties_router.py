@@ -82,6 +82,8 @@ def _defect_dict(d: InspectionDefect) -> dict:
         "crow_klasse": d.crow_klasse,
         "gw_maatregel": d.gw_maatregel,
         "melding_id": d.melding_id,
+        "en1176_categorie": d.en1176_categorie,
+        "en1176_acute_afsluiting": bool(d.en1176_acute_afsluiting),
         "created_at": d.created_at.isoformat() if d.created_at else None,
     }
 
@@ -134,6 +136,7 @@ def _inspection_dict(i: Inspection, *, include_elements: bool = False) -> dict:
         "project_name": i.project.name if i.project else None,
         "title": i.title,
         "inspectie_type": i.inspectie_type,
+        "nen1176_inspectie_kind": i.nen1176_inspectie_kind,
         "norm_referenties": i.norm_referenties,
         "datum_inspectie": i.datum_inspectie.isoformat() if i.datum_inspectie else None,
         "inspecteur_id": i.inspecteur_id,
@@ -541,6 +544,22 @@ def create_inspection(
             raise HTTPException(status_code=400, detail="Inspecteur niet gevonden in organisatie")
     inspecteur_naam = payload.inspecteur_naam or f"{current_user.first_name} {current_user.last_name}".strip()
 
+    # NEN-EN 1176 — valideer inspectie-kind alleen voor speeltoestellen
+    nen1176_kind = None
+    if payload.nen1176_inspectie_kind:
+        if kunstwerk_type != "speeltoestel":
+            raise HTTPException(
+                status_code=400,
+                detail="nen1176_inspectie_kind is alleen geldig voor kunstwerk_type=speeltoestel",
+            )
+        kind = payload.nen1176_inspectie_kind.strip().lower()
+        if kind not in {"routine", "operationeel", "hoofd"}:
+            raise HTTPException(
+                status_code=400,
+                detail="nen1176_inspectie_kind moet 'routine', 'operationeel' of 'hoofd' zijn",
+            )
+        nen1176_kind = kind
+
     insp = Inspection(
         organization_id=current_user.organization_id,
         asset_id=asset.id,
@@ -548,6 +567,7 @@ def create_inspection(
         project_id=payload.project_id or asset.project_id,
         title=payload.title,
         inspectie_type=payload.inspectie_type or "visueel",
+        nen1176_inspectie_kind=nen1176_kind,
         datum_inspectie=payload.datum_inspectie or datetime.now(timezone.utc),
         inspecteur_id=inspecteur_id,
         inspecteur_naam=inspecteur_naam,
@@ -1087,6 +1107,26 @@ def add_defect(
     data = payload.model_dump(exclude_unset=True)
     _normalize_defect_inputs(data)
 
+    # NEN-EN 1176 — valideer A/B/C/D classificatie (alleen voor speeltoestellen)
+    en1176_cat = data.get("en1176_categorie")
+    en1176_acute = data.get("en1176_acute_afsluiting")
+    if en1176_cat is not None:
+        if insp.kunstwerk_type != "speeltoestel":
+            raise HTTPException(
+                status_code=400,
+                detail="en1176_categorie is alleen geldig voor kunstwerk_type=speeltoestel",
+            )
+        en1176_cat = en1176_cat.upper().strip()
+        if en1176_cat not in {"A", "B", "C", "D"}:
+            raise HTTPException(
+                status_code=400,
+                detail="en1176_categorie moet 'A', 'B', 'C' of 'D' zijn (NEN-EN 1176 § 8.2)",
+            )
+        # Server-side enforcement: categorie C of D = acute afsluiting verplicht
+        # tenzij de inspecteur expliciet false geeft (met motivering elders)
+        if en1176_cat in {"C", "D"} and en1176_acute is None:
+            en1176_acute = True
+
     d = InspectionDefect(
         element_id=el.id,
         organization_id=current_user.organization_id,
@@ -1108,6 +1148,8 @@ def add_defect(
         ai_analysis_id=data.get("ai_analysis_id"),
         crow_klasse=data.get("crow_klasse"),
         gw_maatregel=data.get("gw_maatregel"),
+        en1176_categorie=en1176_cat,
+        en1176_acute_afsluiting=bool(en1176_acute) if en1176_acute is not None else False,
     )
     db.add(d)
     db.flush()
