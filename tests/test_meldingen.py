@@ -91,8 +91,11 @@ def test_inspector_cannot_edit_others_meldingen(client, admin_user, inspector_us
 
 def test_admin_can_edit_all_fields(client, admin_user):
     m = _create_melding_via_admin(client, admin_user)
+    # photo_after_url verplicht bij sluiten naar opgelost/afgerond
+    # (bewijslast voor opdrachtgevers — zie meldingen_router.py)
     r = client.put(f"/api/meldingen/{m['id']}",
-                   json={"title": "Updated", "status": "opgelost", "priority": "hoog"},
+                   json={"title": "Updated", "status": "opgelost", "priority": "hoog",
+                         "photo_after_url": "https://example.com/after.jpg"},
                    headers=auth(admin_user))
     assert r.status_code == 200
     assert r.json()["title"] == "Updated"
