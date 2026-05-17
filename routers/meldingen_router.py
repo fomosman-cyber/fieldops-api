@@ -14,6 +14,83 @@ from permissions import (
 )
 from audit import log_action, ACTION
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Auto-classificatie: category + priority → CROW-klasse + gw_term
+# Dit zorgt dat clusters/voorspeller/dashboard meldingen kunnen oppakken.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Mapping van vrije categorie-tekst → werk-term (gebruikt voor clustering).
+# Cluster groepeert op gw_term, dus meldingen met dezelfde term kunnen samen.
+_CATEGORY_TO_GW_TERM = {
+    # Verharding / wegdek
+    "wegdek": "Wegdek-reparatie", "verharding": "Wegdek-reparatie",
+    "asfalt": "Wegdek-reparatie", "trottoir": "Trottoir-reparatie",
+    "fietspad": "Fietspad-reparatie",
+    # Verkeer
+    "verkeerstekens": "Verkeersborden", "verkeersborden": "Verkeersborden",
+    "wegmarkering": "Markering herstellen", "markering": "Markering herstellen",
+    "belijning": "Markering herstellen",
+    # Verlichting
+    "verlichting": "Lichtmast onderhoud", "lichtmast": "Lichtmast onderhoud",
+    "lantaarn": "Lichtmast onderhoud", "lantaarnpaal": "Lichtmast onderhoud",
+    # Groen
+    "groen": "Groen onderhoud", "boom": "Boomsnoei",
+    "beplanting": "Groen onderhoud", "gras": "Groen onderhoud",
+    "berm": "Berm-onderhoud",
+    # Riolering
+    "riolering": "Riool-reiniging", "kolk": "Kolk-reiniging",
+    "putdeksel": "Putdeksel vervangen",
+    # Meubilair
+    "straatmeubilair": "Meubilair-reparatie", "bank": "Meubilair-reparatie",
+    "afvalbak": "Meubilair-reparatie", "fietsenrek": "Meubilair-reparatie",
+    # Speeltoestellen
+    "speeltoestel": "Speeltoestel-reparatie", "speelplaats": "Speeltoestel-reparatie",
+    # Kabel/leiding
+    "kabel": "Kabel-/leiding-werk", "leiding": "Kabel-/leiding-werk",
+    # Kunstwerken
+    "kademuur": "Kunstwerk-inspectie", "duiker": "Kunstwerk-inspectie",
+    "brug": "Kunstwerk-inspectie",
+}
+
+# Prioriteit → CROW 146 ernst-omvang klasse (vereenvoudigd)
+_PRIORITY_TO_CROW_KLASSE = {
+    "laag":     "L1",
+    "normaal":  "M1",
+    "hoog":     "M3",
+    "kritiek":  "E2",
+}
+
+# CROW-categorie afgeleid van klasse
+_KLASSE_TO_CATEGORIE = {
+    "L1": "observatie", "L2": "observatie", "L3": "klein onderhoud",
+    "M1": "klein onderhoud", "M2": "klein onderhoud", "M3": "regulier onderhoud",
+    "E1": "regulier onderhoud", "E2": "groot onderhoud", "E3": "vervanging",
+}
+
+
+def _enrich_classification(melding: Melding) -> bool:
+    """Vul ontbrekende CROW/GW velden in op basis van category + priority.
+
+    Returns True als er iets is aangevuld. Bestaande waarden blijven staan
+    (idempotent — kan veilig vaker worden aangeroepen).
+    """
+    changed = False
+    if melding.category and not melding.gw_term:
+        cat_key = melding.category.strip().lower()
+        term = _CATEGORY_TO_GW_TERM.get(cat_key)
+        if term:
+            melding.gw_term = term
+            changed = True
+    if melding.priority and not melding.crow_klasse:
+        klasse = _PRIORITY_TO_CROW_KLASSE.get(melding.priority.strip().lower())
+        if klasse:
+            melding.crow_klasse = klasse
+            if not melding.onderhoud_categorie:
+                melding.onderhoud_categorie = _KLASSE_TO_CATEGORIE.get(klasse)
+            changed = True
+    return changed
+
 router = APIRouter(prefix="/api/meldingen", tags=["Meldingen"])
 
 
@@ -331,6 +408,8 @@ async def import_meldingen_csv(
             organization_id=current_user.organization_id,
             created_by=current_user.id,
         )
+        # Auto-classificatie zodat clusters/voorspeller deze meldingen oppakken
+        _enrich_classification(melding)
         db.add(melding)
         created += 1
 
@@ -348,6 +427,36 @@ async def import_meldingen_csv(
         "warnings": warnings,
         "columns_matched": {k: mapping.get(k) for k in _MELDING_CSV_ALIASES if mapping.get(k)},
     }
+
+
+@router.post("/enrich-classifications")
+def enrich_all_classifications(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Verrijk alle bestaande meldingen zonder gw_term/crow_klasse.
+
+    Loopt door alle meldingen van de organisatie en vult ontbrekende CROW-
+    classificatie aan op basis van category + priority. Idempotent — bestaande
+    waarden blijven staan. Onmisbaar nadat je een CSV-import hebt gedaan
+    zonder gw_term/crow_klasse in de CSV: zonder dit zien clusters,
+    voorspeller en dashboard die meldingen niet.
+    """
+    if not can_edit_melding_full(current_user):
+        raise HTTPException(status_code=403, detail="Geen rechten")
+    items = db.query(Melding).filter(
+        Melding.organization_id == current_user.organization_id,
+    ).all()
+    enriched = 0
+    for m in items:
+        if _enrich_classification(m):
+            enriched += 1
+    db.commit()
+    log_action(db, request, current_user,
+               action=ACTION.MELDING_UPDATE, entity_type="melding-enrich",
+               entity_id=None, after={"enriched": enriched, "total": len(items)})
+    return {"enriched": enriched, "total": len(items)}
 
 
 @router.get("/{melding_id}", response_model=MeldingResponse)

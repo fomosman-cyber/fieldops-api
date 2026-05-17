@@ -195,10 +195,14 @@ def generate_clusters(
             db.delete(c)
         db.commit()
 
-    # Open meldingen met maatregel
+    # Actieve meldingen met maatregel — ook 'in_behandeling' meenemen
+    # omdat die nog steeds geclusterd kunnen worden voor planning.
+    # Alleen 'opgelost' / 'afgerond' zijn klaar en hebben geen cluster nodig.
+    ACTIVE_STATUSES = ("open", "nieuw", "in_behandeling", "in_uitvoering",
+                       "gereed_uitvoering")
     meldingen = (db.query(Melding)
                    .filter(Melding.organization_id == organization_id,
-                           Melding.status == "open",
+                           Melding.status.in_(ACTIVE_STATUSES),
                            Melding.gw_term.isnot(None),
                            Melding.job_cluster_id.is_(None))
                    .all())
