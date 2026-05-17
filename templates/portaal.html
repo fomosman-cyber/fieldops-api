@@ -1415,6 +1415,8 @@
         </div>
         <div style="display:flex;gap:8px;">
           <button class="btn-secondary" onclick="toggleRapportagePanel()">Rapportage</button>
+          <button class="btn-secondary" onclick="document.getElementById('meldingCsvInput').click()" title="Importeer meldingen via CSV-bestand">📥 CSV importeren</button>
+          <input type="file" id="meldingCsvInput" accept=".csv" style="display:none;" onchange="handleMeldingCsvUpload(this)">
           <button class="btn-primary" onclick="openMeldingModal()">+ Nieuwe Melding</button>
         </div>
       </div>
@@ -8498,6 +8500,86 @@
     // ── MELDINGEN ──
     // ══════════════════════════════════════
     var allMeldingen = [];
+
+    // ── CSV-import voor meldingen ──
+    function handleMeldingCsvUpload(input) {
+      if (!input.files || !input.files[0]) return;
+      var file = input.files[0];
+      if (!confirm('CSV "' + file.name + '" importeren? Verplichte kolom: title (of titel).\n\nDownload eerst de template via de help-link als je nog geen CSV hebt.')) {
+        input.value = '';
+        return;
+      }
+      var fd = new FormData();
+      fd.append('file', file);
+      showToast('CSV uploaden ...', 'info');
+      fetch(API_URL + '/api/meldingen/import/csv', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token },
+        body: fd,
+      }).then(function(res) {
+        return res.text().then(function(txt) {
+          var data; try { data = JSON.parse(txt); } catch (e) { data = null; }
+          if (!res.ok) {
+            var msg = (data && data.detail) ? (typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail).substring(0,200)) : ('HTTP ' + res.status);
+            throw new Error(msg);
+          }
+          return data;
+        });
+      }).then(function(result) {
+        var created = result.created || 0;
+        var errs = (result.errors || []).length;
+        var warns = (result.warnings || []).length;
+        var msg = '✓ ' + created + ' meldingen geïmporteerd';
+        if (warns) msg += ' · ' + warns + ' waarschuwingen';
+        if (errs)  msg += ' · ' + errs + ' fouten';
+        showToast(msg, errs ? 'error' : 'success');
+        // Toon detail-modal als er warnings of errors zijn
+        if (errs || warns) {
+          showMeldingCsvReport(result);
+        }
+        loadMeldingen();
+      }).catch(function(err) {
+        showToast('Import mislukt: ' + (err.message || 'onbekend'), 'error');
+      }).finally(function() {
+        input.value = '';  // reset zodat zelfde file opnieuw uploaden kan
+      });
+    }
+
+    function showMeldingCsvReport(result) {
+      var errs = result.errors || [];
+      var warns = result.warnings || [];
+      var html = '<div style="background:rgba(0,0,0,0.5);position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;" onclick="if(event.target===this)this.remove()">' +
+        '<div style="background:#fff;border-radius:14px;width:100%;max-width:720px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">' +
+        '<div><h2 style="margin:0 0 6px;font-size:20px;">📥 CSV-import resultaat</h2>' +
+        '<p style="margin:0;font-size:13px;color:var(--text-muted);">' + result.created + ' geïmporteerd · ' + warns.length + ' waarschuwingen · ' + errs.length + ' fouten</p></div>' +
+        '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-muted);">×</button>' +
+        '</div>';
+      if (errs.length) {
+        html += '<h3 style="margin:14px 0 6px;font-size:14px;color:#dc2626;">Fouten (rij is overgeslagen)</h3>' +
+          '<ul style="margin:0;padding-left:20px;font-size:13px;color:var(--text-muted);">' +
+          errs.map(function(e){ return '<li>Rij ' + e.row + ': ' + escapeHtml(e.error) + '</li>'; }).join('') + '</ul>';
+      }
+      if (warns.length) {
+        html += '<h3 style="margin:14px 0 6px;font-size:14px;color:#eab308;">Waarschuwingen (melding wel aangemaakt)</h3>' +
+          '<ul style="margin:0;padding-left:20px;font-size:13px;color:var(--text-muted);">' +
+          warns.slice(0, 20).map(function(w){ return '<li>Rij ' + w.row + ': ' + escapeHtml(w.warning) + '</li>'; }).join('') +
+          (warns.length > 20 ? '<li><em>+ ' + (warns.length - 20) + ' meer ...</em></li>' : '') +
+          '</ul>';
+      }
+      if (result.columns_matched) {
+        html += '<h3 style="margin:14px 0 6px;font-size:14px;color:var(--text);">Kolom-mapping</h3>' +
+          '<div style="font-size:12px;color:var(--text-muted);font-family:JetBrains Mono,monospace;background:rgba(0,0,0,0.03);padding:10px;border-radius:6px;">' +
+          Object.keys(result.columns_matched).map(function(k){
+            return escapeHtml(k) + ' ← ' + escapeHtml(result.columns_matched[k]);
+          }).join('<br>') + '</div>';
+      }
+      html += '<div style="margin-top:18px;display:flex;gap:8px;justify-content:space-between;align-items:center;">' +
+        '<a href="' + API_URL + '/api/meldingen/import/template.csv" download style="font-size:13px;color:var(--accent);">📄 Download template-CSV</a>' +
+        '<button class="btn-primary" onclick="this.closest(\'div[style*=fixed]\').remove()">Sluiten</button>' +
+        '</div></div></div>';
+      document.body.insertAdjacentHTML('beforeend', html);
+    }
 
     function loadMeldingen() {
       var empty = document.getElementById('meldingenEmpty');
