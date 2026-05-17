@@ -1517,6 +1517,10 @@
               <option value="normaal">Normaal</option>
               <option value="laag">Laag</option>
             </select>
+            <select id="bulkProjectSelect" style="padding:6px 10px;border-radius:8px;border:none;font-size:13px;background:rgba(255,255,255,0.95);color:var(--text);font-weight:500;cursor:pointer;">
+              <option value="">Project wijzigen...</option>
+              <option value="__null__">— Geen project —</option>
+            </select>
             <button type="button" onclick="bulkDeleteMeldingen()" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(220,38,38,0.95);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">🗑️ Verwijder</button>
             <button type="button" onclick="clearBulkSelection()" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.4);background:transparent;color:#fff;font-size:13px;font-weight:500;cursor:pointer;">✕ Selectie wissen</button>
           </div>
@@ -8640,6 +8644,28 @@
           });
           bulkPrio._bound = true;
         }
+        // Bulk-project dropdown — vul met huidige projecten + bind onchange
+        var bulkProj = document.getElementById('bulkProjectSelect');
+        if (bulkProj) {
+          // Bewaar huidige selectie + bewaar default 2 opties, vul rest met projects
+          var prev = bulkProj.value;
+          bulkProj.innerHTML = '<option value="">Project wijzigen...</option>' +
+                               '<option value="__null__">— Geen project —</option>' +
+                               (allProjects || []).map(function(p){
+                                 return '<option value="' + p.id + '">' + escapeHtml(p.name) + '</option>';
+                               }).join('');
+          bulkProj.value = prev;
+          if (!bulkProj._bound) {
+            bulkProj.addEventListener('change', function(e){
+              var v = e.target.value;
+              if (!v) return;
+              // Speciale waarde __null__ = ontkoppel project
+              var sendValue = (v === '__null__') ? null : v;
+              bulkUpdateMeldingen('project_id', sendValue, 'Project');
+            });
+            bulkProj._bound = true;
+          }
+        }
         updateBulkBar();
       }).catch(function(err) {
         console.error('Meldingen laden mislukt:', err);
@@ -9036,11 +9062,19 @@
 
     function bulkUpdateMeldingen(field, value, label) {
       var ids = getSelectedMeldingIds();
-      if (ids.length === 0 || !value) return;
+      // value === null is geldig (ontkoppel project); andere falsy = no-op
+      if (ids.length === 0 || (value === '' || value === undefined)) return;
+      // Lookup display-label voor confirm-dialog
+      var displayValue = (value === null) ? '(geen)' : value;
+      if (field === 'project_id' && value && value !== null) {
+        var proj = (allProjects || []).find(function(p){ return p.id === value; });
+        if (proj) displayValue = proj.name;
+      }
+      var icon = field === 'status' ? '🔄' : (field === 'priority' ? '⚡' : '📁');
       showConfirm({
-        icon: field === 'status' ? '🔄' : '⚡',
+        icon: icon,
         title: label + ' wijzigen?',
-        message: ids.length + ' meldingen krijgen ' + field + ' = "' + value + '".',
+        message: ids.length + ' meldingen krijgen ' + label.toLowerCase() + ' = "' + displayValue + '".',
         actionLabel: 'Bijwerken',
         danger: false,
         onConfirm: function() {
@@ -9063,9 +9097,10 @@
           });
         },
       });
-      // Reset select zodat dezelfde keuze opnieuw kan triggeren
-      var sel = document.getElementById(field === 'status' ? 'bulkStatusSelect' : 'bulkPrioritySelect');
-      if (sel) sel.value = '';
+      // Reset alle 3 bulk-selects zodat dezelfde keuze opnieuw kan triggeren
+      ['bulkStatusSelect','bulkPrioritySelect','bulkProjectSelect'].forEach(function(id){
+        var s = document.getElementById(id); if (s) s.value = '';
+      });
     }
 
     function bulkDeleteMeldingen() {

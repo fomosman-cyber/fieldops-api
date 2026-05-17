@@ -235,8 +235,30 @@ async def import_meldingen_csv(
     projects = db.query(Project).filter(
         Project.organization_id == current_user.organization_id,
     ).all()
-    project_by_name = {p.name.lower(): p.id for p in projects if p.name}
+    project_by_exact_name = {p.name.lower().strip(): p.id for p in projects if p.name}
     project_ids = {p.id for p in projects}
+
+    def _find_project_id(needle: str) -> Optional[str]:
+        """Match project op naam — eerst exact, dan case-insensitive substring.
+
+        Voorbeeld: 'Gemeente Westland' matcht op 'KO - Gemeente Westland'
+        zodat CSV-imports met afgekorte projectnamen werken.
+        """
+        if not needle:
+            return None
+        key = needle.lower().strip()
+        # 1) Exacte match — snelst
+        pid = project_by_exact_name.get(key)
+        if pid:
+            return pid
+        # 2) Case-insensitive substring in beide richtingen
+        for p in projects:
+            if not p.name:
+                continue
+            pname = p.name.lower()
+            if key in pname or pname in key:
+                return p.id
+        return None
 
     assets = db.query(Asset).filter(
         Asset.organization_id == current_user.organization_id,
@@ -262,7 +284,7 @@ async def import_meldingen_csv(
             warnings.append({"row": i, "warning": f"onbekende project_id '{project_id}' — genegeerd"})
             project_id = None
         elif not project_id and project_name:
-            pid = project_by_name.get(project_name.lower())
+            pid = _find_project_id(project_name)
             if pid:
                 project_id = pid
             else:
