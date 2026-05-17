@@ -366,7 +366,7 @@ def get_melding(
     return _melding_to_response(melding)
 
 
-@router.put("/{melding_id}", response_model=MeldingResponse)
+@router.api_route("/{melding_id}", methods=["PUT", "PATCH"], response_model=MeldingResponse)
 def update_melding(
     melding_id: str,
     update: MeldingUpdate,
@@ -421,6 +421,24 @@ def update_melding(
                 detail="Foto na uitvoering vereist voordat de melding afgesloten "
                        "(opgelost/afgerond) kan worden. Upload eerst een foto.",
             )
+
+    # Project-update: valideer dat het project bestaat binnen dezelfde
+    # organisatie (anders FK-fout/cross-tenant leak). null = ontkoppel.
+    if "project_id" in update_data:
+        pid = update_data["project_id"]
+        if pid is not None and pid != "":
+            project_exists = db.query(Project).filter(
+                Project.id == pid,
+                Project.organization_id == current_user.organization_id,
+            ).first()
+            if not project_exists:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Project '{pid}' niet gevonden in jouw organisatie",
+                )
+        else:
+            # Leeg-string normaliseren naar None zodat FK NULL wordt
+            update_data["project_id"] = None
 
     for field, value in update_data.items():
         setattr(melding, field, value)
