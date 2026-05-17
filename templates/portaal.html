@@ -11023,13 +11023,15 @@
         actionLabel: 'Genereren',
         danger: false,
         onConfirm: function() {
-          // Stap 1: verrijk eerst meldingen-zonder-classificatie zodat ze
-          // door de cluster-algoritme worden opgepakt. Idempotent dus
-          // veilig om altijd te doen.
-          showToast('Meldingen voorbereiden...', 'info');
+          // Stap 1: verrijk classificatie + koppel meldingen aan dichtstbijzijnd
+          // asset. Idempotent, dus veilig om altijd te doen vóór cluster-generate.
+          showToast('Meldingen voorbereiden (classificatie + asset-koppeling)...', 'info');
           api('POST', '/api/meldingen/enrich-classifications', {}).then(function(en){
-            if (en && en.enriched > 0) {
-              showToast(en.enriched + ' meldingen verrijkt — clusters genereren...', 'info');
+            if (en) {
+              var bits = [];
+              if (en.enriched > 0) bits.push(en.enriched + ' verrijkt');
+              if (en.linked_to_asset > 0) bits.push(en.linked_to_asset + ' aan asset gekoppeld');
+              if (bits.length) showToast(bits.join(' · ') + ' — clusters genereren...', 'info');
             }
             // Stap 2: cluster-generate
             return api('POST', '/api/clusters/generate', { radius_km: 5.0, min_cluster_size: 2 });

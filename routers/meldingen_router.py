@@ -1,5 +1,6 @@
 import csv
 import io
+import math
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
@@ -67,6 +68,39 @@ _KLASSE_TO_CATEGORIE = {
     "M1": "klein onderhoud", "M2": "klein onderhoud", "M3": "regulier onderhoud",
     "E1": "regulier onderhoud", "E2": "groot onderhoud", "E3": "vervanging",
 }
+
+
+def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Afstand in meters tussen 2 WGS84-coordinaten (Haversine-formule)."""
+    R = 6_371_000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp = math.radians(lat2 - lat1)
+    dl = math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def _auto_link_nearest_asset(melding: Melding, assets: list, max_m: float = 200.0) -> bool:
+    """Koppel melding aan dichtstbijzijnde asset binnen max_m meter.
+
+    Idempotent — als asset_id al gezet is, doe niks. Voorwaarde: melding
+    heeft lat/lng. Pakt asset met laagste afstand binnen drempel.
+    """
+    if melding.asset_id or melding.lat is None or melding.lng is None:
+        return False
+    best = None
+    best_d = max_m
+    for a in assets:
+        if a.lat is None or a.lng is None:
+            continue
+        d = _haversine_m(melding.lat, melding.lng, a.lat, a.lng)
+        if d < best_d:
+            best = a
+            best_d = d
+    if best:
+        melding.asset_id = best.id
+        return True
+    return False
 
 
 def _enrich_classification(melding: Melding) -> bool:
@@ -342,6 +376,8 @@ async def import_meldingen_csv(
         Asset.archived_at.is_(None),
     ).all()
     asset_by_code = {a.code: a.id for a in assets if a.code}
+    # Geo-assets voor auto-linking (alleen die lat/lng hebben)
+    geo_assets = [a for a in assets if a.lat is not None and a.lng is not None]
 
     created = 0
     errors: list[dict] = []
@@ -410,6 +446,9 @@ async def import_meldingen_csv(
         )
         # Auto-classificatie zodat clusters/voorspeller deze meldingen oppakken
         _enrich_classification(melding)
+        # Auto-link aan dichtstbijzijnde asset binnen 200m als geen expliciete asset_code
+        if not melding.asset_id:
+            _auto_link_nearest_asset(melding, geo_assets, max_m=200.0)
         db.add(melding)
         created += 1
 
@@ -435,28 +474,52 @@ def enrich_all_classifications(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Verrijk alle bestaande meldingen zonder gw_term/crow_klasse.
+    """Verrijk alle bestaande meldingen — CROW-classificatie + asset-koppeling.
 
-    Loopt door alle meldingen van de organisatie en vult ontbrekende CROW-
-    classificatie aan op basis van category + priority. Idempotent — bestaande
-    waarden blijven staan. Onmisbaar nadat je een CSV-import hebt gedaan
-    zonder gw_term/crow_klasse in de CSV: zonder dit zien clusters,
-    voorspeller en dashboard die meldingen niet.
+    Doet 2 dingen idempotent (kan veilig vaker draaien):
+      1. Vul ontbrekende gw_term/crow_klasse op basis van category+priority
+      2. Koppel meldingen-zonder-asset aan dichtstbijzijnd asset binnen 200m
+         (op basis van lat/lng — werkt alleen voor meldingen met coordinaten)
+
+    Onmisbaar nadat je een CSV-import hebt gedaan zonder classificatie of
+    asset-codes in de CSV: zonder dit zien clusters, voorspeller en
+    dashboard die meldingen niet.
     """
     if not can_edit_melding_full(current_user):
         raise HTTPException(status_code=403, detail="Geen rechten")
+
     items = db.query(Melding).filter(
         Melding.organization_id == current_user.organization_id,
     ).all()
+
+    # Pre-load geo-assets voor auto-linking
+    geo_assets = db.query(Asset).filter(
+        Asset.organization_id == current_user.organization_id,
+        Asset.archived_at.is_(None),
+        Asset.lat.isnot(None),
+        Asset.lng.isnot(None),
+    ).all()
+
     enriched = 0
+    linked = 0
     for m in items:
         if _enrich_classification(m):
             enriched += 1
+        if _auto_link_nearest_asset(m, geo_assets, max_m=200.0):
+            linked += 1
     db.commit()
+
     log_action(db, request, current_user,
                action=ACTION.MELDING_UPDATE, entity_type="melding-enrich",
-               entity_id=None, after={"enriched": enriched, "total": len(items)})
-    return {"enriched": enriched, "total": len(items)}
+               entity_id=None,
+               after={"enriched": enriched, "linked_to_asset": linked,
+                      "total": len(items), "geo_assets_available": len(geo_assets)})
+    return {
+        "enriched": enriched,
+        "linked_to_asset": linked,
+        "total": len(items),
+        "geo_assets_available": len(geo_assets),
+    }
 
 
 @router.get("/{melding_id}", response_model=MeldingResponse)
