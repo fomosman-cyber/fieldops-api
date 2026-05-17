@@ -2838,7 +2838,7 @@
 
         <!-- NEN-EN 1176 inspectie-kind (alleen zichtbaar bij type=speeltoestel) -->
         <div id="kwNewNen1176Kind" style="display:none;background:linear-gradient(135deg,#fef3c7,#fde68a);border:1px solid #f59e0b;border-radius:10px;padding:12px;">
-          <label style="font-size:12px;color:#92400e;font-weight:700;display:block;margin-bottom:6px;">🛝 NEN-EN 1176 inspectie-soort</label>
+          <label style="font-size:12px;color:#92400e;font-weight:700;display:block;margin-bottom:6px;" data-i18n="kwm_nen1176_kind_title">🛝 NEN-EN 1176 inspectie-soort</label>
           <select id="kwNewNen1176KindValue" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);">
             <option value="hoofd">Hoofdinspectie — jaarlijks (uitgebreid, structureel)</option>
             <option value="operationeel">Operationeel — maandelijks (slijtage, beweegbare delen)</option>
@@ -2938,7 +2938,7 @@
         <div id="kwDefectVtaSection" style="display:none;background:linear-gradient(135deg,#dcfce7,#bbf7d0);border:1px solid #16a34a;border-radius:10px;padding:14px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
             <span style="font-size:18px;">🌳</span>
-            <strong style="font-size:13px;color:#14532d;">VTA boom-classificatie (Mattheck)</strong>
+            <strong style="font-size:13px;color:#14532d;" data-i18n="kwd_vta_title">VTA boom-classificatie (Mattheck)</strong>
           </div>
           <div style="margin-bottom:10px;">
             <label style="font-size:11px;color:#14532d;font-weight:600;display:block;margin-bottom:4px;">Risicoklasse</label>
@@ -2967,7 +2967,7 @@
         <div id="kwDefectNen3140Section" style="display:none;background:linear-gradient(135deg,#fef9c3,#fde68a);border:1px solid #eab308;border-radius:10px;padding:14px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
             <span style="font-size:18px;">💡</span>
-            <strong style="font-size:13px;color:#713f12;">NEN 3140 elektrische metingen (500V dc)</strong>
+            <strong style="font-size:13px;color:#713f12;" data-i18n="kwd_nen3140_title">NEN 3140 elektrische metingen (500V dc)</strong>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             <div>
@@ -2994,7 +2994,7 @@
         <div id="kwDefectCrow145Section" style="display:none;background:linear-gradient(135deg,#fed7aa,#fdba74);border:1px solid #f97316;border-radius:10px;padding:14px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
             <span style="font-size:18px;">🛣️</span>
-            <strong style="font-size:13px;color:#7c2d12;">CROW 145 retroreflectie (mcd/m²/lx)</strong>
+            <strong style="font-size:13px;color:#7c2d12;" data-i18n="kwd_crow145_title">CROW 145 retroreflectie (mcd/m²/lx)</strong>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             <div>
@@ -3013,7 +3013,7 @@
         <div id="kwDefectNen3399Section" style="display:none;background:linear-gradient(135deg,#e0e7ff,#c7d2fe);border:1px solid #6366f1;border-radius:10px;padding:14px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
             <span style="font-size:18px;">🚰</span>
-            <strong style="font-size:13px;color:#312e81;">NEN 3399 schadecode (NEN-EN 13508-2)</strong>
+            <strong style="font-size:13px;color:#312e81;" data-i18n="kwd_nen3399_title">NEN 3399 schadecode (NEN-EN 13508-2)</strong>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
             <div>
@@ -3999,6 +3999,13 @@
         kwcat_kunstwerken: 'Kunstwerken', kwcat_groen: 'Groen', kwcat_markering: 'Markering',
         kwcat_verlichting: 'Verlichting', kwcat_ondergronds: 'Ondergronds',
         kwcat_aantal: 'inspecties', kwcat_types: 'types', kwm_kies_type: '— Kies type —',
+        kwd_en1176_title: 'NEN-EN 1176 veiligheids-classificatie',
+        kwd_en1176_acute: '🚨 Toestel direct afsluiten — gebruik blokkeren tot herstel',
+        kwd_vta_title: 'VTA boom-classificatie (Mattheck)',
+        kwd_nen3140_title: 'NEN 3140 elektrische metingen (500V dc)',
+        kwd_crow145_title: 'CROW 145 retroreflectie (mcd/m²/lx)',
+        kwd_nen3399_title: 'NEN 3399 schadecode (NEN-EN 13508-2)',
+        kwm_nen1176_kind_title: '🛝 NEN-EN 1176 inspectie-soort',
         kw_nieuwe_inspectie: 'Nieuwe inspectie',
         kw_filter_alle: 'Alle types', kw_filter_alle_status: 'Alle statussen',
         kw_status_draft: 'Concept', kw_status_in_progress: 'In uitvoering',
@@ -4460,6 +4467,13 @@
         kwcat_kunstwerken: 'Civil structures', kwcat_groen: 'Green', kwcat_markering: 'Markings',
         kwcat_verlichting: 'Lighting', kwcat_ondergronds: 'Underground',
         kwcat_aantal: 'inspections', kwcat_types: 'types', kwm_kies_type: '— Select type —',
+        kwd_en1176_title: 'NEN-EN 1176 safety classification',
+        kwd_en1176_acute: '🚨 Close playground equipment immediately — block use until repaired',
+        kwd_vta_title: 'VTA tree classification (Mattheck)',
+        kwd_nen3140_title: 'NEN 3140 electrical measurements (500V dc)',
+        kwd_crow145_title: 'CROW 145 retroreflection (mcd/m²/lx)',
+        kwd_nen3399_title: 'NEN 3399 damage code (NEN-EN 13508-2)',
+        kwm_nen1176_kind_title: '🛝 NEN-EN 1176 inspection type',
         kw_nieuwe_inspectie: 'New inspection',
         kw_filter_alle: 'All types', kw_filter_alle_status: 'All statuses',
         kw_status_draft: 'Draft', kw_status_in_progress: 'In progress',
@@ -4921,6 +4935,13 @@
         kwcat_kunstwerken: 'Kunstbauwerke', kwcat_groen: 'Grün', kwcat_markering: 'Markierung',
         kwcat_verlichting: 'Beleuchtung', kwcat_ondergronds: 'Untergrund',
         kwcat_aantal: 'Inspektionen', kwcat_types: 'Typen', kwm_kies_type: '— Typ wählen —',
+        kwd_en1176_title: 'NEN-EN 1176 Sicherheits-Klassifikation',
+        kwd_en1176_acute: '🚨 Gerät sofort sperren — Nutzung bis zur Reparatur blockieren',
+        kwd_vta_title: 'VTA Baum-Klassifikation (Mattheck)',
+        kwd_nen3140_title: 'NEN 3140 elektrische Messungen (500V dc)',
+        kwd_crow145_title: 'CROW 145 Retroreflexion (mcd/m²/lx)',
+        kwd_nen3399_title: 'NEN 3399 Schadenscode (NEN-EN 13508-2)',
+        kwm_nen1176_kind_title: '🛝 NEN-EN 1176 Inspektionsart',
         kw_nieuwe_inspectie: 'Neue Inspektion',
         kw_filter_alle: 'Alle Typen', kw_filter_alle_status: 'Alle Status',
         kw_status_draft: 'Entwurf', kw_status_in_progress: 'In Bearbeitung',
@@ -5382,6 +5403,13 @@
         kwcat_kunstwerken: 'Ouvrages d\'art', kwcat_groen: 'Espaces verts', kwcat_markering: 'Marquage',
         kwcat_verlichting: 'Éclairage', kwcat_ondergronds: 'Souterrain',
         kwcat_aantal: 'inspections', kwcat_types: 'types', kwm_kies_type: '— Choisir un type —',
+        kwd_en1176_title: 'Classification de sécurité NEN-EN 1176',
+        kwd_en1176_acute: '🚨 Fermer l\'équipement immédiatement — bloquer l\'usage jusqu\'à réparation',
+        kwd_vta_title: 'Classification VTA arbre (Mattheck)',
+        kwd_nen3140_title: 'NEN 3140 mesures électriques (500V dc)',
+        kwd_crow145_title: 'CROW 145 rétroréflexion (mcd/m²/lx)',
+        kwd_nen3399_title: 'NEN 3399 code de dégât (NEN-EN 13508-2)',
+        kwm_nen1176_kind_title: '🛝 NEN-EN 1176 type d\'inspection',
         kw_nieuwe_inspectie: 'Nouvelle inspection',
         kw_filter_alle: 'Tous les types', kw_filter_alle_status: 'Tous les statuts',
         kw_status_draft: 'Brouillon', kw_status_in_progress: 'En cours',
@@ -5843,6 +5871,13 @@
         kwcat_kunstwerken: 'Sanat yapıları', kwcat_groen: 'Yeşil alan', kwcat_markering: 'İşaretleme',
         kwcat_verlichting: 'Aydınlatma', kwcat_ondergronds: 'Yeraltı',
         kwcat_aantal: 'muayene', kwcat_types: 'tip', kwm_kies_type: '— Tip seçin —',
+        kwd_en1176_title: 'NEN-EN 1176 güvenlik sınıflandırması',
+        kwd_en1176_acute: '🚨 Cihazı hemen kapat — onarıma kadar kullanımı engelle',
+        kwd_vta_title: 'VTA ağaç sınıflandırması (Mattheck)',
+        kwd_nen3140_title: 'NEN 3140 elektriksel ölçümler (500V dc)',
+        kwd_crow145_title: 'CROW 145 geri yansıma (mcd/m²/lx)',
+        kwd_nen3399_title: 'NEN 3399 hasar kodu (NEN-EN 13508-2)',
+        kwm_nen1176_kind_title: '🛝 NEN-EN 1176 muayene türü',
         kw_nieuwe_inspectie: 'Yeni muayene',
         kw_filter_alle: 'Tüm türler', kw_filter_alle_status: 'Tüm durumlar',
         kw_status_draft: 'Taslak', kw_status_in_progress: 'Devam ediyor',
