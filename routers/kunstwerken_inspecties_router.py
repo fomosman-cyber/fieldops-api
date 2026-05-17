@@ -23,7 +23,7 @@ Conditie-scores worden server-side berekend (NEN 2767-2) en gepersisteerd
 zodat queries en PDF-rapport altijd identieke waarden tonen.
 """
 from __future__ import annotations
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 import csv
 import io
@@ -830,19 +830,37 @@ def _update_asset_cycle(db: Session, insp: Inspection) -> None:
     if insp.conditiescore_overall is not None:
         asset.condition_score = insp.conditiescore_overall
 
-    # Cyclus-maanden bepalen — kunstwerk-type van inspectie heeft voorrang,
+    # Cyclus-bepaling — kunstwerk-type van inspectie heeft voorrang,
     # anders asset.asset_type
     type_key = insp.kunstwerk_type or asset.asset_type
-    months = cycle.cycle_months_for(type_key, insp.conditiescore_overall)
-    if months:
-        asset.inspection_cycle_months = months
-        next_due = cycle.next_due_date(now, months)
-        if next_due:
-            asset.next_inspection_due = next_due
-            # Sync ook op de inspection als de gebruiker geen handmatige
-            # datum heeft gezet
-            if not insp.volgende_inspectie_op:
-                insp.volgende_inspectie_op = next_due
+
+    # NEN-EN 1176 speeltoestel: cyclus hangt af van het inspectie-kind
+    # (routine=7d, operationeel=30d, hoofd=365d). Alleen bij hoofdinspectie
+    # zetten we de standaard 12-maandelijkse next-due; bij operationeel/routine
+    # is de volgende inspectie korter en gaan we niet de hoofd-cyclus overschrijven.
+    next_due = None
+    if type_key == "speeltoestel" and insp.nen1176_inspectie_kind:
+        days = cycle.nen1176_next_due_days(insp.nen1176_inspectie_kind)
+        if days:
+            next_due = now + timedelta(days=days)
+            # Alleen bij hoofdinspectie ook de asset-cyclus updaten (jaarlijks).
+            # Operationeel/routine inspecties hebben tussentijds een kortere
+            # eigen volgende-due die niet de hoofd-cyclus van het asset overschrijft.
+            if insp.nen1176_inspectie_kind == "hoofd":
+                asset.inspection_cycle_months = 12
+                asset.next_inspection_due = next_due
+    else:
+        months = cycle.cycle_months_for(type_key, insp.conditiescore_overall)
+        if months:
+            asset.inspection_cycle_months = months
+            next_due = cycle.next_due_date(now, months)
+            if next_due:
+                asset.next_inspection_due = next_due
+
+    # Sync de inspection.volgende_inspectie_op als de gebruiker geen
+    # handmatige datum heeft gezet (geldt voor alle types)
+    if next_due and not insp.volgende_inspectie_op:
+        insp.volgende_inspectie_op = next_due
 
 
 # ─────────────────────────────────────────────────────────────────────────────
