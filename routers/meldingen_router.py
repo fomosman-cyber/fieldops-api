@@ -1,8 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+import csv
+import io
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 from database import get_db
-from models import Melding, User
+from models import Melding, Project, Asset, User
 from schemas import MeldingCreate, MeldingResponse, MeldingUpdate
 from auth import get_current_user
 from permissions import (
@@ -98,6 +101,231 @@ def create_melding(
                       "crow_klasse": melding.crow_klasse,
                       "onderhoud_categorie": melding.onderhoud_categorie})
     return _melding_to_response(melding)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CSV bulk-import
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Kolom-aliases (case-insensitive). Verplicht is alleen `title`/`titel`.
+_MELDING_CSV_ALIASES = {
+    "title":       ["title", "titel", "onderwerp", "korte_omschrijving", "naam"],
+    "description": ["description", "omschrijving", "beschrijving", "toelichting", "opmerking", "notitie"],
+    "category":    ["category", "categorie", "type", "schadetype", "object_type", "soort"],
+    "priority":    ["priority", "prioriteit", "urgentie"],
+    "lat":         ["lat", "latitude", "breedtegraad", "wgs_lat", "y"],
+    "lng":         ["lng", "lon", "longitude", "lengtegraad", "wgs_lng", "x"],
+    "project_id":  ["project_id", "projectid"],
+    "project":     ["project", "project_naam", "projectnaam", "projectname", "project_name"],
+    "asset_code":  ["asset_code", "assetcode", "object_code", "objectcode", "objectnummer"],
+}
+
+# Toegestane priority-waarden (case-insensitive). Onbekend → "normaal".
+_VALID_PRIORITIES = {"laag", "normaal", "hoog", "kritiek"}
+
+
+def _norm(s: str) -> str:
+    return (s or "").strip().lower().replace(" ", "_").replace("-", "_")
+
+
+def _build_melding_mapping(fieldnames: list[str]) -> tuple[dict, list[str]]:
+    """Map verplicht/optioneel doel-veld → originele CSV-kolomnaam."""
+    norm_to_orig = {_norm(c): c for c in (fieldnames or [])}
+    mapping: dict[str, str] = {}
+    for target, aliases in _MELDING_CSV_ALIASES.items():
+        for a in aliases:
+            if _norm(a) in norm_to_orig:
+                mapping[target] = norm_to_orig[_norm(a)]
+                break
+    missing = ["title"] if "title" not in mapping else []
+    return mapping, missing
+
+
+def _get_csv(row: dict, mapping: dict, key: str) -> Optional[str]:
+    col = mapping.get(key)
+    if not col:
+        return None
+    v = row.get(col)
+    return v.strip() if isinstance(v, str) and v.strip() else None
+
+
+@router.get("/import/template.csv")
+def import_template_csv(
+    current_user: User = Depends(get_current_user),
+):
+    """Download een lege CSV-template met de verwachte kolommen + 2 voorbeeldrijen."""
+    buf = io.StringIO()
+    buf.write("﻿")  # BOM voor Excel UTF-8 herkenning
+    writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+    writer.writerow([
+        "title", "description", "category", "priority",
+        "lat", "lng", "project", "asset_code",
+    ])
+    writer.writerow([
+        "Scheur in wegdek",
+        "Bij hoek Dijkweg / Galgeweg — graag inspecteren",
+        "wegdek", "normaal",
+        "51.992", "4.211",
+        "Gemeente Westland", "",
+    ])
+    writer.writerow([
+        "Lichtmast defect",
+        "Lamp brandt al 3 weken niet, klacht van inwoner",
+        "verlichting", "hoog",
+        "52.008", "4.183",
+        "Gemeente Westland", "LM-Naaldwijk-042",
+    ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.read()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="meldingen-template.csv"'},
+    )
+
+
+@router.post("/import/csv")
+async def import_meldingen_csv(
+    request: Request,
+    file: UploadFile = File(..., description="CSV met meldingen. Verplichte kolom: title (of titel). Optioneel: description, category, priority, lat, lng, project (naam) of project_id, asset_code."),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bulk-CSV-import voor meldingen.
+
+    Verwacht een UTF-8 of Windows-1252 CSV met `;` of `,` als delimiter.
+    Verplichte kolom: **title** (of `titel`).
+
+    Optionele kolommen (aliases zie taxonomy onderaan response):
+      - description / omschrijving
+      - category / categorie / type
+      - priority / prioriteit (laag/normaal/hoog/kritiek, default normaal)
+      - lat / latitude / breedtegraad
+      - lng / longitude / lengtegraad
+      - project (naam) of project_id
+      - asset_code
+
+    Onbekende project-naam = melding wordt aangemaakt zonder project_id (warning per rij).
+    """
+    if not can_create_meldingen(current_user):
+        raise HTTPException(status_code=403, detail="Je rol heeft geen rechten om meldingen aan te maken")
+
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        try:
+            text = raw.decode("cp1252")
+        except UnicodeDecodeError:
+            raise HTTPException(status_code=400, detail="Bestand moet UTF-8 of Windows-1252 zijn")
+
+    sample = text[:2048]
+    delimiter = ";" if sample.count(";") > sample.count(",") else ","
+    reader = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+
+    mapping, missing = _build_melding_mapping(reader.fieldnames or [])
+    if missing:
+        raise HTTPException(status_code=400, detail={
+            "error": f"Verplichte kolommen ontbreken: {missing}",
+            "csv_columns": list(reader.fieldnames or []),
+            "tip": "Hernoem je titel-kolom naar 'title' of 'titel'.",
+            "aliases": _MELDING_CSV_ALIASES,
+        })
+
+    # Lookup-tabellen voor performance: project-naam → id, asset-code → id
+    projects = db.query(Project).filter(
+        Project.organization_id == current_user.organization_id,
+    ).all()
+    project_by_name = {p.name.lower(): p.id for p in projects if p.name}
+    project_ids = {p.id for p in projects}
+
+    assets = db.query(Asset).filter(
+        Asset.organization_id == current_user.organization_id,
+        Asset.archived_at.is_(None),
+    ).all()
+    asset_by_code = {a.code: a.id for a in assets if a.code}
+
+    created = 0
+    errors: list[dict] = []
+    warnings: list[dict] = []
+    rows = list(reader)
+
+    for i, row in enumerate(rows, start=2):  # rij 1 = header
+        title = _get_csv(row, mapping, "title")
+        if not title:
+            errors.append({"row": i, "error": "title is leeg"})
+            continue
+
+        # Project lookup
+        project_id = _get_csv(row, mapping, "project_id")
+        project_name = _get_csv(row, mapping, "project")
+        if project_id and project_id not in project_ids:
+            warnings.append({"row": i, "warning": f"onbekende project_id '{project_id}' — genegeerd"})
+            project_id = None
+        elif not project_id and project_name:
+            pid = project_by_name.get(project_name.lower())
+            if pid:
+                project_id = pid
+            else:
+                warnings.append({"row": i, "warning": f"project '{project_name}' niet gevonden — melding zonder project"})
+
+        # Asset lookup
+        asset_id = None
+        asset_code = _get_csv(row, mapping, "asset_code")
+        if asset_code:
+            asset_id = asset_by_code.get(asset_code)
+            if not asset_id:
+                warnings.append({"row": i, "warning": f"asset_code '{asset_code}' niet gevonden — melding zonder asset"})
+
+        # Priority validatie
+        prio = (_get_csv(row, mapping, "priority") or "normaal").lower()
+        if prio not in _VALID_PRIORITIES:
+            warnings.append({"row": i, "warning": f"priority '{prio}' onbekend → 'normaal'"})
+            prio = "normaal"
+
+        # Lat/lng validatie
+        lat = lng = None
+        try:
+            v = _get_csv(row, mapping, "lat")
+            if v:
+                lat = float(v.replace(",", "."))
+        except ValueError:
+            warnings.append({"row": i, "warning": f"lat '{v}' is geen geldig getal"})
+        try:
+            v = _get_csv(row, mapping, "lng")
+            if v:
+                lng = float(v.replace(",", "."))
+        except ValueError:
+            warnings.append({"row": i, "warning": f"lng '{v}' is geen geldig getal"})
+
+        melding = Melding(
+            title=title,
+            description=_get_csv(row, mapping, "description"),
+            category=_get_csv(row, mapping, "category"),
+            priority=prio,
+            lat=lat,
+            lng=lng,
+            project_id=project_id,
+            asset_id=asset_id,
+            organization_id=current_user.organization_id,
+            created_by=current_user.id,
+        )
+        db.add(melding)
+        created += 1
+
+    db.commit()
+
+    log_action(db, request, current_user,
+               action=ACTION.MELDING_CREATE, entity_type="melding-bulk-csv",
+               entity_id=None,
+               after={"created": created, "errors": len(errors), "warnings": len(warnings)})
+
+    return {
+        "created": created,
+        "total_rows": len(rows),
+        "errors": errors,
+        "warnings": warnings,
+        "columns_matched": {k: mapping.get(k) for k in _MELDING_CSV_ALIASES if mapping.get(k)},
+    }
 
 
 @router.get("/{melding_id}", response_model=MeldingResponse)
