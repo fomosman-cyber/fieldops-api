@@ -11023,8 +11023,17 @@
         actionLabel: 'Genereren',
         danger: false,
         onConfirm: function() {
-          showToast('Clusters genereren...', 'info');
-          api('POST', '/api/clusters/generate', { radius_km: 5.0, min_cluster_size: 2 }).then(function(r){
+          // Stap 1: verrijk eerst meldingen-zonder-classificatie zodat ze
+          // door de cluster-algoritme worden opgepakt. Idempotent dus
+          // veilig om altijd te doen.
+          showToast('Meldingen voorbereiden...', 'info');
+          api('POST', '/api/meldingen/enrich-classifications', {}).then(function(en){
+            if (en && en.enriched > 0) {
+              showToast(en.enriched + ' meldingen verrijkt — clusters genereren...', 'info');
+            }
+            // Stap 2: cluster-generate
+            return api('POST', '/api/clusters/generate', { radius_km: 5.0, min_cluster_size: 2 });
+          }).then(function(r){
             showToast(r.clusters_created + ' clusters gegenereerd · ' + r.total_savings_hours + ' u bespaard (' + r.savings_percentage + '%)', 'success');
             loadClusters();
           }).catch(function(err){
