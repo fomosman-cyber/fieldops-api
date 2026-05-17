@@ -202,6 +202,7 @@ class MeldingUpdate(BaseModel):
     photo_url: Optional[str] = None
     photo_after_url: Optional[str] = None
     asset_id: Optional[str] = None
+    project_id: Optional[str] = None      # null = ontkoppel project
 
 
 # Asset
