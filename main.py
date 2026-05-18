@@ -143,6 +143,35 @@ def _run_migrations():
                         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_next_inspection_due ON assets(next_inspection_due)"))
                 print("[migration] assets inspectie-kolommen toegevoegd.")
 
+        # Photo-kolommen vergroten van VARCHAR(500) naar TEXT zodat
+        # inline base64-data-URLs (foto's) zonder truncation worden opgeslagen.
+        # Treft 3 tabellen: opleveringspunten, meldingen, inspection_defects.
+        photo_col_targets = [
+            ("opleveringspunten", "photo_url"),
+            ("opleveringspunten", "photo_url_after"),
+            ("meldingen",         "photo_url"),
+            ("meldingen",         "photo_after_url"),
+            ("inspection_defects","photo_url"),
+            ("inspection_defects","photo_url_2"),
+        ]
+        try:
+            from sqlalchemy import text as _sql_text
+            with engine.begin() as conn:
+                for tbl, col in photo_col_targets:
+                    if tbl in insp.get_table_names():
+                        # Postgres-only ALTER; sqlite negeert dit type-strict via try/except
+                        try:
+                            conn.execute(_sql_text(
+                                f"ALTER TABLE {tbl} ALTER COLUMN {col} TYPE TEXT"
+                            ))
+                        except Exception as e:
+                            # SQLite ondersteunt geen ALTER COLUMN TYPE — silent skip
+                            # (SQLite kolommen zijn dynamisch typed, dus geen issue)
+                            print(f"[migration] photo-col {tbl}.{col} skipped: {e}")
+            print("[migration] photo-kolommen naar TEXT geupgraded (waar nodig).")
+        except Exception as e:
+            print(f"[migration] photo-cols upgrade error: {e}")
+
         # NEN-EN 1176 — speeltoestel-classificatie velden (v3.6)
         if "inspections" in insp.get_table_names():
             icols = [c["name"] for c in insp.get_columns("inspections")]

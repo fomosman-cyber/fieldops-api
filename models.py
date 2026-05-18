@@ -189,8 +189,8 @@ class Melding(Base):
     status = Column(String(50), default="open")  # open, in_behandeling, afgerond
     lat = Column(Float, nullable=True)
     lng = Column(Float, nullable=True)
-    photo_url = Column(String(500), nullable=True)
-    photo_after_url = Column(String(500), nullable=True)
+    photo_url = Column(Text, nullable=True)           # inline base64 of externe URL
+    photo_after_url = Column(Text, nullable=True)     # inline base64 of externe URL
     project_id = Column(String, ForeignKey("projects.id"), nullable=True)
     asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
@@ -860,8 +860,8 @@ class InspectionDefect(Base):
     lng = Column(Float, nullable=True)
 
     # Bewijs
-    photo_url = Column(String(500), nullable=True)
-    photo_url_2 = Column(String(500), nullable=True)         # optionele tweede foto
+    photo_url = Column(Text, nullable=True)                  # inline base64 of externe URL
+    photo_url_2 = Column(Text, nullable=True)                # optionele tweede foto
     ai_analysis_id = Column(String, ForeignKey("ai_analyses.id"), nullable=True, index=True)
     # ↑ als gebrek via AI-suggestie is geclassificeerd → audit-trail
 
@@ -987,8 +987,8 @@ class OpleveringPunt(Base):
     code = Column(String(64), nullable=False)                # eigen code, bv. "OP-001" of asset-code
     omschrijving = Column(Text, nullable=False)              # wat is gedaan / wat wordt opgeleverd
     uitvoeringsmethode = Column(Text, nullable=True)         # hoe is het uitgevoerd
-    photo_url = Column(String(500), nullable=True)           # foto voor uitvoering (beginsituatie)
-    photo_url_after = Column(String(500), nullable=True)     # foto na uitvoering (bewijs van oplevering)
+    photo_url = Column(Text, nullable=True)                  # foto voor uitvoering — inline base64 of URL
+    photo_url_after = Column(Text, nullable=True)            # foto na uitvoering — inline base64 of URL
     asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)  # optionele koppeling
 
     order_index = Column(Integer, default=0, nullable=False)  # volgorde in oplever-PV
