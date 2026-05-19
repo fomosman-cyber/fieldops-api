@@ -15,11 +15,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from database import get_db
-from models import User, GoogleOAuthToken, MicrosoftOAuthToken
+from models import User, GoogleOAuthToken, MicrosoftOAuthToken, Melding, Organization
 from auth import get_current_user
 from permissions import require_org_admin
+from pydantic import BaseModel
+from typing import Optional
 import google_integration as gi
 import microsoft_integration as ms
+import urllib.parse
 
 router = APIRouter(prefix="/api/integrations", tags=["Integraties"])
 
@@ -124,4 +127,132 @@ def org_integration_coverage(
         },
         "users": rows,
         "fetched_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Linear / GitHub deep-link bridge
+# MVP zonder OAuth: knop op melding genereert URL die issue pre-vult in Linear
+# of GitHub. Gebruiker klikt → tool opent → save → handmatige terugkoppeling.
+#
+# Voor volledige bidirectionele sync (status-updates terug naar melding) is
+# een OAuth-flow + webhook-receiver nodig. Komt in v2 als klanten dit vragen.
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ExternalLinkRequest(BaseModel):
+    target: str                                # 'linear' of 'github'
+    team_or_repo: str                          # Linear team-key (bv. 'eng') of GitHub 'owner/repo'
+    extra_labels: Optional[list[str]] = None   # GitHub-labels of Linear-labels
+
+
+@router.post("/external-link/melding/{melding_id}")
+def make_external_link(
+    melding_id: str,
+    req: ExternalLinkRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Genereer deep-link naar Linear/GitHub voor 1 melding.
+
+    Voorbeeld:
+      target='linear', team_or_repo='eng'
+      → https://linear.app/eng/issue/new?title=...&description=...
+
+      target='github', team_or_repo='fomosman-cyber/fieldops-api'
+      → https://github.com/fomosman-cyber/fieldops-api/issues/new?title=...&body=...
+
+    Gebruiker klikt de URL, beslist of issue wordt aangemaakt. Geen
+    automatische sync — handmatige opvolging. Voldoende voor MVP-use-cases:
+    klant wil melding loggen in eigen ticket-systeem.
+    """
+    melding = db.query(Melding).filter(
+        Melding.id == melding_id,
+        Melding.organization_id == current_user.organization_id,
+    ).first()
+    if not melding:
+        raise HTTPException(status_code=404, detail="Melding niet gevonden")
+
+    target = (req.target or "").lower()
+    team = (req.team_or_repo or "").strip()
+    if target not in ("linear", "github"):
+        raise HTTPException(status_code=400, detail="target moet 'linear' of 'github' zijn")
+    if not team:
+        raise HTTPException(status_code=400, detail="team_or_repo is verplicht")
+
+    # Bouw description met context: lat/lng, categorie, prioriteit, FieldOps-link
+    portal_url = "https://fieldops-api-8txr.onrender.com/portaal"
+    description_lines = [
+        f"**Bron**: FieldOps melding `{melding.id}`",
+        f"**Categorie**: {melding.category or '—'}",
+        f"**Prioriteit**: {melding.priority or '—'}",
+        f"**Status**: {melding.status or 'open'}",
+    ]
+    if melding.lat and melding.lng:
+        description_lines.append(f"**Locatie**: {melding.lat:.6f}, {melding.lng:.6f} "
+                                  f"([Google Maps](https://maps.google.com/?q={melding.lat},{melding.lng}))")
+    description_lines.append("")
+    description_lines.append(melding.description or "")
+    description_lines.append("")
+    description_lines.append(f"---")
+    description_lines.append(f"Open in FieldOps: {portal_url}")
+    description = "\n".join(description_lines)
+
+    title = melding.title or "Melding zonder titel"
+    if target == "linear":
+        # Linear deep-link: https://linear.app/{team}/issue/new
+        params = {"title": title, "description": description}
+        if req.extra_labels:
+            params["labels"] = ",".join(req.extra_labels)
+        url = f"https://linear.app/{urllib.parse.quote(team)}/issue/new?" + urllib.parse.urlencode(params)
+    else:
+        # GitHub: /{owner}/{repo}/issues/new?title=...&body=...&labels=label1,label2
+        # team_or_repo moet 'owner/repo' formaat zijn
+        if "/" not in team:
+            raise HTTPException(status_code=400,
+                                 detail="github team_or_repo moet 'owner/repo' formaat hebben")
+        params = {"title": title, "body": description}
+        if req.extra_labels:
+            params["labels"] = ",".join(req.extra_labels)
+        url = f"https://github.com/{team}/issues/new?" + urllib.parse.urlencode(params)
+
+    return {
+        "url": url,
+        "target": target,
+        "team_or_repo": team,
+        "title": title,
+        "description_length": len(description),
+        "method": "deep-link",
+        "note": "Klik om in nieuw tabblad te openen. Volledige sync (webhook + OAuth) komt in v2.",
+    }
+
+
+@router.get("/external-targets")
+def list_supported_external_targets(
+    current_user: User = Depends(get_current_user),
+):
+    """Lijst van beschikbare deep-link targets + voorbeeld-gebruik."""
+    return {
+        "supported": [
+            {
+                "key": "linear",
+                "label": "Linear",
+                "icon": "📋",
+                "team_or_repo_format": "team-slug (bv. 'eng', 'support')",
+                "example_url_template": "https://linear.app/{team}/issue/new",
+                "docs": "https://linear.app/docs/issue-templates",
+            },
+            {
+                "key": "github",
+                "label": "GitHub Issues",
+                "icon": "🐙",
+                "team_or_repo_format": "owner/repo (bv. 'acme/infra-tickets')",
+                "example_url_template": "https://github.com/{owner}/{repo}/issues/new",
+                "docs": "https://docs.github.com/en/issues/tracking-your-work-with-issues/creating-an-issue",
+            },
+        ],
+        "future": [
+            "Volledige OAuth + webhook-sync — komt als 3+ klanten dit aanvragen",
+            "Slack-bridge — open melding in Slack-kanaal",
+            "Jira Cloud — issue auto-creatie",
+        ],
     }
