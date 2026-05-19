@@ -105,8 +105,27 @@ class OrganizationResponse(BaseModel):
     max_users: int
     trial_ends_at: Optional[datetime]
     created_at: datetime
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    billing_address: Optional[str] = None
+    kvk_number: Optional[str] = None
+    btw_number: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class OrganizationUpdate(BaseModel):
+    """Self-service org-edit — alleen velden die org-admin zelf mag aanpassen.
+
+    Plan, status, max_users en shopify_customer_id zijn voorbehouden aan
+    super-admin / billing-side (separate flow).
+    """
+    name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    billing_address: Optional[str] = None
+    kvk_number: Optional[str] = None
+    btw_number: Optional[str] = None
 
 
 # Invitation

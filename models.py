@@ -41,6 +41,12 @@ class Organization(Base):
     max_users = Column(Integer, default=10)
     trial_ends_at = Column(DateTime, nullable=True)
     shopify_customer_id = Column(String(255), nullable=True)
+    # Self-service contact-velden (org-admin kan zelf bijwerken)
+    contact_email = Column(String(255), nullable=True)
+    contact_phone = Column(String(50), nullable=True)
+    billing_address = Column(Text, nullable=True)
+    kvk_number = Column(String(20), nullable=True)
+    btw_number = Column(String(30), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     users = relationship("User", back_populates="organization")
