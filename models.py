@@ -906,6 +906,10 @@ class InspectionDefect(Base):
     # BAP exfiltratie. Eindklasse 1-5 op zwaarste schade per streng.
     nen3399_code = Column(String(4), nullable=True)
     nen3399_klasse = Column(Integer, nullable=True)
+    # Streng-identificatie voor NEN 3399 — aggregaten "eindklasse per streng"
+    # zijn pas zinvol als meerdere defecten op dezelfde streng worden geregistreerd.
+    # Vrij format (bv. "Streng-A12-3" of "Putnr 045 → 048"). Lookup via index.
+    nen3399_streng_id = Column(String(64), nullable=True, index=True)
 
     # Eventueel auto-gegenereerde melding (orchestration-koppeling)
     melding_id = Column(String, ForeignKey("meldingen.id"), nullable=True)

@@ -431,9 +431,10 @@ class InspectionDefectCreate(BaseModel):
     # CROW 145 wegmarkering: retroreflectie droog + nat in mcd/m²/lx
     crow145_rl_droog_mcd: Optional[int] = None
     crow145_rl_nat_mcd: Optional[int] = None
-    # NEN 3399 riolering: BAA-BAQ schadecode + eindklasse 1-5
+    # NEN 3399 riolering: BAA-BAQ schadecode + eindklasse 1-5 + streng-ID
     nen3399_code: Optional[str] = None
     nen3399_klasse: Optional[int] = None
+    nen3399_streng_id: Optional[str] = None
 
 
 class InspectionDefectUpdate(BaseModel):
@@ -465,6 +466,7 @@ class InspectionDefectUpdate(BaseModel):
     crow145_rl_nat_mcd: Optional[int] = None
     nen3399_code: Optional[str] = None
     nen3399_klasse: Optional[int] = None
+    nen3399_streng_id: Optional[str] = None
 
 
 class InspectionSignRequest(BaseModel):
