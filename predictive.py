@@ -25,11 +25,11 @@ import math
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 
-from models import Asset, Melding
+from models import Asset, Melding, Inspection, InspectionElement, InspectionDefect
 from crow_kosten import klasse_to_risk_points, KLASSE_RISK_POINTS
 
 
-SCORE_VERSION = "v2.1-trend"
+SCORE_VERSION = "v2.2-norm-aware"
 
 # Basis-wegingen (totaal 100)
 W_AGE = 25
@@ -37,10 +37,11 @@ W_CONDITION = 25
 W_CROW = 30
 W_MELDINGEN = 20
 
-# Trend-bonus — bovenop de basis 100, daarna gecapt op 100. Werkt als een
-# "amplifier" op assets die er al matig voor staan en een verslechterende
-# trend laten zien, zonder de schaal compleet te herwegen.
+# Bonus-wegingen — bovenop de basis 100, daarna gecapt op 100. Werken als
+# "amplifiers" op assets die er al matig voor staan en aanvullende signalen
+# laten zien.
 W_TREND_MAX = 10
+W_INSPECTION_MAX = 15   # v2.2 — formele inspectie-defecten zwaarder dan losse meldingen
 
 
 def _age_fraction(asset: Asset, now: datetime) -> Optional[float]:
@@ -231,6 +232,92 @@ def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2 * R * math.asin(math.sqrt(a))
 
 
+def _inspection_history_points(db: Session, asset_id: str, since: datetime) -> tuple[int, int, int]:
+    """v2.2 — Formele inspectie-defecten als signaal naast losse meldingen.
+
+    Een defect uit een ondertekende NEN 2767-inspectie weegt zwaarder dan een
+    burger-melding: het is door een gekwalificeerde inspecteur geclassificeerd.
+
+    Return (punten, totaal_defecten, ernstige_defecten met score>=4).
+    """
+    # Defecten op alle elementen van inspecties op dit asset, recent
+    rows = (db.query(InspectionDefect)
+              .join(InspectionElement, InspectionDefect.element_id == InspectionElement.id)
+              .join(Inspection, InspectionElement.inspection_id == Inspection.id)
+              .filter(Inspection.asset_id == asset_id,
+                      Inspection.created_at >= since)
+              .all())
+    if not rows:
+        return 0, 0, 0
+    total = len(rows)
+    severe = sum(1 for d in rows if d.defect_score is not None and d.defect_score >= 4)
+    # Punten: 5 per ernstig defect + 1 per overig, cap W_INSPECTION_MAX
+    pts = min(W_INSPECTION_MAX, severe * 5 + (total - severe) * 1)
+    return int(pts), total, severe
+
+
+def _type_specific_override(asset: Asset, db: Session, since: datetime) -> Optional[tuple[int, str]]:
+    """v2.2 — Type-specifieke regels die de score forceren bovenop het basis-model.
+
+    Wanneer een norm-specifiek defect kritiek is (NEN-EN 1176 cat C/D, VTA
+    klasse 5, NEN 3140 isolatie < 0.5 MΩ), is het juridisch en operationeel
+    onverdedigbaar om dat asset op laag risico te scoren. Deze regels zetten
+    een minimum-score (floor) die de eindscore garandeert.
+
+    Return (floor_score, reden_tekst) of None.
+    """
+    base_q = (db.query(InspectionDefect)
+                .join(InspectionElement, InspectionDefect.element_id == InspectionElement.id)
+                .join(Inspection, InspectionElement.inspection_id == Inspection.id)
+                .filter(Inspection.asset_id == asset.id,
+                        Inspection.created_at >= since))
+
+    # Speeltoestel — NEN-EN 1176 categorie C/D
+    if asset.asset_type == "speeltoestel":
+        cat_d = base_q.filter(InspectionDefect.en1176_categorie == "D").first()
+        if cat_d:
+            return 95, "NEN-EN 1176 categorie D defect (afgesloten) → forceer 95+"
+        cat_c = base_q.filter(InspectionDefect.en1176_categorie == "C").first()
+        if cat_c:
+            return 80, "NEN-EN 1176 categorie C defect (gebruik beperken) → forceer 80+"
+
+    # Boom — VTA Mattheck risicoklasse 5 of t/r < 0.30
+    if asset.asset_type == "boom":
+        vta5 = base_q.filter(InspectionDefect.vta_risicoklasse == 5).first()
+        if vta5:
+            return 95, "VTA risicoklasse 5 (acute breekrisico) → forceer 95+"
+        # t/r < 0.30 = Mattheck breukrisico (v2.2 polish #12 zet ook auto-risicoklasse 5)
+        tr_unsafe = base_q.filter(InspectionDefect.vta_t_r_ratio < 0.30).first()
+        if tr_unsafe:
+            return 90, "VTA Mattheck t/r < 0.30 (breukrisico) → forceer 90+"
+
+    # Verlichting — NEN 3140 isolatie-resistance onveilig
+    if asset.asset_type == "verlichting":
+        iso_unsafe = base_q.filter(
+            InspectionDefect.nen3140_isolatie_megaohm.isnot(None),
+            InspectionDefect.nen3140_isolatie_megaohm < 0.5,
+        ).first()
+        if iso_unsafe:
+            return 80, "NEN 3140 isolatie < 0.5 MΩ (elektrische onveiligheid) → forceer 80+"
+
+    # Wegmarkering — CROW 145 RL droog < 80 mcd = vervangen
+    if asset.asset_type == "wegmarkering":
+        rl_low = base_q.filter(
+            InspectionDefect.crow145_rl_droog_mcd.isnot(None),
+            InspectionDefect.crow145_rl_droog_mcd < 80,
+        ).first()
+        if rl_low:
+            return 70, "CROW 145 retroreflectie droog < 80 mcd (vervang-drempel) → forceer 70+"
+
+    # Riolering — NEN 3399 eindklasse 5 = acute vervanging
+    if asset.asset_type == "riolering":
+        klasse5 = base_q.filter(InspectionDefect.nen3399_klasse == 5).first()
+        if klasse5:
+            return 90, "NEN 3399 eindklasse 5 (direct vervangen) → forceer 90+"
+
+    return None
+
+
 def compute_asset_risk(db: Session, asset: Asset) -> dict:
     """Bereken risicoscore + uitleg. Werkt op één asset."""
     now = datetime.now(timezone.utc)
@@ -293,7 +380,25 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
             f"vs laatste 90d) — +{trend_pts} pt."
         )
 
-    score = max(0, min(100, base_score + trend_pts))
+    # Inspectie-historie-bonus (v2.2) — formele defecten uit ondertekende inspecties
+    insp_pts, insp_total, insp_severe = _inspection_history_points(db, asset.id, one_year_ago)
+    if insp_pts > 0:
+        sev_text = f", waarvan {insp_severe} score≥4" if insp_severe else ""
+        rationale.append(
+            f"{insp_total} inspectie-defecten in afgelopen 12 mnd{sev_text} — +{insp_pts} pt."
+        )
+
+    score = max(0, min(100, base_score + trend_pts + insp_pts))
+
+    # Type-specifieke overrides (v2.2) — forceer score-floor bij norm-kritieke defecten
+    override = _type_specific_override(asset, db, one_year_ago)
+    override_applied = None
+    if override:
+        floor, reason = override
+        if floor > score:
+            rationale.append(f"⚠ NORM-OVERRIDE: {reason}")
+            score = floor
+            override_applied = {"floor": floor, "reason": reason}
 
     # Bandbepaling — drempels iets aangescherpt voor CROW-aware schaal
     if score >= 65:
@@ -333,12 +438,19 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
             "crow": crow_pts,
             "meldingen": mel_pts,
             "trend": trend_pts,
+            "inspection_history": insp_pts,  # v2.2
         },
         "trend": {
             "recent_90d": recent_m,
             "prior_90d": prior_m,
             "points": trend_pts,
         },
+        "inspection_history": {  # v2.2
+            "total_defects_12m": insp_total,
+            "severe_defects_score_4plus": insp_severe,
+            "points": insp_pts,
+        },
+        "norm_override": override_applied,  # v2.2 — None of {floor, reason}
         "geo_cluster": geo_signal,
         "worst_crow_klasse": worst_klasse,
         "rationale": rationale,
