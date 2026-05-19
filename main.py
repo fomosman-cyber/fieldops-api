@@ -143,6 +143,24 @@ def _run_migrations():
                         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_next_inspection_due ON assets(next_inspection_due)"))
                 print("[migration] assets inspectie-kolommen toegevoegd.")
 
+        # Organisations — self-service contact-velden voor org-admin (v3.7)
+        if "organizations" in insp.get_table_names():
+            ocols = [c["name"] for c in insp.get_columns("organizations")]
+            org_extra = {
+                "contact_email":   "VARCHAR(255)",
+                "contact_phone":   "VARCHAR(50)",
+                "billing_address": "TEXT",
+                "kvk_number":      "VARCHAR(20)",
+                "btw_number":      "VARCHAR(30)",
+            }
+            org_missing = [c for c in org_extra if c not in ocols]
+            if org_missing:
+                print(f"[migration] organizations contact-kolommen toevoegen: {org_missing}")
+                from sqlalchemy import text as _sql_text
+                with engine.begin() as conn:
+                    for col in org_missing:
+                        conn.execute(_sql_text(f"ALTER TABLE organizations ADD COLUMN {col} {org_extra[col]}"))
+
         # Photo-kolommen vergroten van VARCHAR(500) naar TEXT zodat
         # inline base64-data-URLs (foto's) zonder truncation worden opgeslagen.
         # Treft 3 tabellen: opleveringspunten, meldingen, inspection_defects.
