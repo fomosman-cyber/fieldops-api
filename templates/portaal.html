@@ -2173,6 +2173,66 @@
           <p>Organisatie instellingen en account informatie.</p>
         </div>
       </div>
+      <!-- Mijn profiel — eigen naam + telefoon bewerken (email + rol read-only) -->
+      <div class="card" style="max-width:600px;margin-bottom:20px;">
+        <div class="card-header"><h3 data-i18n="prof_title">👤 Mijn profiel</h3></div>
+        <p style="color:var(--text-muted);font-size:13px;margin:0 0 14px;" data-i18n="prof_intro">Pas je eigen gegevens aan. E-mail en rol/functie kun je niet zelf wijzigen — vraag een org-admin.</p>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="prof_first">Voornaam</label>
+              <input type="text" id="profFirstName" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="prof_last">Achternaam</label>
+              <input type="text" id="profLastName" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+            </div>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="prof_phone">Telefoon</label>
+            <input type="tel" id="profPhone" placeholder="06-..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label style="font-size:12px;color:var(--text-dim);font-weight:600;display:block;margin-bottom:4px;" data-i18n="prof_email">E-mail <span style="opacity:0.6;">(niet wijzigbaar)</span></label>
+              <input type="email" id="profEmail" disabled style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg-hover);color:var(--text-muted);font-family:inherit;cursor:not-allowed;">
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--text-dim);font-weight:600;display:block;margin-bottom:4px;" data-i18n="prof_role">Rol <span style="opacity:0.6;">(niet wijzigbaar)</span></label>
+              <input type="text" id="profRole" disabled style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg-hover);color:var(--text-muted);font-family:inherit;cursor:not-allowed;">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn-primary" onclick="saveProfile()" data-i18n="prof_save">Profiel opslaan</button>
+        </div>
+      </div>
+
+      <!-- Wachtwoord wijzigen -->
+      <div class="card" style="max-width:600px;margin-bottom:20px;">
+        <div class="card-header"><h3 data-i18n="pw_title">🔐 Wachtwoord wijzigen</h3></div>
+        <p style="color:var(--text-muted);font-size:13px;margin:0 0 14px;" data-i18n="pw_intro">Minimaal 12 tekens, mix van letters/cijfers/symbolen. Na wijzigen wordt je elders opnieuw gevraagd in te loggen.</p>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="pw_current">Huidig wachtwoord</label>
+            <input type="password" id="pwCurrent" autocomplete="current-password" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="pw_new">Nieuw wachtwoord</label>
+              <input type="password" id="pwNew" autocomplete="new-password" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="pw_confirm">Herhaal nieuw wachtwoord</label>
+              <input type="password" id="pwConfirm" autocomplete="new-password" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
+          <button class="btn-primary" onclick="changePassword()" data-i18n="pw_save">Wachtwoord wijzigen</button>
+        </div>
+      </div>
+
       <div class="card" style="max-width: 600px;">
         <div class="card-header"><h3>Organisatie</h3></div>
         <div style="display: flex; flex-direction: column; gap: 16px;">
@@ -6800,7 +6860,7 @@
       if (page === 'mijn-dag') loadMijnDag();
       if (page === 'dashboard') loadDashboardPredictiveWidget();
       if (page === 'integraties') loadIntegrations();
-      if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); }
+      if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); }
     }
 
     // ── Load Users ──
@@ -14937,6 +14997,76 @@
         showToast('PDF-export gedownload (' + logs.length + ' regels)', 'success');
       }).catch(function(err){
         showToast('PDF-export mislukt: ' + (err.message || 'Onbekend'), 'error');
+      });
+    }
+
+    // ── Self-service profiel + wachtwoord ──
+    function loadProfileForm() {
+      // Vul de profiel-form met currentUser-data. currentUser is global,
+      // gezet bij login en in loadUserData (volgt /api/auth/me-response).
+      if (!currentUser) return;
+      var fn = document.getElementById('profFirstName');
+      var ln = document.getElementById('profLastName');
+      var ph = document.getElementById('profPhone');
+      var em = document.getElementById('profEmail');
+      var rl = document.getElementById('profRole');
+      if (fn) fn.value = currentUser.first_name || '';
+      if (ln) ln.value = currentUser.last_name || '';
+      if (ph) ph.value = currentUser.phone || '';
+      if (em) em.value = currentUser.email || '';
+      if (rl) rl.value = currentUser.role || '';
+    }
+
+    function saveProfile() {
+      var payload = {
+        first_name: (document.getElementById('profFirstName').value || '').trim(),
+        last_name:  (document.getElementById('profLastName').value || '').trim(),
+        phone:      (document.getElementById('profPhone').value || '').trim() || null,
+      };
+      if (!payload.first_name || !payload.last_name) {
+        showToast(t('prof_required') || 'Voornaam en achternaam zijn verplicht', 'error');
+        return;
+      }
+      api('PATCH', '/api/users/me/profile', payload).then(function(user){
+        if (user) {
+          currentUser = Object.assign({}, currentUser || {}, user);
+          localStorage.setItem('fieldops_user', JSON.stringify(currentUser));
+          // Naam-weergave in topbar bijwerken
+          var nm = document.getElementById('topUserName');
+          if (nm && user.first_name) nm.textContent = (user.first_name + ' ' + (user.last_name || '')).trim();
+        }
+        showToast(t('prof_saved') || 'Profiel opgeslagen', 'success');
+      }).catch(function(err){
+        showToast((t('prof_failed') || 'Opslaan mislukt') + ': ' + (err.message || ''), 'error');
+      });
+    }
+
+    function changePassword() {
+      var cur = document.getElementById('pwCurrent').value;
+      var nw  = document.getElementById('pwNew').value;
+      var cf  = document.getElementById('pwConfirm').value;
+      if (!cur || !nw || !cf) {
+        showToast(t('pw_all_required') || 'Vul alle velden in', 'error');
+        return;
+      }
+      if (nw !== cf) {
+        showToast(t('pw_mismatch') || 'Nieuwe wachtwoorden komen niet overeen', 'error');
+        return;
+      }
+      if (nw.length < 12) {
+        showToast(t('pw_too_short') || 'Nieuw wachtwoord moet minimaal 12 tekens hebben', 'error');
+        return;
+      }
+      api('POST', '/api/users/me/password', {
+        current_password: cur,
+        new_password: nw,
+      }).then(function(){
+        document.getElementById('pwCurrent').value = '';
+        document.getElementById('pwNew').value = '';
+        document.getElementById('pwConfirm').value = '';
+        showToast(t('pw_changed') || 'Wachtwoord gewijzigd — andere sessies worden uitgelogd', 'success');
+      }).catch(function(err){
+        showToast((t('pw_failed') || 'Wijzigen mislukt') + ': ' + (err.message || ''), 'error');
       });
     }
 

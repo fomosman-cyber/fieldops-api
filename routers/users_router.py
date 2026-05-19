@@ -5,10 +5,13 @@ from datetime import datetime, timedelta, timezone
 from database import get_db
 from models import User, Invitation, Organization
 from schemas import (
-    UserResponse, UserUpdate, InvitationCreate, InvitationResponse,
-    AcceptInvitationRequest,
+    UserResponse, UserUpdate, UserSelfUpdate, PasswordChangeRequest,
+    InvitationCreate, InvitationResponse, AcceptInvitationRequest,
 )
-from auth import get_current_user, hash_password, validate_password_strength, invalidate_user_sessions
+from auth import (
+    get_current_user, hash_password, verify_password,
+    validate_password_strength, invalidate_user_sessions,
+)
 from permissions import require_org_admin, list_assignable_roles
 from email_service import send_invitation_email, send_welcome_email
 from audit import log_action, ACTION
@@ -149,6 +152,83 @@ def _collect_user_data(db: Session, user: User) -> dict:
         "oauth_microsoft_metadata": ms_meta,
         "password_reset_history": reset_tokens,
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Self-service profiel + wachtwoord
+# Eigen gegevens aanpassen — geen email, geen rol (vereisen admin).
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.patch("/me/profile", response_model=UserResponse)
+def update_my_profile(
+    update: UserSelfUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Self-service profiel-edit (alleen first_name, last_name, phone).
+
+    Email en role kunnen niet via deze endpoint gewijzigd worden — vereist
+    een org-admin via PUT /api/users/{user_id}.
+    """
+    data = update.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(status_code=400, detail="Geen velden om te wijzigen")
+
+    before = {k: getattr(current_user, k) for k in data.keys()}
+
+    # Whitelist enforcement — pak alleen de 3 toegestane velden
+    allowed = {"first_name", "last_name", "phone"}
+    for field, value in data.items():
+        if field not in allowed:
+            continue
+        # Strip strings + zet lege strings naar None voor phone
+        if isinstance(value, str):
+            value = value.strip()
+            if field == "phone" and value == "":
+                value = None
+        setattr(current_user, field, value)
+
+    db.commit()
+    db.refresh(current_user)
+
+    log_action(db, request, current_user,
+               action=ACTION.USER_UPDATE, entity_type="user-self-profile",
+               entity_id=current_user.id, before=before, after=data)
+    return current_user
+
+
+@router.post("/me/password")
+def change_my_password(
+    payload: PasswordChangeRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Self-service wachtwoord-wijziging.
+
+    Vereist het huidige wachtwoord ter verificatie. Bij succes worden alle
+    bestaande JWT-sessies van deze gebruiker ge-invalideerd (na save logt
+    de gebruiker op andere apparaten automatisch uit).
+    """
+    if not verify_password(payload.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Huidig wachtwoord is onjuist")
+    if payload.current_password == payload.new_password:
+        raise HTTPException(status_code=400, detail="Nieuw wachtwoord moet anders zijn dan huidige")
+
+    # Validatie (lengte + complexiteit)
+    validate_password_strength(payload.new_password)
+
+    current_user.hashed_password = hash_password(payload.new_password)
+    # Alle bestaande sessies/JWTs invalideren — voorkomt dat een gestolen
+    # token na een password-change nog werkt (best practice).
+    invalidate_user_sessions(current_user)
+    db.commit()
+
+    log_action(db, request, current_user,
+               action=ACTION.USER_UPDATE, entity_type="user-self-password",
+               entity_id=current_user.id, after={"password_changed": True})
+    return {"message": "Wachtwoord succesvol gewijzigd", "logout_other_sessions": True}
 
 
 @router.get("/me/export")

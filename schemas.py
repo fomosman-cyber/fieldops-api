@@ -76,6 +76,26 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
 
 
+class UserSelfUpdate(BaseModel):
+    """Self-service profiel-edit — alleen velden die user zelf mag wijzigen.
+
+    Email en role bewust uitgesloten (vereisen admin-actie).
+    """
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone: Optional[str] = None
+
+
+class PasswordChangeRequest(BaseModel):
+    """Self-service wachtwoord-wijziging.
+
+    Vereist het huidige wachtwoord voor verificatie (voorkomt dat een
+    gestolen sessie het wachtwoord kan veranderen).
+    """
+    current_password: str
+    new_password: str
+
+
 # Organization
 class OrganizationResponse(BaseModel):
     id: str
