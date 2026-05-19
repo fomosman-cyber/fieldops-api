@@ -35,10 +35,11 @@ from models import User, Asset, Inspection, InspectionDefect, InspectionElement
 from auth import get_current_user
 
 import kunstwerken_taxonomy as kt
+import crow_146
 
 router = APIRouter(prefix="/api/ai", tags=["AI-foto-classificatie"])
 
-AI_VERSION = "ai-stub.v0.1-heuristic-2026-05"
+AI_VERSION = "ai-stub.v0.2-crow146-2026-05"
 
 
 class ClassifyRequest(BaseModel):
@@ -217,5 +218,73 @@ def classify(
         "version": AI_VERSION,
         "method": "heuristic-stub",
         "note": "Confidence-cijfers zijn indicatief. Geen vervanging voor ervaren inspecteur.",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CROW 146a/b — specialized verharding-inspectie endpoint
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Crow146Request(BaseModel):
+    verhardingstype: Optional[str] = Field(None, description="'a' = asfalt, 'b' = elementen (klinkers/tegels). Leeg = auto-detect.")
+    asset_type: Optional[str] = Field(None, description="wegvak, trottoir, fietspad — hint voor auto-detect")
+    properties_hint: Optional[str] = Field(None, description="vrije tekst hint (bv. 'ZOAB-2-deklaag' of 'betonstraatsteen')")
+    element_context: Optional[str] = Field(None, description="bv. 'BRUG.BRUGDEK' — relevant element binnen kunstwerk")
+    photo_data_url: Optional[str] = Field(None, description="data:image/...;base64,...")
+    photo_mean_brightness: Optional[float] = Field(None, ge=0, le=255)
+    photo_dominant_color: Optional[str] = Field(None, description="hex of 'r,g,b'")
+
+
+@router.post("/classify-crow146")
+def classify_crow146_endpoint(
+    req: Crow146Request,
+    current_user: User = Depends(get_current_user),
+):
+    """CROW 146 verharding-inspectie classificatie.
+
+    Identificeert verhardingstype (asfalt 146a vs elementen 146b) en geeft
+    top-5 waarschijnlijke schadebeelden met advies-maatregel + GW-term.
+
+    Geschikt voor:
+      - Inspecteurs in opleiding bij schouwronde wegen/trottoirs
+      - Snelle classificatie bij bulk-meldingen openbare ruimte
+      - Suggestie-input bij Kunstwerken-inspectie BRUG.BRUGDEK element
+
+    Niet bedoeld als vervanging voor formele CROW 146-inspectie.
+    """
+    # Auto-detect verhardingstype als niet opgegeven
+    rgb = _color_to_rgb(req.photo_dominant_color or "")
+    rgb_tuple = (rgb[0], rgb[1], rgb[2]) if rgb else None
+
+    vt = req.verhardingstype
+    if vt not in ("a", "b"):
+        vt = crow_146.detect_verhardingstype(
+            asset_type=req.asset_type,
+            properties_hint=req.properties_hint,
+            dominant_color_rgb=rgb_tuple,
+        )
+
+    suggestions = crow_146.classify_crow146(
+        verhardingstype=vt,
+        brightness=req.photo_mean_brightness,
+        dominant_color_rgb=rgb_tuple,
+        element_context=req.element_context,
+    )
+
+    type_label = "Asfaltverharding (CROW 146a)" if vt == "a" else "Elementenverharding (CROW 146b)"
+
+    return {
+        "verhardingstype": vt,
+        "verhardingstype_label": type_label,
+        "detection_method": "explicit" if req.verhardingstype else "auto",
+        "suggestions": suggestions,
+        "klasse_advies": {k: crow_146.klasse_advies(k) for k in
+                          ["L1", "L2", "L3", "M1", "M2", "M3", "E1", "E2", "E3"]},
+        "version": AI_VERSION,
+        "method": "heuristic-crow146",
+        "note": "Heuristische top-5 — vervang door gecertificeerde inspectie voor formeel rapport. "
+                "Confidence is op basis van beeld-features + CROW 146-taxonomy, geen ML-model.",
+        "norm_reference": "CROW 146 (2010) + Standaard 2015",
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
