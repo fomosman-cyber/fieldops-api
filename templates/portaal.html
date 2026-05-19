@@ -88,6 +88,23 @@
     }
     html[data-theme="dark"] .data-table tr:hover td { background: rgba(255,255,255,0.03); }
     html[data-theme="dark"] body { background: var(--bg); color: var(--text); }
+    /* Dark-mode: native <select> heeft inline-style "background:rgba(0,0,0,0.04)"
+       wat in dark-thema bijna onleesbaar is. Forceer leesbare achtergrond +
+       force ook de opties zelf (browsers tonen die in systeem-licht-stijl). */
+    html[data-theme="dark"] select {
+      background: var(--card-bg) !important;
+      color: var(--text) !important;
+      border-color: var(--border) !important;
+    }
+    html[data-theme="dark"] select option,
+    html[data-theme="dark"] select optgroup {
+      background: var(--card-bg);
+      color: var(--text);
+    }
+    html[data-theme="dark"] select:focus {
+      border-color: var(--accent) !important;
+      outline: 2px solid rgba(56, 189, 248, 0.25);
+    }
     html[data-theme="dark"] input,
     html[data-theme="dark"] select,
     html[data-theme="dark"] textarea {
@@ -6738,7 +6755,19 @@
     }
 
     // ── Navigation ──
+    // Pages die alleen voor org-admins zichtbaar zijn — defensieve laag
+    // bovenop het verbergen van de top-nav links (die kan iemand met
+    // direct URL/hash bypassen, daarom check ook hier).
+    var ADMIN_ONLY_PAGES = ['admin'];
+
     function navigateTo(page) {
+      // RBAC: weiger admin-only paginas voor niet-org-admins
+      if (ADMIN_ONLY_PAGES.indexOf(page) !== -1) {
+        if (!currentUser || !currentUser.is_org_admin) {
+          showToast('Geen toegang — alleen voor org-admins', 'error');
+          page = 'dashboard';
+        }
+      }
       // Hide all sections
       document.querySelectorAll('.page-section').forEach(function(s) {
         s.classList.remove('active');
