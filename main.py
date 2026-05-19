@@ -214,6 +214,7 @@ def _run_migrations():
                 "crow145_rl_nat_mcd":            "INTEGER",
                 "nen3399_code":                  "VARCHAR(4)",
                 "nen3399_klasse":                "INTEGER",
+                "nen3399_streng_id":             "VARCHAR(64)",
             }
             type_missing = [c for c in type_specific_cols if c not in dcols]
             if type_missing:
@@ -221,6 +222,8 @@ def _run_migrations():
                 with engine.begin() as conn:
                     for col in type_missing:
                         conn.execute(text(f"ALTER TABLE inspection_defects ADD COLUMN {col} {type_specific_cols[col]}"))
+                    if "nen3399_streng_id" in type_missing:
+                        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_defects_nen3399_streng ON inspection_defects(nen3399_streng_id)"))
 
         # OpleveringPunt — photo_url_after (foto na uitvoering, toegevoegd 2026-05-11
         # voor voor/na-vergelijking bij opleverpunten)

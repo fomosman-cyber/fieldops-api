@@ -27,6 +27,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 import csv
 import io
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -95,6 +96,7 @@ def _defect_dict(d: InspectionDefect) -> dict:
         "crow145_rl_nat_mcd": d.crow145_rl_nat_mcd,
         "nen3399_code": d.nen3399_code,
         "nen3399_klasse": d.nen3399_klasse,
+        "nen3399_streng_id": d.nen3399_streng_id,
         "created_at": d.created_at.isoformat() if d.created_at else None,
     }
 
@@ -555,6 +557,24 @@ def create_inspection(
             raise HTTPException(status_code=400, detail="Inspecteur niet gevonden in organisatie")
     inspecteur_naam = payload.inspecteur_naam or f"{current_user.first_name} {current_user.last_name}".strip()
 
+    # NEN 3140 — verlichting-inspecties vereisen VOP/VP/VIOP-gekwalificeerd
+    # inspecteur. Het certificaat wordt opgeslagen in inspecteur_certificaat.
+    # Patroon: 'VOP', 'VP' of 'VIOP' (optioneel met cijfers/jaartal erachter).
+    if kunstwerk_type == "verlichting":
+        cert = (payload.inspecteur_certificaat or "").strip().upper()
+        if not cert:
+            raise HTTPException(
+                status_code=400,
+                detail="NEN 3140-keuring vereist inspecteur_certificaat (VOP / VP / VIOP). "
+                       "Vul deze in op de inspectie-creatie.",
+            )
+        if not re.match(r"\b(VOP|VP|VIOP)\b", cert):
+            raise HTTPException(
+                status_code=400,
+                detail=f"NEN 3140-certificaat moet beginnen met VOP, VP of VIOP (ontvangen: '{cert[:40]}'). "
+                       "Voorbeeld geldig: 'VOP 2026-1234', 'VIOP-N3140-2025'.",
+            )
+
     # NEN-EN 1176 — valideer inspectie-kind alleen voor speeltoestellen
     nen1176_kind = None
     if payload.nen1176_inspectie_kind:
@@ -643,6 +663,77 @@ def get_metrics(
     """Aparte endpoint voor metrics — lichtgewicht voor dashboard refresh."""
     insp = _get_inspection_or_404(db, inspection_id, current_user)
     return _compute_metrics(db, insp)
+
+
+@router.get("/{inspection_id}/streng-aggregatie")
+def get_nen3399_streng_aggregatie(
+    inspection_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """NEN 3399 streng-eindklasse aggregatie voor riolering-inspecties.
+
+    Groepeert alle defecten per `nen3399_streng_id` en bepaalt per streng:
+      - max_klasse (zwaarste schade — bepalend voor vervang-prioriteit)
+      - aantal_defecten
+      - codes (lijst BAA/BAB/etc. die voorkomen)
+      - dominant_code (meest-frequente)
+
+    NEN 3399 § 5: 'Eindklasse strengtoestand 1-5 op basis van zwaarste
+    BAA-BAQ-schade in streng' — deze endpoint geeft die aggregatie.
+    """
+    from collections import defaultdict, Counter
+    insp = _get_inspection_or_404(db, inspection_id, current_user)
+    if insp.kunstwerk_type != "riolering":
+        raise HTTPException(
+            status_code=400,
+            detail="streng-aggregatie is alleen relevant voor kunstwerk_type=riolering",
+        )
+
+    # Verzamel alle defecten met streng-ID via element-relaties
+    strengen: dict[str, list] = defaultdict(list)
+    ongegroepeerd = []
+    for el in insp.elementen or []:
+        for d in (el.defecten or []):
+            sid = d.nen3399_streng_id
+            if sid:
+                strengen[sid].append(d)
+            else:
+                ongegroepeerd.append(d)
+
+    result = []
+    for sid, defects in sorted(strengen.items()):
+        klassen = [d.nen3399_klasse for d in defects if d.nen3399_klasse is not None]
+        codes = [d.nen3399_code for d in defects if d.nen3399_code]
+        max_klasse = max(klassen) if klassen else None
+        code_counts = Counter(codes)
+        dominant = code_counts.most_common(1)[0][0] if code_counts else None
+        result.append({
+            "streng_id": sid,
+            "max_klasse": max_klasse,
+            "max_klasse_advies": _nen3399_advies(max_klasse),
+            "aantal_defecten": len(defects),
+            "codes": sorted(set(codes)),
+            "dominant_code": dominant,
+        })
+
+    return {
+        "inspection_id": inspection_id,
+        "strengen_count": len(strengen),
+        "ongegroepeerd_defects": len(ongegroepeerd),
+        "strengen": result,
+        "norm": "NEN 3399 § 5 — eindklasse strengtoestand",
+    }
+
+
+def _nen3399_advies(klasse: Optional[int]) -> str:
+    return {
+        1: "Geen actie",
+        2: "Monitoren — volgende inspectie binnen 5 jaar",
+        3: "Onderhoud binnen 1-2 jaar",
+        4: "Vervangen binnen 5-10 jaar — planmatig",
+        5: "Direct vervangen — acute schade",
+    }.get(klasse, "Onbekend (klasse niet ingevuld)")
 
 
 @router.post("/{inspection_id}/recompute")
@@ -849,6 +940,22 @@ def _update_asset_cycle(db: Session, insp: Inspection) -> None:
             if insp.nen1176_inspectie_kind == "hoofd":
                 asset.inspection_cycle_months = 12
                 asset.next_inspection_due = next_due
+    elif type_key in ("wegmarkering", "markering", "belijning"):
+        # CROW 145: cyclus afhankelijk van weg-categorie (stroomweg 12mnd vs erftoegang 24mnd).
+        # Pak weg_categorie uit asset.properties_json indien aanwezig.
+        weg_cat = None
+        if asset.properties_json:
+            try:
+                import json as _json
+                props = _json.loads(asset.properties_json)
+                weg_cat = props.get("weg_categorie") or props.get("wegtype")
+            except (ValueError, TypeError):
+                weg_cat = None
+        months = cycle.wegmarkering_cycle_months(weg_cat)
+        asset.inspection_cycle_months = months
+        next_due = cycle.next_due_date(now, months)
+        if next_due:
+            asset.next_inspection_due = next_due
     else:
         months = cycle.cycle_months_for(type_key, insp.conditiescore_overall)
         if months:
@@ -1173,6 +1280,26 @@ def add_defect(
     if vta_holte is not None and not (0 <= float(vta_holte) <= 100):
         raise HTTPException(status_code=400, detail="vta_holte_pct moet 0-100 zijn")
 
+    # VTA t/r-ratio < 0.30 = breukrisico volgens Mattheck-criterium.
+    # Server forceert dan risicoklasse 5 (acuut) als niet expliciet anders + log alert.
+    vta_tr = data.get("vta_t_r_ratio")
+    if vta_tr is not None:
+        if insp.kunstwerk_type != "boom":
+            raise HTTPException(
+                status_code=400,
+                detail="vta_t_r_ratio is alleen geldig voor kunstwerk_type=boom",
+            )
+        if float(vta_tr) < 0.30:
+            # Auto-escaleer naar klasse 5 als geen expliciete (lagere) klasse
+            if vta_klasse is None:
+                data["vta_risicoklasse"] = 5
+                vta_klasse = 5
+            # Voeg waarschuwing toe aan omschrijving — zichtbaar in PDF + frontend
+            warning = "[ACUUT BREUKRISICO] Mattheck-criterium t/r < 0.30 — nader onderzoek + maatregel binnen 4 weken."
+            existing_desc = (data.get("omschrijving") or "").strip()
+            if warning not in existing_desc:
+                data["omschrijving"] = (warning + "\n\n" + existing_desc).strip() if existing_desc else warning
+
     # NEN 3140 elektrische meetwaarden — alleen voor verlichting
     nen3140_fields = ("nen3140_isolatie_megaohm", "nen3140_aardingsweerstand_ohm",
                        "nen3140_aardlek_ms", "nen3140_aardlek_ma")
@@ -1199,7 +1326,8 @@ def add_defect(
     # NEN 3399 schadecodes — alleen voor riolering
     nen3399_code = data.get("nen3399_code")
     nen3399_klasse = data.get("nen3399_klasse")
-    if nen3399_code is not None or nen3399_klasse is not None:
+    nen3399_streng = data.get("nen3399_streng_id")
+    if nen3399_code is not None or nen3399_klasse is not None or nen3399_streng is not None:
         if insp.kunstwerk_type != "riolering":
             raise HTTPException(
                 status_code=400,
@@ -1250,6 +1378,7 @@ def add_defect(
         crow145_rl_nat_mcd=data.get("crow145_rl_nat_mcd"),
         nen3399_code=nen3399_code,
         nen3399_klasse=data.get("nen3399_klasse"),
+        nen3399_streng_id=(nen3399_streng.strip() if isinstance(nen3399_streng, str) else nen3399_streng),
     )
     db.add(d)
     db.flush()

@@ -80,10 +80,42 @@ _FIXED_CYCLE_MONTHS = {
     "verharding": 72,          # alias
     "fontein": 24,              # NEN 2767-4 installaties
     "kunstgrasveld": 36,        # NEN 2767-4 specifiek
-    "wegmarkering": 24,         # CROW 145 — 2-jaarlijkse retroreflectie-meting
+    "wegmarkering": 24,         # CROW 145 — 2-jaarlijkse retroreflectie-meting (default)
     "markering": 24,            # alias
     "belijning": 24,            # alias
 }
+
+# Wegmarkering-cyclus afhankelijk van weg-categorie (CROW 145 § 4.2).
+# Voor stroomwegen en gebiedsontsluitingswegen: jaarlijkse RL-meting verplicht
+# vanwege hogere snelheid + slijtage. Voor erftoegangswegen: 24 maanden.
+_WEGMARKERING_CYCLE_BY_CAT = {
+    "stroomweg":              12,
+    "stroomwegen":            12,
+    "hoofdweg":               12,
+    "gebiedsontsluiting":     12,
+    "gebiedsontsluitingsweg": 12,
+    "erftoegang":             24,
+    "erftoegangsweg":         24,
+    "verblijfsgebied":        24,
+    "fietspad":               24,
+}
+
+
+def wegmarkering_cycle_months(weg_categorie: Optional[str]) -> int:
+    """Bepaal cyclus voor wegmarkering op basis van weg-categorie (CROW 145).
+
+    Default (onbekend / niet ingevuld) = 24 maanden.
+
+    >>> wegmarkering_cycle_months("stroomweg")
+    12
+    >>> wegmarkering_cycle_months("erftoegang")
+    24
+    >>> wegmarkering_cycle_months(None)
+    24
+    """
+    if not weg_categorie:
+        return 24
+    return _WEGMARKERING_CYCLE_BY_CAT.get(weg_categorie.strip().lower(), 24)
 
 # NEN-EN 1176 multi-cyclus voor speeltoestellen — kies kind per inspectie.
 # Bron: NEN-EN 1176-7 § 6 + Warenwetbesluit Attractie- en Speeltoestellen art. 13.
@@ -159,6 +191,9 @@ def cycle_months_for(asset_type: Optional[str],
     key = asset_type.strip().lower()
 
     # 1. Vaste cycli (speeltoestel, verlichting, wegdek) — score-onafhankelijk
+    # Voor wegmarkering kan een asset-specifieke weg_categorie de cyclus
+    # overschrijven (zie wegmarkering_cycle_months helper). Caller geeft die
+    # info via een aparte route.
     if key in _FIXED_CYCLE_MONTHS:
         return _FIXED_CYCLE_MONTHS[key]
 
