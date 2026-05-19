@@ -992,7 +992,7 @@ class OpleveringPunt(Base):
     asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)  # optionele koppeling
 
     order_index = Column(Integer, default=0, nullable=False)  # volgorde in oplever-PV
-    status = Column(String(20), default="gereed", nullable=False)  # gereed | restpunt | afgekeurd
+    status = Column(String(20), default="gereed", nullable=False)  # gereed | restpunt | actiepunt | afgekeurd
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
