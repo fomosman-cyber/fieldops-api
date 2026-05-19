@@ -46,7 +46,7 @@ class OpleveringPuntIn(BaseModel):
     photo_url_after: Optional[str] = None     # foto na uitvoering
     asset_id: Optional[str] = None
     order_index: int = 0
-    status: str = Field(default="gereed", pattern="^(gereed|restpunt|afgekeurd)$")
+    status: str = Field(default="gereed", pattern="^(gereed|restpunt|actiepunt|afgekeurd)$")
 
 
 class OpleveringPuntUpdate(BaseModel):
@@ -57,7 +57,7 @@ class OpleveringPuntUpdate(BaseModel):
     photo_url_after: Optional[str] = None
     asset_id: Optional[str] = None
     order_index: Optional[int] = None
-    status: Optional[str] = Field(default=None, pattern="^(gereed|restpunt|afgekeurd)$")
+    status: Optional[str] = Field(default=None, pattern="^(gereed|restpunt|actiepunt|afgekeurd)$")
 
 
 class OpleveringIn(BaseModel):
