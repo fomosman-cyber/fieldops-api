@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Upl
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional
+from pydantic import BaseModel, Field
 from database import get_db
 from models import Melding, Project, Asset, User
 from schemas import MeldingCreate, MeldingResponse, MeldingUpdate
@@ -660,6 +661,193 @@ def update_melding(
         )
 
     return _melding_to_response(melding)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Bulk-acties
+# ─────────────────────────────────────────────────────────────────────────────
+
+class BulkMeldingUpdate(BaseModel):
+    """Bulk-update payload voor meldingen.
+
+    Alleen meegegeven velden worden gewijzigd. Identieke validatie als PATCH
+    op individuele melding. Max 500 meldingen per call (anti-DOS).
+    """
+    melding_ids: list[str] = Field(..., min_length=1, max_length=500)
+    status: Optional[str] = None
+    priority: Optional[str] = None
+    category: Optional[str] = None
+    assigned_to: Optional[str] = None     # user_id of "" voor ontkoppelen
+    project_id: Optional[str] = None      # of "" voor ontkoppelen
+    onderhoud_categorie: Optional[str] = None
+
+
+@router.post("/bulk-update")
+def bulk_update(
+    payload: BulkMeldingUpdate,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bulk-update meerdere meldingen tegelijk.
+
+    Use-cases:
+      - Selecteer 10 open meldingen → status="afgerond"
+      - Verplaats 30 wegmarkering-meldingen naar project-A
+      - Wijs 5 inspecties toe aan team-lid X
+
+    RBAC volgt dezelfde regels als individuele PATCH (zie update_melding):
+      - admin/manager/technician = alle velden
+      - inspector = alleen eigen meldingen, geen status
+      - contractor = alleen status
+
+    Validatie:
+      - Alle meldingen binnen eigen org
+      - Asset-FK + project-FK gecheckt
+      - Status='opgelost'/'afgerond' vereist photo_after (check per melding)
+
+    Output: { updated: int, skipped: [{id, reason}], audit_logged: int }
+    """
+    if not (can_edit_melding_full(current_user) or is_inspector(current_user) or can_change_status(current_user)):
+        raise HTTPException(status_code=403, detail="Geen rechten voor bulk-update")
+
+    # Welke velden zijn meegegeven (exclude None én exclude_unset)
+    raw = payload.model_dump(exclude={"melding_ids"}, exclude_unset=True)
+    update_fields = {k: v for k, v in raw.items() if v is not None or k in raw}
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="Geen velden om te wijzigen")
+
+    # Normaliseer "" naar None voor nullable FKs
+    for fk in ("assigned_to", "project_id"):
+        if fk in update_fields and update_fields[fk] == "":
+            update_fields[fk] = None
+
+    # Validate project_id (als opgegeven en niet None)
+    if "project_id" in update_fields and update_fields["project_id"]:
+        proj = db.query(Project).filter(
+            Project.id == update_fields["project_id"],
+            Project.organization_id == current_user.organization_id,
+        ).first()
+        if not proj:
+            raise HTTPException(status_code=400, detail="Project niet in jouw organisatie")
+
+    # Validate assigned_to (user moet in eigen org zitten)
+    if "assigned_to" in update_fields and update_fields["assigned_to"]:
+        u = db.query(User).filter(
+            User.id == update_fields["assigned_to"],
+            User.organization_id == current_user.organization_id,
+            User.is_active == True,
+        ).first()
+        if not u:
+            raise HTTPException(status_code=400, detail="Toegewezen gebruiker niet in jouw organisatie")
+
+    # Ophalen meldingen — alleen binnen org
+    meldingen = db.query(Melding).filter(
+        Melding.id.in_(payload.melding_ids),
+        Melding.organization_id == current_user.organization_id,
+    ).all()
+    found_ids = {m.id for m in meldingen}
+    missing_ids = [mid for mid in payload.melding_ids if mid not in found_ids]
+
+    updated = 0
+    skipped = [{"id": mid, "reason": "niet gevonden"} for mid in missing_ids]
+    is_status_change = "status" in update_fields
+
+    for m in meldingen:
+        # RBAC per melding
+        if can_edit_melding_full(current_user):
+            pass
+        elif is_inspector(current_user):
+            if m.created_by != current_user.id:
+                skipped.append({"id": m.id, "reason": "geen eigenaarschap"})
+                continue
+            if is_status_change:
+                skipped.append({"id": m.id, "reason": "inspector mag geen status wijzigen"})
+                continue
+        elif can_change_status(current_user):
+            # Contractor: alleen pure status-update
+            if list(update_fields.keys()) != ["status"]:
+                skipped.append({"id": m.id, "reason": "alleen status-only is toegestaan"})
+                continue
+
+        # Foto-na-verplichting bij afsluiten
+        if is_status_change and update_fields["status"] in ("opgelost", "afgerond"):
+            if not m.photo_after_url:
+                skipped.append({"id": m.id, "reason": "foto-na ontbreekt voor afsluiten"})
+                continue
+
+        before = {k: getattr(m, k) for k in update_fields.keys()}
+        new_status = update_fields.get("status") if is_status_change else None
+        old_status = m.status if is_status_change else None
+
+        for field, value in update_fields.items():
+            setattr(m, field, value)
+        updated += 1
+
+        log_action(db, request, current_user,
+                   action=ACTION.MELDING_STATUS if is_status_change else ACTION.MELDING_UPDATE,
+                   entity_type="melding", entity_id=m.id,
+                   before=before, after=update_fields)
+
+        # Dagboek-entry per status-wijziging
+        if is_status_change and new_status != old_status:
+            from daybook_logger import log_daybook
+            log_daybook(
+                db,
+                user_id=current_user.id,
+                organization_id=current_user.organization_id,
+                entry_type="melding_status_change",
+                title="Bulk status-wijziging: " + (m.title or "(zonder titel)") + " → " + (new_status or ""),
+                description="Bulk-actie van '" + (old_status or "open") + "' naar '" + (new_status or "") + "'",
+                source_type="melding",
+                source_id=m.id,
+                lat=m.lat,
+                lng=m.lng,
+                project_id=m.project_id,
+                commit=False,  # 1x commit aan einde
+            )
+
+    db.commit()
+
+    return {
+        "updated": updated,
+        "skipped": skipped,
+        "skipped_count": len(skipped),
+        "total_requested": len(payload.melding_ids),
+        "fields_changed": list(update_fields.keys()),
+    }
+
+
+class BulkMeldingDelete(BaseModel):
+    melding_ids: list[str] = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/bulk-delete")
+def bulk_delete(
+    payload: BulkMeldingDelete,
+    request: Request,
+    current_user: User = Depends(require_org_admin),
+    db: Session = Depends(get_db),
+):
+    """Bulk-delete meldingen (alleen org-admin)."""
+    meldingen = db.query(Melding).filter(
+        Melding.id.in_(payload.melding_ids),
+        Melding.organization_id == current_user.organization_id,
+    ).all()
+    deleted = 0
+    for m in meldingen:
+        snapshot = {"title": m.title, "category": m.category, "status": m.status,
+                    "project_id": m.project_id}
+        log_action(db, request, current_user,
+                   action=ACTION.MELDING_DELETE,
+                   entity_type="melding", entity_id=m.id, before=snapshot)
+        db.delete(m)
+        deleted += 1
+    db.commit()
+    return {
+        "deleted": deleted,
+        "total_requested": len(payload.melding_ids),
+    }
 
 
 @router.delete("/{melding_id}")

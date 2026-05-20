@@ -1541,6 +1541,10 @@
               <option value="">Project wijzigen...</option>
               <option value="__null__">— Geen project —</option>
             </select>
+            <select id="bulkAssignSelect" style="padding:6px 10px;border-radius:8px;border:none;font-size:13px;background:rgba(255,255,255,0.95);color:var(--text);font-weight:500;cursor:pointer;">
+              <option value="">Toewijzen aan...</option>
+              <option value="__null__">— Geen uitvoerder —</option>
+            </select>
             <button type="button" onclick="bulkDeleteMeldingen()" style="padding:6px 14px;border-radius:8px;border:none;background:rgba(220,38,38,0.95);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">🗑️ Verwijder</button>
             <button type="button" onclick="clearBulkSelection()" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.4);background:transparent;color:#fff;font-size:13px;font-weight:500;cursor:pointer;">✕ Selectie wissen</button>
           </div>
@@ -9181,6 +9185,28 @@
             bulkProj._bound = true;
           }
         }
+        // Bulk-assign dropdown — laad users on-demand
+        var bulkAssign = document.getElementById('bulkAssignSelect');
+        if (bulkAssign && !bulkAssign._usersLoaded) {
+          api('GET', '/api/users/').then(function(users) {
+            bulkAssign._usersLoaded = true;
+            bulkAssign.innerHTML = '<option value="">Toewijzen aan...</option>' +
+                                    '<option value="__null__">— Geen uitvoerder —</option>' +
+                                    (users || []).filter(function(u){ return u.is_active; }).map(function(u){
+                                      var name = ((u.first_name || '') + ' ' + (u.last_name || '')).trim() || u.email;
+                                      return '<option value="' + u.id + '">' + escapeHtml(name) + '</option>';
+                                    }).join('');
+          }).catch(function(){});
+        }
+        if (bulkAssign && !bulkAssign._bound) {
+          bulkAssign.addEventListener('change', function(e){
+            var v = e.target.value;
+            if (!v) return;
+            var sendValue = (v === '__null__') ? '' : v;  // backend interpreteert "" als ontkoppelen
+            bulkUpdateMeldingen('assigned_to', sendValue, 'Uitvoerder');
+          });
+          bulkAssign._bound = true;
+        }
         updateBulkBar();
       }).catch(function(err) {
         console.error('Meldingen laden mislukt:', err);
@@ -9571,22 +9597,36 @@
       var master = document.getElementById('selectAllMeldingen');
       if (master) { master.checked = false; master.indeterminate = false; }
       updateBulkBar();
-      // Reset dropdowns
-      var s = document.getElementById('bulkStatusSelect'); if (s) s.value = '';
-      var p = document.getElementById('bulkPrioritySelect'); if (p) p.value = '';
+      // Reset alle dropdowns
+      ['bulkStatusSelect','bulkPrioritySelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
+        var s = document.getElementById(id); if (s) s.value = '';
+      });
     }
 
     function bulkUpdateMeldingen(field, value, label) {
       var ids = getSelectedMeldingIds();
       // value === null is geldig (ontkoppel project); andere falsy = no-op
-      if (ids.length === 0 || (value === '' || value === undefined)) return;
+      if (ids.length === 0 || (value === '' || value === undefined)) {
+        // Reset dropdowns die misschien geselecteerd zijn maar geen actie deden
+        ['bulkStatusSelect','bulkPrioritySelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
+          var s = document.getElementById(id); if (s) s.value = '';
+        });
+        return;
+      }
       // Lookup display-label voor confirm-dialog
-      var displayValue = (value === null) ? '(geen)' : value;
-      if (field === 'project_id' && value && value !== null) {
+      var displayValue = (value === null || value === '') ? '(geen)' : value;
+      if (field === 'project_id' && value) {
         var proj = (allProjects || []).find(function(p){ return p.id === value; });
         if (proj) displayValue = proj.name;
+      } else if (field === 'assigned_to' && value) {
+        var assignSel = document.getElementById('bulkAssignSelect');
+        if (assignSel) {
+          var opt = Array.prototype.find.call(assignSel.options, function(o){ return o.value === value; });
+          if (opt) displayValue = opt.textContent;
+        }
       }
-      var icon = field === 'status' ? '🔄' : (field === 'priority' ? '⚡' : '📁');
+      var iconMap = { status:'🔄', priority:'⚡', project_id:'📁', assigned_to:'👤' };
+      var icon = iconMap[field] || '✏️';
       showConfirm({
         icon: icon,
         title: label + ' wijzigen?',
@@ -9594,28 +9634,36 @@
         actionLabel: 'Bijwerken',
         danger: false,
         onConfirm: function() {
-          var payload = {}; payload[field] = value;
-          var ok = 0, fail = 0;
-          var done = 0;
-          ids.forEach(function(id){
-            api('PATCH', '/api/meldingen/' + id, payload).then(function(){
-              ok++;
-            }).catch(function(){
-              fail++;
-            }).finally(function(){
-              done++;
-              if (done === ids.length) {
-                showToast(ok + ' bijgewerkt' + (fail ? ' (' + fail + ' mislukt)' : ''), fail ? 'error' : 'success');
-                clearBulkSelection();
-                loadMeldingen();
-              }
+          // Backend bulk-endpoint: 1 call ipv N PATCH calls
+          var payload = { melding_ids: ids };
+          payload[field] = value;  // null/lege string wordt door backend correct geïnterpreteerd
+          api('POST', '/api/meldingen/bulk-update', payload).then(function(res) {
+            var msg = (res.updated || 0) + ' bijgewerkt';
+            if (res.skipped_count) msg += ' (' + res.skipped_count + ' overgeslagen)';
+            showToast(msg, (res.skipped_count && !res.updated) ? 'error' : 'success');
+            // Geef beknopte uitleg bij skipped als er issues zijn
+            if (res.skipped && res.skipped.length && res.skipped.length <= 5) {
+              setTimeout(function(){
+                var reasons = res.skipped.map(function(s){ return s.reason; }).filter(function(r,i,a){return a.indexOf(r)===i;}).join(', ');
+                if (reasons) showToast('Reden: ' + reasons, 'info');
+              }, 800);
+            }
+            clearBulkSelection();
+            loadMeldingen();
+          }).catch(function(err) {
+            showToast('Bulk-update mislukt: ' + (err.message || ''), 'error');
+            // Bij fout: alleen selectie behouden, dropdowns leegmaken
+            ['bulkStatusSelect','bulkPrioritySelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
+              var s = document.getElementById(id); if (s) s.value = '';
             });
           });
         },
-      });
-      // Reset alle 3 bulk-selects zodat dezelfde keuze opnieuw kan triggeren
-      ['bulkStatusSelect','bulkPrioritySelect','bulkProjectSelect'].forEach(function(id){
-        var s = document.getElementById(id); if (s) s.value = '';
+        onCancel: function() {
+          // Geannuleerd: alleen dropdowns resetten, selectie behouden
+          ['bulkStatusSelect','bulkPrioritySelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
+            var s = document.getElementById(id); if (s) s.value = '';
+          });
+        },
       });
     }
 
@@ -9629,20 +9677,13 @@
         actionLabel: 'Verwijderen',
         danger: true,
         onConfirm: function() {
-          var ok = 0, fail = 0, done = 0;
-          ids.forEach(function(id){
-            api('DELETE', '/api/meldingen/' + id).then(function(){
-              ok++;
-            }).catch(function(){
-              fail++;
-            }).finally(function(){
-              done++;
-              if (done === ids.length) {
-                showToast(ok + ' verwijderd' + (fail ? ' (' + fail + ' mislukt)' : ''), fail ? 'error' : 'success');
-                clearBulkSelection();
-                loadMeldingen();
-              }
-            });
+          // Backend bulk-delete: 1 call ipv N
+          api('POST', '/api/meldingen/bulk-delete', { melding_ids: ids }).then(function(res) {
+            showToast((res.deleted || 0) + ' meldingen verwijderd', 'success');
+            clearBulkSelection();
+            loadMeldingen();
+          }).catch(function(err) {
+            showToast('Verwijderen mislukt: ' + (err.message || ''), 'error');
           });
         },
       });
