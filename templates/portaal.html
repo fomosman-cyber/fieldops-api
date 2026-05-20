@@ -1867,7 +1867,51 @@
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
         <button class="btn-primary" onclick="openDaybookEntryModal()" data-i18n="db_add_btn">+ Handmatige notitie</button>
         <button class="btn-secondary" onclick="exportDaybookPDF()" data-i18n="db_pdf_btn">📄 PDF dagrapport</button>
+        <button class="btn-secondary" onclick="openDaybookExportModal()" data-i18n="db_csv_btn">📊 Excel/CSV uren-export</button>
         <button class="btn-secondary" onclick="openDaybookTeamOverview()" id="dbTeamBtn" style="display:none;" data-i18n="db_team_btn">👥 Team-overzicht</button>
+      </div>
+
+      <!-- Excel-export modal -->
+      <div class="modal-overlay" id="daybookExportModal">
+        <div class="modal" style="max-width:480px;">
+          <button class="modal-close" onclick="closeDaybookExportModal()">&times;</button>
+          <h2>📊 Excel/CSV uren-export</h2>
+          <p class="subtitle">Exporteer dagboek-entries naar CSV voor Excel, facturatie of urenregistratie. Eén regel per entry + totaal-regel + per-project breakdown.</p>
+          <div class="form-group">
+            <label>Periode</label>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+              <button type="button" class="btn-secondary" onclick="setDbExportPreset('week')" style="font-size:11px;padding:5px 10px;">Deze week</button>
+              <button type="button" class="btn-secondary" onclick="setDbExportPreset('lastweek')" style="font-size:11px;padding:5px 10px;">Vorige week</button>
+              <button type="button" class="btn-secondary" onclick="setDbExportPreset('month')" style="font-size:11px;padding:5px 10px;">Deze maand</button>
+              <button type="button" class="btn-secondary" onclick="setDbExportPreset('lastmonth')" style="font-size:11px;padding:5px 10px;">Vorige maand</button>
+              <button type="button" class="btn-secondary" onclick="setDbExportPreset('quarter')" style="font-size:11px;padding:5px 10px;">Dit kwartaal</button>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+              <div>
+                <label style="font-size:11px;color:var(--text-dim);">Van</label>
+                <input type="date" id="dbExportFrom">
+              </div>
+              <div>
+                <label style="font-size:11px;color:var(--text-dim);">Tot (incl.)</label>
+                <input type="date" id="dbExportTo">
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Project filter (optioneel)</label>
+            <select id="dbExportProject">
+              <option value="">— Alle projecten —</option>
+            </select>
+          </div>
+          <div class="form-group" id="dbExportUserWrap" style="display:none;">
+            <label>Gebruiker (alleen org-admin)</label>
+            <select id="dbExportUser"></select>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" onclick="closeDaybookExportModal()">Annuleren</button>
+            <button type="button" class="btn-primary" onclick="downloadDaybookCSV()">📥 Download CSV</button>
+          </div>
+        </div>
       </div>
 
       <div id="dbEntriesList">
@@ -15978,6 +16022,128 @@
       } catch (err) {
         showToast('PDF generatie mislukt: ' + (err.message || ''), 'error');
       }
+    }
+
+    function openDaybookExportModal() {
+      var modal = document.getElementById('daybookExportModal');
+      if (!modal) return;
+      // Default: deze maand
+      setDbExportPreset('month');
+      // Projecten vullen
+      var projSel = document.getElementById('dbExportProject');
+      projSel.innerHTML = '<option value="">— Alle projecten —</option>';
+      var fillProjects = function(ps) {
+        (ps || []).forEach(function(p) {
+          var opt = document.createElement('option');
+          opt.value = p.id; opt.textContent = p.name;
+          projSel.appendChild(opt);
+        });
+      };
+      if (allProjects && allProjects.length) {
+        fillProjects(allProjects);
+      } else {
+        api('GET', '/api/projects/').then(function(ps) {
+          allProjects = ps || [];
+          fillProjects(allProjects);
+        }).catch(function(){});
+      }
+      // User-selector voor org-admin
+      if (currentUser && currentUser.is_org_admin) {
+        var userWrap = document.getElementById('dbExportUserWrap');
+        var userSel = document.getElementById('dbExportUser');
+        userWrap.style.display = '';
+        userSel.innerHTML = '<option value="">📖 Mijn dagboek</option>';
+        api('GET', '/api/users/').then(function(users) {
+          (users || []).forEach(function(u) {
+            if (u.id === currentUser.id) return;
+            var name = ((u.first_name || '') + ' ' + (u.last_name || '')).trim() || u.email;
+            var opt = document.createElement('option');
+            opt.value = u.id; opt.textContent = '👤 ' + name;
+            userSel.appendChild(opt);
+          });
+        }).catch(function(){});
+      }
+      modal.classList.add('active');
+    }
+
+    function closeDaybookExportModal() {
+      var modal = document.getElementById('daybookExportModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function setDbExportPreset(preset) {
+      var today = new Date();
+      var from, to;
+      if (preset === 'week') {
+        // Maandag van deze week tot vandaag
+        var day = today.getDay() || 7;  // zondag = 7
+        from = new Date(today); from.setDate(today.getDate() - day + 1);
+        to = today;
+      } else if (preset === 'lastweek') {
+        var day = today.getDay() || 7;
+        to = new Date(today); to.setDate(today.getDate() - day);  // vorige zondag
+        from = new Date(to); from.setDate(to.getDate() - 6);
+      } else if (preset === 'month') {
+        from = new Date(today.getFullYear(), today.getMonth(), 1);
+        to = today;
+      } else if (preset === 'lastmonth') {
+        from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        to = new Date(today.getFullYear(), today.getMonth(), 0);
+      } else if (preset === 'quarter') {
+        var qStart = Math.floor(today.getMonth() / 3) * 3;
+        from = new Date(today.getFullYear(), qStart, 1);
+        to = today;
+      } else {
+        from = today; to = today;
+      }
+      var iso = function(d) {
+        return d.getFullYear() + '-' +
+          String(d.getMonth() + 1).padStart(2, '0') + '-' +
+          String(d.getDate()).padStart(2, '0');
+      };
+      document.getElementById('dbExportFrom').value = iso(from);
+      document.getElementById('dbExportTo').value = iso(to);
+    }
+
+    function downloadDaybookCSV() {
+      var fromVal = document.getElementById('dbExportFrom').value;
+      var toVal = document.getElementById('dbExportTo').value;
+      var projId = (document.getElementById('dbExportProject') || {}).value || '';
+      var userSel = document.getElementById('dbExportUser');
+      var userId = (userSel && userSel.value) || '';
+      if (!fromVal || !toVal) {
+        showToast('Vul beide datums in', 'error');
+        return;
+      }
+      var qs = 'from=' + encodeURIComponent(fromVal) + '&to=' + encodeURIComponent(toVal);
+      if (projId) qs += '&project_id=' + encodeURIComponent(projId);
+      if (userId) qs += '&user_id=' + encodeURIComponent(userId);
+
+      var token = localStorage.getItem('fieldops_token') || '';
+      showToast('CSV genereren...', 'info');
+      fetch('/api/daybook/export.csv?' + qs, {
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+      }).then(function(r) {
+        if (!r.ok) return r.json().then(function(j) { throw new Error(j.detail || ('HTTP ' + r.status)); });
+        // Filename uit Content-Disposition pakken
+        var disp = r.headers.get('Content-Disposition') || '';
+        var match = disp.match(/filename="([^"]+)"/);
+        var filename = match ? match[1] : ('Dagboek_' + fromVal + '_tot_' + toVal + '.csv');
+        return r.blob().then(function(blob) { return { blob: blob, filename: filename }; });
+      }).then(function(result) {
+        var url = window.URL.createObjectURL(result.blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = result.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        closeDaybookExportModal();
+        showToast('CSV gedownload', 'success');
+      }).catch(function(err) {
+        showToast('Export mislukt: ' + (err.message || ''), 'error');
+      });
     }
 
     function openDaybookTeamOverview() {
