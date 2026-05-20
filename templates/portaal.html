@@ -1872,7 +1872,16 @@
         <button class="btn-primary" onclick="openDaybookEntryModal()" data-i18n="db_add_btn">+ Handmatige notitie</button>
         <button class="btn-secondary" onclick="exportDaybookPDF()" data-i18n="db_pdf_btn">📄 PDF dagrapport</button>
         <button class="btn-secondary" onclick="openDaybookExportModal()" data-i18n="db_csv_btn">📊 Excel/CSV uren-export</button>
+        <button class="btn-secondary" onclick="toggleDaybookMap()" id="dbMapToggleBtn">🗺️ Kaart aan</button>
         <button class="btn-secondary" onclick="openDaybookTeamOverview()" id="dbTeamBtn" style="display:none;" data-i18n="db_team_btn">👥 Team-overzicht</button>
+      </div>
+
+      <!-- Dagboek-kaart: toont entries met GPS als markers -->
+      <div id="dbMapWrap" style="display:none;margin-bottom:14px;border-radius:12px;overflow:hidden;border:1px solid var(--border);">
+        <div id="dbMap" style="width:100%;height:320px;background:#e0f2fe;"></div>
+        <div style="padding:6px 10px;background:var(--card-bg-hover);font-size:11px;color:var(--text-dim);">
+          <span id="dbMapCount">0</span> entries met GPS · klik marker voor details
+        </div>
       </div>
 
       <!-- Excel-export modal -->
@@ -2278,10 +2287,11 @@
           <h1>Kaart</h1>
           <p>Bekijk projecten en meldingen op de kaart.</p>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <select id="kaartProjectFilter" class="btn-secondary" style="cursor:pointer;" onchange="filterKaart()">
             <option value="">Alle projecten</option>
           </select>
+          <button class="btn-secondary" id="kaartHeatmapBtn" onclick="toggleHeatmapLayer()" title="Toggle heatmap-laag">🔥 Heatmap uit</button>
           <button class="btn-primary" onclick="openMeldingModal()">+ Melding</button>
         </div>
       </div>
@@ -4072,6 +4082,8 @@
   <!-- ═══════ LEAFLET JS ═══════ -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <!-- Heatmap-plugin voor density-visualisatie van meldingen + dagboek-entries -->
+  <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
   <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
   <!-- ═══════ jsPDF voor rapportage ═══════ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -15889,6 +15901,8 @@
         daybookEntriesCache = data.entries || [];
         _renderDaybookStats(data);
         _renderDaybookEntries(data.entries || [], !!userId);
+        // Re-render kaart-markers als kaart zichtbaar is
+        if (dbMapVisible && dbMap) renderDaybookMapMarkers();
       }).catch(function(err) {
         if (listEl) listEl.innerHTML = '<div class="db-empty" style="color:var(--red);">' + (t('fout_laden') || 'Fout bij laden') + ': ' + escapeHtml(err.message || '') + '</div>';
       });
@@ -16151,6 +16165,88 @@
           showToast('PDF generatie mislukt: ' + (err.message || ''), 'error');
         }
       });
+    }
+
+    // ── Dagboek-mini-kaart ──────────────────────────────────────
+    var dbMap = null;
+    var dbMapMarkers = [];
+    var dbMapVisible = false;
+
+    function toggleDaybookMap() {
+      var wrap = document.getElementById('dbMapWrap');
+      var btn = document.getElementById('dbMapToggleBtn');
+      if (!wrap) return;
+      dbMapVisible = !dbMapVisible;
+      wrap.style.display = dbMapVisible ? '' : 'none';
+      if (btn) btn.textContent = dbMapVisible ? '🗺️ Kaart uit' : '🗺️ Kaart aan';
+      if (dbMapVisible) {
+        setTimeout(initDaybookMap, 50);  // Wait voor DOM-display
+      }
+    }
+
+    function initDaybookMap() {
+      if (!dbMap) {
+        dbMap = L.map('dbMap', { zoomControl: true, attributionControl: false }).setView([52.3, 5.3], 8);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap',
+          maxZoom: 19,
+        }).addTo(dbMap);
+      } else {
+        dbMap.invalidateSize();
+      }
+      renderDaybookMapMarkers();
+    }
+
+    function renderDaybookMapMarkers() {
+      if (!dbMap) return;
+      // Clear bestaande markers
+      dbMapMarkers.forEach(function(m) { dbMap.removeLayer(m); });
+      dbMapMarkers = [];
+
+      var pts = (daybookEntriesCache || []).filter(function(e) { return e.lat && e.lng; });
+      var countEl = document.getElementById('dbMapCount');
+      if (countEl) countEl.textContent = pts.length;
+
+      if (!pts.length) return;
+
+      var iconMap = {
+        melding_created: ['🔔', '#7c3aed'],
+        melding_status_change: ['↻', '#7c3aed'],
+        inspection_completed: ['🔍', '#0284c7'],
+        oplevering_completed: ['✅', '#16a34a'],
+        asset_visited: ['📍', '#06b6d4'],
+        manual_note: ['📝', '#7c3aed'],
+      };
+
+      var bounds = [];
+      pts.forEach(function(e) {
+        var iconData = iconMap[e.entry_type] || ['•', '#7c3aed'];
+        var dt = new Date(e.occurred_at);
+        var time = dt.getHours().toString().padStart(2, '0') + ':' + dt.getMinutes().toString().padStart(2, '0');
+        var marker = L.marker([e.lat, e.lng], {
+          icon: L.divIcon({
+            className: '',
+            html: '<div style="width:28px;height:28px;border-radius:50%;background:' + iconData[1] + ';border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;font-size:14px;">' + iconData[0] + '</div>',
+            iconSize: [28, 28],
+            iconAnchor: [14, 14],
+          }),
+        }).bindPopup(
+          '<div style="min-width:180px;font-family:DM Sans,sans-serif;">' +
+          '<strong style="font-size:13px;">' + time + ' · ' + escapeHtml(e.title || '') + '</strong>' +
+          (e.entry_type ? '<br><span style="color:#888;font-size:11px;">' + e.entry_type + '</span>' : '') +
+          (e.duration_minutes ? '<br><span style="color:#0284c7;font-size:11px;">⏱ ' + e.duration_minutes + ' min</span>' : '') +
+          (e.project_name ? '<br><span style="color:#888;font-size:11px;">📁 ' + escapeHtml(e.project_name) + '</span>' : '') +
+          (e.description ? '<p style="margin-top:6px;font-size:11px;color:#666;">' + escapeHtml(e.description).slice(0, 200) + '</p>' : '') +
+          '</div>'
+        ).addTo(dbMap);
+        dbMapMarkers.push(marker);
+        bounds.push([e.lat, e.lng]);
+      });
+
+      // Auto-zoom om alle entries te omvatten
+      if (bounds.length > 0) {
+        dbMap.fitBounds(bounds, { padding: [20, 20], maxZoom: 16 });
+      }
     }
 
     function openDaybookExportModal() {
@@ -17646,6 +17742,44 @@
     var _splitContext = null;         // { assetId, assetCode, points: [], markers: [] }
     var _mergeContext = { assetIds: [] };   // gesorteerde lijst voor stabiele volgorde
 
+    // Heatmap-laag voor meldingen-density visualisatie
+    var meldingHeatLayer = null;
+    var heatmapEnabled = false;
+
+    function toggleHeatmapLayer() {
+      if (!map) return;
+      heatmapEnabled = !heatmapEnabled;
+      var btn = document.getElementById('kaartHeatmapBtn');
+      if (heatmapEnabled) {
+        // Build heat-points uit alle gefilterde meldingen
+        var heatPoints = (allMeldingen || []).filter(function(m) { return m.lat && m.lng; })
+          .map(function(m) {
+            // Weight = prioriteit-zwaarte (kritiek = 1.0, hoog = 0.7, etc)
+            var w = { kritiek: 1.0, hoog: 0.75, normaal: 0.5, laag: 0.3 }[m.priority] || 0.5;
+            return [m.lat, m.lng, w];
+          });
+        if (meldingHeatLayer) map.removeLayer(meldingHeatLayer);
+        meldingHeatLayer = L.heatLayer(heatPoints, {
+          radius: 30,
+          blur: 22,
+          maxZoom: 17,
+          gradient: { 0.2: '#3b82f6', 0.4: '#22c55e', 0.6: '#eab308', 0.8: '#f97316', 1.0: '#dc2626' },
+        }).addTo(map);
+        if (btn) btn.textContent = '🔥 Heatmap aan';
+        if (btn) btn.classList.add('btn-primary');
+        if (btn) btn.classList.remove('btn-secondary');
+        showToast(heatPoints.length + ' meldingen in heatmap', 'info');
+      } else {
+        if (meldingHeatLayer) {
+          map.removeLayer(meldingHeatLayer);
+          meldingHeatLayer = null;
+        }
+        if (btn) btn.textContent = '🔥 Heatmap uit';
+        if (btn) btn.classList.remove('btn-primary');
+        if (btn) btn.classList.add('btn-secondary');
+      }
+    }
+
     function loadMapData() {
       if (!map) return;
 
@@ -17656,6 +17790,11 @@
       assetWegvakLayers = {};
       meldingMarkers.forEach(function(m) { map.removeLayer(m); });
       meldingMarkers = [];
+      // Heatmap ook verwijderen — wordt herbouwd als heatmapEnabled === true
+      if (meldingHeatLayer) {
+        map.removeLayer(meldingHeatLayer);
+        meldingHeatLayer = null;
+      }
       if (drawnItems) drawnItems.clearLayers();
 
       // Load wegvak-assets parallel met projects (conditie-kleuren).
