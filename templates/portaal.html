@@ -1047,6 +1047,8 @@
       <button class="notif-btn" id="helpBtn" aria-label="Handleiding" onclick="window.open('/handleiding', '_blank')" title="Open handleiding">❓</button>
       <button class="notif-btn" id="themeBtn" aria-label="Donker thema" onclick="toggleTheme()" title="Donker/licht thema">🌓</button>
       <button class="notif-btn" id="pushBtn" aria-label="Push notificaties" onclick="togglePushNotifications()" title="Browser push notificaties aan/uit (separate van in-app bell)" style="display:none;">📱</button>
+      <!-- PWA install-knop in topbar (alleen zichtbaar als installable + niet al standalone) -->
+      <button class="notif-btn" id="pwaTopbarBtn" onclick="triggerPwaInstall()" title="Installeren als app op je device" style="display:none;">📲</button>
       <!-- In-app notification bell met badge + dropdown -->
       <div style="position:relative;" id="notifBellWrap">
         <button class="notif-btn" id="notifBellBtn" aria-label="Notificaties" onclick="toggleNotifDropdown()" title="Notificaties" style="position:relative;">
@@ -18541,42 +18543,61 @@
         || window.navigator.standalone === true;
       if (isStandalone) {
         document.documentElement.classList.add('pwa-standalone');
-        return; // geen banner als al geïnstalleerd
+        return; // geen banner of topbar-knop als al geïnstalleerd
       }
 
       var installDismissed = localStorage.getItem('pwaInstallDismissed');
       var dismissedAt = installDismissed ? parseInt(installDismissed, 10) : 0;
       var weekMs = 7 * 24 * 60 * 60 * 1000;
-      if (dismissedAt && (Date.now() - dismissedAt < weekMs)) return;
+      var dismissedRecently = (dismissedAt && (Date.now() - dismissedAt < weekMs));
 
       var banner = document.getElementById('pwaInstallBanner');
       var btn = document.getElementById('pwaInstallBtn');
       var closeBtn = document.getElementById('pwaCloseBtn');
       var textEl = document.getElementById('pwaInstallText');
+      var topbarBtn = document.getElementById('pwaTopbarBtn');
       var deferredPrompt = null;
 
-      // ─── Android / desktop Chrome: beforeinstallprompt ───
-      window.addEventListener('beforeinstallprompt', function(e) {
-        e.preventDefault();
-        deferredPrompt = e;
-        textEl.textContent = 'Installeer als app op je startscherm';
-        btn.style.display = '';
-        banner.classList.add('show');
-      });
-
-      btn.addEventListener('click', function() {
+      // Globale trigger zodat topbar-knop het kan starten (ook na dismiss-cooldown)
+      window.triggerPwaInstall = function() {
         if (deferredPrompt) {
           deferredPrompt.prompt();
           deferredPrompt.userChoice.then(function(choice) {
             if (choice.outcome === 'accepted') {
               banner.classList.remove('show');
+              if (topbarBtn) topbarBtn.style.display = 'none';
             }
             deferredPrompt = null;
           });
+        } else if (/iPad|iPhone|iPod/.test(navigator.userAgent)) {
+          if (typeof showToast === 'function') {
+            showToast('Tik op deel-icoon ⎙ onderaan Safari → Voeg toe aan beginscherm', 'info');
+          } else {
+            alert('Tik op het deel-icoon onderaan Safari, scroll en kies "Voeg toe aan beginscherm".');
+          }
         } else {
-          // iOS: toon instructies
-          alert('Tik op het deel-icoon onderaan Safari, scroll en kies "Voeg toe aan beginscherm".');
+          if (typeof showToast === 'function') {
+            showToast('Installeer-prompt nog niet beschikbaar — gebruik je browser-menu', 'info');
+          }
         }
+      };
+
+      // ─── Android / desktop Chrome: beforeinstallprompt ───
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        deferredPrompt = e;
+        // Topbar-knop altijd tonen als installable (geen 7-dagen cooldown)
+        if (topbarBtn) topbarBtn.style.display = '';
+        // Banner alleen als niet recentelijk gedismist
+        if (!dismissedRecently) {
+          textEl.textContent = 'Installeer als app op je startscherm';
+          btn.style.display = '';
+          banner.classList.add('show');
+        }
+      });
+
+      btn.addEventListener('click', function() {
+        window.triggerPwaInstall();
       });
 
       closeBtn.addEventListener('click', function() {
@@ -18589,20 +18610,26 @@
       var isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
       var isSafari = /^((?!chrome|android|crios|fxios).)*safari/i.test(ua);
       if (isIOS && isSafari && !isStandalone) {
-        setTimeout(function() {
-          textEl.innerHTML = 'Tik op <span style="font-size:16px">⎙</span> en kies <strong>Voeg toe aan beginscherm</strong>';
-          btn.textContent = 'Begrepen';
-          banner.classList.add('show');
-          btn.onclick = function() {
-            banner.classList.remove('show');
-            localStorage.setItem('pwaInstallDismissed', Date.now().toString());
-          };
-        }, 3000);
+        // Topbar-knop altijd zichtbaar op iOS Safari (geen native prompt mogelijk)
+        if (topbarBtn) topbarBtn.style.display = '';
+        if (!dismissedRecently) {
+          setTimeout(function() {
+            textEl.innerHTML = 'Tik op <span style="font-size:16px">⎙</span> en kies <strong>Voeg toe aan beginscherm</strong>';
+            btn.textContent = 'Begrepen';
+            banner.classList.add('show');
+            btn.onclick = function() {
+              banner.classList.remove('show');
+              localStorage.setItem('pwaInstallDismissed', Date.now().toString());
+            };
+          }, 3000);
+        }
       }
 
       window.addEventListener('appinstalled', function() {
         console.log('[PWA] Geïnstalleerd');
         banner.classList.remove('show');
+        if (topbarBtn) topbarBtn.style.display = 'none';
+        if (typeof showToast === 'function') showToast('FieldOps is geïnstalleerd 🎉', 'success');
       });
     })();
   </script>
