@@ -867,3 +867,54 @@ def seed_demo_user(
                extra={"mode": "created"})
     return {"success": True, "mode": "created", "email": DEMO_EMAIL,
             "user_id": demo.id, "organization": org.name}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backup management (super-admin only)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/backup/status")
+def backup_status(
+    current_user: User = Depends(require_owner),
+):
+    """Status van S3-backup-systeem: config-check + laatste run + recente backups.
+
+    Geen credentials worden geretourneerd — alleen config-flag en metadata.
+    """
+    import backup_service
+    return {
+        "status": backup_service.get_status(),
+        "recent_backups": backup_service.list_recent_backups(limit=20),
+    }
+
+
+@router.post("/backup/trigger")
+def backup_trigger(
+    request: Request,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Manual trigger van een backup. Synchroon — kan 5-30s duren voor grote DBs.
+
+    Bij Render Cron Job-setup wordt dit endpoint NIET aangeroepen; daar draait
+    `python -m backup_service` direct. Dit endpoint is voor ad-hoc dumps door
+    super-admin (bv. voor pre-migratie snapshot).
+    """
+    import backup_service
+    if not backup_service.is_configured():
+        raise HTTPException(
+            status_code=400,
+            detail="Backup-service niet geconfigureerd. Vereist env-vars: S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY.",
+        )
+    log_action(db, request, current_user,
+               action="admin.backup.triggered",
+               entity_type="system", entity_id=None,
+               extra={"trigger": "manual"})
+
+    result = backup_service.run_backup()
+
+    log_action(db, request, current_user,
+               action="admin.backup.completed" if result.get("success") else "admin.backup.failed",
+               entity_type="system", entity_id=None,
+               extra={k: v for k, v in result.items() if k != "key"})
+    return result
