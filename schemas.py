@@ -117,6 +117,8 @@ class OrganizationResponse(BaseModel):
     brand_color: Optional[str] = None
     streetview_provider_label: Optional[str] = None
     streetview_provider_url_template: Optional[str] = None
+    beheer_provider_label: Optional[str] = None
+    beheer_provider_url_template: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -137,6 +139,8 @@ class OrganizationUpdate(BaseModel):
     brand_color: Optional[str] = None
     streetview_provider_label: Optional[str] = None
     streetview_provider_url_template: Optional[str] = None
+    beheer_provider_label: Optional[str] = None
+    beheer_provider_url_template: Optional[str] = None
 
 
 # Invitation

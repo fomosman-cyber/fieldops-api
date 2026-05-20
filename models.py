@@ -56,6 +56,12 @@ class Organization(Base):
     # Voorbeeld: "https://viewer.geovisia.com/?lat={lat}&lng={lng}"
     streetview_provider_label = Column(String(80), nullable=True)  # bv "Geovisia"
     streetview_provider_url_template = Column(Text, nullable=True)
+    # Externe beheer-systeem (GBI/iAsset/Antea/Wegmanagement Online) — deep-link
+    # vanuit FieldOps-melding naar bestaande beheer-tool. Placeholders:
+    # {lat}, {lng}, {asset_code}, {melding_id}.
+    # Voorbeeld: "https://www.gbiworld.nl/Asset/?code={asset_code}"
+    beheer_provider_label = Column(String(80), nullable=True)  # bv "GBI World"
+    beheer_provider_url_template = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     users = relationship("User", back_populates="organization")

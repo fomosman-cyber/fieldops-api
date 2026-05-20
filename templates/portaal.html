@@ -2630,6 +2630,31 @@
                 Google Street View: <code>https://www.google.com/maps?q=&layer=c&cbll={lat},{lng}</code>
               </p>
             </div>
+
+            <!-- Externe beheer-systeem deep-link (GBI / iAsset / Antea / eigen) -->
+            <div style="margin-top:8px;padding-top:14px;border-top:1px dashed var(--border);">
+              <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;">🏢 Extern beheer-systeem</div>
+              <p style="color:var(--text-muted);font-size:11px;margin:0 0 12px;line-height:1.5;">
+                Optioneel: koppel GBI World, iAsset, Antea of een eigen beheer-portaal. Op meldingen verschijnt een knop "Open in [label]" die de melding-locatie of asset opent in je beheer-systeem.
+                <a href="/gbi-imbor-import-setup" target="_blank" style="color:var(--accent);text-decoration:none;">→ IMBOR-import handleiding</a>
+              </p>
+              <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;">
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:3px;">Label</label>
+                  <input type="text" id="orgBeheerLabel" placeholder="bv. GBI World" maxlength="80" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;">
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:3px;">URL-template</label>
+                  <input type="text" id="orgBeheerUrlTemplate" placeholder="https://www.gbiworld.nl/Asset/?code={asset_code}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;">
+                </div>
+              </div>
+              <p style="font-size:10px;color:var(--text-dim);margin-top:6px;line-height:1.4;">
+                Placeholders: <code>{lat}</code>, <code>{lng}</code>, <code>{asset_code}</code>, <code>{melding_id}</code>. Voorbeelden:<br>
+                GBI World: <code>https://www.gbiworld.nl/Asset/?code={asset_code}</code><br>
+                iAsset / Antea: <code>https://klant.iasset.nl/portaal/?location={lat},{lng}</code><br>
+                Custom: <code>https://intern.gemeente.nl/beheer/{asset_code}</code>
+              </p>
+            </div>
           </div>
           <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
             <button class="btn-primary" onclick="saveOrgChanges()">💾 Organisatie opslaan</button>
@@ -4101,6 +4126,7 @@
             <button type="button" class="btn-secondary" onclick="getMeldingLocation()" style="white-space:nowrap;">📍 GPS</button>
             <button type="button" class="btn-secondary" id="streetViewBtn" onclick="openStreetViewForMelding()" style="white-space:nowrap;display:none;" title="Bekijk in Google Street View">👁️</button>
             <button type="button" class="btn-secondary" id="extStreetViewBtn" onclick="openExtStreetViewForMelding()" style="white-space:nowrap;display:none;background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;" title="Externe street-view provider (org-instelling)">🌍 <span id="extStreetViewBtnLabel">Geovisia</span></button>
+            <button type="button" class="btn-secondary" id="extBeheerBtn" onclick="openExtBeheerForMelding()" style="white-space:nowrap;display:none;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;" title="Open in extern beheer-systeem (GBI/iAsset)">🏢 <span id="extBeheerBtnLabel">GBI</span></button>
           </div>
           <p id="placeSearchHint" style="font-size:11px;color:var(--text-dim);margin-top:4px;">Tik 'GPS' voor je huidige locatie of zoek hierboven een adres.</p>
         </div>
@@ -15325,13 +15351,69 @@
       var lng = (document.getElementById('meldingLng') || {}).value;
       btn.style.display = (has && lat && lng) ? '' : 'none';
       if (has && lbl) lbl.textContent = branding.streetview_provider_label;
+      _refreshExtBeheerBtn();
     }
-    // Hook bij lat/lng changes
+
+    // Extern beheer-systeem (GBI/iAsset/Antea) — open in nieuw tabblad
+    // URL-template uit orgBrandingCache met placeholders {lat}/{lng}/{asset_code}/{melding_id}
+    function openExtBeheerForMelding() {
+      var branding = orgBrandingCache || {};
+      var tmpl = branding.beheer_provider_url_template;
+      if (!tmpl) {
+        showToast('Geen extern beheer-systeem geconfigureerd in Instellingen', 'error');
+        return;
+      }
+      var lat = document.getElementById('meldingLat').value || '';
+      var lng = document.getElementById('meldingLng').value || '';
+      // Asset-code uit gekoppelde asset (als gezet)
+      var assetCode = '';
+      var assetSel = document.getElementById('meldingAsset');
+      if (assetSel && assetSel.value && Array.isArray(meldingAssets)) {
+        var a = meldingAssets.find(function(x){ return x.id === assetSel.value; });
+        if (a) assetCode = a.code || '';
+      }
+      var meldingId = editingMeldingId || '';
+      var url = tmpl
+        .replace(/\{lat\}/g, encodeURIComponent(lat))
+        .replace(/\{lng\}/g, encodeURIComponent(lng))
+        .replace(/\{asset_code\}/g, encodeURIComponent(assetCode))
+        .replace(/\{melding_id\}/g, encodeURIComponent(meldingId));
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    function _refreshExtBeheerBtn() {
+      var btn = document.getElementById('extBeheerBtn');
+      var lbl = document.getElementById('extBeheerBtnLabel');
+      if (!btn) return;
+      var branding = orgBrandingCache || {};
+      var has = branding.beheer_provider_url_template && branding.beheer_provider_label;
+      // Check welke placeholders gebruikt worden — toon knop als alle vereiste data aanwezig is
+      var tmpl = branding.beheer_provider_url_template || '';
+      var lat = (document.getElementById('meldingLat') || {}).value;
+      var lng = (document.getElementById('meldingLng') || {}).value;
+      var needsLatLng = /\{(lat|lng)\}/.test(tmpl);
+      var hasCoords = lat && lng;
+      var assetSel = document.getElementById('meldingAsset');
+      var hasAssetCode = assetSel && assetSel.value;
+      var needsAsset = /\{asset_code\}/.test(tmpl);
+      // Knop tonen als template gezet EN benodigde placeholders kunnen worden gevuld
+      var canShow = has && (
+        (needsLatLng && hasCoords) ||
+        (needsAsset && hasAssetCode) ||
+        (!needsLatLng && !needsAsset && editingMeldingId) // alleen {melding_id}
+      );
+      btn.style.display = canShow ? '' : 'none';
+      if (has && lbl) lbl.textContent = branding.beheer_provider_label;
+    }
+
+    // Hook bij lat/lng changes + asset-changes
     document.addEventListener('DOMContentLoaded', function() {
       ['meldingLat', 'meldingLng'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.addEventListener('input', _refreshExtStreetViewBtn);
       });
+      var assetSel = document.getElementById('meldingAsset');
+      if (assetSel) assetSel.addEventListener('change', _refreshExtBeheerBtn);
     });
 
     // Init zodra de melding-modal opengaat (lazy zodat we niet onnodig laden)
@@ -17179,6 +17261,11 @@
         var svUrl = document.getElementById('orgStreetviewUrlTemplate');
         if (svLabel) svLabel.value = org.streetview_provider_label || '';
         if (svUrl) svUrl.value = org.streetview_provider_url_template || '';
+        // Beheer-systeem provider (GBI / iAsset / Antea)
+        var bhLabel = document.getElementById('orgBeheerLabel');
+        var bhUrl = document.getElementById('orgBeheerUrlTemplate');
+        if (bhLabel) bhLabel.value = org.beheer_provider_label || '';
+        if (bhUrl) bhUrl.value = org.beheer_provider_url_template || '';
       }).catch(function(err){
         console.error('Org laden mislukt:', err);
       });
@@ -17251,6 +17338,17 @@
         showToast('Street-view URL moet {lat} placeholder bevatten', 'error');
         return;
       }
+      var bhLabel = trim('orgBeheerLabel');
+      var bhUrlTmpl = trim('orgBeheerUrlTemplate');
+      if (bhUrlTmpl && !/^https?:\/\//i.test(bhUrlTmpl)) {
+        showToast('Beheer-URL moet beginnen met http:// of https://', 'error');
+        return;
+      }
+      // Voor beheer-URL accepteren we ook alleen {asset_code} (geen lat/lng vereist)
+      if (bhUrlTmpl && !/\{(lat|lng|asset_code|melding_id)\}/.test(bhUrlTmpl)) {
+        showToast('Beheer-URL moet minstens 1 placeholder bevatten ({lat}, {lng}, {asset_code} of {melding_id})', 'error');
+        return;
+      }
       var payload = {
         name:             trim('settOrgEditName')        || null,
         contact_email:    trim('settOrgContactEmail')    || null,
@@ -17262,6 +17360,8 @@
         brand_color:      colorVal || null,
         streetview_provider_label:        svLabel || null,
         streetview_provider_url_template: svUrlTmpl || null,
+        beheer_provider_label:            bhLabel || null,
+        beheer_provider_url_template:     bhUrlTmpl || null,
       };
       if (!payload.name) {
         showToast('Organisatie-naam mag niet leeg zijn', 'error');
