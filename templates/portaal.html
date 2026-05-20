@@ -2235,6 +2235,8 @@
 
       <div class="card" style="max-width: 600px;">
         <div class="card-header"><h3>Organisatie</h3></div>
+
+        <!-- Read-only weergave (altijd zichtbaar) -->
         <div style="display: flex; flex-direction: column; gap: 16px;">
           <div>
             <label style="font-size: 13px; color: var(--text-dim); display: block; margin-bottom: 4px;">Naam</label>
@@ -2253,6 +2255,64 @@
             <div style="font-size: 16px; font-weight: 500;" id="settUsers">-</div>
           </div>
         </div>
+
+        <!-- Org-admin edit-form (alleen zichtbaar voor org-admins) -->
+        <div id="orgAdminEditWrap" style="display:none;margin-top:24px;padding-top:20px;border-top:1px solid var(--border);">
+          <h4 style="margin:0 0 12px;font-size:14px;color:var(--text);">🏢 Organisatie-gegevens bewerken</h4>
+          <p style="color:var(--text-muted);font-size:12px;margin:0 0 14px;">
+            Als org-admin kun je hier de contact- en facturatie-gegevens van je organisatie aanpassen.
+            Plan/abonnement en max-users zijn via Shopify-billing geregeld.
+          </p>
+          <div style="display:flex;flex-direction:column;gap:12px;">
+            <div>
+              <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Organisatie-naam</label>
+              <input type="text" id="orgName" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div>
+                <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Contact e-mail</label>
+                <input type="email" id="orgContactEmail" placeholder="contact@..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+              </div>
+              <div>
+                <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Contact telefoon</label>
+                <input type="tel" id="orgContactPhone" placeholder="020-..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+              </div>
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Facturatie-adres</label>
+              <textarea id="orgBillingAddress" rows="2" placeholder="Straat 1, 1234 AB Plaats" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;resize:vertical;"></textarea>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+              <div>
+                <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">KvK-nummer</label>
+                <input type="text" id="orgKvk" placeholder="12345678" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+              </div>
+              <div>
+                <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">BTW-nummer</label>
+                <input type="text" id="orgBtw" placeholder="NL000000000B00" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
+            <button class="btn-primary" onclick="saveOrgChanges()">💾 Organisatie opslaan</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recente activiteit (audit-summary) — alleen org-admins -->
+      <div class="card" id="orgAuditSummaryCard" style="max-width: 600px; margin-top: 20px; display:none;">
+        <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <h3>📜 Recente activiteit</h3>
+          <select id="orgAuditDays" onchange="loadOrgAuditSummary()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:var(--bg);color:var(--text);">
+            <option value="7">Laatste 7 dagen</option>
+            <option value="30" selected>Laatste 30 dagen</option>
+            <option value="90">Laatste 90 dagen</option>
+          </select>
+        </div>
+        <p style="color:var(--text-muted);font-size:12px;margin:0 0 14px;">
+          Overzicht van wie wat deed in je organisatie. Volledige audit-log staat onder Integraties → Audit-log.
+        </p>
+        <div id="orgAuditSummaryBody" style="font-size:13px;color:var(--text-muted);">Laden...</div>
       </div>
 
       <!-- Google integratie -->
@@ -6885,7 +6945,7 @@
       if (page === 'mijn-dag') loadMijnDag();
       if (page === 'dashboard') loadDashboardPredictiveWidget();
       if (page === 'integraties') loadIntegrations();
-      if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); }
+      if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); loadOrgEditForm(); loadOrgAuditSummary(); }
     }
 
     // ── Load Users ──
@@ -15040,6 +15100,90 @@
       if (ph) ph.value = currentUser.phone || '';
       if (em) em.value = currentUser.email || '';
       if (rl) rl.value = currentUser.role || '';
+    }
+
+    // ── Org-admin: organisatie-gegevens bewerken ─────────────────
+    // Backend: PATCH /api/organization (require_org_admin). Wijzigbare velden:
+    // name, contact_email, contact_phone, billing_address, kvk_number, btw_number.
+    // Plan/status/max_users zijn via Shopify-billing — daar komt admin niet aan.
+    function loadOrgEditForm() {
+      var wrap = document.getElementById('orgAdminEditWrap');
+      if (!wrap) return;
+      if (!currentUser || !currentUser.is_org_admin) { wrap.style.display = 'none'; return; }
+      wrap.style.display = '';
+      api('GET', '/api/organization/').then(function(org) {
+        if (!org) return;
+        var setVal = function(id, v){ var el = document.getElementById(id); if (el) el.value = (v || ''); };
+        setVal('orgName', org.name);
+        setVal('orgContactEmail', org.contact_email);
+        setVal('orgContactPhone', org.contact_phone);
+        setVal('orgBillingAddress', org.billing_address);
+        setVal('orgKvk', org.kvk_number);
+        setVal('orgBtw', org.btw_number);
+      }).catch(function(err){
+        console.error('Org laden mislukt:', err);
+      });
+    }
+
+    function saveOrgChanges() {
+      var trim = function(id){ var el = document.getElementById(id); return el ? (el.value || '').trim() : ''; };
+      var payload = {
+        name:             trim('orgName')           || null,
+        contact_email:    trim('orgContactEmail')   || null,
+        contact_phone:    trim('orgContactPhone')   || null,
+        billing_address:  trim('orgBillingAddress') || null,
+        kvk_number:       trim('orgKvk')            || null,
+        btw_number:       trim('orgBtw')            || null,
+      };
+      if (!payload.name) {
+        showToast('Organisatie-naam mag niet leeg zijn', 'error');
+        return;
+      }
+      api('PATCH', '/api/organization/', payload).then(function(org) {
+        if (org) {
+          var nameEl = document.getElementById('settOrgName');
+          if (nameEl) nameEl.textContent = org.name || '-';
+          showToast('Organisatie opgeslagen', 'success');
+          loadOrgAuditSummary();
+        }
+      }).catch(function(err) {
+        showToast('Opslaan mislukt: ' + (err.message || ''), 'error');
+      });
+    }
+
+    function loadOrgAuditSummary() {
+      var card = document.getElementById('orgAuditSummaryCard');
+      if (!card) return;
+      if (!currentUser || !currentUser.is_org_admin) { card.style.display = 'none'; return; }
+      card.style.display = '';
+      var body = document.getElementById('orgAuditSummaryBody');
+      if (!body) return;
+      body.innerHTML = '<div class="loading-spinner">Laden...</div>';
+      var days = parseInt((document.getElementById('orgAuditDays') || {}).value || '30', 10);
+      api('GET', '/api/organization/audit-summary?days=' + days + '&limit=20').then(function(d) {
+        if (!d) { body.innerHTML = '<em>Geen data</em>'; return; }
+        var topUsers = (d.per_user || []).slice(0, 5).map(function(u) {
+          return '<li><strong>' + (u.user_name || 'Onbekend') + '</strong> — ' + u.count + ' actie' + (u.count === 1 ? '' : 's') + '</li>';
+        }).join('');
+        var topActions = (d.per_action || []).slice(0, 5).map(function(a) {
+          return '<li><code style="background:var(--card-bg-hover);padding:2px 6px;border-radius:4px;font-size:11px;">' + a.action + '</code> — ' + a.count + 'x</li>';
+        }).join('');
+        var recent = (d.recent_entries || []).slice(0, 8).map(function(e) {
+          var dt = e.created_at ? new Date(e.created_at).toLocaleString(currentLang || 'nl-NL', { dateStyle: 'short', timeStyle: 'short' }) : '';
+          return '<tr><td style="padding:4px 8px;color:var(--text-muted);font-size:11px;">' + dt + '</td>'
+               + '<td style="padding:4px 8px;">' + (e.user_name || 'Onbekend') + '</td>'
+               + '<td style="padding:4px 8px;"><code style="background:var(--card-bg-hover);padding:1px 5px;border-radius:4px;font-size:11px;">' + e.action + '</code></td>'
+               + '<td style="padding:4px 8px;color:var(--text-muted);font-size:11px;">' + (e.entity_type || '') + '</td></tr>';
+        }).join('');
+        body.innerHTML =
+          '<div style="margin-bottom:14px;color:var(--text);"><strong>' + (d.total_entries || 0) + '</strong> '
+          + 'mutaties in de laatste ' + (d.window_days || days) + ' dagen.</div>' +
+          (topUsers ? '<div style="margin-bottom:12px;"><div style="font-weight:600;margin-bottom:4px;color:var(--text);">Top gebruikers</div><ul style="margin:0;padding-left:18px;">' + topUsers + '</ul></div>' : '') +
+          (topActions ? '<div style="margin-bottom:12px;"><div style="font-weight:600;margin-bottom:4px;color:var(--text);">Top acties</div><ul style="margin:0;padding-left:18px;">' + topActions + '</ul></div>' : '') +
+          (recent ? '<div><div style="font-weight:600;margin-bottom:4px;color:var(--text);">Recente entries</div><table style="width:100%;border-collapse:collapse;font-size:12px;"><tbody>' + recent + '</tbody></table></div>' : '');
+      }).catch(function(err) {
+        body.innerHTML = '<span style="color:var(--red);">Laden mislukt: ' + (err.message || '') + '</span>';
+      });
     }
 
     function saveProfile() {
