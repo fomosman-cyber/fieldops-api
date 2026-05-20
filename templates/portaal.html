@@ -2629,6 +2629,7 @@
       <div style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:24px;">
         <button class="int-tab active" data-tab="hooks-out" onclick="switchIntegrationTab('hooks-out')">📤 Webhooks (uit)</button>
         <button class="int-tab" data-tab="hooks-in" onclick="switchIntegrationTab('hooks-in')">📥 Sensoren (IoT in)</button>
+        <button class="int-tab" data-tab="email-inbox" onclick="switchIntegrationTab('email-inbox')">📧 Email naar melding</button>
         <button class="int-tab" data-tab="audit" onclick="switchIntegrationTab('audit')">📜 Audit-log</button>
         <button class="int-tab" data-tab="failed-logins" onclick="switchIntegrationTab('failed-logins')" data-i18n="failed_logins_tab">🚫 Login-pogingen</button>
       </div>
@@ -2661,6 +2662,25 @@
               <tr><th>Naam</th><th>Default project</th><th>Default asset</th><th style="text-align:center;">Ontvangen</th><th>Laatste</th><th></th></tr>
             </thead>
             <tbody id="hooksInBody"><tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-dim);">Laden...</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tab: Email naar melding -->
+      <div class="int-tab-content" id="int-tab-email-inbox" style="display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+          <p style="color:var(--text-muted);font-size:13px;margin:0;flex:1;min-width:300px;">
+            Inkomende emails worden automatisch meldingen. Koppel een Mailgun/Postmark/SendGrid inbound-parser aan de webhook-URL.
+            <a href="/email-inbox-setup" target="_blank" style="color:var(--accent);text-decoration:none;">→ Setup-handleiding</a>
+          </p>
+          <button class="btn-primary" onclick="openEmailInboxModal()">+ Nieuwe email-route</button>
+        </div>
+        <div class="card" style="overflow-x:auto;padding:0;">
+          <table class="data-table">
+            <thead>
+              <tr><th>Naam</th><th>Default project</th><th>Categorie</th><th style="text-align:center;">Ontvangen</th><th>Laatste afzender</th><th style="text-align:center;">Status</th><th></th></tr>
+            </thead>
+            <tbody id="emailInboxBody"><tr><td colspan="7" style="text-align:center;padding:30px;color:var(--text-dim);">Laden...</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -2816,6 +2836,83 @@
     </div>
 
     <!-- ═══════ INCOMING WEBHOOK MODAL ═══════ -->
+    <!-- Email-inbox route create/edit modal -->
+    <div class="modal-overlay" id="emailInboxModal">
+      <div class="modal" style="max-width:580px;">
+        <button class="modal-close" onclick="closeEmailInboxModal()">&times;</button>
+        <h2 id="emailInboxModalTitle">Nieuwe email-route</h2>
+        <p class="subtitle">Inkomende emails worden meldingen. Subject = titel, body = description, foto = photo_url.</p>
+        <form onsubmit="submitEmailInbox(event)">
+          <div class="form-group">
+            <label>Label *</label>
+            <input type="text" id="eibLabel" placeholder="bv. Burgermeldingen Gemeente X" required maxlength="120">
+          </div>
+          <div class="form-group">
+            <label>Email-prefix (optioneel, voor je provider-route)</label>
+            <input type="text" id="eibAddressPrefix" placeholder="bv. meldingen-gemeentex" maxlength="80">
+            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">In Mailgun/Postmark: route emails naar <code>[prefix]@inbound.fieldopsapp.nl</code> door naar onze webhook.</p>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Default project</label>
+              <select id="eibProject"><option value="">— Geen —</option></select>
+            </div>
+            <div class="form-group">
+              <label>Default prioriteit</label>
+              <select id="eibPriority">
+                <option value="laag">Laag</option>
+                <option value="normaal" selected>Normaal</option>
+                <option value="hoog">Hoog</option>
+                <option value="kritiek">Kritiek</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Default categorie</label>
+            <input type="text" id="eibCategory" placeholder="bv. Bestrating" maxlength="100">
+          </div>
+          <div class="form-group">
+            <label>Sender-whitelist (één per regel)</label>
+            <textarea id="eibAllowedSenders" rows="3" placeholder="@gemeentex.nl&#10;specifieke@partner.nl" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;resize:vertical;"></textarea>
+            <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">Leeg = alle senders ok. Domein (<code>@example.com</code>) of exact email-adres mogelijk.</p>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" onclick="closeEmailInboxModal()">Annuleren</button>
+            <button type="submit" class="btn-primary" id="eibSubmitBtn">Aanmaken + token genereren</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Token-display modal (eenmalig na create/regenerate) -->
+    <div class="modal-overlay" id="emailInboxTokenModal">
+      <div class="modal" style="max-width:560px;">
+        <button class="modal-close" onclick="closeEmailInboxTokenModal()">&times;</button>
+        <h2>🔑 Webhook-URL + token</h2>
+        <p class="subtitle">Kopieer nu de webhook-URL — je ziet het token alleen deze keer volledig.</p>
+        <div style="background:rgba(2,132,199,0.06);border:1px solid rgba(2,132,199,0.2);border-radius:10px;padding:14px;margin:14px 0;">
+          <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:6px;">WEBHOOK-URL (voor Mailgun/Postmark)</label>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input type="text" id="eibTokenUrl" readonly style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;">
+            <button type="button" class="btn-primary" onclick="copyEibTokenUrl()" style="font-size:11px;padding:6px 12px;">📋 Kopieer</button>
+          </div>
+        </div>
+        <p style="color:var(--text-muted);font-size:12px;line-height:1.6;">
+          <strong>Volgende stap:</strong><br>
+          1. Open je Mailgun/Postmark/SendGrid dashboard<br>
+          2. Configureer een inbound-route met deze webhook-URL<br>
+          3. Test door een email te sturen naar je provider-adres<br>
+          4. Check de melding-lijst — nieuwe melding moet binnen ~10s verschijnen
+        </p>
+        <p style="color:var(--text-dim);font-size:11px;margin-top:14px;">
+          <a href="/email-inbox-setup" target="_blank" style="color:var(--accent);">→ Volledige setup-handleiding (Mailgun/Postmark/SendGrid)</a>
+        </p>
+        <div class="form-actions">
+          <button type="button" class="btn-primary" onclick="closeEmailInboxTokenModal()">Begrepen</button>
+        </div>
+      </div>
+    </div>
+
     <div class="modal-overlay" id="incomingModal">
       <div class="modal" style="max-width:560px;">
         <button class="modal-close" onclick="closeIncomingModal()">&times;</button>
@@ -15373,8 +15470,211 @@
       });
       if (tab === 'hooks-out') loadWebhooksOut();
       if (tab === 'hooks-in') loadIncomingHooks();
+      if (tab === 'email-inbox') loadEmailInboxRoutes();
       if (tab === 'audit') { loadAuditActions(); loadAuditLog(true); }
       if (tab === 'failed-logins') loadFailedLogins();
+    }
+
+    // ── Email Inbox routes ──
+    // Backend endpoints (zie routers/email_inbox_router.py):
+    //   GET    /api/email-inbox/                       lijst routes
+    //   POST   /api/email-inbox/                       nieuwe + token
+    //   PATCH  /api/email-inbox/{id}                   update defaults
+    //   DELETE /api/email-inbox/{id}                   soft-delete
+    //   POST   /api/email-inbox/{id}/regenerate-token  nieuwe token
+
+    function loadEmailInboxRoutes() {
+      var tbody = document.getElementById('emailInboxBody');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-dim);">Laden...</td></tr>';
+      api('GET', '/api/email-inbox/').then(function(d) {
+        var routes = (d && d.routes) || [];
+        if (!routes.length) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-dim);">' +
+            '<div style="font-size:32px;margin-bottom:10px;opacity:0.5;">📧</div>' +
+            'Nog geen email-routes geconfigureerd<br>' +
+            '<span style="font-size:11px;">Klik + Nieuwe email-route om te starten</span></td></tr>';
+          return;
+        }
+        var projMap = {};
+        (allProjects || []).forEach(function(p){ projMap[p.id] = p.name; });
+        tbody.innerHTML = routes.map(function(r) {
+          var lastDt = r.last_received_at ? new Date(r.last_received_at).toLocaleString('nl-NL', {dateStyle:'short',timeStyle:'short'}) : '—';
+          var statusBadge = r.is_active
+            ? '<span class="status-badge active">Actief</span>'
+            : '<span class="status-badge">Inactief</span>';
+          var lastSenderText = r.last_sender ? escapeHtml(r.last_sender.slice(0, 40)) : '<span style="color:var(--text-dim);">—</span>';
+          var receivedText = (r.received_count || 0) + 'x' + (r.last_received_at ? '<br><span style="font-size:10px;color:var(--text-dim);">' + lastDt + '</span>' : '');
+          return '<tr>' +
+            '<td><strong>' + escapeHtml(r.label) + '</strong>' +
+              (r.address_prefix ? '<br><code style="font-size:10px;color:var(--text-dim);">' + escapeHtml(r.address_prefix) + '@inbound...</code>' : '') +
+            '</td>' +
+            '<td>' + (projMap[r.default_project_id] || '<span style="color:var(--text-dim);">—</span>') + '</td>' +
+            '<td>' + (r.default_category || '<span style="color:var(--text-dim);">—</span>') + '</td>' +
+            '<td style="text-align:center;">' + receivedText + '</td>' +
+            '<td>' + lastSenderText + '</td>' +
+            '<td style="text-align:center;">' + statusBadge + '</td>' +
+            '<td style="text-align:right;white-space:nowrap;">' +
+              '<button class="btn-secondary" onclick="editEmailInboxRoute(\'' + r.id + '\')" style="font-size:11px;padding:4px 8px;" title="Bewerken">✏️</button> ' +
+              '<button class="btn-secondary" onclick="regenerateEmailInboxToken(\'' + r.id + '\')" style="font-size:11px;padding:4px 8px;" title="Nieuwe token (oude vervalt)">🔑</button> ' +
+              '<button class="btn-secondary" onclick="deleteEmailInboxRoute(\'' + r.id + '\', \'' + escapeHtml(r.label).replace(/\'/g, "\\'") + '\')" style="font-size:11px;padding:4px 8px;color:#dc2626;" title="Deactiveren">🗑️</button>' +
+            '</td>' +
+          '</tr>';
+        }).join('');
+      }).catch(function(err) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--red);padding:20px;">Fout: ' + escapeHtml(err.message || '') + '</td></tr>';
+      });
+    }
+
+    var _eibEditingId = null;
+
+    function openEmailInboxModal(routeData) {
+      _eibEditingId = (routeData && routeData.id) || null;
+      var modal = document.getElementById('emailInboxModal');
+      if (!modal) return;
+      document.getElementById('emailInboxModalTitle').textContent = _eibEditingId ? 'Email-route bewerken' : 'Nieuwe email-route';
+      document.getElementById('eibSubmitBtn').textContent = _eibEditingId ? 'Opslaan' : 'Aanmaken + token genereren';
+      document.getElementById('eibLabel').value = routeData ? (routeData.label || '') : '';
+      document.getElementById('eibAddressPrefix').value = routeData ? (routeData.address_prefix || '') : '';
+      document.getElementById('eibCategory').value = routeData ? (routeData.default_category || '') : '';
+      document.getElementById('eibPriority').value = routeData ? (routeData.default_priority || 'normaal') : 'normaal';
+      document.getElementById('eibAllowedSenders').value = routeData ? ((routeData.allowed_senders || []).join('\n')) : '';
+
+      // Project-dropdown vullen
+      var projSel = document.getElementById('eibProject');
+      projSel.innerHTML = '<option value="">— Geen —</option>';
+      (allProjects || []).forEach(function(p) {
+        var opt = document.createElement('option');
+        opt.value = p.id; opt.textContent = p.name;
+        if (routeData && routeData.default_project_id === p.id) opt.selected = true;
+        projSel.appendChild(opt);
+      });
+      if (!allProjects || !allProjects.length) {
+        api('GET', '/api/projects/').then(function(ps) {
+          allProjects = ps || [];
+          (ps || []).forEach(function(p) {
+            var opt = document.createElement('option');
+            opt.value = p.id; opt.textContent = p.name;
+            if (routeData && routeData.default_project_id === p.id) opt.selected = true;
+            projSel.appendChild(opt);
+          });
+        }).catch(function(){});
+      }
+      modal.classList.add('active');
+    }
+
+    function closeEmailInboxModal() {
+      var modal = document.getElementById('emailInboxModal');
+      if (modal) modal.classList.remove('active');
+      _eibEditingId = null;
+    }
+
+    function submitEmailInbox(e) {
+      e.preventDefault();
+      var sendersText = (document.getElementById('eibAllowedSenders').value || '').trim();
+      var senders = sendersText.split('\n').map(function(s){ return s.trim(); }).filter(function(s){ return s.length > 0; });
+      var payload = {
+        label: (document.getElementById('eibLabel').value || '').trim(),
+        address_prefix: (document.getElementById('eibAddressPrefix').value || '').trim() || null,
+        default_project_id: document.getElementById('eibProject').value || null,
+        default_category: (document.getElementById('eibCategory').value || '').trim() || null,
+        default_priority: document.getElementById('eibPriority').value || 'normaal',
+        allowed_senders: senders.length ? senders : null,
+      };
+      if (!payload.label) {
+        showToast('Label is verplicht', 'error');
+        return;
+      }
+      var method = _eibEditingId ? 'PATCH' : 'POST';
+      var url = _eibEditingId ? ('/api/email-inbox/' + _eibEditingId) : '/api/email-inbox/';
+      api(method, url, payload).then(function(route) {
+        closeEmailInboxModal();
+        showToast(_eibEditingId ? 'Route bijgewerkt' : 'Route aangemaakt', 'success');
+        loadEmailInboxRoutes();
+        // Bij create: toon webhook-URL eenmalig
+        if (!_eibEditingId && route && route.webhook_url) {
+          showEmailInboxTokenModal(route.webhook_url);
+        }
+      }).catch(function(err) {
+        showToast('Opslaan mislukt: ' + (err.message || ''), 'error');
+      });
+    }
+
+    function showEmailInboxTokenModal(webhookPath) {
+      var modal = document.getElementById('emailInboxTokenModal');
+      if (!modal) return;
+      var fullUrl = window.location.origin + webhookPath;
+      document.getElementById('eibTokenUrl').value = fullUrl;
+      modal.classList.add('active');
+    }
+
+    function closeEmailInboxTokenModal() {
+      var modal = document.getElementById('emailInboxTokenModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function copyEibTokenUrl() {
+      var input = document.getElementById('eibTokenUrl');
+      if (!input) return;
+      input.select();
+      input.setSelectionRange(0, 99999);
+      try {
+        navigator.clipboard.writeText(input.value).then(function() {
+          showToast('Webhook-URL gekopieerd', 'success');
+        }).catch(function() {
+          document.execCommand('copy');
+          showToast('Webhook-URL gekopieerd', 'success');
+        });
+      } catch (e) {
+        document.execCommand('copy');
+        showToast('Webhook-URL gekopieerd', 'success');
+      }
+    }
+
+    function editEmailInboxRoute(id) {
+      // Re-fetch list om actuele state te krijgen
+      api('GET', '/api/email-inbox/').then(function(d) {
+        var route = ((d && d.routes) || []).find(function(r){ return r.id === id; });
+        if (route) openEmailInboxModal(route);
+      });
+    }
+
+    function regenerateEmailInboxToken(id) {
+      showConfirm({
+        icon: '🔑',
+        title: 'Nieuwe token genereren?',
+        message: 'De huidige token vervalt direct. Je moet je provider-webhook bijwerken met de nieuwe URL.',
+        actionLabel: 'Genereren',
+        danger: false,
+        onConfirm: function() {
+          api('POST', '/api/email-inbox/' + id + '/regenerate-token').then(function(route) {
+            if (route && route.webhook_url) {
+              showEmailInboxTokenModal(route.webhook_url);
+              loadEmailInboxRoutes();
+            }
+          }).catch(function(err) {
+            showToast('Fout: ' + (err.message || ''), 'error');
+          });
+        },
+      });
+    }
+
+    function deleteEmailInboxRoute(id, label) {
+      showConfirm({
+        icon: '🗑️',
+        title: 'Email-route deactiveren?',
+        message: '"' + label + '" wordt gedeactiveerd. Inkomende emails worden niet meer omgezet naar meldingen.',
+        actionLabel: 'Deactiveren',
+        danger: true,
+        onConfirm: function() {
+          api('DELETE', '/api/email-inbox/' + id).then(function() {
+            showToast('Route gedeactiveerd', 'success');
+            loadEmailInboxRoutes();
+          }).catch(function(err) {
+            showToast('Fout: ' + (err.message || ''), 'error');
+          });
+        },
+      });
     }
 
     function loadIntegrations() {
