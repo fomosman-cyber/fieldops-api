@@ -487,3 +487,61 @@ Deze e-mail is automatisch verstuurd via FieldOps.
         else:
             failed += 1
     return {"sent": sent, "failed": failed, "skipped": 0}
+
+
+def send_assignment_notification(
+    to_email: str,
+    *,
+    recipient_name: str,
+    assigner_name: str,
+    melding_title: str,
+    melding_category: str = "",
+    melding_priority: str = "normaal",
+    melding_id: str = "",
+) -> bool:
+    """Email-notificatie bij toewijzing aan melding.
+
+    Wordt aangeroepen vanuit notifier.notify() als notif_type='assigned'.
+    Resend stuurt; bij geen API-key faalt 'ie stilletjes (best-effort).
+    """
+    greeting = f"Hoi {recipient_name}," if recipient_name else "Hoi,"
+    melding_url = f"{PORTAAL_URL}/portaal#meldingen" + (f"?id={melding_id}" if melding_id else "")
+    prio_colors = {
+        "kritiek": "#dc2626",
+        "hoog": "#ea580c",
+        "normaal": "#0284c7",
+        "laag": "#64748b",
+    }
+    prio_color = prio_colors.get(melding_priority, "#0284c7")
+
+    content = f"""
+<h2 style="color:#1e293b;font-size:22px;margin:0 0 8px;">🎯 Toegewezen aan een melding</h2>
+<p style="color:#64748b;font-size:15px;line-height:1.6;margin:0 0 20px;">
+{greeting}<br>
+<strong>{assigner_name or "Een collega"}</strong> heeft je toegewezen aan een melding in FieldOps.
+</p>
+
+<table cellpadding="0" cellspacing="0" style="width:100%;background:#f8fafc;border-radius:12px;padding:0;margin:0 0 24px;border-left:4px solid {prio_color};">
+<tr><td style="padding:18px 20px;">
+<p style="margin:0 0 6px;color:#1e293b;font-size:16px;font-weight:600;">{melding_title}</p>
+<p style="margin:0;color:#64748b;font-size:13px;line-height:1.5;">
+{"Categorie: " + melding_category + " · " if melding_category else ""}
+Prioriteit: <strong style="color:{prio_color};text-transform:capitalize;">{melding_priority}</strong>
+</p>
+</td></tr></table>
+
+<table cellpadding="0" cellspacing="0" style="margin:0 auto 24px;">
+<tr><td style="background:linear-gradient(135deg,#0284c7,#0369a1);border-radius:12px;padding:14px 36px;">
+<a href="{melding_url}" style="color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;display:inline-block;">
+Open melding in FieldOps</a>
+</td></tr></table>
+
+<p style="color:#94a3b8;font-size:13px;margin:0;">
+Je ontvangt deze email omdat een collega je heeft toegewezen aan een melding. Wil je deze meldingen liever niet via email ontvangen? Pas dat aan in <a href="{PORTAAL_URL}/portaal#instellingen" style="color:#0284c7;">Instellingen</a>.
+</p>"""
+
+    return send_email(
+        to_email,
+        f"🎯 Toegewezen: {melding_title[:80]}",
+        _base_template(content, "Toegewezen aan melding"),
+    )

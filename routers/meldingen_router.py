@@ -665,6 +665,7 @@ def update_melding(
         from notifier import notify
         new_assignee = update_data["assigned_to"]
         if new_assignee and new_assignee != current_user.id:
+            assigner_name = ((current_user.first_name or "") + " " + (current_user.last_name or "")).strip()
             # Notify de nieuwe uitvoerder (niet jezelf als je het aan jezelf toewijst)
             notify(
                 db,
@@ -674,10 +675,16 @@ def update_melding(
                 title="🎯 Toegewezen: " + (melding.title or "(zonder titel)"),
                 body=("Categorie: " + (melding.category or "—")
                       + " · Prioriteit: " + (melding.priority or "normaal")
-                      + " · Door: " + ((current_user.first_name or "") + " " + (current_user.last_name or "")).strip()),
+                      + " · Door: " + assigner_name),
                 icon="🎯",
                 link_type="melding",
                 link_id=melding.id,
+                email_context={
+                    "assigner_name": assigner_name,
+                    "melding_title": melding.title or "(zonder titel)",
+                    "melding_category": melding.category or "",
+                    "melding_priority": melding.priority or "normaal",
+                },
             )
 
     return _melding_to_response(melding)
@@ -833,18 +840,24 @@ def bulk_update(
             old_assignee = before.get("assigned_to")
             if new_assignee and new_assignee != old_assignee and new_assignee != current_user.id:
                 from notifier import notify
+                assigner_name = ((current_user.first_name or "") + " " + (current_user.last_name or "")).strip()
                 notify(
                     db,
                     user_id=new_assignee,
                     organization_id=current_user.organization_id,
                     notif_type="assigned",
                     title="🎯 Toegewezen: " + (m.title or "(zonder titel)"),
-                    body=("Bulk-toewijzing · Door: "
-                          + ((current_user.first_name or "") + " " + (current_user.last_name or "")).strip()),
+                    body="Bulk-toewijzing · Door: " + assigner_name,
                     icon="🎯",
                     link_type="melding",
                     link_id=m.id,
                     commit=False,
+                    email_context={
+                        "assigner_name": assigner_name,
+                        "melding_title": m.title or "(zonder titel)",
+                        "melding_category": m.category or "",
+                        "melding_priority": m.priority or "normaal",
+                    },
                 )
 
     db.commit()
