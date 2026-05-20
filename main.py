@@ -171,6 +171,8 @@ def _run_migrations():
                 "brand_color":     "VARCHAR(20)",
                 "streetview_provider_label":        "VARCHAR(80)",
                 "streetview_provider_url_template": "TEXT",
+                "beheer_provider_label":            "VARCHAR(80)",
+                "beheer_provider_url_template":     "TEXT",
             }
             org_missing = [c for c in org_extra if c not in ocols]
             if org_missing:
@@ -1181,6 +1183,47 @@ def handleiding():
     header (❓-knop) en marketing-site footer."""
     html = (TEMPLATES_DIR / "handleiding.html").read_text(encoding="utf-8")
     return HTMLResponse(content=html)
+
+
+@app.get("/gbi-imbor-import-setup", response_class=HTMLResponse)
+def gbi_imbor_import_setup_docs():
+    """Publieke setup-handleiding voor GBI/iAsset/Antea integratie."""
+    return _render_md_doc("GBI-IMBOR-IMPORT-SETUP.md", "GBI / Antea integratie — FieldOps")
+
+
+def _render_md_doc(filename: str, title: str) -> HTMLResponse:
+    """Hergebruikbare markdown→HTML renderer voor publieke docs."""
+    doc_path = Path(__file__).parent / filename
+    if not doc_path.exists():
+        return HTMLResponse(content=f"<h1>{filename} niet gevonden</h1>", status_code=404)
+    md = doc_path.read_text(encoding="utf-8")
+    import re as _re
+    html_body = md
+    html_body = _re.sub(r"```(\w*)\n(.*?)```",
+                         lambda m: f'<pre style="background:#f1f5f9;padding:12px;border-radius:8px;overflow-x:auto;font-size:13px;"><code>{m.group(2).replace("<","&lt;")}</code></pre>',
+                         html_body, flags=_re.S)
+    html_body = _re.sub(r"`([^`]+)`",
+                         r'<code style="background:#f1f5f9;padding:2px 5px;border-radius:3px;font-size:13px;">\1</code>',
+                         html_body)
+    html_body = _re.sub(r"^# (.+)$", r"<h1>\1</h1>", html_body, flags=_re.M)
+    html_body = _re.sub(r"^## (.+)$", r"<h2>\1</h2>", html_body, flags=_re.M)
+    html_body = _re.sub(r"^### (.+)$", r"<h3>\1</h3>", html_body, flags=_re.M)
+    html_body = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html_body)
+    html_body = _re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2" target="_blank" rel="noopener">\1</a>', html_body)
+    html_body = "<p>" + html_body.replace("\n\n", "</p><p>") + "</p>"
+    full = f"""<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8">
+<title>{title}</title>
+<style>body{{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;max-width:860px;margin:40px auto;padding:0 24px;color:#1e293b;line-height:1.7;}}
+h1{{font-size:28px;color:#0284c7;border-bottom:2px solid #e2e8f0;padding-bottom:10px;}}
+h2{{font-size:20px;color:#0c4a6e;margin-top:36px;}}
+h3{{font-size:16px;color:#0369a1;margin-top:24px;}}
+table{{border-collapse:collapse;width:100%;margin:14px 0;}}
+th,td{{border:1px solid #e2e8f0;padding:8px 12px;text-align:left;font-size:14px;}}
+th{{background:#f8fafc;font-weight:600;}}
+a{{color:#0284c7;}}
+pre{{margin:14px 0;}}</style></head>
+<body>{html_body}<hr><p style="font-size:12px;color:#94a3b8;text-align:center;">FieldOps — <a href="/portaal">Terug naar portaal</a></p></body></html>"""
+    return HTMLResponse(content=full)
 
 
 @app.get("/email-inbox-setup", response_class=HTMLResponse)
