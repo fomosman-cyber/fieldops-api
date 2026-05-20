@@ -115,6 +115,8 @@ class OrganizationResponse(BaseModel):
     btw_number: Optional[str] = None
     logo_data_url: Optional[str] = None
     brand_color: Optional[str] = None
+    streetview_provider_label: Optional[str] = None
+    streetview_provider_url_template: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -133,6 +135,8 @@ class OrganizationUpdate(BaseModel):
     btw_number: Optional[str] = None
     logo_data_url: Optional[str] = None
     brand_color: Optional[str] = None
+    streetview_provider_label: Optional[str] = None
+    streetview_provider_url_template: Optional[str] = None
 
 
 # Invitation

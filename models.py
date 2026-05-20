@@ -51,6 +51,11 @@ class Organization(Base):
     # + primaire kleur voor PDF-headers en accenten
     logo_data_url = Column(Text, nullable=True)
     brand_color = Column(String(20), nullable=True)  # hex zoals #0284c7
+    # Externe street-view provider (Geovisia, CycloMedia, etc) — configureerbaar
+    # per org. URL-template met {lat} en {lng} placeholders.
+    # Voorbeeld: "https://viewer.geovisia.com/?lat={lat}&lng={lng}"
+    streetview_provider_label = Column(String(80), nullable=True)  # bv "Geovisia"
+    streetview_provider_url_template = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     users = relationship("User", back_populates="organization")
