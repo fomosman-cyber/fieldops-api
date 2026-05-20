@@ -169,6 +169,8 @@ def _run_migrations():
                 "btw_number":      "VARCHAR(30)",
                 "logo_data_url":   "TEXT",
                 "brand_color":     "VARCHAR(20)",
+                "streetview_provider_label":        "VARCHAR(80)",
+                "streetview_provider_url_template": "TEXT",
             }
             org_missing = [c for c in org_extra if c not in ocols]
             if org_missing:

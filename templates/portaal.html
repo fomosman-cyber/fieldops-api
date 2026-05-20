@@ -2606,6 +2606,30 @@
               </div>
               <input type="hidden" id="orgLogoDataUrl">
             </div>
+
+            <!-- Street-view provider integratie (Geovisia, CycloMedia, eigen) -->
+            <div style="margin-top:8px;padding-top:14px;border-top:1px dashed var(--border);">
+              <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;">🌍 Externe street-view provider</div>
+              <p style="color:var(--text-muted);font-size:11px;margin:0 0 12px;line-height:1.5;">
+                Optioneel: koppel Geovisia, CycloMedia of een eigen viewer. Op elke melding verschijnt een knop "Bekijk in [label]" die de 360°-foto opent op de melding-locatie.
+              </p>
+              <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;">
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:3px;">Label</label>
+                  <input type="text" id="orgStreetviewLabel" placeholder="bv. Geovisia" maxlength="80" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;">
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:3px;">URL-template</label>
+                  <input type="text" id="orgStreetviewUrlTemplate" placeholder="https://viewer.geovisia.com/?lat={lat}&lng={lng}" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;">
+                </div>
+              </div>
+              <p style="font-size:10px;color:var(--text-dim);margin-top:6px;line-height:1.4;">
+                Gebruik <code>{lat}</code> en <code>{lng}</code> als placeholders. Voorbeelden:<br>
+                Geovisia: <code>https://viewer.geovisia.com/?lat={lat}&lng={lng}</code><br>
+                CycloMedia: <code>https://atlas.cyclomedia.com/?lat={lat}&lng={lng}&zoom=18</code><br>
+                Google Street View: <code>https://www.google.com/maps?q=&layer=c&cbll={lat},{lng}</code>
+              </p>
+            </div>
           </div>
           <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
             <button class="btn-primary" onclick="saveOrgChanges()">💾 Organisatie opslaan</button>
@@ -4075,7 +4099,8 @@
             <input type="text" id="meldingLat" placeholder="Lat" style="flex:1;">
             <input type="text" id="meldingLng" placeholder="Lng" style="flex:1;">
             <button type="button" class="btn-secondary" onclick="getMeldingLocation()" style="white-space:nowrap;">📍 GPS</button>
-            <button type="button" class="btn-secondary" id="streetViewBtn" onclick="openStreetViewForMelding()" style="white-space:nowrap;display:none;" title="Bekijk in Street View">👁️</button>
+            <button type="button" class="btn-secondary" id="streetViewBtn" onclick="openStreetViewForMelding()" style="white-space:nowrap;display:none;" title="Bekijk in Google Street View">👁️</button>
+            <button type="button" class="btn-secondary" id="extStreetViewBtn" onclick="openExtStreetViewForMelding()" style="white-space:nowrap;display:none;background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;" title="Externe street-view provider (org-instelling)">🌍 <span id="extStreetViewBtnLabel">Geovisia</span></button>
           </div>
           <p id="placeSearchHint" style="font-size:11px;color:var(--text-dim);margin-top:4px;">Tik 'GPS' voor je huidige locatie of zoek hierboven een adres.</p>
         </div>
@@ -15250,6 +15275,7 @@
           document.getElementById('meldingLat').value = lat.toFixed(7);
           document.getElementById('meldingLng').value = lng.toFixed(7);
           document.getElementById('streetViewBtn').style.display = '';
+          _refreshExtStreetViewBtn();
           var hint = document.getElementById('placeSearchHint');
           if (hint) hint.textContent = '✓ ' + (place.formatted_address || place.name || 'Locatie ingesteld');
         });
@@ -15257,6 +15283,7 @@
         // Toon Street-View knop ook als coords al gezet zijn
         if (document.getElementById('meldingLat').value && document.getElementById('meldingLng').value) {
           document.getElementById('streetViewBtn').style.display = '';
+          _refreshExtStreetViewBtn();
         }
       }).catch(function(){});
     }
@@ -15269,6 +15296,43 @@
       var url = 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + lat + ',' + lng;
       window.open(url, '_blank', 'noopener');
     }
+
+    // Externe street-view provider (Geovisia/CycloMedia/eigen — org-configured)
+    // URL-template uit orgBrandingCache. Placeholders {lat} en {lng}.
+    function openExtStreetViewForMelding() {
+      var lat = document.getElementById('meldingLat').value;
+      var lng = document.getElementById('meldingLng').value;
+      if (!lat || !lng) { showToast('Geen coördinaten beschikbaar', 'error'); return; }
+      var branding = orgBrandingCache || {};
+      var tmpl = branding.streetview_provider_url_template;
+      if (!tmpl) {
+        showToast('Geen externe street-view geconfigureerd in Instellingen', 'error');
+        return;
+      }
+      var url = tmpl.replace(/\{lat\}/g, encodeURIComponent(lat))
+                    .replace(/\{lng\}/g, encodeURIComponent(lng));
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+
+    // Show/hide ext-streetview-knop op basis van org-config + GPS-aanwezigheid
+    function _refreshExtStreetViewBtn() {
+      var btn = document.getElementById('extStreetViewBtn');
+      var lbl = document.getElementById('extStreetViewBtnLabel');
+      if (!btn) return;
+      var branding = orgBrandingCache || {};
+      var has = branding.streetview_provider_url_template && branding.streetview_provider_label;
+      var lat = (document.getElementById('meldingLat') || {}).value;
+      var lng = (document.getElementById('meldingLng') || {}).value;
+      btn.style.display = (has && lat && lng) ? '' : 'none';
+      if (has && lbl) lbl.textContent = branding.streetview_provider_label;
+    }
+    // Hook bij lat/lng changes
+    document.addEventListener('DOMContentLoaded', function() {
+      ['meldingLat', 'meldingLng'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', _refreshExtStreetViewBtn);
+      });
+    });
 
     // Init zodra de melding-modal opengaat (lazy zodat we niet onnodig laden)
     (function() {
@@ -17110,6 +17174,11 @@
         var color = org.brand_color || '#0284c7';
         if (colorEl) colorEl.value = color;
         if (colorTextEl) colorTextEl.value = color;
+        // Street-view provider
+        var svLabel = document.getElementById('orgStreetviewLabel');
+        var svUrl = document.getElementById('orgStreetviewUrlTemplate');
+        if (svLabel) svLabel.value = org.streetview_provider_label || '';
+        if (svUrl) svUrl.value = org.streetview_provider_url_template || '';
       }).catch(function(err){
         console.error('Org laden mislukt:', err);
       });
@@ -17171,6 +17240,17 @@
         showToast('Ongeldige kleur. Gebruik hex zoals #0284c7', 'error');
         return;
       }
+      var svLabel = trim('orgStreetviewLabel');
+      var svUrlTmpl = trim('orgStreetviewUrlTemplate');
+      // Lichte validatie op URL-template
+      if (svUrlTmpl && !/^https?:\/\//i.test(svUrlTmpl)) {
+        showToast('Street-view URL moet beginnen met http:// of https://', 'error');
+        return;
+      }
+      if (svUrlTmpl && svUrlTmpl.indexOf('{lat}') === -1) {
+        showToast('Street-view URL moet {lat} placeholder bevatten', 'error');
+        return;
+      }
       var payload = {
         name:             trim('settOrgEditName')        || null,
         contact_email:    trim('settOrgContactEmail')    || null,
@@ -17180,6 +17260,8 @@
         btw_number:       trim('settOrgBtw')             || null,
         logo_data_url:    logoVal || null,
         brand_color:      colorVal || null,
+        streetview_provider_label:        svLabel || null,
+        streetview_provider_url_template: svUrlTmpl || null,
       };
       if (!payload.name) {
         showToast('Organisatie-naam mag niet leeg zijn', 'error');
