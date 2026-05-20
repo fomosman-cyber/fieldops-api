@@ -15413,9 +15413,19 @@
     // generator, geen OAuth). Knop verschijnt alleen in edit-mode van een
     // bestaande melding. Laatste team_or_repo per target wordt onthouden in
     // localStorage zodat user 'em niet steeds opnieuw hoeft te typen.
+    //
+    // STATUS 2026-05-20: UI verborgen — Linear/GitHub is een dev-tool feature
+    // die voor inspecteurs/asset-managers verwarrend is. Backend + JS blijven
+    // intact zodat we later via een org-feature-flag de UI weer kunnen tonen
+    // als er concrete klantvraag is. Zet ENABLE_EXTERNAL_LINK_UI op true
+    // (of localStorage.fieldops_extlink_enabled = '1') om de knop weer te zien.
+    var ENABLE_EXTERNAL_LINK_UI = (localStorage.getItem('fieldops_extlink_enabled') === '1');
+
     function setupExternalLinkSection(isEdit, meldingId) {
       var wrap = document.getElementById('meldingExternalLinkWrap');
       if (!wrap) return;
+      // Permanent verborgen tenzij feature-flag aan staat
+      if (!ENABLE_EXTERNAL_LINK_UI) { wrap.style.display = 'none'; return; }
       if (!isEdit || !meldingId) { wrap.style.display = 'none'; return; }
       wrap.style.display = '';
       // Restore laatste target + team_or_repo
