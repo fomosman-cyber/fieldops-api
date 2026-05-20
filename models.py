@@ -78,6 +78,17 @@ class User(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login = Column(DateTime, nullable=True)
 
+    # ── 2FA / Multi-factor authentication (TOTP) ──
+    # Secret wordt eenmalig gegenereerd bij /enable en getoond als QR-code voor
+    # authenticator-apps (Google Authenticator, Authy, 1Password). Daarna is hij
+    # alleen op de server bekend en wordt gebruikt om TOTP-codes te valideren.
+    mfa_secret = Column(String(64), nullable=True)
+    mfa_enabled = Column(Boolean, default=False, nullable=False)
+    mfa_enabled_at = Column(DateTime, nullable=True)
+    # Backup-codes (10x, single-use). JSON-array van bcrypt-hashes — plain
+    # text wordt nooit opgeslagen. Bij gebruik wordt de hash verwijderd uit lijst.
+    mfa_backup_codes = Column(Text, nullable=True)
+
     organization = relationship("Organization", back_populates="users")
 
 

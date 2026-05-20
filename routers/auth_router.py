@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone, timedelta
+from pydantic import BaseModel, Field
 import hashlib
 import secrets
 
@@ -61,6 +62,28 @@ def login(payload: LoginRequest, http_request: Request, db: Session = Depends(ge
     if org and org.status == "suspended":
         raise HTTPException(status_code=403, detail="Account is opgeschort. Neem contact op met support.")
 
+    # ─── 2FA check ───
+    # Als user 2FA heeft aangezet, moet de login-flow een tweede stap doen:
+    # client krijgt geen JWT, maar een korte 'mfa_challenge' indicator.
+    # Tweede call naar /api/auth/login-mfa voltooit met de TOTP-code.
+    if user.mfa_enabled:
+        # Geef geen full token — wel een korte, tijdelijke "stage-1" token (5 min geldig)
+        # die alleen door /login-mfa wordt geaccepteerd.
+        stage1_token = create_access_token(
+            data={"sub": user.id, "stage": "mfa_pending"},
+            expires_delta=timedelta(minutes=5),
+        )
+        try:
+            log_action(db, http_request, user, action="auth.login.mfa_required",
+                       entity_type="user", entity_id=user.id)
+        except Exception:
+            pass
+        return TokenResponse(
+            access_token=stage1_token,
+            user=UserResponse.model_validate(user),
+            mfa_required=True,
+        )
+
     user.last_login = datetime.now(timezone.utc)
     try:
         db.commit()
@@ -79,6 +102,75 @@ def login(payload: LoginRequest, http_request: Request, db: Session = Depends(ge
     return TokenResponse(
         access_token=token,
         user=UserResponse.model_validate(user),
+    )
+
+
+class LoginMfaRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=10)
+
+
+@router.post("/login-mfa", response_model=TokenResponse)
+def login_mfa(
+    payload: LoginMfaRequest,
+    http_request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Stage 2 van login: verifieer TOTP of backup-code. Geeft full JWT.
+
+    Vereist dat Authorization-header de stage-1 token bevat (uit /login response).
+    Dat token heeft 'stage=mfa_pending' claim en is 5 min geldig.
+    """
+    # Stage-1 token check: payload moet stage='mfa_pending' hebben.
+    # get_current_user accepteert het token want het bevat een geldige 'sub'.
+    # Voor extra check decoderen we hier opnieuw.
+    from auth import SECRET_KEY, ALGORITHM
+    from jose import jwt as _jwt
+    auth_header = http_request.headers.get("authorization", "")
+    if not auth_header.lower().startswith("bearer "):
+        raise HTTPException(401, "Stage-1 token vereist")
+    token = auth_header.split(" ", 1)[1]
+    try:
+        decoded = _jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except Exception:
+        raise HTTPException(401, "Stage-1 token ongeldig of verlopen")
+    if decoded.get("stage") != "mfa_pending":
+        raise HTTPException(400, "Geen geldige MFA-flow")
+
+    if not current_user.mfa_enabled or not current_user.mfa_secret:
+        raise HTTPException(400, "2FA staat niet aan voor dit account")
+
+    # Verifieer TOTP of backup-code
+    from routers.mfa_router import verify_mfa_code
+    ok, method = verify_mfa_code(current_user, payload.code)
+    if not ok:
+        try:
+            log_action(db, http_request, current_user, action="auth.login.mfa_failed",
+                       entity_type="user", entity_id=current_user.id)
+        except Exception:
+            pass
+        raise HTTPException(401, "Ongeldige 2FA-code")
+
+    # MFA succes — commit backup-code consumptie (als die methode was)
+    current_user.last_login = datetime.now(timezone.utc)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    # Full token met org + role claims
+    full_token = create_access_token(
+        data={"sub": current_user.id, "org": current_user.organization_id, "role": current_user.role.value},
+    )
+    try:
+        log_action(db, http_request, current_user, action=ACTION.LOGIN_SUCCESS,
+                   entity_type="user", entity_id=current_user.id,
+                   extra={"mfa_method": method})
+    except Exception:
+        pass
+    return TokenResponse(
+        access_token=full_token,
+        user=UserResponse.model_validate(current_user),
     )
 
 

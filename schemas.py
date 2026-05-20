@@ -14,6 +14,9 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: "UserResponse"
+    # MFA: bij stage-1 login (na password OK maar voor TOTP) staat dit op True
+    # en is access_token een tijdelijke 5-min token voor /login-mfa.
+    mfa_required: bool = False
 
 
 # Demo
