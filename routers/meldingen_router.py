@@ -211,6 +211,24 @@ def create_melding(
                       "priority": melding.priority, "project_id": melding.project_id,
                       "crow_klasse": melding.crow_klasse,
                       "onderhoud_categorie": melding.onderhoud_categorie})
+
+    # Werkdagboek: auto-entry voor de inspecteur (best-effort)
+    from daybook_logger import log_daybook
+    log_daybook(
+        db,
+        user_id=current_user.id,
+        organization_id=current_user.organization_id,
+        entry_type="melding_created",
+        title="Melding aangemaakt: " + (melding.title or "(zonder titel)"),
+        description=(("Prioriteit: " + (melding.priority or "normaal"))
+                     + (("\nCategorie: " + melding.category) if melding.category else "")),
+        source_type="melding",
+        source_id=melding.id,
+        lat=melding.lat,
+        lng=melding.lng,
+        project_id=melding.project_id,
+    )
+
     return _melding_to_response(melding)
 
 
@@ -621,6 +639,26 @@ def update_melding(
                action=ACTION.MELDING_STATUS if status_change else ACTION.MELDING_UPDATE,
                entity_type="melding", entity_id=melding.id,
                before=before, after=update_data)
+
+    # Werkdagboek: auto-entry bij status-wijziging (alleen status, geen field-edit
+    # — anders krijg je een entry per losse veld-update)
+    if status_change:
+        from daybook_logger import log_daybook
+        new_status = update_data.get("status")
+        log_daybook(
+            db,
+            user_id=current_user.id,
+            organization_id=current_user.organization_id,
+            entry_type="melding_status_change",
+            title="Status gewijzigd: " + (melding.title or "(zonder titel)") + " → " + (new_status or ""),
+            description=("Van '" + (before.get("status") or "open") + "' naar '" + (new_status or "") + "'"),
+            source_type="melding",
+            source_id=melding.id,
+            lat=melding.lat,
+            lng=melding.lng,
+            project_id=melding.project_id,
+        )
+
     return _melding_to_response(melding)
 
 
