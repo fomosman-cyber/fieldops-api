@@ -3659,7 +3659,10 @@
           </div>
           <input type="file" id="meldingPhotoInput" accept="image/*" capture="environment" style="display:none;" onchange="onMeldingPhotoChange(event)">
           <div id="meldingAIBox" style="display:none;margin-top:10px;">
-            <button type="button" class="btn-primary" id="meldingAIBtn" onclick="analyseFotoMetAI()" style="width:100%;background:linear-gradient(135deg,#0284c7,#7c3aed);color:#fff;">✨ AI analyseer foto</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="button" class="btn-primary" id="meldingAIBtn" onclick="analyseFotoMetAI()" style="flex:1;min-width:180px;background:linear-gradient(135deg,#0284c7,#7c3aed);color:#fff;">✨ AI analyseer foto</button>
+              <button type="button" class="btn-primary" id="meldingCrow146Btn" onclick="analyseFotoCrow146()" style="flex:1;min-width:180px;background:linear-gradient(135deg,#ea580c,#b45309);color:#fff;" title="CROW 146a/b — verharding-classificatie">🛣️ CROW 146 verharding</button>
+            </div>
             <div id="meldingAIResult" style="display:none;margin-top:10px;padding:12px;border-radius:10px;background:rgba(2,132,199,0.06);border:1px solid rgba(2,132,199,0.2);font-size:13px;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                 <strong style="color:var(--accent);">AI-suggestie</strong>
@@ -3669,6 +3672,17 @@
               <div style="display:flex;gap:8px;margin-top:10px;">
                 <button type="button" class="btn-primary" onclick="applyAISuggestion()" style="flex:1;font-size:12px;padding:6px 10px;">✓ Overnemen</button>
                 <button type="button" class="btn-secondary" onclick="dismissAISuggestion()" style="flex:1;font-size:12px;padding:6px 10px;">✕ Negeren</button>
+              </div>
+            </div>
+            <div id="meldingCrow146Result" style="display:none;margin-top:10px;padding:12px;border-radius:10px;background:rgba(234,88,12,0.06);border:1px solid rgba(234,88,12,0.2);font-size:13px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <strong style="color:#b45309;">CROW 146 — verharding-classificatie</strong>
+                <span id="meldingCrow146Type" style="font-size:11px;color:var(--text-dim);"></span>
+              </div>
+              <div id="meldingCrow146Summary" style="color:var(--text);line-height:1.5;"></div>
+              <div style="display:flex;gap:8px;margin-top:10px;">
+                <button type="button" class="btn-primary" onclick="applyCrow146Suggestion()" style="flex:1;font-size:12px;padding:6px 10px;background:#b45309;color:#fff;">✓ Toepassen op melding</button>
+                <button type="button" class="btn-secondary" onclick="dismissCrow146Result()" style="flex:1;font-size:12px;padding:6px 10px;">✕ Negeren</button>
               </div>
             </div>
           </div>
@@ -15623,7 +15637,10 @@
       reader.readAsDataURL(f);
       document.getElementById('meldingAIBox').style.display = 'block';
       document.getElementById('meldingAIResult').style.display = 'none';
+      var crowBox = document.getElementById('meldingCrow146Result');
+      if (crowBox) crowBox.style.display = 'none';
       meldingAILastResult = null;
+      meldingCrow146LastResult = null;
     }
 
     function analyseFotoMetAI() {
@@ -15689,6 +15706,150 @@
       return String(s || '').replace(/[&<>"']/g, function(c){
         return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
       });
+    }
+
+    // ── CROW 146 verharding-classificatie ───────────────────────
+    // Backend: POST /api/ai/classify-crow146 — geeft verhardingstype (a/b)
+    // + top-5 schadebeelden uit CROW 146-taxonomy met klasse-advies.
+    // Verschilt van /api/inspecties/analyse-foto: dat is generieke schade-AI;
+    // dit is verharding-specifieke heuristiek mét NEN/CROW-codes.
+    var meldingCrow146LastResult = null;
+
+    function _photoToDataUrl(file) {
+      return new Promise(function(resolve, reject) {
+        if (!file) { resolve(null); return; }
+        var r = new FileReader();
+        r.onload = function(e) { resolve(e.target.result); };
+        r.onerror = function() { reject(new Error('Lezen foto mislukt')); };
+        r.readAsDataURL(file);
+      });
+    }
+
+    function analyseFotoCrow146() {
+      if (!meldingPhotoFile) { showToast('Kies eerst een foto', 'error'); return; }
+      var btn = document.getElementById('meldingCrow146Btn');
+      var origText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳ CROW 146 analyseert...';
+
+      // Context-hints vanuit melding-form
+      var asset_type = null;
+      var properties_hint = null;
+      var assetId = document.getElementById('meldingAsset').value;
+      if (assetId && Array.isArray(meldingAssets)) {
+        var a = meldingAssets.find(function(x){ return x.id === assetId; });
+        if (a) {
+          asset_type = a.type || null;
+          properties_hint = (a.properties || a.location_description || '') || null;
+        }
+      }
+      // Categorie als asset_type-fallback (vooral 'Wegdek')
+      if (!asset_type) {
+        var catEl = document.getElementById('meldingCategory');
+        if (catEl && catEl.value) asset_type = catEl.value.toLowerCase();
+      }
+      // Description als extra hint
+      var desc = (document.getElementById('meldingDesc') || {}).value;
+      if (desc && !properties_hint) properties_hint = desc;
+
+      _photoToDataUrl(meldingPhotoFile).then(function(dataUrl) {
+        return api('POST', '/api/ai/classify-crow146', {
+          asset_type: asset_type,
+          properties_hint: properties_hint,
+          photo_data_url: dataUrl,
+        });
+      }).then(function(result) {
+        meldingCrow146LastResult = result;
+        renderCrow146Result(result);
+      }).catch(function(err) {
+        showToast('CROW 146-analyse mislukt: ' + (err.message || ''), 'error');
+      }).finally(function() {
+        btn.disabled = false;
+        btn.textContent = origText;
+      });
+    }
+
+    function renderCrow146Result(r) {
+      var box = document.getElementById('meldingCrow146Result');
+      var summary = document.getElementById('meldingCrow146Summary');
+      var typeEl = document.getElementById('meldingCrow146Type');
+      if (!box || !summary || !r) return;
+
+      if (typeEl) typeEl.textContent = (r.verhardingstype_label || '') + ' · ' + (r.detection_method === 'auto' ? 'auto-detect' : 'expliciet');
+
+      var lines = [];
+      var sugg = r.suggestions || [];
+      if (sugg.length === 0) {
+        lines.push('<em>Geen schadebeelden gedetecteerd in de heuristiek.</em>');
+      } else {
+        lines.push('<div style="font-weight:600;margin-bottom:6px;">Top schadebeelden:</div>');
+        lines.push('<ul style="margin:0 0 8px 18px;padding:0;">');
+        sugg.slice(0, 5).forEach(function(s, idx) {
+          var code = s.code || s.schadebeeld_code || '';
+          var naam = s.naam || s.schadebeeld_naam || s.label || code;
+          var klasse = s.klasse_advies || s.klasse || '';
+          var conf = (s.confidence_pct != null) ? s.confidence_pct + '%' : '';
+          var maatregel = s.maatregel || s.advies || '';
+          var pre = (idx === 0) ? '<strong>' : '';
+          var post = (idx === 0) ? '</strong>' : '';
+          lines.push('<li style="margin-bottom:4px;">' + pre + escapeHtml(naam) +
+            (code ? ' <code style="background:rgba(234,88,12,0.1);padding:1px 5px;border-radius:4px;font-size:11px;">' + escapeHtml(code) + '</code>' : '') +
+            (klasse ? ' <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:4px;font-size:11px;">' + escapeHtml(klasse) + '</span>' : '') +
+            (conf ? ' <span style="color:var(--text-dim);font-size:11px;">(' + conf + ')</span>' : '') +
+            post +
+            (maatregel ? '<br><span style="font-size:11px;color:var(--text-muted);">→ ' + escapeHtml(maatregel) + '</span>' : '') +
+          '</li>');
+        });
+        lines.push('</ul>');
+      }
+      if (r.norm_reference) {
+        lines.push('<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Norm: ' + escapeHtml(r.norm_reference) + '</div>');
+      }
+      summary.innerHTML = lines.join('');
+      box.style.display = 'block';
+    }
+
+    function applyCrow146Suggestion() {
+      var r = meldingCrow146LastResult;
+      if (!r || !r.suggestions || !r.suggestions.length) {
+        showToast('Geen suggestie om toe te passen', 'error');
+        return;
+      }
+      var top = r.suggestions[0];
+      var naam = top.naam || top.schadebeeld_naam || top.label || top.code || '';
+      var code = top.code || top.schadebeeld_code || '';
+      var klasse = top.klasse_advies || top.klasse || '';
+      var maatregel = top.maatregel || top.advies || '';
+
+      // Title — alleen als nog leeg
+      var titleField = document.getElementById('meldingTitle');
+      if (titleField && !titleField.value && naam) {
+        titleField.value = 'CROW 146: ' + naam;
+      }
+      // Description — append CROW-bevindingen
+      var descField = document.getElementById('meldingDesc');
+      if (descField) {
+        var bev = '[CROW 146 — ' + (r.verhardingstype_label || '') + ']';
+        bev += '\n• Schadebeeld: ' + naam + (code ? ' (' + code + ')' : '');
+        if (klasse) bev += '\n• Klasse-advies: ' + klasse;
+        if (maatregel) bev += '\n• Maatregel: ' + maatregel;
+        descField.value = descField.value ? (descField.value + '\n\n' + bev) : bev;
+      }
+      // Categorie -> Wegdek (vaak passend voor verharding)
+      var catEl = document.getElementById('meldingCategory');
+      if (catEl && !catEl.value) {
+        var opts = Array.prototype.slice.call(catEl.options);
+        var wegdek = opts.find(function(o){ return /wegdek/i.test(o.value); });
+        if (wegdek) catEl.value = wegdek.value;
+      }
+      showToast('CROW 146-suggestie toegepast', 'success');
+      dismissCrow146Result();
+    }
+
+    function dismissCrow146Result() {
+      var box = document.getElementById('meldingCrow146Result');
+      if (box) box.style.display = 'none';
+      meldingCrow146LastResult = null;
     }
 
     function applyAISuggestion() {
