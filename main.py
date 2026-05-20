@@ -11,7 +11,7 @@ import os
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router, kunstwerken_inspecties_router, inspection_cycle_router, mjop_router, risico_router, bag_router, iso55000_router, digigo_router, iot_router, proborm_router, damo_router, ai_photo_router, compliance_router, daybook_router, notifications_router, email_inbox_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router, kunstwerken_inspecties_router, inspection_cycle_router, mjop_router, risico_router, bag_router, iso55000_router, digigo_router, iot_router, proborm_router, damo_router, ai_photo_router, compliance_router, daybook_router, notifications_router, email_inbox_router, mfa_router
 from audit import assign_request_id
 
 # Maak alle tabellen aan
@@ -54,6 +54,21 @@ def _run_migrations():
                 with engine.begin() as conn:
                     conn.execute(text("ALTER TABLE users ADD COLUMN tokens_invalidated_at TIMESTAMP"))
                 print("[migration] users.tokens_invalidated_at toegevoegd.")
+
+            # users.mfa_* — 2FA / TOTP (v3.8)
+            mfa_cols = {
+                "mfa_secret": "VARCHAR(64)",
+                "mfa_enabled": "BOOLEAN DEFAULT FALSE NOT NULL",
+                "mfa_enabled_at": "TIMESTAMP",
+                "mfa_backup_codes": "TEXT",
+            }
+            mfa_missing = [c for c in mfa_cols if c not in user_cols]
+            if mfa_missing:
+                print(f"[migration] users.mfa_* kolommen toevoegen: {mfa_missing}")
+                with engine.begin() as conn:
+                    for col in mfa_missing:
+                        conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {mfa_cols[col]}"))
+                print("[migration] users.mfa_* toegevoegd.")
 
         # meldingen.asset_id (toegevoegd voor asset-management koppeling)
         if "meldingen" in insp.get_table_names():
@@ -651,6 +666,7 @@ app.include_router(daybook_router.router)
 app.include_router(notifications_router.router)
 app.include_router(email_inbox_router.router)
 app.include_router(email_inbox_router.incoming_router)
+app.include_router(mfa_router.router)
 
 
 # Request-ID middleware — koppelt elke request aan een correlatie-ID dat

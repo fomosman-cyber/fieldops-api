@@ -2434,6 +2434,65 @@
         </div>
       </div>
 
+      <!-- 2FA / Twee-factor authenticatie -->
+      <div class="card" style="max-width:600px;margin-bottom:20px;" id="mfaCard">
+        <div class="card-header"><h3>🔐 Twee-factor authenticatie (2FA)</h3></div>
+        <p style="color:var(--text-muted);font-size:13px;margin:0 0 14px;">
+          Extra beveiliging bovenop je wachtwoord. Bij login moet je naast je wachtwoord een 6-cijferige code uit een authenticator-app invoeren (Google Authenticator, Authy, 1Password, Microsoft Authenticator).
+        </p>
+        <div id="mfaStatusBox" style="padding:14px;border-radius:10px;background:var(--card-bg-hover);margin-bottom:14px;">
+          <div id="mfaStatusText" style="font-size:13px;color:var(--text-muted);">Status laden...</div>
+        </div>
+        <!-- Setup-flow: zichtbaar tijdens enrollment -->
+        <div id="mfaSetupBlock" style="display:none;margin-bottom:14px;padding:14px;border:1px solid var(--border);border-radius:10px;background:rgba(2,132,199,0.04);">
+          <h4 style="margin:0 0 10px;font-size:14px;">Stap 1 — Scan QR met authenticator-app</h4>
+          <div id="mfaQrWrap" style="text-align:center;margin-bottom:12px;">
+            <img id="mfaQrImg" alt="QR-code" style="max-width:220px;border:1px solid var(--border);border-radius:8px;background:#fff;padding:8px;">
+          </div>
+          <p style="font-size:11px;color:var(--text-muted);margin:0 0 6px;">Of voer deze secret handmatig in:</p>
+          <code id="mfaSecretDisplay" style="display:block;background:var(--card-bg);padding:8px 10px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:12px;word-break:break-all;margin-bottom:14px;"></code>
+          <h4 style="margin:14px 0 8px;font-size:14px;">Stap 2 — Voer 6-cijferige code in</h4>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" id="mfaVerifyCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="123456" style="flex:1;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:16px;letter-spacing:0.3em;text-align:center;">
+            <button class="btn-primary" onclick="verifyMfa()">Activeer 2FA</button>
+          </div>
+        </div>
+        <!-- Backup-codes display: eenmaal getoond na enable -->
+        <div id="mfaBackupCodesBlock" style="display:none;margin-bottom:14px;padding:14px;border:1px solid #fbbf24;border-radius:10px;background:rgba(251,191,36,0.08);">
+          <h4 style="margin:0 0 8px;font-size:14px;color:#92400e;">⚠️ Bewaar deze backup-codes</h4>
+          <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;line-height:1.5;">
+            Elke code werkt 1x. Gebruik ze als je je telefoon kwijt bent. <strong>Je ziet ze maar één keer</strong> — print of bewaar in wachtwoord-manager.
+          </p>
+          <div id="mfaBackupCodesList" style="background:var(--card-bg);padding:12px;border-radius:8px;font-family:'JetBrains Mono',monospace;font-size:13px;line-height:2;"></div>
+          <div style="display:flex;gap:6px;margin-top:10px;">
+            <button class="btn-secondary" onclick="copyMfaBackupCodes()" style="font-size:12px;padding:6px 12px;">📋 Kopieer naar klembord</button>
+            <button class="btn-primary" onclick="dismissMfaBackupCodes()" style="font-size:12px;padding:6px 12px;">✓ Bewaard</button>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button id="mfaEnableBtn" class="btn-primary" onclick="startMfaSetup()" style="display:none;">🔐 2FA inschakelen</button>
+          <button id="mfaDisableBtn" class="btn-secondary" onclick="openMfaDisableModal()" style="display:none;color:#dc2626;">2FA uitschakelen</button>
+          <button id="mfaRegenBackupBtn" class="btn-secondary" onclick="openMfaRegenModal()" style="display:none;font-size:12px;">↻ Nieuwe backup-codes</button>
+        </div>
+      </div>
+
+      <!-- 2FA disable/regenerate prompt-modal -->
+      <div class="modal-overlay" id="mfaPromptModal">
+        <div class="modal" style="max-width:440px;">
+          <button class="modal-close" onclick="closeMfaPromptModal()">&times;</button>
+          <h2 id="mfaPromptTitle">2FA uitschakelen</h2>
+          <p class="subtitle" id="mfaPromptSubtitle">Voer je huidige 6-cijferige code in om te bevestigen.</p>
+          <div class="form-group">
+            <label>Authenticator-code</label>
+            <input type="text" id="mfaPromptCode" inputmode="numeric" pattern="[0-9]{6}" maxlength="10" placeholder="123456 of backup-code" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:16px;letter-spacing:0.3em;text-align:center;">
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" onclick="closeMfaPromptModal()">Annuleren</button>
+            <button type="button" class="btn-primary" id="mfaPromptConfirmBtn" onclick="confirmMfaPrompt()">Bevestigen</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Wachtwoord wijzigen -->
       <div class="card" style="max-width:600px;margin-bottom:20px;">
         <div class="card-header"><h3 data-i18n="pw_title">🔐 Wachtwoord wijzigen</h3></div>
@@ -7389,7 +7448,7 @@
       if (page === 'mijn-dag') loadMijnDag();
       if (page === 'dashboard') loadDashboardPredictiveWidget();
       if (page === 'integraties') loadIntegrations();
-      if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); loadOrgEditForm(); loadOrgAuditSummary(); }
+      if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); loadOrgEditForm(); loadOrgAuditSummary(); refreshMfaStatus(); }
       if (page === 'dagboek') initDaybook();
     }
 
@@ -16136,6 +16195,153 @@
       }).catch(function(err) {
         showToast('Fout: ' + (err.message || 'onbekend'), 'error');
       });
+    }
+
+    // ── 2FA / MFA management ─────────────────────────────────────
+    // Backend (zie routers/mfa_router.py):
+    //   GET    /api/mfa/status                      huidige status
+    //   POST   /api/mfa/setup                       genereer secret + QR
+    //   POST   /api/mfa/verify {code}               activeer + krijg backup-codes (1x)
+    //   POST   /api/mfa/disable {code}              uitschakelen (TOTP of backup)
+    //   POST   /api/mfa/backup-codes/regenerate     nieuwe set (vereist TOTP)
+    var _mfaPromptAction = null;  // 'disable' of 'regenerate'
+
+    function refreshMfaStatus() {
+      api('GET', '/api/mfa/status').then(function(s) {
+        var statusEl = document.getElementById('mfaStatusText');
+        var enableBtn = document.getElementById('mfaEnableBtn');
+        var disableBtn = document.getElementById('mfaDisableBtn');
+        var regenBtn = document.getElementById('mfaRegenBackupBtn');
+        var setupBlock = document.getElementById('mfaSetupBlock');
+        if (!statusEl) return;
+        if (s.enabled) {
+          var enabledAt = s.enabled_at ? new Date(s.enabled_at).toLocaleDateString('nl-NL', {dateStyle:'long'}) : '';
+          statusEl.innerHTML = '<span style="color:#16a34a;font-weight:600;">✓ 2FA staat AAN</span>' +
+            (enabledAt ? '<br><span style="font-size:11px;color:var(--text-dim);">Geactiveerd op ' + enabledAt + '</span>' : '') +
+            '<br><span style="font-size:11px;color:var(--text-muted);">' + (s.backup_codes_remaining || 0) + ' backup-codes resterend</span>';
+          enableBtn.style.display = 'none';
+          disableBtn.style.display = '';
+          regenBtn.style.display = '';
+          setupBlock.style.display = 'none';
+        } else {
+          statusEl.innerHTML = '<span style="color:var(--text-dim);">○ 2FA staat UIT</span>' +
+            '<br><span style="font-size:11px;color:var(--text-muted);">Aanbevolen voor org-admins en accounts met gevoelige data.</span>';
+          enableBtn.style.display = '';
+          disableBtn.style.display = 'none';
+          regenBtn.style.display = 'none';
+        }
+      }).catch(function(){});
+    }
+
+    function startMfaSetup() {
+      api('POST', '/api/mfa/setup').then(function(r) {
+        if (!r || !r.qr_code_data_url) return;
+        document.getElementById('mfaQrImg').src = r.qr_code_data_url;
+        document.getElementById('mfaSecretDisplay').textContent = r.secret;
+        document.getElementById('mfaSetupBlock').style.display = '';
+        document.getElementById('mfaVerifyCode').value = '';
+        document.getElementById('mfaVerifyCode').focus();
+      }).catch(function(err) {
+        showToast('Setup mislukt: ' + (err.message || ''), 'error');
+      });
+    }
+
+    function verifyMfa() {
+      var code = (document.getElementById('mfaVerifyCode').value || '').trim();
+      if (code.length !== 6 || !/^\d+$/.test(code)) {
+        showToast('Voer een 6-cijferige code in', 'error');
+        return;
+      }
+      api('POST', '/api/mfa/verify', { code: code }).then(function(r) {
+        if (r && r.enabled) {
+          showToast('🔐 2FA geactiveerd', 'success');
+          document.getElementById('mfaSetupBlock').style.display = 'none';
+          if (r.backup_codes && r.backup_codes.length) {
+            renderMfaBackupCodes(r.backup_codes);
+          }
+          refreshMfaStatus();
+        }
+      }).catch(function(err) {
+        showToast('Verificatie mislukt: ' + (err.message || ''), 'error');
+      });
+    }
+
+    function renderMfaBackupCodes(codes) {
+      var block = document.getElementById('mfaBackupCodesBlock');
+      var list = document.getElementById('mfaBackupCodesList');
+      if (!block || !list) return;
+      list.innerHTML = codes.map(function(c) { return '<div>' + escapeHtml(c) + '</div>'; }).join('');
+      block.dataset.codes = codes.join('\n');
+      block.style.display = '';
+    }
+
+    function copyMfaBackupCodes() {
+      var block = document.getElementById('mfaBackupCodesBlock');
+      var codes = block.dataset.codes || '';
+      if (!codes) return;
+      try {
+        navigator.clipboard.writeText(codes).then(function() {
+          showToast('Backup-codes gekopieerd', 'success');
+        });
+      } catch (e) {
+        showToast('Kopiëren mislukt — selecteer handmatig', 'error');
+      }
+    }
+
+    function dismissMfaBackupCodes() {
+      var block = document.getElementById('mfaBackupCodesBlock');
+      if (block) {
+        block.style.display = 'none';
+        delete block.dataset.codes;
+      }
+    }
+
+    function openMfaDisableModal() {
+      _mfaPromptAction = 'disable';
+      document.getElementById('mfaPromptTitle').textContent = '2FA uitschakelen';
+      document.getElementById('mfaPromptSubtitle').textContent = 'Voer je huidige 6-cijferige code of een backup-code in om te bevestigen.';
+      document.getElementById('mfaPromptConfirmBtn').textContent = 'Uitschakelen';
+      document.getElementById('mfaPromptCode').value = '';
+      document.getElementById('mfaPromptModal').classList.add('active');
+      setTimeout(function(){ document.getElementById('mfaPromptCode').focus(); }, 100);
+    }
+
+    function openMfaRegenModal() {
+      _mfaPromptAction = 'regenerate';
+      document.getElementById('mfaPromptTitle').textContent = 'Nieuwe backup-codes';
+      document.getElementById('mfaPromptSubtitle').textContent = 'Vereist huidige 6-cijferige TOTP-code (geen backup-code). Oude codes vervallen direct.';
+      document.getElementById('mfaPromptConfirmBtn').textContent = 'Genereren';
+      document.getElementById('mfaPromptCode').value = '';
+      document.getElementById('mfaPromptModal').classList.add('active');
+      setTimeout(function(){ document.getElementById('mfaPromptCode').focus(); }, 100);
+    }
+
+    function closeMfaPromptModal() {
+      document.getElementById('mfaPromptModal').classList.remove('active');
+      _mfaPromptAction = null;
+    }
+
+    function confirmMfaPrompt() {
+      var code = (document.getElementById('mfaPromptCode').value || '').trim();
+      if (!code) { showToast('Voer een code in', 'error'); return; }
+      if (_mfaPromptAction === 'disable') {
+        api('POST', '/api/mfa/disable', { code: code }).then(function() {
+          showToast('2FA uitgeschakeld', 'success');
+          closeMfaPromptModal();
+          refreshMfaStatus();
+        }).catch(function(err) {
+          showToast('Fout: ' + (err.message || ''), 'error');
+        });
+      } else if (_mfaPromptAction === 'regenerate') {
+        api('POST', '/api/mfa/backup-codes/regenerate', { code: code }).then(function(r) {
+          showToast('Nieuwe backup-codes gegenereerd', 'success');
+          closeMfaPromptModal();
+          if (r && r.backup_codes) renderMfaBackupCodes(r.backup_codes);
+          refreshMfaStatus();
+        }).catch(function(err) {
+          showToast('Fout: ' + (err.message || ''), 'error');
+        });
+      }
     }
 
     // ── Notifications (bell-icon + dropdown) ─────────────────────
