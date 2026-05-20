@@ -1046,7 +1046,23 @@
       </select>
       <button class="notif-btn" id="helpBtn" aria-label="Handleiding" onclick="window.open('/handleiding', '_blank')" title="Open handleiding">❓</button>
       <button class="notif-btn" id="themeBtn" aria-label="Donker thema" onclick="toggleTheme()" title="Donker/licht thema">🌓</button>
-      <button class="notif-btn" id="pushBtn" aria-label="Push notificaties" onclick="togglePushNotifications()" title="Push notificaties aan/uit">🔔</button>
+      <button class="notif-btn" id="pushBtn" aria-label="Push notificaties" onclick="togglePushNotifications()" title="Browser push notificaties aan/uit (separate van in-app bell)" style="display:none;">📱</button>
+      <!-- In-app notification bell met badge + dropdown -->
+      <div style="position:relative;" id="notifBellWrap">
+        <button class="notif-btn" id="notifBellBtn" aria-label="Notificaties" onclick="toggleNotifDropdown()" title="Notificaties" style="position:relative;">
+          🔔
+          <span id="notifBadge" style="display:none;position:absolute;top:-2px;right:-2px;background:#dc2626;color:#fff;font-size:10px;font-weight:700;border-radius:10px;min-width:18px;height:18px;line-height:18px;padding:0 5px;text-align:center;border:2px solid var(--bg);">0</span>
+        </button>
+        <div id="notifDropdown" style="display:none;position:absolute;top:calc(100% + 8px);right:0;width:340px;max-height:480px;background:var(--card-bg);border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,0.15);z-index:1000;overflow:hidden;">
+          <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+            <strong style="font-size:14px;color:var(--text);">Notificaties</strong>
+            <button onclick="markAllNotifRead()" style="background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;font-family:inherit;">Alles markeren</button>
+          </div>
+          <div id="notifList" style="max-height:400px;overflow-y:auto;">
+            <div style="padding:30px 20px;text-align:center;color:var(--text-dim);font-size:13px;">Laden...</div>
+          </div>
+        </div>
+      </div>
       <span id="syncStatusBadge" style="display:none;font-size:11px;padding:3px 8px;border-radius:10px;background:#fbbf24;color:#78350f;font-weight:600;cursor:pointer;" onclick="syncQueueRetry()" title="Klik om opnieuw te proberen">⏳ <span id="syncStatusCount">0</span></span>
       <div class="user-pill">
         <div class="user-avatar" id="userAvatar">U</div>
@@ -7172,6 +7188,9 @@
         // Branding prefetch (cached in orgBrandingCache) — voor PDF-generators
         // die altijd brand-header willen tonen zonder eerst te wachten
         getOrgBranding();
+
+        // Notifications polling starten (badge + dropdown)
+        if (typeof startNotificationsPolling === 'function') startNotificationsPolling();
 
         // Load org stats
         return api('GET', '/api/organization/stats');
@@ -15814,6 +15833,138 @@
         }
       }).catch(function(err) {
         showToast('Fout: ' + (err.message || 'onbekend'), 'error');
+      });
+    }
+
+    // ── Notifications (bell-icon + dropdown) ─────────────────────
+    // Backend endpoints:
+    //   GET /api/notifications - list (default: unread + read mixed)
+    //   GET /api/notifications/unread-count - voor badge
+    //   POST /api/notifications/{id}/read - markeer 1 gelezen
+    //   POST /api/notifications/mark-all-read
+    //   POST /api/notifications/{id}/archive
+    // Polling: 30s interval voor badge-update, on-open re-fetch lijst.
+    var notifPollInterval = null;
+    var notifCache = [];
+
+    function startNotificationsPolling() {
+      // Direct 1× ophalen, dan 30s interval
+      refreshNotifBadge();
+      if (notifPollInterval) clearInterval(notifPollInterval);
+      notifPollInterval = setInterval(refreshNotifBadge, 30000);
+    }
+
+    function refreshNotifBadge() {
+      api('GET', '/api/notifications/unread-count').then(function(d) {
+        var badge = document.getElementById('notifBadge');
+        var n = (d && d.unread) || 0;
+        if (badge) {
+          if (n > 0) {
+            badge.style.display = '';
+            badge.textContent = n > 99 ? '99+' : n;
+          } else {
+            badge.style.display = 'none';
+          }
+        }
+      }).catch(function(){});
+    }
+
+    function toggleNotifDropdown() {
+      var dd = document.getElementById('notifDropdown');
+      if (!dd) return;
+      if (dd.style.display === 'none' || !dd.style.display) {
+        dd.style.display = 'block';
+        loadNotifList();
+        // Close on outside-click
+        setTimeout(function() {
+          document.addEventListener('click', _notifOutsideClick, { once: true });
+        }, 50);
+      } else {
+        dd.style.display = 'none';
+      }
+    }
+
+    function _notifOutsideClick(e) {
+      var dd = document.getElementById('notifDropdown');
+      var wrap = document.getElementById('notifBellWrap');
+      if (dd && wrap && !wrap.contains(e.target)) {
+        dd.style.display = 'none';
+      } else if (dd && dd.style.display !== 'none') {
+        // Click was inside — re-bind voor volgende click
+        setTimeout(function() {
+          document.addEventListener('click', _notifOutsideClick, { once: true });
+        }, 50);
+      }
+    }
+
+    function loadNotifList() {
+      var list = document.getElementById('notifList');
+      if (!list) return;
+      api('GET', '/api/notifications/?limit=30').then(function(d) {
+        notifCache = (d && d.items) || [];
+        if (!notifCache.length) {
+          list.innerHTML = '<div style="padding:30px 20px;text-align:center;color:var(--text-dim);font-size:13px;">' +
+            '<div style="font-size:32px;margin-bottom:8px;opacity:0.5;">🔔</div>' +
+            'Nog geen notificaties</div>';
+          return;
+        }
+        list.innerHTML = notifCache.map(function(n) {
+          var bgColor = n.read ? 'var(--card-bg)' : 'rgba(2,132,199,0.06)';
+          var indicator = n.read ? '' : '<span style="position:absolute;top:50%;left:6px;transform:translateY(-50%);width:6px;height:6px;border-radius:50%;background:#0284c7;"></span>';
+          var ts = '';
+          if (n.created_at) {
+            var d = new Date(n.created_at);
+            var diff = Math.floor((Date.now() - d.getTime()) / 1000);
+            if (diff < 60) ts = 'zojuist';
+            else if (diff < 3600) ts = Math.floor(diff/60) + 'm';
+            else if (diff < 86400) ts = Math.floor(diff/3600) + 'u';
+            else ts = Math.floor(diff/86400) + 'd';
+          }
+          return '<div onclick="openNotification(\'' + n.id + '\', \'' + (n.link_type || '') + '\', \'' + (n.link_id || '') + '\')" style="padding:10px 14px 10px 22px;border-bottom:1px solid var(--border);cursor:pointer;position:relative;background:' + bgColor + ';">' +
+            indicator +
+            '<div style="display:flex;gap:8px;align-items:flex-start;">' +
+              '<span style="font-size:18px;flex-shrink:0;">' + (n.icon || '🔔') + '</span>' +
+              '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px;">' + escapeHtml(n.title) + '</div>' +
+                (n.body ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;line-height:1.4;">' + escapeHtml(n.body).slice(0, 120) + '</div>' : '') +
+                '<div style="font-size:10px;color:var(--text-dim);">' + ts + '</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+      }).catch(function(err) {
+        list.innerHTML = '<div style="padding:20px;color:var(--red);font-size:12px;">Fout: ' + (err.message || '') + '</div>';
+      });
+    }
+
+    function openNotification(id, linkType, linkId) {
+      // Markeer gelezen
+      api('POST', '/api/notifications/' + id + '/read').then(function() {
+        refreshNotifBadge();
+      }).catch(function(){});
+      // Sluit dropdown
+      var dd = document.getElementById('notifDropdown');
+      if (dd) dd.style.display = 'none';
+      // Navigate naar source
+      if (linkType === 'melding' && linkId) {
+        navigateTo('meldingen');
+        setTimeout(function() {
+          if (typeof openMeldingDetail === 'function') openMeldingDetail(linkId);
+        }, 200);
+      } else if (linkType === 'inspection' && linkId) {
+        navigateTo('kunstwerken');
+      } else if (linkType === 'oplevering' && linkId) {
+        navigateTo('opleveren');
+      }
+    }
+
+    function markAllNotifRead() {
+      api('POST', '/api/notifications/mark-all-read').then(function(d) {
+        showToast((d.marked_read || 0) + ' notificaties gelezen', 'success');
+        refreshNotifBadge();
+        loadNotifList();
+      }).catch(function(err) {
+        showToast('Fout: ' + (err.message || ''), 'error');
       });
     }
 

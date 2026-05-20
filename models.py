@@ -1028,6 +1028,42 @@ class OpleveringPunt(Base):
 #   - Asset-manager: dag-overzicht per team-lid
 #   - Audit: een onveranderlijk dagboek per user (verschilt van AuditLog,
 #     die system-events vastlegt; daybook is mens-georiënteerd narratief)
+# ═══════════════════════════════════════════════════════════════════════════
+# NOTIFICATIONS — in-app meldingen voor toewijzingen, status-changes etc.
+# ═══════════════════════════════════════════════════════════════════════════
+# Doel: workflow-essentie ("ik ben toegewezen aan een nieuwe melding") in-app
+# tonen via bell-icon + dropdown. Email-trigger volgt in latere iteratie.
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    # Notification-type: assigned, status_change, mention, comment, system
+    notif_type = Column(String(40), nullable=False, index=True)
+
+    title = Column(String(255), nullable=False)
+    body = Column(Text, nullable=True)
+    icon = Column(String(20), nullable=True)  # emoji of icon-naam
+
+    # Deep-link target (frontend interpreteert dit)
+    link_type = Column(String(40), nullable=True)  # 'melding', 'inspection', 'oplevering'
+    link_id = Column(String, nullable=True)
+
+    # State
+    read_at = Column(DateTime, nullable=True, index=True)
+    archived_at = Column(DateTime, nullable=True)
+
+    # Email-state — pas relevant in volgende iteratie
+    email_sent_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+    organization = relationship("Organization")
+
+
 class DaybookEntry(Base):
     __tablename__ = "daybook_entries"
 

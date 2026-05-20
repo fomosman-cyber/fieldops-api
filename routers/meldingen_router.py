@@ -660,6 +660,26 @@ def update_melding(
             project_id=melding.project_id,
         )
 
+    # Notificatie bij toewijzings-wijziging (assigned_to changed)
+    if "assigned_to" in update_data and update_data["assigned_to"] != before.get("assigned_to"):
+        from notifier import notify
+        new_assignee = update_data["assigned_to"]
+        if new_assignee and new_assignee != current_user.id:
+            # Notify de nieuwe uitvoerder (niet jezelf als je het aan jezelf toewijst)
+            notify(
+                db,
+                user_id=new_assignee,
+                organization_id=current_user.organization_id,
+                notif_type="assigned",
+                title="🎯 Toegewezen: " + (melding.title or "(zonder titel)"),
+                body=("Categorie: " + (melding.category or "—")
+                      + " · Prioriteit: " + (melding.priority or "normaal")
+                      + " · Door: " + ((current_user.first_name or "") + " " + (current_user.last_name or "")).strip()),
+                icon="🎯",
+                link_type="melding",
+                link_id=melding.id,
+            )
+
     return _melding_to_response(melding)
 
 
@@ -806,6 +826,26 @@ def bulk_update(
                 project_id=m.project_id,
                 commit=False,  # 1x commit aan einde
             )
+
+        # Notificatie bij bulk-assignment
+        if "assigned_to" in update_fields:
+            new_assignee = update_fields["assigned_to"]
+            old_assignee = before.get("assigned_to")
+            if new_assignee and new_assignee != old_assignee and new_assignee != current_user.id:
+                from notifier import notify
+                notify(
+                    db,
+                    user_id=new_assignee,
+                    organization_id=current_user.organization_id,
+                    notif_type="assigned",
+                    title="🎯 Toegewezen: " + (m.title or "(zonder titel)"),
+                    body=("Bulk-toewijzing · Door: "
+                          + ((current_user.first_name or "") + " " + (current_user.last_name or "")).strip()),
+                    icon="🎯",
+                    link_type="melding",
+                    link_id=m.id,
+                    commit=False,
+                )
 
     db.commit()
 
