@@ -1029,6 +1029,49 @@ class OpleveringPunt(Base):
 #   - Audit: een onveranderlijk dagboek per user (verschilt van AuditLog,
 #     die system-events vastlegt; daybook is mens-georiënteerd narratief)
 # ═══════════════════════════════════════════════════════════════════════════
+# EMAIL INBOX — inkomende emails → automatisch melding aanmaken
+# ═══════════════════════════════════════════════════════════════════════════
+# Per organisatie genereer je een unieke email-token. Mailgun/Postmark/SendGrid
+# inbound-parser stuurt POST naar /api/incoming/email/{token}. Subject wordt
+# titel, body wordt description, attachments (foto's) worden inline base64.
+class EmailInboxRoute(Base):
+    __tablename__ = "email_inbox_routes"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    # Token in URL: POST /api/incoming/email/{token}
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    # Display naam (bv. 'meldingen@klant.nl')
+    label = Column(String(120), nullable=False)
+    # Welk address-prefix doorlopen we (voor Mailgun route-config). Optioneel.
+    address_prefix = Column(String(80), nullable=True)
+
+    # Defaults voor automatisch aangemaakte meldingen
+    default_project_id = Column(String, ForeignKey("projects.id"), nullable=True)
+    default_category = Column(String(100), nullable=True)
+    default_priority = Column(String(20), default="normaal", nullable=False)
+    # Whitelist: alleen emails van deze afzenders worden geaccepteerd. Leeg = alle.
+    allowed_senders = Column(Text, nullable=True)  # JSON array van email-adressen of domeinen
+
+    # Aan welke user wordt aangemaakt melding gekoppeld (created_by). Default
+    # de aanmaker; later kan een per-org "email-bot" user worden gebruikt.
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+
+    received_count = Column(Integer, default=0, nullable=False)
+    last_received_at = Column(DateTime, nullable=True)
+    last_sender = Column(String(255), nullable=True)
+    last_error = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    organization = relationship("Organization")
+    creator = relationship("User", foreign_keys=[created_by])
+    default_project = relationship("Project", foreign_keys=[default_project_id])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # NOTIFICATIONS — in-app meldingen voor toewijzingen, status-changes etc.
 # ═══════════════════════════════════════════════════════════════════════════
 # Doel: workflow-essentie ("ik ben toegewezen aan een nieuwe melding") in-app

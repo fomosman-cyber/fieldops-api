@@ -11,7 +11,7 @@ import os
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router, kunstwerken_inspecties_router, inspection_cycle_router, mjop_router, risico_router, bag_router, iso55000_router, digigo_router, iot_router, proborm_router, damo_router, ai_photo_router, compliance_router, daybook_router, notifications_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router, kunstwerken_inspecties_router, inspection_cycle_router, mjop_router, risico_router, bag_router, iso55000_router, digigo_router, iot_router, proborm_router, damo_router, ai_photo_router, compliance_router, daybook_router, notifications_router, email_inbox_router
 from audit import assign_request_id
 
 # Maak alle tabellen aan
@@ -572,6 +572,8 @@ app.include_router(ai_photo_router.router)
 app.include_router(compliance_router.router)
 app.include_router(daybook_router.router)
 app.include_router(notifications_router.router)
+app.include_router(email_inbox_router.router)
+app.include_router(email_inbox_router.incoming_router)
 
 
 # Request-ID middleware — koppelt elke request aan een correlatie-ID dat
@@ -1084,6 +1086,53 @@ def handleiding():
     header (❓-knop) en marketing-site footer."""
     html = (TEMPLATES_DIR / "handleiding.html").read_text(encoding="utf-8")
     return HTMLResponse(content=html)
+
+
+@app.get("/email-inbox-setup", response_class=HTMLResponse)
+def email_inbox_setup_docs():
+    """Publieke setup-handleiding voor email-naar-melding (Mailgun/Postmark/SendGrid).
+
+    Linkt vanuit Instellingen → Integraties → Email-tab. Markdown wordt
+    eenvoudig als <pre>-block gerenderd voor leesbaarheid.
+    """
+    doc_path = Path(__file__).parent / "EMAIL-INBOX-SETUP.md"
+    if not doc_path.exists():
+        return HTMLResponse(content="<h1>Setup-handleiding niet gevonden</h1>", status_code=404)
+    md = doc_path.read_text(encoding="utf-8")
+    # Simple markdown -> HTML: headings + code-blocks + links
+    import re as _re
+    html_body = md
+    # Code-blocks ```...```
+    html_body = _re.sub(r"```(\w*)\n(.*?)```",
+                         lambda m: f'<pre style="background:#f1f5f9;padding:12px;border-radius:8px;overflow-x:auto;font-size:13px;"><code>{m.group(2).replace("<","&lt;")}</code></pre>',
+                         html_body, flags=_re.S)
+    # Inline `code`
+    html_body = _re.sub(r"`([^`]+)`",
+                         r'<code style="background:#f1f5f9;padding:2px 5px;border-radius:3px;font-size:13px;">\1</code>',
+                         html_body)
+    # Headings
+    html_body = _re.sub(r"^# (.+)$", r"<h1>\1</h1>", html_body, flags=_re.M)
+    html_body = _re.sub(r"^## (.+)$", r"<h2>\1</h2>", html_body, flags=_re.M)
+    html_body = _re.sub(r"^### (.+)$", r"<h3>\1</h3>", html_body, flags=_re.M)
+    # Bold/italic
+    html_body = _re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", html_body)
+    # Links [text](url)
+    html_body = _re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2" target="_blank" rel="noopener">\1</a>', html_body)
+    # Lijn-breaks voor paragrafen
+    html_body = "<p>" + html_body.replace("\n\n", "</p><p>") + "</p>"
+    full = f"""<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8">
+<title>Email-naar-melding setup - FieldOps</title>
+<style>body{{font-family:'DM Sans',-apple-system,BlinkMacSystemFont,sans-serif;max-width:860px;margin:40px auto;padding:0 24px;color:#1e293b;line-height:1.7;}}
+h1{{font-size:28px;color:#0284c7;border-bottom:2px solid #e2e8f0;padding-bottom:10px;}}
+h2{{font-size:20px;color:#0c4a6e;margin-top:36px;}}
+h3{{font-size:16px;color:#0369a1;margin-top:24px;}}
+table{{border-collapse:collapse;width:100%;margin:14px 0;}}
+th,td{{border:1px solid #e2e8f0;padding:8px 12px;text-align:left;font-size:14px;}}
+th{{background:#f8fafc;font-weight:600;}}
+a{{color:#0284c7;}}
+pre{{margin:14px 0;}}</style></head>
+<body>{html_body}<hr><p style="font-size:12px;color:#94a3b8;text-align:center;">FieldOps — <a href="/portaal">Terug naar portaal</a></p></body></html>"""
+    return HTMLResponse(content=full)
 
 
 @app.get("/api/health")
