@@ -295,6 +295,19 @@ def export_user_data_admin(
 ANONYMIZED_EMAIL_DOMAIN = "deleted.invalid"  # RFC 6761 reserved TLD
 
 
+def is_anonymized_user(user: User) -> bool:
+    """Check of een user via GDPR Art.17 is geanonymiseerd.
+
+    Detect via email-suffix omdat we geen aparte `is_anonymized` kolom hebben
+    (zou een DB-migratie vereisen). Email wordt door _anonymize_user gezet op
+    `redacted-<id>@deleted.invalid` — RFC 6761 reserved TLD die nooit echt
+    voorkomt.
+    """
+    if not user or not user.email:
+        return False
+    return user.email.endswith("@" + ANONYMIZED_EMAIL_DOMAIN)
+
+
 def _anonymize_user(db: Session, user: User) -> dict:
     """Voer de anonymisatie uit. Geeft een summary terug van wat er gebeurde."""
     from models import (
@@ -437,10 +450,17 @@ def list_users(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Alle gebruikers van de organisatie ophalen."""
+    """Alle gebruikers van de organisatie ophalen.
+
+    Filtert geanonymiseerde users (GDPR Art.17 verwijderd) uit — die zijn
+    formeel weg en horen niet meer in admin-overzichten te verschijnen. De
+    DB-rij blijft bestaan voor FK-integriteit (audit-records verwijzen er
+    nog naar), maar voor de UI bestaan ze niet meer.
+    """
     return (
         db.query(User)
-        .filter(User.organization_id == current_user.organization_id)
+        .filter(User.organization_id == current_user.organization_id,
+                ~User.email.like("%@" + ANONYMIZED_EMAIL_DOMAIN))
         .order_by(User.created_at)
         .all()
     )

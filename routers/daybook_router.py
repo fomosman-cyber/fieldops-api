@@ -447,6 +447,9 @@ def team_overview(
     out = []
     for r in rows:
         u = user_map.get(r.user_id)
+        # Skip geanonymiseerde users — hun activiteit verschijnt niet in team-overview
+        if u and u.email and u.email.endswith("@deleted.invalid"):
+            continue
         out.append({
             "user_id": r.user_id,
             "user_name": (((u.first_name or "") + " " + (u.last_name or "")).strip() or u.email) if u else "(verwijderd)",

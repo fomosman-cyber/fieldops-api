@@ -11,6 +11,7 @@ from database import get_db
 from models import User, Organization, DemoRequest, Project, Melding, Asset, SubscriptionPlan, AccountStatus
 from auth import get_current_user, hash_password, validate_password_strength
 from audit import log_action, ACTION
+from routers.users_router import ANONYMIZED_EMAIL_DOMAIN
 
 
 def _generate_demo_password(length: int = 14) -> str:
@@ -45,7 +46,15 @@ def admin_overview(
     current_user: User = Depends(require_owner),
     db: Session = Depends(get_db),
 ):
-    """Volledig overzicht voor de platform eigenaar."""
+    """Volledig overzicht voor de platform eigenaar.
+
+    Geanonymiseerde users (GDPR Art.17, email suffix @deleted.invalid) worden
+    overal uitgefilterd — die bestaan formeel niet meer voor de UI, ook al
+    is hun DB-rij behouden voor FK-integriteit en audit-trail.
+    """
+    # Anonymized-filter (email suffix). Wordt overal hergebruikt.
+    not_anon = ~User.email.like("%@" + ANONYMIZED_EMAIL_DOMAIN)
+
     # Alle organisaties
     orgs = db.query(Organization).order_by(Organization.created_at.desc()).all()
     org_data = []
@@ -53,6 +62,7 @@ def admin_overview(
         user_count = db.query(User).filter(
             User.organization_id == o.id,
             User.is_active == True,
+            not_anon,
         ).count()
         org_data.append({
             "id": o.id,
@@ -64,8 +74,8 @@ def admin_overview(
             "created_at": o.created_at.isoformat() if o.created_at else None,
         })
 
-    # Alle gebruikers
-    users = db.query(User).order_by(User.created_at.desc()).all()
+    # Alle gebruikers — geanonymiseerden eruit
+    users = db.query(User).filter(not_anon).order_by(User.created_at.desc()).all()
     users_data = []
     for u in users:
         org_name = u.organization.name if u.organization else "-"
