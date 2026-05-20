@@ -20,7 +20,10 @@ via de `daybook_logger.log(...)` helper die in andere routers wordt aangeroepen
 """
 from datetime import datetime, timezone, timedelta, date as date_type
 from typing import Optional
+import csv
+import io
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from pydantic import BaseModel, Field
@@ -416,6 +419,123 @@ def delete_entry(
     entry.deleted_at = datetime.now(timezone.utc)
     db.commit()
     return {"deleted": True, "entry_id": entry_id}
+
+
+@router.get("/export.csv")
+def export_csv(
+    date_from: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    date_to: str = Query(..., alias="to", description="YYYY-MM-DD (inclusief)"),
+    user_id: Optional[str] = Query(None, description="Default = current user; org-admin mag andere"),
+    project_id: Optional[str] = Query(None, description="Filter op project"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """CSV-export van werkdagboek-entries — geschikt voor Excel / facturatie.
+
+    Use-case: aannemer exporteert maandelijks zijn uren per project, importeert
+    in Excel of factureringssoftware. Org-admin kan team-leden exporteren.
+
+    Kolommen: datum, tijd, gebruiker, type, bron, titel, omschrijving,
+              project, duur_min, duur_uur, lat, lng
+
+    Max range: 366 dagen (1 jaar). Voor langere periodes: meerdere exports.
+    """
+    target_user_id = user_id or current_user.id
+    if not _can_view_user_entries(current_user, target_user_id):
+        raise HTTPException(403, "Geen toegang tot dagboek van andere gebruiker")
+
+    try:
+        d_from = date_type.fromisoformat(date_from)
+        d_to = date_type.fromisoformat(date_to)
+    except ValueError:
+        raise HTTPException(400, "from/to moet YYYY-MM-DD formaat hebben")
+    if d_to < d_from:
+        raise HTTPException(400, "to mag niet voor from liggen")
+    if (d_to - d_from).days > 366:
+        raise HTTPException(400, "Max 366 dagen per export")
+
+    start = datetime.combine(d_from, datetime.min.time(), tzinfo=timezone.utc)
+    end = datetime.combine(d_to, datetime.min.time(), tzinfo=timezone.utc) + timedelta(days=1)
+
+    q = (db.query(DaybookEntry)
+           .filter(DaybookEntry.user_id == target_user_id,
+                   DaybookEntry.organization_id == current_user.organization_id,
+                   DaybookEntry.occurred_at >= start,
+                   DaybookEntry.occurred_at < end,
+                   DaybookEntry.deleted_at.is_(None)))
+    if project_id:
+        q = q.filter(DaybookEntry.project_id == project_id)
+    entries = q.order_by(DaybookEntry.occurred_at.asc()).all()
+
+    # Pre-fetch user + project namen voor leesbare CSV
+    user_row = db.query(User).filter(User.id == target_user_id).first()
+    user_name = ""
+    if user_row:
+        user_name = ((user_row.first_name or "") + " " + (user_row.last_name or "")).strip() or user_row.email
+
+    project_ids = list({e.project_id for e in entries if e.project_id})
+    project_map = {}
+    if project_ids:
+        prs = db.query(Project.id, Project.name).filter(Project.id.in_(project_ids)).all()
+        project_map = {p.id: p.name for p in prs}
+
+    # CSV met BOM voor Excel (anders breekt UTF-8 op Windows Excel)
+    buf = io.StringIO()
+    buf.write("﻿")  # UTF-8 BOM
+    writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+    writer.writerow([
+        "datum", "tijd", "gebruiker", "type", "bron", "titel", "omschrijving",
+        "project", "duur_min", "duur_uur", "lat", "lng",
+    ])
+
+    total_minutes = 0
+    for e in entries:
+        dt = e.occurred_at
+        date_str = dt.strftime("%Y-%m-%d") if dt else ""
+        time_str = dt.strftime("%H:%M") if dt else ""
+        minutes = e.duration_minutes or 0
+        total_minutes += minutes
+        uur = round(minutes / 60, 2) if minutes else ""
+        writer.writerow([
+            date_str, time_str, user_name,
+            e.entry_type or "", e.source or "",
+            (e.title or "").replace("\n", " "),
+            (e.description or "").replace("\n", " | "),
+            project_map.get(e.project_id, "") if e.project_id else "",
+            minutes, uur,
+            f"{e.lat:.6f}" if e.lat else "",
+            f"{e.lng:.6f}" if e.lng else "",
+        ])
+
+    # Totalen-regel
+    writer.writerow([])
+    writer.writerow(["", "", "", "", "", "TOTAAL", "", "",
+                     total_minutes, round(total_minutes / 60, 2), "", ""])
+    # Per-project breakdown
+    if not project_id:
+        per_proj = {}
+        for e in entries:
+            key = project_map.get(e.project_id, "(geen project)") if e.project_id else "(geen project)"
+            per_proj[key] = per_proj.get(key, 0) + (e.duration_minutes or 0)
+        if per_proj:
+            writer.writerow([])
+            writer.writerow(["--- per project ---"])
+            for pname, mins in sorted(per_proj.items(), key=lambda x: -x[1]):
+                writer.writerow(["", "", "", "", "", pname, "", "",
+                                 mins, round(mins / 60, 2), "", ""])
+
+    csv_bytes = buf.getvalue().encode("utf-8")
+    filename_user = "".join(c for c in user_name if c.isalnum() or c in " _-").strip().replace(" ", "_") or "user"
+    fname = f"Dagboek_{filename_user}_{d_from.isoformat()}_tot_{d_to.isoformat()}.csv"
+
+    return StreamingResponse(
+        iter([csv_bytes]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{fname}"',
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/team-overview")
