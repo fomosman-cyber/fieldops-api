@@ -3903,9 +3903,11 @@
           </div>
           <input type="file" id="meldingPhotoInput" accept="image/*" capture="environment" style="display:none;" onchange="onMeldingPhotoChange(event)">
           <div id="meldingAIBox" style="display:none;margin-top:10px;">
-            <div style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button type="button" class="btn-primary" id="meldingAIBtn" onclick="analyseFotoMetAI()" style="flex:1;min-width:180px;background:linear-gradient(135deg,#0284c7,#7c3aed);color:#fff;">✨ AI analyseer foto</button>
-              <button type="button" class="btn-primary" id="meldingCrow146Btn" onclick="analyseFotoCrow146()" style="flex:1;min-width:180px;background:linear-gradient(135deg,#ea580c,#b45309);color:#fff;" title="CROW 146a/b — verharding-classificatie">🛣️ CROW 146 verharding</button>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px;">
+              <button type="button" class="btn-primary" id="meldingAIBtn" onclick="analyseFotoMetAI()" style="background:linear-gradient(135deg,#0284c7,#7c3aed);color:#fff;font-size:13px;">✨ Algemeen AI</button>
+              <button type="button" class="btn-primary" id="meldingCrow146Btn" onclick="analyseFotoCrow146()" style="background:linear-gradient(135deg,#ea580c,#b45309);color:#fff;font-size:13px;" title="CROW 146a/b — verharding-classificatie">🛣️ CROW 146</button>
+              <button type="button" class="btn-primary" id="meldingEn1176Btn" onclick="analyseFotoEn1176()" style="background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;font-size:13px;" title="NEN-EN 1176 — speeltoestellen">🎠 NEN-EN 1176</button>
+              <button type="button" class="btn-primary" id="meldingNen3140Btn" onclick="analyseFotoNen3140()" style="background:linear-gradient(135deg,#facc15,#ca8a04);color:#fff;font-size:13px;" title="NEN 3140 — elektra/verlichting">⚡ NEN 3140</button>
             </div>
             <div id="meldingAIResult" style="display:none;margin-top:10px;padding:12px;border-radius:10px;background:rgba(2,132,199,0.06);border:1px solid rgba(2,132,199,0.2);font-size:13px;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -3927,6 +3929,38 @@
               <div style="display:flex;gap:8px;margin-top:10px;">
                 <button type="button" class="btn-primary" onclick="applyCrow146Suggestion()" style="flex:1;font-size:12px;padding:6px 10px;background:#b45309;color:#fff;">✓ Toepassen op melding</button>
                 <button type="button" class="btn-secondary" onclick="dismissCrow146Result()" style="flex:1;font-size:12px;padding:6px 10px;">✕ Negeren</button>
+              </div>
+            </div>
+            <div id="meldingEn1176Result" style="display:none;margin-top:10px;padding:12px;border-radius:10px;background:rgba(22,163,74,0.06);border:1px solid rgba(22,163,74,0.2);font-size:13px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <strong style="color:#15803d;">NEN-EN 1176 — speeltoestellen-classificatie</strong>
+                <span id="meldingEn1176Cat" style="font-size:11px;color:var(--text-dim);"></span>
+              </div>
+              <div id="meldingEn1176Summary" style="color:var(--text);line-height:1.5;"></div>
+              <div style="display:flex;gap:8px;margin-top:10px;">
+                <button type="button" class="btn-primary" onclick="applyEn1176Suggestion()" style="flex:1;font-size:12px;padding:6px 10px;background:#15803d;color:#fff;">✓ Toepassen op melding</button>
+                <button type="button" class="btn-secondary" onclick="dismissEn1176Result()" style="flex:1;font-size:12px;padding:6px 10px;">✕ Negeren</button>
+              </div>
+            </div>
+            <div id="meldingNen3140Result" style="display:none;margin-top:10px;padding:12px;border-radius:10px;background:rgba(250,204,21,0.08);border:1px solid rgba(250,204,21,0.3);font-size:13px;">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <strong style="color:#a16207;">⚡ NEN 3140 — elektra-classificatie</strong>
+                <span id="meldingNen3140Breaches" style="font-size:11px;color:var(--text-dim);"></span>
+              </div>
+              <div style="margin-bottom:10px;padding:8px;background:rgba(255,255,255,0.5);border-radius:6px;font-size:11px;">
+                <strong>Meetwaarden (optioneel — verbeteren confidence):</strong>
+                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:6px;">
+                  <div><label style="font-size:10px;color:var(--text-dim);">Isolatie (MΩ)</label><input type="number" id="n3140IsolatieMegaohm" step="0.1" placeholder="≥ 1.0" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;"></div>
+                  <div><label style="font-size:10px;color:var(--text-dim);">Aarding (Ω)</label><input type="number" id="n3140AardingOhm" step="0.1" placeholder="≤ 100" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;"></div>
+                  <div><label style="font-size:10px;color:var(--text-dim);">Aardlek tijd (ms)</label><input type="number" id="n3140AardlekMs" step="1" placeholder="≤ 200" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;"></div>
+                  <div><label style="font-size:10px;color:var(--text-dim);">Aardlek (mA)</label><input type="number" id="n3140AardlekMa" step="1" placeholder="≤ 30" style="width:100%;padding:4px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px;"></div>
+                </div>
+                <button type="button" class="btn-secondary" onclick="analyseFotoNen3140()" style="margin-top:6px;font-size:11px;padding:4px 8px;width:100%;">↻ Opnieuw met meetwaarden</button>
+              </div>
+              <div id="meldingNen3140Summary" style="color:var(--text);line-height:1.5;"></div>
+              <div style="display:flex;gap:8px;margin-top:10px;">
+                <button type="button" class="btn-primary" onclick="applyNen3140Suggestion()" style="flex:1;font-size:12px;padding:6px 10px;background:#a16207;color:#fff;">✓ Toepassen op melding</button>
+                <button type="button" class="btn-secondary" onclick="dismissNen3140Result()" style="flex:1;font-size:12px;padding:6px 10px;">✕ Negeren</button>
               </div>
             </div>
           </div>
@@ -16873,8 +16907,14 @@
       document.getElementById('meldingAIResult').style.display = 'none';
       var crowBox = document.getElementById('meldingCrow146Result');
       if (crowBox) crowBox.style.display = 'none';
+      var en1176Box = document.getElementById('meldingEn1176Result');
+      if (en1176Box) en1176Box.style.display = 'none';
+      var n3140Box = document.getElementById('meldingNen3140Result');
+      if (n3140Box) n3140Box.style.display = 'none';
       meldingAILastResult = null;
       meldingCrow146LastResult = null;
+      meldingEn1176LastResult = null;
+      meldingNen3140LastResult = null;
     }
 
     function analyseFotoMetAI() {
@@ -17084,6 +17124,282 @@
       var box = document.getElementById('meldingCrow146Result');
       if (box) box.style.display = 'none';
       meldingCrow146LastResult = null;
+    }
+
+    // ── NEN-EN 1176 speeltoestellen-classificatie ─────────────────
+    var meldingEn1176LastResult = null;
+
+    function analyseFotoEn1176() {
+      if (!meldingPhotoFile) { showToast('Kies eerst een foto', 'error'); return; }
+      var btn = document.getElementById('meldingEn1176Btn');
+      var origText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳ NEN-EN 1176...';
+
+      var asset_type = null;
+      var properties_hint = null;
+      var assetId = document.getElementById('meldingAsset').value;
+      if (assetId && Array.isArray(meldingAssets)) {
+        var a = meldingAssets.find(function(x){ return x.id === assetId; });
+        if (a) {
+          asset_type = a.type || null;
+          properties_hint = (a.properties || a.location_description || '') || null;
+        }
+      }
+      if (!asset_type) {
+        var catEl = document.getElementById('meldingCategory');
+        if (catEl && catEl.value) asset_type = catEl.value.toLowerCase();
+      }
+      var desc = (document.getElementById('meldingDesc') || {}).value;
+      if (desc && !properties_hint) properties_hint = desc;
+
+      _photoToDataUrl(meldingPhotoFile).then(function(dataUrl) {
+        return api('POST', '/api/ai/classify-en1176', {
+          asset_type: asset_type,
+          properties_hint: properties_hint,
+          photo_data_url: dataUrl,
+        });
+      }).then(function(result) {
+        meldingEn1176LastResult = result;
+        renderEn1176Result(result);
+      }).catch(function(err) {
+        showToast('NEN-EN 1176-analyse mislukt: ' + (err.message || ''), 'error');
+      }).finally(function() {
+        btn.disabled = false;
+        btn.textContent = origText;
+      });
+    }
+
+    function renderEn1176Result(r) {
+      var box = document.getElementById('meldingEn1176Result');
+      var summary = document.getElementById('meldingEn1176Summary');
+      var catEl = document.getElementById('meldingEn1176Cat');
+      if (!box || !summary || !r) return;
+      if (catEl) catEl.textContent = (r.categorie_label || '') + ' · ' + (r.detection_method === 'auto' ? 'auto-detect' : 'expliciet');
+      var lines = [];
+      var sugg = r.suggestions || [];
+      if (!sugg.length) {
+        lines.push('<em>Geen faaltypes gedetecteerd.</em>');
+      } else {
+        lines.push('<div style="font-weight:600;margin-bottom:6px;">Top faaltypes:</div>');
+        lines.push('<ul style="margin:0 0 8px 18px;padding:0;">');
+        sugg.slice(0, 5).forEach(function(s, idx) {
+          var conf = (s.confidence_pct != null) ? s.confidence_pct + '%' : '';
+          var pre = (idx === 0) ? '<strong>' : '';
+          var post = (idx === 0) ? '</strong>' : '';
+          var catBadge = s.categorie ? ' <span style="background:#dcfce7;color:#166534;padding:1px 5px;border-radius:4px;font-size:10px;font-weight:600;">Cat. ' + s.categorie + '</span>' : '';
+          var klasseBadge = s.klasse_advies ? ' <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:4px;font-size:11px;">' + escapeHtml(s.klasse_advies) + '</span>' : '';
+          lines.push('<li style="margin-bottom:4px;">' + pre + escapeHtml(s.naam) + post + catBadge + klasseBadge +
+            (conf ? ' <span style="color:var(--text-dim);font-size:11px;">(' + conf + ')</span>' : '') +
+            (s.maatregel ? '<br><span style="font-size:11px;color:var(--text-muted);">→ ' + escapeHtml(s.maatregel) + '</span>' : '') +
+          '</li>');
+        });
+        lines.push('</ul>');
+      }
+      if (r.norm_reference) {
+        lines.push('<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Norm: ' + escapeHtml(r.norm_reference) + '</div>');
+      }
+      summary.innerHTML = lines.join('');
+      box.style.display = 'block';
+    }
+
+    function applyEn1176Suggestion() {
+      var r = meldingEn1176LastResult;
+      if (!r || !r.suggestions || !r.suggestions.length) { showToast('Geen suggestie', 'error'); return; }
+      var top = r.suggestions[0];
+      var titleField = document.getElementById('meldingTitle');
+      if (titleField && !titleField.value && top.naam) {
+        titleField.value = 'NEN-EN 1176 (' + (r.categorie || 'B') + '): ' + top.naam;
+      }
+      var descField = document.getElementById('meldingDesc');
+      if (descField) {
+        var bev = '[NEN-EN 1176 — ' + (r.categorie_label || '') + ']';
+        bev += '\n• Faaltype: ' + top.naam;
+        if (top.klasse_advies) bev += '\n• Klasse: ' + top.klasse_advies;
+        if (top.maatregel) bev += '\n• Maatregel: ' + top.maatregel;
+        descField.value = descField.value ? (descField.value + '\n\n' + bev) : bev;
+      }
+      // Categorie -> Groen
+      var catEl = document.getElementById('meldingCategory');
+      if (catEl && !catEl.value) {
+        var opts = Array.prototype.slice.call(catEl.options);
+        var groen = opts.find(function(o){ return /groen|speeltoestel/i.test(o.value); });
+        if (groen) catEl.value = groen.value;
+      }
+      // Prioriteit op basis van klasse
+      if (top.klasse_advies === 'acuut') {
+        var pr = document.getElementById('meldingPriority');
+        if (pr) pr.value = 'kritiek';
+      } else if (top.klasse_advies === 'hoog') {
+        var pr2 = document.getElementById('meldingPriority');
+        if (pr2 && pr2.value === 'normaal') pr2.value = 'hoog';
+      }
+      showToast('NEN-EN 1176-suggestie toegepast', 'success');
+      dismissEn1176Result();
+    }
+
+    function dismissEn1176Result() {
+      var box = document.getElementById('meldingEn1176Result');
+      if (box) box.style.display = 'none';
+      meldingEn1176LastResult = null;
+    }
+
+    // ── NEN 3140 elektra-classificatie ────────────────────────────
+    var meldingNen3140LastResult = null;
+
+    function analyseFotoNen3140() {
+      // Foto is optioneel hier — meetwaarden zijn voldoende voor classificatie
+      var btn = document.getElementById('meldingNen3140Btn');
+      var origText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '⏳ NEN 3140...';
+
+      var asset_type = null;
+      var properties_hint = null;
+      var assetId = document.getElementById('meldingAsset').value;
+      if (assetId && Array.isArray(meldingAssets)) {
+        var a = meldingAssets.find(function(x){ return x.id === assetId; });
+        if (a) {
+          asset_type = a.type || null;
+          properties_hint = (a.properties || a.location_description || '') || null;
+        }
+      }
+      if (!asset_type) {
+        var catEl = document.getElementById('meldingCategory');
+        if (catEl && catEl.value) asset_type = catEl.value.toLowerCase();
+      }
+
+      // Meetwaarden uit inline form (kunnen leeg zijn)
+      var num = function(id) {
+        var el = document.getElementById(id);
+        if (!el || !el.value) return null;
+        var v = parseFloat(el.value);
+        return isNaN(v) ? null : v;
+      };
+      var payload = {
+        asset_type: asset_type,
+        properties_hint: properties_hint,
+        isolatie_megaohm: num('n3140IsolatieMegaohm'),
+        aarding_ohm: num('n3140AardingOhm'),
+        aardlek_ms: num('n3140AardlekMs'),
+        aardlek_ma: num('n3140AardlekMa'),
+      };
+
+      var sendIt = function(dataUrl) {
+        if (dataUrl) payload.photo_data_url = dataUrl;
+        return api('POST', '/api/ai/classify-nen3140', payload);
+      };
+
+      var p = meldingPhotoFile ? _photoToDataUrl(meldingPhotoFile).then(sendIt) : sendIt(null);
+      p.then(function(result) {
+        meldingNen3140LastResult = result;
+        renderNen3140Result(result);
+      }).catch(function(err) {
+        showToast('NEN 3140-analyse mislukt: ' + (err.message || ''), 'error');
+      }).finally(function() {
+        btn.disabled = false;
+        btn.textContent = origText;
+      });
+    }
+
+    function renderNen3140Result(r) {
+      var box = document.getElementById('meldingNen3140Result');
+      var summary = document.getElementById('meldingNen3140Summary');
+      var breachEl = document.getElementById('meldingNen3140Breaches');
+      if (!box || !summary || !r) return;
+      if (breachEl) {
+        if (r.grens_breach_count > 0) {
+          breachEl.innerHTML = '⚠️ ' + r.grens_breach_count + ' norm-schending(en)';
+          breachEl.style.color = '#dc2626';
+          breachEl.style.fontWeight = '600';
+        } else {
+          breachEl.textContent = 'Geen grens-schendingen';
+          breachEl.style.color = 'var(--text-dim)';
+        }
+      }
+      var lines = [];
+      // Toon grens-breaches eerst
+      if ((r.grens_breaches || []).length) {
+        lines.push('<div style="font-weight:600;color:#dc2626;margin-bottom:6px;">⚠️ Norm-schendingen:</div>');
+        lines.push('<ul style="margin:0 0 10px 18px;padding:0;">');
+        r.grens_breaches.forEach(function(b) {
+          lines.push('<li style="color:#dc2626;font-size:12px;"><strong>' + escapeHtml(b.code) + '</strong>: ' + b.value + ' ' + b.unit + ' (' + (b.type === 'below' ? 'onder' : 'boven') + ' grens ' + b.grens + ' ' + b.unit + ')</li>');
+        });
+        lines.push('</ul>');
+      }
+      var sugg = r.suggestions || [];
+      if (sugg.length) {
+        lines.push('<div style="font-weight:600;margin-bottom:6px;">Top defecten:</div>');
+        lines.push('<ul style="margin:0 0 8px 18px;padding:0;">');
+        sugg.slice(0, 5).forEach(function(s, idx) {
+          var conf = (s.confidence_pct != null) ? s.confidence_pct + '%' : '';
+          var pre = (idx === 0) ? '<strong>' : '';
+          var post = (idx === 0) ? '</strong>' : '';
+          var ernstColor = { kritiek: '#dc2626', hoog: '#ea580c', middel: '#a16207', laag: '#65a30d' }[s.ernst] || 'var(--text-dim)';
+          var ernstBadge = s.ernst ? ' <span style="background:' + ernstColor + ';color:#fff;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:600;">' + s.ernst.toUpperCase() + '</span>' : '';
+          var methodBadge = s.method === 'grens-check' ? ' <span style="background:#fee2e2;color:#dc2626;padding:1px 5px;border-radius:4px;font-size:10px;">METING</span>' : '';
+          lines.push('<li style="margin-bottom:4px;">' + pre + escapeHtml(s.naam) + post + ernstBadge + methodBadge +
+            (conf ? ' <span style="color:var(--text-dim);font-size:11px;">(' + conf + ')</span>' : '') +
+            (s.maatregel ? '<br><span style="font-size:11px;color:var(--text-muted);">→ ' + escapeHtml(s.maatregel) + '</span>' : '') +
+            (s.norm_grens ? '<br><span style="font-size:10px;color:var(--text-dim);">Norm: ' + escapeHtml(s.norm_grens) + '</span>' : '') +
+          '</li>');
+        });
+        lines.push('</ul>');
+      } else {
+        lines.push('<em>Geen defecten gedetecteerd.</em>');
+      }
+      if (r.norm_reference) {
+        lines.push('<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Norm: ' + escapeHtml(r.norm_reference) + '</div>');
+      }
+      summary.innerHTML = lines.join('');
+      box.style.display = 'block';
+    }
+
+    function applyNen3140Suggestion() {
+      var r = meldingNen3140LastResult;
+      if (!r || !r.suggestions || !r.suggestions.length) { showToast('Geen suggestie', 'error'); return; }
+      var top = r.suggestions[0];
+      var titleField = document.getElementById('meldingTitle');
+      if (titleField && !titleField.value && top.naam) {
+        titleField.value = 'NEN 3140: ' + top.naam;
+      }
+      var descField = document.getElementById('meldingDesc');
+      if (descField) {
+        var bev = '[NEN 3140]';
+        bev += '\n• Defect: ' + top.naam;
+        if (top.ernst) bev += '\n• Ernst: ' + top.ernst;
+        if (top.maatregel) bev += '\n• Maatregel: ' + top.maatregel;
+        if (r.grens_breaches && r.grens_breaches.length) {
+          bev += '\n• Meetwaarden buiten norm:';
+          r.grens_breaches.forEach(function(b) {
+            bev += '\n  - ' + b.code + ': ' + b.value + ' ' + b.unit + ' (grens: ' + b.grens + ')';
+          });
+        }
+        descField.value = descField.value ? (descField.value + '\n\n' + bev) : bev;
+      }
+      // Categorie -> Verlichting / Elektra
+      var catEl = document.getElementById('meldingCategory');
+      if (catEl && !catEl.value) {
+        var opts = Array.prototype.slice.call(catEl.options);
+        var elektra = opts.find(function(o){ return /verlichting|elektra|lichtmast/i.test(o.value); });
+        if (elektra) catEl.value = elektra.value;
+      }
+      // Prioriteit op basis van ernst + grens-schendingen
+      if (top.ernst === 'kritiek' || (r.grens_breaches && r.grens_breaches.length)) {
+        var pr = document.getElementById('meldingPriority');
+        if (pr) pr.value = 'kritiek';
+      } else if (top.ernst === 'hoog') {
+        var pr2 = document.getElementById('meldingPriority');
+        if (pr2 && pr2.value === 'normaal') pr2.value = 'hoog';
+      }
+      showToast('NEN 3140-suggestie toegepast', 'success');
+      dismissNen3140Result();
+    }
+
+    function dismissNen3140Result() {
+      var box = document.getElementById('meldingNen3140Result');
+      if (box) box.style.display = 'none';
+      meldingNen3140LastResult = null;
     }
 
     function applyAISuggestion() {
