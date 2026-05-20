@@ -511,6 +511,83 @@ app.add_middleware(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Security headers — defense-in-depth voor XSS/clickjacking/MIME-sniffing
+# CSP whitelist:
+#   - 'self' voor eigen origin
+#   - unpkg.com voor leaflet + leaflet-draw + leaflet.heat
+#   - cdnjs.cloudflare.com voor jspdf + jspdf-autotable
+#   - api.openrouter.ai / nominatim.openstreetmap.org voor geocoding
+#   - data: en blob: voor inline base64 images en file-downloads
+# 'unsafe-inline' is nodig voor Jinja2-templates met inline <script> en
+# style-attributes. Bij latere refactor naar nonce-based CSP kan dat eruit.
+# ─────────────────────────────────────────────────────────────────────────────
+
+from fastapi import Request as _Request
+from starlette.middleware.base import BaseHTTPMiddleware as _BHM
+
+
+CSP_POLICY = " ".join([
+    "default-src 'self';",
+    # Scripts: self + CDN's voor leaflet/jspdf, inline voor templates
+    "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;",
+    # Styles: self + unpkg (leaflet css) + inline-styles (Jinja templates)
+    "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com;",
+    "font-src 'self' data: https://fonts.gstatic.com;",
+    # Images: self, data-URLs (foto-uploads), https voor tile-servers
+    "img-src 'self' data: blob: https:;",
+    # XHR/fetch: self + tile-servers + geocoding + Resend
+    "connect-src 'self' https://tile.openstreetmap.org https://*.tile.openstreetmap.org "
+    "https://server.arcgisonline.com https://*.basemaps.cartocdn.com "
+    "https://*.tile.opentopomap.org https://nominatim.openstreetmap.org "
+    "https://api.resend.com https://accounts.google.com https://login.microsoftonline.com;",
+    # Forms posten alleen naar self
+    "form-action 'self';",
+    # Geen frame-embedding van extern (anti-clickjacking)
+    "frame-ancestors 'none';",
+    # Geen plugins
+    "object-src 'none';",
+    # Upgrade alle http requests naar https
+    "upgrade-insecure-requests;",
+    # Block mixed-content
+    "block-all-mixed-content;",
+])
+
+
+class SecurityHeadersMiddleware(_BHM):
+    """Voegt defense-in-depth security headers toe aan elke response.
+
+    - Content-Security-Policy: XSS-bescherming via resource-allowlist
+    - X-Content-Type-Options: voorkomt MIME-sniffing
+    - X-Frame-Options: anti-clickjacking (fallback voor oude browsers; CSP
+      frame-ancestors dekt moderne)
+    - Referrer-Policy: voorkomt referrer-leakage naar derden
+    - Permissions-Policy: schakelt sensoren/devices uit die we niet nodig hebben
+    - Strict-Transport-Security: forceert HTTPS in browser-cache (1 jaar)
+    """
+    async def dispatch(self, request: _Request, call_next):
+        response = await call_next(request)
+        # CSP — alleen op HTML-responses, niet op API/JSON (geen waarde + breekt soms tooling)
+        content_type = (response.headers.get("content-type") or "").lower()
+        if "text/html" in content_type:
+            response.headers["Content-Security-Policy"] = CSP_POLICY
+        # Algemene headers (alle responses)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(self), camera=(self), microphone=(), "
+            "payment=(), usb=(), magnetometer=(), accelerometer=()"
+        )
+        # HSTS — 1 jaar, includeSubDomains. Alleen op HTTPS-responses (Render is altijd HTTPS).
+        if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Global exception handler — vervangt anonieme "Internal Server Error"
 # plain-text response met JSON zodat de frontend geen JSON-parse crash krijgt.
 # Volledige traceback gaat naar stderr (Render logs); aan de client alleen
