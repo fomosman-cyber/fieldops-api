@@ -11,7 +11,7 @@ import os
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router, kunstwerken_inspecties_router, inspection_cycle_router, mjop_router, risico_router, bag_router, iso55000_router, digigo_router, iot_router, proborm_router, damo_router, ai_photo_router, compliance_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router, kunstwerken_inspecties_router, inspection_cycle_router, mjop_router, risico_router, bag_router, iso55000_router, digigo_router, iot_router, proborm_router, damo_router, ai_photo_router, compliance_router, daybook_router
 from audit import assign_request_id
 
 # Maak alle tabellen aan
@@ -568,6 +568,7 @@ app.include_router(proborm_router.router)
 app.include_router(damo_router.router)
 app.include_router(ai_photo_router.router)
 app.include_router(compliance_router.router)
+app.include_router(daybook_router.router)
 
 
 # Request-ID middleware — koppelt elke request aan een correlatie-ID dat

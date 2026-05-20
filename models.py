@@ -1008,3 +1008,59 @@ class OpleveringPunt(Base):
 
     oplevering = relationship("Oplevering", back_populates="punten")
     asset = relationship("Asset", foreign_keys=[asset_id])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# DAYBOOK — werkdagboek per gebruiker
+# ═══════════════════════════════════════════════════════════════════════════
+# Doel: registratie van wat een gebruiker heeft gedaan. Twee bronnen:
+#   - 'auto'   = automatisch toegevoegd door het systeem (melding aangemaakt,
+#                inspectie afgerond, status-wijziging, asset-bezoek)
+#   - 'manual' = handmatige notitie ('gesprek met bewoner', reistijd, etc.)
+#
+# Use-cases:
+#   - Aannemer: uren-verantwoording naar opdrachtgever (duration_minutes som)
+#   - Inspecteur: bewijslast wat-wanneer-gedaan (zorgplicht art. 6:174 BW)
+#   - Asset-manager: dag-overzicht per team-lid
+#   - Audit: een onveranderlijk dagboek per user (verschilt van AuditLog,
+#     die system-events vastlegt; daybook is mens-georiënteerd narratief)
+class DaybookEntry(Base):
+    __tablename__ = "daybook_entries"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    # Entry-type — open string voor flexibiliteit. Standaard waarden:
+    #   manual_note, melding_created, melding_status_change,
+    #   inspection_completed, asset_visited, time_logged, oplevering_completed
+    entry_type = Column(String(40), nullable=False, index=True)
+    source = Column(String(10), default="manual", nullable=False)  # 'auto' | 'manual'
+
+    # Optionele koppeling naar bron-entity (niet als FK om generiek te blijven)
+    source_type = Column(String(40), nullable=True)   # 'melding' | 'inspection' | 'asset' | 'oplevering'
+    source_id = Column(String, nullable=True, index=True)
+
+    occurred_at = Column(DateTime, nullable=False, index=True,
+                         default=lambda: datetime.now(timezone.utc))
+
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+
+    # Optionele GPS — handig voor 'wat deed ik waar'
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+
+    # Uren-registratie (voor aannemers / facturatie)
+    duration_minutes = Column(Integer, nullable=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    # Soft-delete — manuele entries kan gebruiker terughalen, auto-entries blijven
+    deleted_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+    organization = relationship("Organization")
+    project = relationship("Project", foreign_keys=[project_id])
