@@ -2490,6 +2490,35 @@
                 <input type="text" id="settOrgBtw" placeholder="NL000000000B00" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
               </div>
             </div>
+
+            <!-- Branding: logo + kleur — verschijnt in alle PDF-rapporten -->
+            <div style="margin-top:8px;padding-top:14px;border-top:1px dashed var(--border);">
+              <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;">🎨 Branding</div>
+              <p style="color:var(--text-muted);font-size:11px;margin:0 0 12px;">Logo en kleur verschijnen in alle PDF-rapporten (MJOP, dagrapport, inspecties).</p>
+              <div style="display:grid;grid-template-columns:140px 1fr;gap:14px;align-items:start;">
+                <div>
+                  <div id="orgLogoPreview" style="width:140px;height:90px;border:1px dashed var(--border);border-radius:8px;background:var(--card-bg-hover);display:flex;align-items:center;justify-content:center;overflow:hidden;">
+                    <span style="color:var(--text-dim);font-size:11px;">Geen logo</span>
+                  </div>
+                  <div style="display:flex;gap:4px;margin-top:6px;">
+                    <button type="button" class="btn-secondary" onclick="document.getElementById('orgLogoInput').click()" style="flex:1;font-size:11px;padding:5px 8px;">📤 Upload</button>
+                    <button type="button" class="btn-secondary" onclick="removeOrgLogo()" style="font-size:11px;padding:5px 8px;color:#dc2626;">✕</button>
+                  </div>
+                  <input type="file" id="orgLogoInput" accept="image/png,image/jpeg,image/svg+xml" style="display:none;" onchange="onOrgLogoChange(event)">
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;">
+                  <div>
+                    <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:3px;">Primaire kleur</label>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                      <input type="color" id="orgBrandColor" value="#0284c7" style="width:48px;height:36px;padding:2px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:var(--bg);" onchange="syncBrandColorFromPicker()">
+                      <input type="text" id="orgBrandColorText" placeholder="#0284c7" maxlength="7" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;" oninput="syncBrandColorText()">
+                    </div>
+                  </div>
+                  <p style="font-size:11px;color:var(--text-dim);margin:4px 0 0;">PNG/JPG/SVG, max 500KB. 140×90px aanbevolen voor PDF-header.</p>
+                </div>
+              </div>
+              <input type="hidden" id="orgLogoDataUrl">
+            </div>
           </div>
           <div style="margin-top:14px;display:flex;gap:8px;justify-content:flex-end;">
             <button class="btn-primary" onclick="saveOrgChanges()">💾 Organisatie opslaan</button>
@@ -7094,6 +7123,10 @@
         localStorage.setItem('fieldops_user', JSON.stringify(user));
         setUserUI(user);
 
+        // Branding prefetch (cached in orgBrandingCache) — voor PDF-generators
+        // die altijd brand-header willen tonen zonder eerst te wachten
+        getOrgBranding();
+
         // Load org stats
         return api('GET', '/api/organization/stats');
       }).then(function(stats) {
@@ -9863,13 +9896,26 @@
         var statusLabelsRap = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
 
         // ═══ PAGINA 1: VOORBLAD + DASHBOARD ═══
-        doc.setFillColor(2,132,199);
+        // Brand-kleur uit org-instellingen (fallback FieldOps-blauw)
+        var _branding = orgBrandingCache || {};
+        var _brandRgb = hexToRgb(_branding.brand_color);
+        doc.setFillColor(_brandRgb[0], _brandRgb[1], _brandRgb[2]);
         doc.rect(0,0,W,60,'F');
+        // Logo links bovenaan als geconfigureerd
+        if (_branding.logo_data_url) {
+          try {
+            var _fmt = (_branding.logo_data_url.indexOf('image/jpeg') !== -1) ? 'JPEG' : 'PNG';
+            if (_branding.logo_data_url.indexOf('image/svg') === -1) {
+              doc.addImage(_branding.logo_data_url, _fmt, M, 12, 36, 18, undefined, 'FAST');
+            }
+          } catch (e) { /* skip logo bij fout */ }
+        }
         doc.setTextColor(255,255,255);
-        doc.setFontSize(26); bold();
-        doc.text('FieldOps Rapportage', M, 30);
+        doc.setFontSize(22); bold();
+        var _orgName = _branding.name || (currentOrg && currentOrg.name) || 'FieldOps';
+        doc.text(_orgName + ' Rapportage', _branding.logo_data_url ? M + 42 : M, 30);
         doc.setFontSize(12); normal();
-        doc.text(t('meldingen_overzicht')+'  |  '+(currentOrg ? currentOrg.name : ''), M, 44);
+        doc.text(t('meldingen_overzicht'), _branding.logo_data_url ? M + 42 : M, 44);
 
         var y = 75;
         doc.setTextColor(30,41,59);
@@ -16004,65 +16050,73 @@
         var opt = userSel.options[userSel.selectedIndex];
         if (opt) userName = (opt.textContent || '').replace(/^[👤📖]\s*/, '');
       }
-      try {
-        var doc = new window.jspdf.jsPDF();
-        // Header
-        doc.setFontSize(18);
-        doc.setFont('helvetica', 'bold');
-        doc.text('Werkdagboek', 14, 18);
-        doc.setFontSize(11);
-        doc.setFont('helvetica', 'normal');
-        doc.text(userName.trim() + '  ·  ' + date, 14, 26);
+      // Brand-header eerst laden (cached), dan PDF genereren
+      getOrgBranding().then(function(branding) {
+        try {
+          var doc = new window.jspdf.jsPDF();
+          var yStart = renderPdfBrandHeader(doc, { title: 'Werkdagboek' });
 
-        // Statistieken
-        var total = daybookEntriesCache.length;
-        var minutes = daybookEntriesCache.reduce(function(s, e) { return s + (e.duration_minutes || 0); }, 0);
-        var auto = daybookEntriesCache.filter(function(e) { return e.source === 'auto'; }).length;
-        doc.setFontSize(10);
-        doc.setTextColor(110, 110, 110);
-        doc.text(total + ' entries  ·  ' + minutes + ' min  ·  ' + auto + ' auto, ' + (total - auto) + ' handmatig', 14, 33);
-        doc.setTextColor(0, 0, 0);
+          // Sub-header: user + datum
+          doc.setFontSize(15);
+          doc.setFont('helvetica', 'bold');
+          doc.text(userName.trim(), 14, yStart + 8);
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(80, 80, 80);
+          doc.text(date, 14, yStart + 15);
 
-        // Tabel
-        var rows = daybookEntriesCache.map(function(e) {
-          var dt = new Date(e.occurred_at);
-          var time = dt.getHours().toString().padStart(2, '0') + ':' + dt.getMinutes().toString().padStart(2, '0');
-          var src = e.source === 'auto' ? 'AUTO' : 'manual';
-          var dur = e.duration_minutes ? (e.duration_minutes + ' min') : '';
-          var detail = e.title;
-          if (e.description) detail += '\n' + e.description;
-          if (e.project_name) detail += '\nProject: ' + e.project_name;
-          return [time, src, e.entry_type, detail, dur];
-        });
-        doc.autoTable({
-          startY: 40,
-          head: [['Tijd', 'Bron', 'Type', 'Activiteit', 'Duur']],
-          body: rows,
-          theme: 'striped',
-          headStyles: { fillColor: [124, 58, 237] },
-          styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' },
-          columnStyles: {
-            0: { cellWidth: 16 },
-            1: { cellWidth: 16 },
-            2: { cellWidth: 36 },
-            3: { cellWidth: 'auto' },
-            4: { cellWidth: 18 },
-          },
-        });
+          // Statistieken
+          var total = daybookEntriesCache.length;
+          var minutes = daybookEntriesCache.reduce(function(s, e) { return s + (e.duration_minutes || 0); }, 0);
+          var auto = daybookEntriesCache.filter(function(e) { return e.source === 'auto'; }).length;
+          doc.setFontSize(10);
+          doc.setTextColor(110, 110, 110);
+          doc.text(total + ' entries  ·  ' + minutes + ' min  ·  ' + auto + ' auto, ' + (total - auto) + ' handmatig', 14, yStart + 22);
+          doc.setTextColor(0, 0, 0);
 
-        // Footer
-        var pageCount = doc.internal.getNumberOfPages();
-        for (var i = 1; i <= pageCount; i++) {
-          doc.setPage(i);
-          doc.setFontSize(8);
-          doc.setTextColor(150, 150, 150);
-          doc.text('FieldOps Werkdagboek · pagina ' + i + ' van ' + pageCount, 14, doc.internal.pageSize.height - 8);
+          // Tabel
+          var rows = daybookEntriesCache.map(function(e) {
+            var dt = new Date(e.occurred_at);
+            var time = dt.getHours().toString().padStart(2, '0') + ':' + dt.getMinutes().toString().padStart(2, '0');
+            var src = e.source === 'auto' ? 'AUTO' : 'manual';
+            var dur = e.duration_minutes ? (e.duration_minutes + ' min') : '';
+            var detail = e.title;
+            if (e.description) detail += '\n' + e.description;
+            if (e.project_name) detail += '\nProject: ' + e.project_name;
+            return [time, src, e.entry_type, detail, dur];
+          });
+          var brandRgb = hexToRgb(branding.brand_color);
+          doc.autoTable({
+            startY: yStart + 28,
+            head: [['Tijd', 'Bron', 'Type', 'Activiteit', 'Duur']],
+            body: rows,
+            theme: 'striped',
+            headStyles: { fillColor: brandRgb },
+            styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' },
+            columnStyles: {
+              0: { cellWidth: 16 },
+              1: { cellWidth: 16 },
+              2: { cellWidth: 36 },
+              3: { cellWidth: 'auto' },
+              4: { cellWidth: 18 },
+            },
+          });
+
+          // Footer
+          var pageCount = doc.internal.getNumberOfPages();
+          for (var i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFontSize(8);
+            doc.setTextColor(150, 150, 150);
+            var orgName = branding.name || 'FieldOps';
+            doc.text(orgName + ' · Werkdagboek · pagina ' + i + ' van ' + pageCount, 14, doc.internal.pageSize.height - 8);
+          }
+          doc.save('Dagboek_' + userName.trim().replace(/\s+/g, '_') + '_' + date + '.pdf');
+          showToast('PDF gegenereerd', 'success');
+        } catch (err) {
+          showToast('PDF generatie mislukt: ' + (err.message || ''), 'error');
         }
-        doc.save('Dagboek_' + userName.trim().replace(/\s+/g, '_') + '_' + date + '.pdf');
-        showToast('PDF gegenereerd', 'success');
-      } catch (err) {
-        showToast('PDF generatie mislukt: ' + (err.message || ''), 'error');
-      }
+      });
     }
 
     function openDaybookExportModal() {
@@ -16231,6 +16285,11 @@
     // Backend: PATCH /api/organization (require_org_admin). Wijzigbare velden:
     // name, contact_email, contact_phone, billing_address, kvk_number, btw_number.
     // Plan/status/max_users zijn via Shopify-billing — daar komt admin niet aan.
+    // Cache van eigen organisatie (incl. branding) voor PDF-generatie en
+    // andere snel-toegang use-cases. Wordt gevuld door loadOrgEditForm() én
+    // bij andere /api/organization GET-calls. Single source of truth voor branding.
+    var orgBrandingCache = null;
+
     function loadOrgEditForm() {
       var wrap = document.getElementById('orgAdminEditWrap');
       if (!wrap) return;
@@ -16238,6 +16297,7 @@
       wrap.style.display = '';
       api('GET', '/api/organization/').then(function(org) {
         if (!org) return;
+        orgBrandingCache = org;
         var setVal = function(id, v){ var el = document.getElementById(id); if (el) el.value = (v || ''); };
         setVal('settOrgEditName', org.name);
         setVal('settOrgContactEmail', org.contact_email);
@@ -16245,13 +16305,83 @@
         setVal('settOrgBillingAddress', org.billing_address);
         setVal('settOrgKvk', org.kvk_number);
         setVal('settOrgBtw', org.btw_number);
+        // Branding: logo + kleur
+        var logoEl = document.getElementById('orgLogoDataUrl');
+        var logoPreview = document.getElementById('orgLogoPreview');
+        if (logoEl) logoEl.value = org.logo_data_url || '';
+        if (logoPreview) {
+          if (org.logo_data_url) {
+            logoPreview.innerHTML = '<img src="' + org.logo_data_url + '" style="max-width:100%;max-height:100%;object-fit:contain;" alt="Logo">';
+          } else {
+            logoPreview.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">Geen logo</span>';
+          }
+        }
+        var colorEl = document.getElementById('orgBrandColor');
+        var colorTextEl = document.getElementById('orgBrandColorText');
+        var color = org.brand_color || '#0284c7';
+        if (colorEl) colorEl.value = color;
+        if (colorTextEl) colorTextEl.value = color;
       }).catch(function(err){
         console.error('Org laden mislukt:', err);
       });
     }
 
+    function onOrgLogoChange(event) {
+      var f = event.target.files && event.target.files[0];
+      if (!f) return;
+      if (f.size > 500 * 1024) {
+        showToast('Logo te groot (max 500KB). Schaal eerst de afbeelding.', 'error');
+        event.target.value = '';
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var dataUrl = e.target.result;
+        var hidden = document.getElementById('orgLogoDataUrl');
+        if (hidden) hidden.value = dataUrl;
+        var preview = document.getElementById('orgLogoPreview');
+        if (preview) {
+          preview.innerHTML = '<img src="' + dataUrl + '" style="max-width:100%;max-height:100%;object-fit:contain;" alt="Logo">';
+        }
+        showToast('Logo gekozen — klik "Organisatie opslaan" om door te voeren', 'info');
+      };
+      reader.readAsDataURL(f);
+    }
+
+    function removeOrgLogo() {
+      var hidden = document.getElementById('orgLogoDataUrl');
+      if (hidden) hidden.value = '';
+      var preview = document.getElementById('orgLogoPreview');
+      if (preview) preview.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">Geen logo</span>';
+      var input = document.getElementById('orgLogoInput');
+      if (input) input.value = '';
+    }
+
+    function syncBrandColorFromPicker() {
+      var picker = document.getElementById('orgBrandColor');
+      var text = document.getElementById('orgBrandColorText');
+      if (picker && text) text.value = picker.value;
+    }
+
+    function syncBrandColorText() {
+      var picker = document.getElementById('orgBrandColor');
+      var text = document.getElementById('orgBrandColorText');
+      if (!picker || !text) return;
+      var v = (text.value || '').trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+        picker.value = v;
+      }
+    }
+
     function saveOrgChanges() {
       var trim = function(id){ var el = document.getElementById(id); return el ? (el.value || '').trim() : ''; };
+      var logoVal = trim('orgLogoDataUrl');
+      var colorVal = trim('orgBrandColorText') || trim('orgBrandColor');
+      // Color valideer
+      if (colorVal && !/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/.test(colorVal)) {
+        showToast('Ongeldige kleur. Gebruik hex zoals #0284c7', 'error');
+        return;
+      }
       var payload = {
         name:             trim('settOrgEditName')        || null,
         contact_email:    trim('settOrgContactEmail')    || null,
@@ -16259,6 +16389,8 @@
         billing_address:  trim('settOrgBillingAddress')  || null,
         kvk_number:       trim('settOrgKvk')             || null,
         btw_number:       trim('settOrgBtw')             || null,
+        logo_data_url:    logoVal || null,
+        brand_color:      colorVal || null,
       };
       if (!payload.name) {
         showToast('Organisatie-naam mag niet leeg zijn', 'error');
@@ -16266,6 +16398,7 @@
       }
       api('PATCH', '/api/organization/', payload).then(function(org) {
         if (org) {
+          orgBrandingCache = org;
           var nameEl = document.getElementById('settOrgName');
           if (nameEl) nameEl.textContent = org.name || '-';
           showToast('Organisatie opgeslagen', 'success');
@@ -16274,6 +16407,67 @@
       }).catch(function(err) {
         showToast('Opslaan mislukt: ' + (err.message || ''), 'error');
       });
+    }
+
+    // Helper: lazy-fetch org-branding voor PDF-generators. Cached na eerste call.
+    function getOrgBranding() {
+      return new Promise(function(resolve) {
+        if (orgBrandingCache) { resolve(orgBrandingCache); return; }
+        api('GET', '/api/organization/').then(function(org) {
+          orgBrandingCache = org || {};
+          resolve(orgBrandingCache);
+        }).catch(function(){ resolve({}); });
+      });
+    }
+
+    // Helper: hex naar RGB-tupel voor jsPDF setFillColor / setTextColor
+    function hexToRgb(hex) {
+      if (!hex || typeof hex !== 'string') return [124, 58, 237];  // default paars
+      var m = hex.replace('#', '');
+      if (m.length === 3) m = m[0] + m[0] + m[1] + m[1] + m[2] + m[2];
+      if (m.length !== 6) return [124, 58, 237];
+      return [parseInt(m.slice(0, 2), 16), parseInt(m.slice(2, 4), 16), parseInt(m.slice(4, 6), 16)];
+    }
+
+    // Helper: render brand-header op een jsPDF doc (logo links, kleur-strip).
+    // Returnt de Y-coördinaat onder de header voor de volgende content.
+    function renderPdfBrandHeader(doc, opts) {
+      opts = opts || {};
+      var branding = orgBrandingCache || {};
+      var color = hexToRgb(branding.brand_color);
+      var headerH = 24;
+      // Gekleurde band bovenaan
+      doc.setFillColor(color[0], color[1], color[2]);
+      doc.rect(0, 0, doc.internal.pageSize.width, headerH, 'F');
+      // Logo (links)
+      var logoX = 10, logoY = 4, logoW = 32, logoH = 16;
+      if (branding.logo_data_url) {
+        try {
+          // jsPDF detecteert PNG/JPG uit data-URL automatisch. SVG niet ondersteund.
+          var format = 'PNG';
+          if (branding.logo_data_url.indexOf('image/jpeg') !== -1) format = 'JPEG';
+          if (branding.logo_data_url.indexOf('image/svg') === -1) {
+            doc.addImage(branding.logo_data_url, format, logoX, logoY, logoW, logoH, undefined, 'FAST');
+          }
+        } catch (e) { /* skip logo bij fout */ }
+      }
+      // Org-naam rechts in wit
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      var orgName = branding.name || 'FieldOps';
+      var docTitle = opts.title || '';
+      var pageW = doc.internal.pageSize.width;
+      doc.text(orgName, pageW - 12, 12, { align: 'right' });
+      if (docTitle) {
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.text(docTitle, pageW - 12, 19, { align: 'right' });
+      }
+      // Reset kleur naar zwart voor body
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      return headerH + 6;  // Y-offset onder header
     }
 
     function loadOrgAuditSummary() {

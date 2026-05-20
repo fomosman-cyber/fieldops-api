@@ -47,6 +47,10 @@ class Organization(Base):
     billing_address = Column(Text, nullable=True)
     kvk_number = Column(String(20), nullable=True)
     btw_number = Column(String(30), nullable=True)
+    # Branding — logo als base64 data URL (geen filesystem nodig, max ~200KB)
+    # + primaire kleur voor PDF-headers en accenten
+    logo_data_url = Column(Text, nullable=True)
+    brand_color = Column(String(20), nullable=True)  # hex zoals #0284c7
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     users = relationship("User", back_populates="organization")
