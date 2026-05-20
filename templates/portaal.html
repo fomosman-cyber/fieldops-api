@@ -2266,30 +2266,30 @@
           <div style="display:flex;flex-direction:column;gap:12px;">
             <div>
               <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Organisatie-naam</label>
-              <input type="text" id="orgName" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+              <input type="text" id="settOrgEditName" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
               <div>
                 <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Contact e-mail</label>
-                <input type="email" id="orgContactEmail" placeholder="contact@..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+                <input type="email" id="settOrgContactEmail" placeholder="contact@..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
               </div>
               <div>
                 <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Contact telefoon</label>
-                <input type="tel" id="orgContactPhone" placeholder="020-..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+                <input type="tel" id="settOrgContactPhone" placeholder="020-..." style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
               </div>
             </div>
             <div>
               <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Facturatie-adres</label>
-              <textarea id="orgBillingAddress" rows="2" placeholder="Straat 1, 1234 AB Plaats" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;resize:vertical;"></textarea>
+              <textarea id="settOrgBillingAddress" rows="2" placeholder="Straat 1, 1234 AB Plaats" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;resize:vertical;"></textarea>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
               <div>
                 <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">KvK-nummer</label>
-                <input type="text" id="orgKvk" placeholder="12345678" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+                <input type="text" id="settOrgKvk" placeholder="12345678" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
               </div>
               <div>
                 <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">BTW-nummer</label>
-                <input type="text" id="orgBtw" placeholder="NL000000000B00" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+                <input type="text" id="settOrgBtw" placeholder="NL000000000B00" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
               </div>
             </div>
           </div>
@@ -3310,6 +3310,23 @@
         <div class="form-group">
           <label>E-mailadres</label>
           <input type="email" id="inviteEmail" placeholder="naam@bedrijf.nl" required>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>Voornaam</label>
+            <input type="text" id="inviteFirstName" placeholder="Jan" required>
+          </div>
+          <div class="form-group">
+            <label>Achternaam</label>
+            <input type="text" id="inviteLastName" placeholder="de Vries" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Tijdelijk wachtwoord <span style="color:var(--text-dim);font-weight:400;">(gebruiker wijzigt bij eerste login)</span></label>
+          <div style="display:flex;gap:8px;">
+            <input type="text" id="invitePassword" placeholder="Auto-gegenereerd" style="flex:1;" required>
+            <button type="button" class="btn-secondary" onclick="document.getElementById('invitePassword').value = _genStrongPassword();" style="white-space:nowrap;font-size:12px;padding:8px 12px;">🔄 Genereer</button>
+          </div>
         </div>
         <div class="form-group">
           <label>Rol</label>
@@ -7245,18 +7262,41 @@
         loadAdminData();
       } catch(err) { showToast('Fout: ' + err.message, 'error'); }
     }
-    async function adminChangeMaxUsers(orgId, currentMax) {
-      var newMax = prompt('Max aantal gebruikers (nu: ' + currentMax + '):', currentMax);
-      if (!newMax || isNaN(newMax)) return;
-      await adminUpdateOrg(orgId, { max_users: parseInt(newMax) });
+    function adminChangeMaxUsers(orgId, currentMax) {
+      showPrompt({
+        title: 'Max aantal gebruikers',
+        message: 'Nu ingesteld: ' + currentMax,
+        defaultValue: String(currentMax),
+        type: 'number',
+        icon: '👥',
+        actionLabel: 'Opslaan',
+        validate: function(v) {
+          if (!v || isNaN(v)) return 'Geef een geldig getal op';
+          if (parseInt(v) < 1) return 'Minimaal 1 gebruiker';
+          return null;
+        },
+        onSubmit: function(newMax) {
+          adminUpdateOrg(orgId, { max_users: parseInt(newMax) });
+        },
+      });
     }
-    async function adminDeleteOrg(orgId, orgName) {
-      if (!confirm('WAARSCHUWING: Dit verwijdert organisatie "' + orgName + '" en ALLE bijbehorende projecten, meldingen en gebruikers. Weet je het zeker?')) return;
-      try {
-        await api('DELETE', '/api/admin/organizations/' + orgId);
-        showToast('Organisatie "' + orgName + '" verwijderd');
-        loadAdminData();
-      } catch(err) { showToast('Fout: ' + err.message, 'error'); }
+    function adminDeleteOrg(orgId, orgName) {
+      showConfirm({
+        icon: '⚠️',
+        title: 'Organisatie verwijderen?',
+        message: '"' + orgName + '" wordt permanent verwijderd, inclusief alle projecten, meldingen en gebruikers.',
+        extraInfo: '<strong>Deze actie kan niet ongedaan worden gemaakt.</strong>',
+        actionLabel: 'Permanent verwijderen',
+        danger: true,
+        onConfirm: function() {
+          api('DELETE', '/api/admin/organizations/' + orgId).then(function() {
+            showToast('Organisatie "' + orgName + '" verwijderd', 'success');
+            loadAdminData();
+          }).catch(function(err) {
+            showToast('Fout: ' + (err.message || 'Onbekende fout'), 'error');
+          });
+        },
+      });
     }
 
     // ── Admin User Actions (platform owner only) ──
@@ -7274,22 +7314,72 @@
         loadAdminData();
       } catch(err) { showToast('Fout: ' + err.message, 'error'); }
     }
-    async function adminResetPw(userId, userName) {
+    function adminResetPw(userId, userName) {
       var generated = _genStrongPassword();
-      var pw = prompt(t('adminreset_pw_prompt').replace('{name}', userName), generated);
-      if (!pw) return;
-      try {
-        await api('PUT', '/api/users/' + userId, { password: pw, must_change_password: true });
-        showToast(t('adminreset_pw_done').replace('{name}', userName).replace('{pw}', pw), 'success');
-      } catch(err) { showToast('Fout: ' + err.message, 'error'); }
+      showPrompt({
+        title: 'Wachtwoord resetten',
+        message: t('adminreset_pw_prompt').replace('{name}', userName),
+        defaultValue: generated,
+        type: 'text',
+        icon: '🔑',
+        actionLabel: 'Wachtwoord instellen',
+        validate: function(v) {
+          if (!v || v.length < 8) return 'Minimaal 8 tekens';
+          return null;
+        },
+        onSubmit: function(pw) {
+          api('PUT', '/api/users/' + userId, { password: pw, must_change_password: true }).then(function() {
+            showToast(t('adminreset_pw_done').replace('{name}', userName).replace('{pw}', pw), 'success');
+          }).catch(function(err) {
+            showToast('Fout: ' + (err.message || ''), 'error');
+          });
+        },
+      });
     }
-    async function adminDeleteUser(userId, userName) {
-      if (!confirm('Weet je zeker dat je ' + userName + ' wilt verwijderen?')) return;
-      try {
-        await api('DELETE', '/api/users/' + userId);
-        showToast(userName + ' verwijderd');
-        loadAdminData();
-      } catch(err) { showToast('Fout: ' + err.message, 'error'); }
+    // Admin deactivate: zoals op Gebruikers-pagina. Voor permanent verwijderen
+    // gebruik adminDeleteUserHard nadat user inactief is.
+    function adminDeactivateUser(userId, userName) {
+      showConfirm({
+        icon: '⏸️',
+        title: 'Gebruiker deactiveren?',
+        message: userName + ' verliest direct toegang. Het account blijft bewaard. Voor permanent verwijderen: deactiveer eerst, daarna verschijnt de prullenbak-knop.',
+        actionLabel: 'Deactiveren',
+        danger: false,
+        onConfirm: function() {
+          api('DELETE', '/api/users/' + userId).then(function() {
+            showToast(userName + ' is gedeactiveerd', 'success');
+            loadAdminData();
+          }).catch(function(err) {
+            showToast('Deactiveren mislukt: ' + (err.message || 'Onbekende fout'), 'error');
+          });
+        },
+      });
+    }
+    // Hard-delete via anonymize-endpoint (GDPR Article 17). Alleen voor reeds
+    // gedeactiveerde users (voorkomt 'click sluit account per ongeluk').
+    function adminDeleteUserHard(userId, userName) {
+      showConfirm({
+        icon: '🗑️',
+        title: userName + ' permanent verwijderen?',
+        message: 'Alle persoonsgegevens worden gewist (GDPR Article 17 anonymize). Audit-records blijven bewaard zonder PII.',
+        extraInfo: '<strong>Deze actie kan niet ongedaan worden gemaakt.</strong>',
+        actionLabel: 'Permanent verwijderen',
+        danger: true,
+        onConfirm: function() {
+          api('DELETE', '/api/users/' + userId + '/anonymize').then(function(r) {
+            showToast(userName + ' geanonimiseerd (' + ((r && r.summary && r.summary.fields_anonymized) || 0) + ' velden gewist)', 'success');
+            loadAdminData();
+          }).catch(function(err) {
+            showToast('Verwijderen mislukt: ' + (err.message || 'Onbekende fout'), 'error');
+          });
+        },
+      });
+    }
+    // Backwards-compat: oude buttons kunnen nog adminDeleteUser gebruiken.
+    // Route door naar deactivate (= de oude DELETE-betekenis) en geef helpende
+    // toast als gebruiker eigenlijk hard-delete bedoelde.
+    function adminDeleteUser(userId, userName) {
+      adminDeactivateUser(userId, userName);
     }
 
     function loadAdminData() {
@@ -7340,8 +7430,14 @@
             // Status toggle
             var statusBtn = '<button onclick="adminToggleStatus(\'' + u.id + '\', ' + !u.is_active + ')" style="background:none;border:1px solid var(--border);color:' + (u.is_active ? 'var(--green)' : 'var(--red)') + ';font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;">' + (u.is_active ? 'Actief' : 'Inactief') + '</button>';
             // Password + delete buttons
-            var actionBtns = '<button onclick="adminResetPw(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);font-size:11px;padding:2px 6px;border-radius:4px;cursor:pointer;margin:0 2px;" title="Wachtwoord">&#128273;</button>';
-            actionBtns += '<button onclick="adminDeleteUser(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);color:var(--red);font-size:11px;padding:2px 6px;border-radius:4px;cursor:pointer;" title="Verwijderen">&#128465;</button>';
+            // Acties: reset wachtwoord + deactiveer (actief) of permanent
+            // verwijderen (inactief). Twee-staps patroon zoals op Gebruikers-pagina.
+            var actionBtns = '<button onclick="adminResetPw(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);font-size:11px;padding:2px 6px;border-radius:4px;cursor:pointer;margin:0 2px;" title="Wachtwoord resetten">&#128273;</button>';
+            if (u.is_active) {
+              actionBtns += '<button onclick="adminDeactivateUser(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);color:var(--orange,#ea580c);font-size:11px;padding:2px 6px;border-radius:4px;cursor:pointer;" title="Deactiveren (omkeerbaar)">&#9209;</button>';
+            } else {
+              actionBtns += '<button onclick="adminDeleteUserHard(\'' + u.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid #fee2e2;color:var(--red);font-size:11px;padding:2px 6px;border-radius:4px;cursor:pointer;" title="Permanent verwijderen (GDPR-anonymize)">&#128465;</button>';
+            }
             return '<tr>' +
               '<td><strong>' + name.trim() + '</strong></td>' +
               '<td style="font-size:12px;">' + u.email + '</td>' +
@@ -7412,6 +7508,9 @@
       document.getElementById('inviteModal').classList.add('active');
       updateRoleDescription();
       document.getElementById('inviteRole').addEventListener('change', updateRoleDescription);
+      // Auto-genereer een tijdelijk wachtwoord — gebruiker kan altijd zelf wijzigen
+      var pwField = document.getElementById('invitePassword');
+      if (pwField && !pwField.value) pwField.value = _genStrongPassword();
     }
     function closeInviteModal() {
       document.getElementById('inviteModal').classList.remove('active');
@@ -7436,16 +7535,20 @@
     }
     function sendInvite(e) {
       e.preventDefault();
-      var email = document.getElementById('inviteEmail').value;
+      var email = document.getElementById('inviteEmail').value.trim();
       var role = document.getElementById('inviteRole').value;
+      var firstName = (document.getElementById('inviteFirstName').value || '').trim();
+      var lastName = (document.getElementById('inviteLastName').value || '').trim();
+      var password = (document.getElementById('invitePassword').value || '').trim();
 
-      // Vraag naam en wachtwoord
-      var firstName = prompt('Voornaam van de gebruiker:', '');
-      if (!firstName) return;
-      var lastName = prompt('Achternaam:', '');
-      if (!lastName) return;
-      var password = prompt(t('invite_pw_prompt'), _genStrongPassword());
-      if (!password) return;
+      if (!email || !firstName || !lastName || !password) {
+        showToast('Vul e-mail, voornaam, achternaam en wachtwoord in', 'error');
+        return;
+      }
+      if (password.length < 8) {
+        showToast('Wachtwoord minimaal 8 tekens', 'error');
+        return;
+      }
 
       // Probeer eerst direct account aanmaken
       api('POST', '/api/users/create', {
@@ -7459,6 +7562,9 @@
         showToast('Account aangemaakt voor ' + email + '! Wachtwoord: ' + password, 'success');
         closeInviteModal();
         document.getElementById('inviteEmail').value = '';
+        document.getElementById('inviteFirstName').value = '';
+        document.getElementById('inviteLastName').value = '';
+        document.getElementById('invitePassword').value = '';
         if (document.getElementById('page-gebruikers').classList.contains('active')) {
           loadUsers();
         }
@@ -8716,10 +8822,17 @@
     function handleMeldingCsvUpload(input) {
       if (!input.files || !input.files[0]) return;
       var file = input.files[0];
-      if (!confirm('CSV "' + file.name + '" importeren? Verplichte kolom: title (of titel).\n\nDownload eerst de template via de help-link als je nog geen CSV hebt.')) {
-        input.value = '';
-        return;
-      }
+      showConfirm({
+        icon: '📥',
+        title: 'CSV importeren?',
+        message: 'Bestand: "' + file.name + '". Verplichte kolom: title (of titel).',
+        extraInfo: 'Tip: download eerst de template via de help-link als je nog geen CSV hebt.',
+        actionLabel: 'Importeren',
+        danger: false,
+        onConfirm: function() { _doMeldingCsvUpload(input, file); },
+      });
+    }
+    function _doMeldingCsvUpload(input, file) {
       var fd = new FormData();
       fd.append('file', file);
       showToast('CSV uploaden ...', 'info');
@@ -10460,6 +10573,110 @@
       modal.classList.add('active');
       // Focus de cancel-knop standaard (veilige default)
       setTimeout(function() { cancelBtn.focus(); }, 50);
+    }
+
+    // ── In-app prompt (vervangt native window.prompt) ──────────
+    // Gebruik:
+    //   showPrompt({
+    //     title: 'Naam', message: 'Voornaam:', defaultValue: '',
+    //     placeholder: 'Jan', type: 'text', icon: '✏️',
+    //     actionLabel: 'Opslaan', danger: false,
+    //     validate: function(val) { return val.length > 0 ? null : 'Verplicht'; },
+    //     onSubmit: function(value) { ... },
+    //     onCancel: function() { ... },
+    //   });
+    // Supporteert type='text'|'password'|'number'|'email'|'textarea'|'select'.
+    // Voor 'select' geef je options: [{value, label}] mee.
+    function showPrompt(opts) {
+      opts = opts || {};
+      // Verwijder eventuele oude prompt-modal
+      var existing = document.getElementById('promptModal');
+      if (existing) existing.remove();
+
+      var isDanger = !!opts.danger;
+      var color = isDanger ? '#dc2626' : '#0284c7';
+      var bgColor = isDanger ? '#fee2e2' : '#dbeafe';
+      var iconChar = opts.icon || (isDanger ? '⚠️' : '✏️');
+      var actionLabel = opts.actionLabel || 'OK';
+      var cancelLabel = opts.cancelLabel || 'Annuleren';
+      var inputType = opts.type || 'text';
+      var defaultValue = (opts.defaultValue == null) ? '' : String(opts.defaultValue);
+      var placeholder = opts.placeholder || '';
+
+      var inputHtml = '';
+      if (inputType === 'textarea') {
+        inputHtml = '<textarea id="promptInput" rows="3" placeholder="' + escapeHtml(placeholder) + '" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;font-size:14px;resize:vertical;">' + escapeHtml(defaultValue) + '</textarea>';
+      } else if (inputType === 'select') {
+        var options = opts.options || [];
+        var optsHtml = options.map(function(o) {
+          var v = (typeof o === 'string') ? o : o.value;
+          var l = (typeof o === 'string') ? o : (o.label || o.value);
+          var sel = (String(v) === defaultValue) ? ' selected' : '';
+          return '<option value="' + escapeHtml(String(v)) + '"' + sel + '>' + escapeHtml(String(l)) + '</option>';
+        }).join('');
+        inputHtml = '<select id="promptInput" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;font-size:14px;">' + optsHtml + '</select>';
+      } else {
+        inputHtml = '<input type="' + escapeHtml(inputType) + '" id="promptInput" value="' + escapeHtml(defaultValue) + '" placeholder="' + escapeHtml(placeholder) + '" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;font-size:14px;" autocomplete="off"' + (inputType === 'password' ? ' autocomplete="new-password"' : '') + '>';
+      }
+
+      var html =
+        '<div id="promptModal" class="modal-overlay active" style="display:flex;">' +
+          '<div class="modal" style="max-width:440px;padding:0;overflow:hidden;border-radius:18px;">' +
+            '<div style="background:' + bgColor + ';padding:24px 28px 18px;text-align:center;">' +
+              '<div style="width:56px;height:56px;border-radius:50%;background:' + color + ';color:#fff;display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto;box-shadow:0 4px 12px ' + color + '40;">' + iconChar + '</div>' +
+            '</div>' +
+            '<div style="padding:24px 28px 26px;">' +
+              '<h3 style="font-size:20px;font-weight:700;color:var(--text);margin:0 0 8px;letter-spacing:-0.01em;text-align:center;">' + escapeHtml(opts.title || 'Invoer') + '</h3>' +
+              (opts.message ? '<p style="font-size:14px;color:var(--text-muted);line-height:1.5;margin:0 0 14px;text-align:center;">' + escapeHtml(opts.message) + '</p>' : '') +
+              '<div class="form-group" style="margin-bottom:6px;">' + inputHtml + '</div>' +
+              '<div id="promptError" style="display:none;color:var(--red);font-size:12px;margin-top:4px;"></div>' +
+              '<div style="display:flex;gap:8px;flex-direction:row-reverse;margin-top:18px;">' +
+                '<button id="promptActionBtn" type="button" style="flex:1;background:' + color + ';color:#fff;border:none;padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 2px 6px ' + color + '33;">' + escapeHtml(actionLabel) + '</button>' +
+                '<button id="promptCancelBtn" type="button" style="flex:1;background:var(--card-bg-hover);color:var(--text);border:1px solid var(--border);padding:12px 20px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;">' + escapeHtml(cancelLabel) + '</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+      document.body.insertAdjacentHTML('beforeend', html);
+      var modal = document.getElementById('promptModal');
+      var input = document.getElementById('promptInput');
+      var actionBtn = document.getElementById('promptActionBtn');
+      var cancelBtn = document.getElementById('promptCancelBtn');
+      var errorEl = document.getElementById('promptError');
+
+      function close() {
+        if (modal) modal.remove();
+        document.removeEventListener('keydown', keyHandler);
+      }
+      function submit() {
+        var v = input ? input.value : '';
+        if (typeof opts.validate === 'function') {
+          var err = opts.validate(v);
+          if (err) {
+            errorEl.textContent = err;
+            errorEl.style.display = 'block';
+            input.focus();
+            return;
+          }
+        }
+        close();
+        if (typeof opts.onSubmit === 'function') opts.onSubmit(v);
+      }
+      function cancel() {
+        close();
+        if (typeof opts.onCancel === 'function') opts.onCancel();
+      }
+      function keyHandler(e) {
+        if (e.key === 'Escape') cancel();
+        else if (e.key === 'Enter' && inputType !== 'textarea') { e.preventDefault(); submit(); }
+      }
+
+      actionBtn.onclick = submit;
+      cancelBtn.onclick = cancel;
+      modal.onclick = function(e) { if (e.target === modal) cancel(); };
+      document.addEventListener('keydown', keyHandler);
+      setTimeout(function() { if (input) { input.focus(); if (input.select) input.select(); } }, 50);
     }
 
     function archiveAsset(id) {
@@ -14365,7 +14582,16 @@
     }
 
     function disconnectGoogle() {
-      if (!confirm('Google-verbinding verbreken? Bestaande agenda-events blijven staan.')) return;
+      showConfirm({
+        icon: '📅',
+        title: 'Google-verbinding verbreken?',
+        message: 'Bestaande agenda-events blijven staan. Je kunt later opnieuw koppelen.',
+        actionLabel: 'Verbreken',
+        danger: true,
+        onConfirm: _disconnectGoogleAction,
+      });
+    }
+    function _disconnectGoogleAction() {
       api('POST', '/api/google/disconnect', {}).then(function() {
         showToast('Verbinding verbroken', 'info');
         refreshGoogleStatus();
@@ -14427,11 +14653,19 @@
     }
 
     function disconnectMicrosoft() {
-      if (!confirm('Microsoft-verbinding verbreken? Bestaande Outlook-events blijven staan.')) return;
-      api('POST', '/api/microsoft/disconnect', {}).then(function() {
-        showToast('Verbinding verbroken', 'info');
-        refreshMicrosoftStatus();
-      }).catch(function(err) { showToast(err.message, 'error'); });
+      showConfirm({
+        icon: '🪟',
+        title: 'Microsoft-verbinding verbreken?',
+        message: 'Bestaande Outlook-events blijven staan. Je kunt later opnieuw koppelen.',
+        actionLabel: 'Verbreken',
+        danger: true,
+        onConfirm: function() {
+          api('POST', '/api/microsoft/disconnect', {}).then(function() {
+            showToast('Verbinding verbroken', 'info');
+            refreshMicrosoftStatus();
+          }).catch(function(err) { showToast(err.message, 'error'); });
+        },
+      });
     }
 
     // Detecteer ?microsoft=connected na callback
@@ -14586,15 +14820,28 @@
         const reg = await navigator.serviceWorker.ready;
         let sub = await reg.pushManager.getSubscription();
 
-        // Already subscribed? → unsubscribe
+        // Already subscribed? → unsubscribe (in-app confirm; gebruiker
+        // bevestigt asynchroon, daarna doet de onConfirm-callback de rest)
         if (sub) {
-          if (!confirm('Push notificaties uitschakelen?')) return;
-          const endpoint = sub.endpoint;
-          const keys = sub.toJSON().keys;
-          await sub.unsubscribe();
-          await api('POST', '/api/push/unsubscribe', { endpoint, keys, user_agent: navigator.userAgent });
-          showToast('Push notificaties uit', 'info');
-          updatePushButton(false);
+          showConfirm({
+            icon: '🔔',
+            title: 'Push notificaties uitschakelen?',
+            message: 'Je krijgt geen nieuwe meldingen meer in je browser. Je kunt ze later weer aanzetten.',
+            actionLabel: 'Uitschakelen',
+            danger: false,
+            onConfirm: async function() {
+              try {
+                const endpoint = sub.endpoint;
+                const keys = sub.toJSON().keys;
+                await sub.unsubscribe();
+                await api('POST', '/api/push/unsubscribe', { endpoint, keys, user_agent: navigator.userAgent });
+                showToast('Push notificaties uit', 'info');
+                updatePushButton(false);
+              } catch (e) {
+                showToast('Uitschakelen mislukt: ' + (e.message || ''), 'error');
+              }
+            },
+          });
           return;
         }
 
@@ -14905,10 +15152,18 @@
     }
 
     function deleteWebhook(id) {
-      if (!confirm('Webhook permanent verwijderen?')) return;
-      api('DELETE', '/api/webhooks/' + id).then(function() {
-        showToast('Verwijderd', 'success'); loadWebhooksOut();
-      }).catch(function(err) { showToast(err.message, 'error'); });
+      showConfirm({
+        icon: '🗑️',
+        title: 'Webhook verwijderen?',
+        message: 'De webhook wordt permanent verwijderd. Bestaande events naar dit endpoint stoppen.',
+        actionLabel: 'Verwijderen',
+        danger: true,
+        onConfirm: function() {
+          api('DELETE', '/api/webhooks/' + id).then(function() {
+            showToast('Verwijderd', 'success'); loadWebhooksOut();
+          }).catch(function(err) { showToast(err.message, 'error'); });
+        },
+      });
     }
 
     // ── Incoming webhooks (IoT) ──
@@ -15006,14 +15261,32 @@
     }
 
     function rotateIncoming(id) {
-      if (!confirm('Token roteren? De huidige URL wordt direct ongeldig.')) return;
+      showConfirm({
+        icon: '🔄',
+        title: 'Sensor-token roteren?',
+        message: 'De huidige URL wordt direct ongeldig. Sensoren met de oude URL kunnen geen data meer sturen tot je de nieuwe URL configureert.',
+        actionLabel: 'Token roteren',
+        danger: true,
+        onConfirm: function() { _doRotateIncoming(id); },
+      });
+    }
+    function _doRotateIncoming(id) {
       api('POST', '/api/incoming/' + id + '/rotate', {}).then(function(res) {
         showTokenDisplay(res.token);
       }).catch(function(err) { showToast(err.message, 'error'); });
     }
 
     function deleteIncoming(id) {
-      if (!confirm('Sensor-token verwijderen? Sensoren met deze URL kunnen geen data meer sturen.')) return;
+      showConfirm({
+        icon: '🗑️',
+        title: 'Sensor-token verwijderen?',
+        message: 'Sensoren met deze URL kunnen geen data meer sturen. Deze actie kan niet ongedaan worden gemaakt.',
+        actionLabel: 'Verwijderen',
+        danger: true,
+        onConfirm: function() { _doDeleteIncoming(id); },
+      });
+    }
+    function _doDeleteIncoming(id) {
       api('DELETE', '/api/incoming/' + id).then(function() {
         showToast('Verwijderd', 'success'); loadIncomingHooks();
       }).catch(function(err) { showToast(err.message, 'error'); });
@@ -15218,12 +15491,12 @@
       api('GET', '/api/organization/').then(function(org) {
         if (!org) return;
         var setVal = function(id, v){ var el = document.getElementById(id); if (el) el.value = (v || ''); };
-        setVal('orgName', org.name);
-        setVal('orgContactEmail', org.contact_email);
-        setVal('orgContactPhone', org.contact_phone);
-        setVal('orgBillingAddress', org.billing_address);
-        setVal('orgKvk', org.kvk_number);
-        setVal('orgBtw', org.btw_number);
+        setVal('settOrgEditName', org.name);
+        setVal('settOrgContactEmail', org.contact_email);
+        setVal('settOrgContactPhone', org.contact_phone);
+        setVal('settOrgBillingAddress', org.billing_address);
+        setVal('settOrgKvk', org.kvk_number);
+        setVal('settOrgBtw', org.btw_number);
       }).catch(function(err){
         console.error('Org laden mislukt:', err);
       });
@@ -15232,12 +15505,12 @@
     function saveOrgChanges() {
       var trim = function(id){ var el = document.getElementById(id); return el ? (el.value || '').trim() : ''; };
       var payload = {
-        name:             trim('orgName')           || null,
-        contact_email:    trim('orgContactEmail')   || null,
-        contact_phone:    trim('orgContactPhone')   || null,
-        billing_address:  trim('orgBillingAddress') || null,
-        kvk_number:       trim('orgKvk')            || null,
-        btw_number:       trim('orgBtw')            || null,
+        name:             trim('settOrgEditName')        || null,
+        contact_email:    trim('settOrgContactEmail')    || null,
+        contact_phone:    trim('settOrgContactPhone')    || null,
+        billing_address:  trim('settOrgBillingAddress')  || null,
+        kvk_number:       trim('settOrgKvk')             || null,
+        btw_number:       trim('settOrgBtw')             || null,
       };
       if (!payload.name) {
         showToast('Organisatie-naam mag niet leeg zijn', 'error');
@@ -15363,14 +15636,33 @@
 
     // ── GDPR Article 17 — Right to erasure ──
     function confirmSelfErasure() {
-      // Twee-staps confirm: woord intypen voorkomt accidental click.
-      var ok = confirm(t('erasure_confirm_1'));
-      if (!ok) return;
-      var typed = prompt(t('erasure_confirm_2'));
-      if (!typed || typed.trim().toUpperCase() !== 'WIS') return;
+      // Twee-staps in-app confirm: woord intypen voorkomt accidental click.
+      showConfirm({
+        icon: '⚠️',
+        title: 'Account verwijderen?',
+        message: t('erasure_confirm_1'),
+        actionLabel: 'Doorgaan',
+        danger: true,
+        onConfirm: function() {
+          showPrompt({
+            icon: '🗑️',
+            title: 'Bevestig met "WIS"',
+            message: t('erasure_confirm_2'),
+            placeholder: 'WIS',
+            type: 'text',
+            actionLabel: 'Permanent verwijderen',
+            danger: true,
+            validate: function(v) {
+              if (!v || v.trim().toUpperCase() !== 'WIS') return 'Typ WIS in hoofdletters om te bevestigen';
+              return null;
+            },
+            onSubmit: function() { _doSelfErasure(); },
+          });
+        },
+      });
+    }
+    function _doSelfErasure() {
       api('DELETE', '/api/users/me/anonymize').then(function() {
-        // Account is geanonymiseerd — token werkt nog tot expiry, maar
-        // is_active=false dus next request gaat al falen. Direct uitloggen.
         showToast(t('erasure_done'), 'success');
         setTimeout(function() {
           localStorage.removeItem('fieldops_token');
@@ -16000,17 +16292,30 @@
         var layer = e.layer;
         drawnItems.addLayer(layer);
         var geojson = JSON.stringify(layer.toGeoJSON().geometry);
-        // Ask which project to assign to
+        // Vraag welk project — in-app select-modal i.p.v. native prompt
         if (allProjects.length > 0) {
-          var opts = allProjects.map(function(p) { return p.name; });
-          var choice = prompt(t('sla_gebied_op')+'\\n\\n' + allProjects.map(function(p,i){return (i+1)+'. '+p.name;}).join('\\n') + '\\n\\n'+t('typ_nummer'));
-          if (choice && allProjects[parseInt(choice)-1]) {
-            var proj = allProjects[parseInt(choice)-1];
-            api('PUT', '/api/projects/'+proj.id, { boundary_geojson: geojson }).then(function() {
-              showToast(t('gebied_opgeslagen')+' '+proj.name, 'success');
-              loadMapData();
-            }).catch(function(err) { showToast(err.message, 'error'); });
-          }
+          showPrompt({
+            icon: '🗺️',
+            title: t('sla_gebied_op'),
+            message: 'Kies een project uit de lijst:',
+            type: 'select',
+            options: allProjects.map(function(p) { return { value: p.id, label: p.name }; }),
+            defaultValue: allProjects[0].id,
+            actionLabel: 'Opslaan',
+            danger: false,
+            onSubmit: function(projId) {
+              var proj = allProjects.find(function(p) { return p.id === projId; });
+              if (!proj) return;
+              api('PUT', '/api/projects/'+proj.id, { boundary_geojson: geojson }).then(function() {
+                showToast(t('gebied_opgeslagen')+' '+proj.name, 'success');
+                loadMapData();
+              }).catch(function(err) { showToast(err.message, 'error'); });
+            },
+            onCancel: function() {
+              // Verwijder de getekende polygon want gebruiker heeft gecancelt
+              try { drawnItems.removeLayer(layer); } catch (e) {}
+            },
+          });
         } else {
           showToast(t('maak_eerst_project'), 'error');
         }
