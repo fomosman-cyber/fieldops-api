@@ -250,6 +250,22 @@ def update_oplevering(
             import logging
             logging.exception("auto-email bij opleveren faalde: %s", e)
 
+    # Werkdagboek: auto-entry bij status-wijziging naar opgeleverd of aanvaard
+    if before_status != o.status and o.status in ("opgeleverd", "aanvaard"):
+        from daybook_logger import log_daybook
+        punten_count = len(o.punten or []) if hasattr(o, "punten") else 0
+        log_daybook(
+            db,
+            user_id=current_user.id,
+            organization_id=current_user.organization_id,
+            entry_type="oplevering_completed",
+            title=("Oplevering " + o.status + ": " + (o.project_naam or "(zonder project)")),
+            description=(str(punten_count) + " opleverpunten · status " + before_status + " → " + o.status),
+            source_type="oplevering",
+            source_id=o.id,
+            project_id=getattr(o, "project_id", None),
+        )
+
     return _oplevering_to_dict(o, include_punten=True)
 
 
