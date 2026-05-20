@@ -850,6 +850,27 @@ def complete_inspection(
                entity_type="inspection", entity_id=insp.id,
                extra={"conditiescore_overall": insp.conditiescore_overall,
                       "beoordeeld_count": beoordeeld_count})
+
+    # Werkdagboek: auto-entry voor de inspecteur (best-effort)
+    from daybook_logger import log_daybook
+    asset_label = ""
+    if insp.asset:
+        asset_label = " — " + (insp.asset.code or insp.asset.naam or "")
+    log_daybook(
+        db,
+        user_id=current_user.id,
+        organization_id=current_user.organization_id,
+        entry_type="inspection_completed",
+        title="Inspectie afgerond" + asset_label,
+        description=("Conditiescore: " + str(insp.conditiescore_overall or "-")
+                     + " · " + str(beoordeeld_count) + " elementen beoordeeld"),
+        source_type="inspection",
+        source_id=insp.id,
+        lat=insp.asset.lat if insp.asset else None,
+        lng=insp.asset.lng if insp.asset else None,
+        project_id=insp.project_id if hasattr(insp, "project_id") else None,
+    )
+
     return _inspection_dict_with_metrics(db, insp, include_elements=True)
 
 
