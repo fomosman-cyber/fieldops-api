@@ -36,10 +36,12 @@ from auth import get_current_user
 
 import kunstwerken_taxonomy as kt
 import crow_146
+import nen_en_1176
+import nen_3140
 
 router = APIRouter(prefix="/api/ai", tags=["AI-foto-classificatie"])
 
-AI_VERSION = "ai-stub.v0.2-crow146-2026-05"
+AI_VERSION = "ai-stub.v0.3-en1176-nen3140-2026-05"
 
 
 class ClassifyRequest(BaseModel):
@@ -286,5 +288,134 @@ def classify_crow146_endpoint(
         "note": "Heuristische top-5 — vervang door gecertificeerde inspectie voor formeel rapport. "
                 "Confidence is op basis van beeld-features + CROW 146-taxonomy, geen ML-model.",
         "norm_reference": "CROW 146 (2010) + Standaard 2015",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NEN-EN 1176 — speeltoestellen-classificatie
+# ─────────────────────────────────────────────────────────────────────────────
+
+class En1176Request(BaseModel):
+    asset_type: Optional[str] = Field(None, description="speeltoestel, schommel, klimrek, glijbaan, ...")
+    properties_hint: Optional[str] = Field(None, description="vrije tekst hint (bv. 'houten kinderwip')")
+    categorie: Optional[str] = Field(None, description="A=visueel B=operationeel C=hoofd D=acuut (auto-detect mogelijk)")
+    photo_data_url: Optional[str] = Field(None, description="data:image/...;base64,...")
+    photo_mean_brightness: Optional[float] = Field(None, ge=0, le=255)
+    photo_dominant_color: Optional[str] = Field(None, description="hex of 'r,g,b'")
+
+
+@router.post("/classify-en1176")
+def classify_en1176_endpoint(
+    req: En1176Request,
+    current_user: User = Depends(get_current_user),
+):
+    """NEN-EN 1176 speeltoestellen-veiligheid classificatie.
+
+    Identificeert inspectie-categorie (A/B/C/D) en top-5 faaltypes met
+    advies-maatregel. Geschikt voor:
+      - Gemeentelijke groen-inspecteurs bij wekelijkse schouw
+      - Externe NEN-EN 1176 jaarcheck (hoofdinspectie type C)
+      - Direct-afsluit beoordeling bij melding (type D)
+
+    Niet bedoeld als vervanging voor gecertificeerde NEN-EN 1176 hoofdinspectie.
+    """
+    rgb = _color_to_rgb(req.photo_dominant_color or "")
+    rgb_tuple = (rgb[0], rgb[1], rgb[2]) if rgb else None
+
+    suggestions = nen_en_1176.classify_en1176(
+        asset_type=req.asset_type,
+        properties_hint=req.properties_hint,
+        categorie=req.categorie if req.categorie in ("A", "B", "C", "D") else None,
+        brightness=req.photo_mean_brightness,
+        dominant_color_rgb=rgb_tuple,
+    )
+
+    cat = req.categorie if req.categorie in ("A", "B", "C", "D") else nen_en_1176.detect_categorie(req.asset_type, req.properties_hint)
+    cat_label = {
+        "A": "A — Visuele inspectie (wekelijks)",
+        "B": "B — Operationele inspectie (1-3 maand)",
+        "C": "C — Hoofdinspectie (jaarlijks)",
+        "D": "D — Acuut afsluiten (direct)",
+    }.get(cat, "B — Operationele inspectie")
+
+    return {
+        "categorie": cat,
+        "categorie_label": cat_label,
+        "detection_method": "explicit" if req.categorie else "auto",
+        "suggestions": suggestions,
+        "klasse_advies": {k: nen_en_1176.klasse_advies(k) for k in ["acuut", "hoog", "middel", "laag"]},
+        "version": AI_VERSION,
+        "method": "heuristic-nen-en-1176",
+        "note": "Heuristische classificatie — gebruik voor pre-screening, niet voor formele NEN-EN 1176 hoofdcheck.",
+        "norm_reference": "NEN-EN 1176-1:2017 (nationale aanvulling 2025)",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NEN 3140 — elektrische installaties LS (openbare verlichting, verkeerslichten)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class Nen3140Request(BaseModel):
+    asset_type: Optional[str] = Field(None, description="lichtmast, verkeerslicht, armatuur, kast, ...")
+    properties_hint: Optional[str] = Field(None, description="vrije tekst hint")
+    # Meetwaarden (optioneel; harde grens-check als ingevuld)
+    isolatie_megaohm: Optional[float] = Field(None, ge=0, description="Isolatieweerstand in MΩ")
+    aarding_ohm: Optional[float] = Field(None, ge=0, description="Aardingsweerstand in Ω")
+    aardlek_ms: Optional[float] = Field(None, ge=0, description="Aardlek-uitschakeltijd in ms")
+    aardlek_ma: Optional[float] = Field(None, ge=0, description="Aardlek-stroom in mA")
+    # Foto-features (visuele defecten)
+    photo_data_url: Optional[str] = Field(None, description="data:image/...;base64,...")
+    photo_mean_brightness: Optional[float] = Field(None, ge=0, le=255)
+    photo_dominant_color: Optional[str] = Field(None, description="hex of 'r,g,b'")
+
+
+@router.post("/classify-nen3140")
+def classify_nen3140_endpoint(
+    req: Nen3140Request,
+    current_user: User = Depends(get_current_user),
+):
+    """NEN 3140 elektrische LS-installaties classificatie.
+
+    Combineert harde grens-checks (gemeten waarden vs norm) met heuristische
+    visuele defect-detectie. Bij meetwaarden boven/onder norm krijgen die
+    defecten automatisch hoge confidence.
+
+    Geschikt voor:
+      - Jaarlijkse NEN 3140 visuele inspectie openbare verlichting
+      - 5-jaarlijkse meet-ronde met multimeter/aardingsmeter
+      - Acute melding 'lamp brandt niet' → quick triage
+    """
+    rgb = _color_to_rgb(req.photo_dominant_color or "")
+    rgb_tuple = (rgb[0], rgb[1], rgb[2]) if rgb else None
+
+    suggestions = nen_3140.classify_nen3140(
+        asset_type=req.asset_type,
+        properties_hint=req.properties_hint,
+        isolatie_megaohm=req.isolatie_megaohm,
+        aarding_ohm=req.aarding_ohm,
+        aardlek_ms=req.aardlek_ms,
+        aardlek_ma=req.aardlek_ma,
+        brightness=req.photo_mean_brightness,
+        dominant_color_rgb=rgb_tuple,
+    )
+
+    grens_breaches = nen_3140.check_grenswaarden(
+        isolatie_megaohm=req.isolatie_megaohm,
+        aarding_ohm=req.aarding_ohm,
+        aardlek_ms=req.aardlek_ms,
+        aardlek_ma=req.aardlek_ma,
+    )
+
+    return {
+        "suggestions": suggestions,
+        "grens_breaches": grens_breaches,
+        "grens_breach_count": len(grens_breaches),
+        "klasse_advies": {k: nen_3140.klasse_advies(k) for k in ["kritiek", "hoog", "middel", "laag"]},
+        "version": AI_VERSION,
+        "method": "grens-check + heuristic-nen-3140",
+        "note": "Grens-checks volgen NEN 3140 strikt. Foto-heuristieken zijn pre-screening — formele meting blijft vereist.",
+        "norm_reference": "NEN 3140:2011 + supplement A2:2019",
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
