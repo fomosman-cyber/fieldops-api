@@ -56,8 +56,8 @@ def update_my_organization(
     """Self-service org-edit voor org-admins.
 
     Toegestane velden: name, contact_email, contact_phone, billing_address,
-    kvk_number, btw_number. Plan/status/max_users zijn voorbehouden aan
-    billing-side (Shopify-flow) en super-admins.
+    kvk_number, btw_number, logo_data_url, brand_color. Plan/status/max_users
+    zijn voorbehouden aan billing-side (Shopify-flow) en super-admins.
     """
     org = db.query(Organization).filter(
         Organization.id == current_user.organization_id,
@@ -69,9 +69,38 @@ def update_my_organization(
     if not data:
         raise HTTPException(status_code=400, detail="Geen velden om te wijzigen")
 
-    before = {k: getattr(org, k) for k in data.keys()}
+    # Logo-validatie: data-URL, max 500KB om DB-bloat te voorkomen
+    if "logo_data_url" in data and data["logo_data_url"]:
+        v = data["logo_data_url"]
+        if not v.startswith("data:image/"):
+            raise HTTPException(status_code=400,
+                                detail="logo_data_url moet beginnen met 'data:image/...'")
+        if len(v) > 700_000:  # ~500KB base64-encoded
+            raise HTTPException(status_code=400,
+                                detail="Logo te groot (max 500KB). Schaal de afbeelding eerst.")
+
+    # Brand-color validatie: hex-formaat
+    if "brand_color" in data and data["brand_color"]:
+        bc = data["brand_color"].strip()
+        if not (bc.startswith("#") and len(bc) in (4, 7)):
+            raise HTTPException(status_code=400,
+                                detail="brand_color moet hex-formaat hebben (#abc of #aabbcc)")
+        data["brand_color"] = bc
+
+    # Audit: zet logo-content niet in before/after (te groot). Alleen flag.
+    before = {}
+    after = {}
+    for k in data.keys():
+        old_val = getattr(org, k, None)
+        if k == "logo_data_url":
+            before[k] = "(set)" if old_val else "(empty)"
+            after[k] = "(set)" if data[k] else "(empty)"
+        else:
+            before[k] = old_val
+            after[k] = data[k]
+
     for field, value in data.items():
-        if isinstance(value, str):
+        if isinstance(value, str) and field != "logo_data_url":
             value = value.strip() or None
         setattr(org, field, value)
     db.commit()
@@ -80,7 +109,7 @@ def update_my_organization(
     log_action(db, request, current_user,
                action=ACTION.ORG_UPDATE if hasattr(ACTION, "ORG_UPDATE") else "org.update",
                entity_type="organization", entity_id=org.id,
-               before=before, after=data)
+               before=before, after=after)
     return org
 
 

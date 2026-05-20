@@ -110,6 +110,8 @@ class OrganizationResponse(BaseModel):
     billing_address: Optional[str] = None
     kvk_number: Optional[str] = None
     btw_number: Optional[str] = None
+    logo_data_url: Optional[str] = None
+    brand_color: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -126,6 +128,8 @@ class OrganizationUpdate(BaseModel):
     billing_address: Optional[str] = None
     kvk_number: Optional[str] = None
     btw_number: Optional[str] = None
+    logo_data_url: Optional[str] = None
+    brand_color: Optional[str] = None
 
 
 # Invitation

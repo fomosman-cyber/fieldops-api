@@ -152,6 +152,8 @@ def _run_migrations():
                 "billing_address": "TEXT",
                 "kvk_number":      "VARCHAR(20)",
                 "btw_number":      "VARCHAR(30)",
+                "logo_data_url":   "TEXT",
+                "brand_color":     "VARCHAR(20)",
             }
             org_missing = [c for c in org_extra if c not in ocols]
             if org_missing:
