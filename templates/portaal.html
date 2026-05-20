@@ -1079,6 +1079,9 @@
         <a data-page="mijn-dag" onclick="navigateTo('mijn-dag')" id="sideNavMijnDag">
           <span class="icon">&#128338;</span> <span data-i18n="nav_mijn_dag">Mijn dag</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
         </a>
+        <a data-page="dagboek" onclick="navigateTo('dagboek')" id="sideNavDagboek">
+          <span class="icon">&#128214;</span> <span data-i18n="nav_dagboek">Werkdagboek</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
+        </a>
         <a data-page="predictive" onclick="navigateTo('predictive')">
           <span class="icon">&#128202;</span> <span data-i18n="nav_voorspeller">Voorspeller</span>
         </a>
@@ -1769,6 +1772,153 @@
     </div>
 
     <!-- ═══ MIJN DAG (Mobile Day-Planner v3.1) ═══ -->
+    <!-- ═══════ WERKDAGBOEK ═══════ -->
+    <div class="page-section" id="page-dagboek">
+      <style>
+        #page-dagboek .day-bar {
+          display:flex;align-items:center;justify-content:space-between;gap:12px;
+          padding:18px 22px;background:linear-gradient(135deg,#7c3aed 0%,#5b21b6 100%);
+          color:#fff;border-radius:14px;margin-bottom:16px;flex-wrap:wrap;
+        }
+        #page-dagboek .day-bar h2 { font-size:22px;font-weight:800;margin:0;letter-spacing:-0.01em; }
+        #page-dagboek .day-bar p { font-size:12px;margin:2px 0 0;opacity:0.85; }
+        #page-dagboek .day-bar input[type=date] {
+          padding:8px 12px;border:1px solid rgba(255,255,255,0.3);
+          border-radius:8px;background:rgba(255,255,255,0.12);color:#fff;
+          font-family:inherit;font-size:13px;
+        }
+        #page-dagboek .db-stats {
+          display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+          gap:12px;margin-bottom:16px;
+        }
+        #page-dagboek .db-stat {
+          background:var(--card-bg);border:1px solid var(--border);
+          border-radius:12px;padding:14px 16px;
+        }
+        #page-dagboek .db-stat .num { font-size:24px;font-weight:800;color:var(--text);line-height:1;margin-bottom:4px; }
+        #page-dagboek .db-stat .lbl { font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;font-family:'JetBrains Mono',monospace; }
+        #page-dagboek .db-entry {
+          display:flex;gap:14px;padding:14px 16px;background:var(--card-bg);
+          border:1px solid var(--border);border-radius:12px;margin-bottom:10px;
+          transition:transform .12s, box-shadow .12s;
+        }
+        #page-dagboek .db-entry:hover { transform:translateY(-1px); box-shadow:0 6px 16px rgba(0,0,0,0.06); }
+        #page-dagboek .db-entry-time {
+          flex-shrink:0;width:60px;font-family:'JetBrains Mono',monospace;font-size:13px;
+          font-weight:600;color:var(--text);padding-top:2px;
+        }
+        #page-dagboek .db-entry-icon {
+          flex-shrink:0;width:32px;height:32px;border-radius:50%;display:flex;
+          align-items:center;justify-content:center;font-size:16px;
+        }
+        #page-dagboek .db-entry-icon.auto { background:rgba(2,132,199,0.1);color:#0284c7; }
+        #page-dagboek .db-entry-icon.manual { background:rgba(124,58,237,0.1);color:#7c3aed; }
+        #page-dagboek .db-entry-body { flex:1;min-width:0; }
+        #page-dagboek .db-entry-title { font-size:14px;font-weight:600;color:var(--text);margin-bottom:3px;word-wrap:break-word; }
+        #page-dagboek .db-entry-meta { font-size:11px;color:var(--text-dim);display:flex;gap:8px;flex-wrap:wrap; }
+        #page-dagboek .db-entry-desc { font-size:12px;color:var(--text-muted);margin-top:4px;white-space:pre-wrap; }
+        #page-dagboek .db-entry-actions { flex-shrink:0;display:flex;gap:4px; }
+        #page-dagboek .db-entry-actions button {
+          background:none;border:1px solid var(--border);border-radius:6px;
+          padding:4px 8px;font-size:11px;cursor:pointer;color:var(--text-dim);
+        }
+        #page-dagboek .db-empty {
+          text-align:center;padding:40px 20px;color:var(--text-dim);
+          background:var(--card-bg-hover);border-radius:12px;border:2px dashed var(--border);
+        }
+        @media (max-width:640px) {
+          #page-dagboek .db-entry { flex-wrap:wrap; }
+          #page-dagboek .db-entry-time { width:auto; }
+        }
+      </style>
+
+      <div class="day-bar">
+        <div>
+          <h2>📖 <span data-i18n="db_title">Werkdagboek</span></h2>
+          <p data-i18n="db_subtitle">Wat heb ik vandaag gedaan — automatisch + handmatig + uren-overzicht.</p>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button onclick="daybookShift(-1)" title="Vorige dag" style="padding:8px 12px;border:1px solid rgba(255,255,255,0.3);border-radius:8px;background:rgba(255,255,255,0.12);color:#fff;cursor:pointer;font-size:14px;">←</button>
+          <input type="date" id="dbDate" onchange="loadDaybook()">
+          <button onclick="daybookShift(1)" title="Volgende dag" style="padding:8px 12px;border:1px solid rgba(255,255,255,0.3);border-radius:8px;background:rgba(255,255,255,0.12);color:#fff;cursor:pointer;font-size:14px;">→</button>
+          <select id="dbUserId" onchange="loadDaybook()" style="display:none;padding:8px 12px;border:1px solid rgba(255,255,255,0.3);border-radius:8px;background:rgba(255,255,255,0.12);color:#fff;font-family:inherit;font-size:13px;"></select>
+        </div>
+      </div>
+
+      <div class="db-stats">
+        <div class="db-stat">
+          <div class="num" id="dbStatTotal">—</div>
+          <div class="lbl" data-i18n="db_stat_entries">Entries</div>
+        </div>
+        <div class="db-stat">
+          <div class="num" id="dbStatMinutes">—</div>
+          <div class="lbl" data-i18n="db_stat_minutes">Minuten geregistreerd</div>
+        </div>
+        <div class="db-stat">
+          <div class="num" id="dbStatAuto">—</div>
+          <div class="lbl" data-i18n="db_stat_auto">Automatisch</div>
+        </div>
+        <div class="db-stat">
+          <div class="num" id="dbStatManual">—</div>
+          <div class="lbl" data-i18n="db_stat_manual">Handmatig</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+        <button class="btn-primary" onclick="openDaybookEntryModal()" data-i18n="db_add_btn">+ Handmatige notitie</button>
+        <button class="btn-secondary" onclick="exportDaybookPDF()" data-i18n="db_pdf_btn">📄 PDF dagrapport</button>
+        <button class="btn-secondary" onclick="openDaybookTeamOverview()" id="dbTeamBtn" style="display:none;" data-i18n="db_team_btn">👥 Team-overzicht</button>
+      </div>
+
+      <div id="dbEntriesList">
+        <div class="db-empty" data-i18n="db_loading">Laden...</div>
+      </div>
+
+      <p style="font-size:11px;color:var(--text-dim);margin-top:18px;line-height:1.5;" data-i18n="db_footnote">
+        Auto-entries (meldingen, status-wijzigingen) komen automatisch — die kun je niet bewerken of verwijderen (audit-integriteit).
+        Handmatige notities mag je vrij toevoegen en aanpassen.
+      </p>
+    </div>
+
+    <!-- ═══════ DAYBOOK ENTRY MODAL ═══════ -->
+    <div class="modal-overlay" id="daybookEntryModal">
+      <div class="modal" style="max-width:520px;">
+        <button class="modal-close" onclick="closeDaybookEntryModal()">&times;</button>
+        <h2 id="daybookEntryModalTitle">Handmatige notitie</h2>
+        <p class="subtitle" data-i18n="db_modal_sub">Wat heb je gedaan? Reistijd, gesprekken, observaties — alles wat geen formele melding is.</p>
+        <form onsubmit="saveDaybookEntry(event)">
+          <div class="form-group">
+            <label data-i18n="db_field_title">Titel *</label>
+            <input type="text" id="dbEntryTitle" placeholder="bv. Gesprek met aannemer over voegherstel" required maxlength="255">
+          </div>
+          <div class="form-group">
+            <label data-i18n="db_field_desc">Omschrijving</label>
+            <textarea id="dbEntryDesc" rows="3" placeholder="Optioneel: meer detail..."></textarea>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label data-i18n="db_field_when">Wanneer</label>
+              <input type="datetime-local" id="dbEntryWhen">
+            </div>
+            <div class="form-group">
+              <label data-i18n="db_field_duration">Duur (minuten)</label>
+              <input type="number" id="dbEntryDuration" placeholder="bv. 30" min="0" max="1440">
+            </div>
+          </div>
+          <div class="form-group">
+            <label data-i18n="db_field_project">Project (optioneel)</label>
+            <select id="dbEntryProject">
+              <option value="">— Geen project —</option>
+            </select>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" onclick="closeDaybookEntryModal()">Annuleren</button>
+            <button type="submit" class="btn-primary" data-i18n="db_save_btn">Opslaan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <div class="page-section" id="page-mijn-dag">
       <style>
         /* Mobile-first day-planner styles */
@@ -6995,6 +7145,7 @@
       if (page === 'dashboard') loadDashboardPredictiveWidget();
       if (page === 'integraties') loadIntegrations();
       if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); loadOrgEditForm(); loadOrgAuditSummary(); }
+      if (page === 'dagboek') initDaybook();
     }
 
     // ── Load Users ──
@@ -15486,6 +15637,386 @@
         }
       }).catch(function(err) {
         showToast('Fout: ' + (err.message || 'onbekend'), 'error');
+      });
+    }
+
+    // ── Werkdagboek ─────────────────────────────────────────────
+    // Backend endpoints (zie routers/daybook_router.py):
+    //   GET    /api/daybook/day?date=YYYY-MM-DD&user_id=...
+    //   POST   /api/daybook/entries  (handmatige notitie)
+    //   PATCH  /api/daybook/entries/{id}
+    //   DELETE /api/daybook/entries/{id}
+    //   GET    /api/daybook/team-overview?days=
+    // Auto-entries komen vanuit andere routers via daybook_logger.log_daybook.
+    var daybookCurrentDate = null;  // YYYY-MM-DD
+    var daybookEntriesCache = [];   // huidige dag-entries
+
+    function initDaybook() {
+      var dateInput = document.getElementById('dbDate');
+      if (!dateInput) return;
+      if (!daybookCurrentDate) {
+        daybookCurrentDate = _todayIso();
+        dateInput.value = daybookCurrentDate;
+      }
+      // Team-overzicht knop alleen voor org-admin
+      var teamBtn = document.getElementById('dbTeamBtn');
+      if (teamBtn) teamBtn.style.display = (currentUser && currentUser.is_org_admin) ? '' : 'none';
+      // Voor org-admin: laad lijst van users zodat ze andere dagboeken kunnen bekijken
+      if (currentUser && currentUser.is_org_admin) {
+        _loadDaybookUserSelector();
+      }
+      loadDaybook();
+    }
+
+    function _todayIso() {
+      var d = new Date();
+      var iso = d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0');
+      return iso;
+    }
+
+    function _loadDaybookUserSelector() {
+      var sel = document.getElementById('dbUserId');
+      if (!sel) return;
+      api('GET', '/api/users/').then(function(users) {
+        if (!users) return;
+        sel.style.display = '';
+        sel.innerHTML = '<option value="">' + (t('db_my_diary') || '📖 Mijn dagboek') + '</option>';
+        users.forEach(function(u) {
+          if (u.id === currentUser.id) return;
+          var name = ((u.first_name || '') + ' ' + (u.last_name || '')).trim() || u.email;
+          var opt = document.createElement('option');
+          opt.value = u.id;
+          opt.textContent = '👤 ' + name;
+          sel.appendChild(opt);
+        });
+      }).catch(function(){});
+    }
+
+    function daybookShift(days) {
+      var input = document.getElementById('dbDate');
+      if (!input || !input.value) return;
+      var d = new Date(input.value + 'T00:00:00');
+      d.setDate(d.getDate() + days);
+      var iso = d.getFullYear() + '-' +
+                String(d.getMonth() + 1).padStart(2, '0') + '-' +
+                String(d.getDate()).padStart(2, '0');
+      input.value = iso;
+      daybookCurrentDate = iso;
+      loadDaybook();
+    }
+
+    function loadDaybook() {
+      var dateInput = document.getElementById('dbDate');
+      var userSel = document.getElementById('dbUserId');
+      var date = (dateInput && dateInput.value) || _todayIso();
+      daybookCurrentDate = date;
+      var userId = (userSel && userSel.value) || '';
+      var qs = 'date=' + encodeURIComponent(date);
+      if (userId) qs += '&user_id=' + encodeURIComponent(userId);
+
+      var listEl = document.getElementById('dbEntriesList');
+      if (listEl) listEl.innerHTML = '<div class="db-empty">' + (t('db_loading') || 'Laden...') + '</div>';
+
+      api('GET', '/api/daybook/day?' + qs).then(function(data) {
+        if (!data) return;
+        daybookEntriesCache = data.entries || [];
+        _renderDaybookStats(data);
+        _renderDaybookEntries(data.entries || [], !!userId);
+      }).catch(function(err) {
+        if (listEl) listEl.innerHTML = '<div class="db-empty" style="color:var(--red);">' + (t('fout_laden') || 'Fout bij laden') + ': ' + escapeHtml(err.message || '') + '</div>';
+      });
+    }
+
+    function _renderDaybookStats(data) {
+      var auto = 0, manual = 0;
+      (data.entries || []).forEach(function(e) {
+        if (e.source === 'auto') auto++; else manual++;
+      });
+      document.getElementById('dbStatTotal').textContent = data.total_entries || 0;
+      document.getElementById('dbStatMinutes').textContent = data.total_minutes || 0;
+      document.getElementById('dbStatAuto').textContent = auto;
+      document.getElementById('dbStatManual').textContent = manual;
+    }
+
+    function _renderDaybookEntries(entries, isViewingOther) {
+      var listEl = document.getElementById('dbEntriesList');
+      if (!listEl) return;
+      if (!entries.length) {
+        listEl.innerHTML = '<div class="db-empty">' +
+          '<div style="font-size:32px;margin-bottom:10px;">📖</div>' +
+          '<div style="font-weight:600;color:var(--text);margin-bottom:4px;">' + (t('db_empty_title') || 'Nog geen entries op deze dag') + '</div>' +
+          '<div style="font-size:12px;">' + (t('db_empty_sub') || 'Maak een melding aan of voeg een handmatige notitie toe.') + '</div>' +
+          '</div>';
+        return;
+      }
+      listEl.innerHTML = entries.map(function(e) {
+        var dt = new Date(e.occurred_at);
+        var time = dt.getHours().toString().padStart(2, '0') + ':' + dt.getMinutes().toString().padStart(2, '0');
+        var isAuto = e.source === 'auto';
+        var iconClass = isAuto ? 'auto' : 'manual';
+        var icon = _daybookIconFor(e.entry_type, e.source);
+        var meta = [];
+        if (e.duration_minutes) meta.push('⏱ ' + e.duration_minutes + ' min');
+        if (e.project_name) meta.push('📁 ' + escapeHtml(e.project_name));
+        if (e.lat && e.lng) meta.push('📍 ' + e.lat.toFixed(4) + ', ' + e.lng.toFixed(4));
+        if (e.source_type) meta.push((isAuto ? '🔗 ' : '') + e.source_type);
+        var actions = '';
+        // Eigen manuele entries: edit + delete
+        if (!isAuto && !isViewingOther) {
+          actions =
+            '<button onclick="editDaybookEntry(\'' + e.id + '\')" title="Bewerken">✏️</button>' +
+            '<button onclick="deleteDaybookEntry(\'' + e.id + '\')" title="Verwijderen">🗑</button>';
+        }
+        return '<div class="db-entry">' +
+          '<div class="db-entry-time">' + time + '</div>' +
+          '<div class="db-entry-icon ' + iconClass + '" title="' + (isAuto ? 'Automatisch' : 'Handmatig') + '">' + icon + '</div>' +
+          '<div class="db-entry-body">' +
+            '<div class="db-entry-title">' + escapeHtml(e.title || '') + '</div>' +
+            (meta.length ? '<div class="db-entry-meta">' + meta.join(' · ') + '</div>' : '') +
+            (e.description ? '<div class="db-entry-desc">' + escapeHtml(e.description) + '</div>' : '') +
+          '</div>' +
+          '<div class="db-entry-actions">' + actions + '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    function _daybookIconFor(entryType, source) {
+      var map = {
+        melding_created: '🔔',
+        melding_status_change: '↻',
+        inspection_completed: '🔍',
+        oplevering_completed: '✅',
+        asset_visited: '📍',
+        time_logged: '⏱',
+        manual_note: '📝',
+      };
+      return map[entryType] || (source === 'auto' ? '⚙️' : '📝');
+    }
+
+    function openDaybookEntryModal(existingEntry) {
+      var modal = document.getElementById('daybookEntryModal');
+      if (!modal) return;
+      modal.classList.add('active');
+      document.getElementById('daybookEntryModalTitle').textContent = existingEntry ? 'Notitie bewerken' : 'Handmatige notitie';
+      document.getElementById('dbEntryTitle').value = existingEntry ? (existingEntry.title || '') : '';
+      document.getElementById('dbEntryDesc').value = existingEntry ? (existingEntry.description || '') : '';
+      document.getElementById('dbEntryDuration').value = existingEntry ? (existingEntry.duration_minutes || '') : '';
+
+      // Datetime-local: lokaal formaat YYYY-MM-DDTHH:mm
+      var whenEl = document.getElementById('dbEntryWhen');
+      var when = existingEntry ? new Date(existingEntry.occurred_at) : new Date();
+      whenEl.value = when.getFullYear() + '-' +
+        String(when.getMonth() + 1).padStart(2, '0') + '-' +
+        String(when.getDate()).padStart(2, '0') + 'T' +
+        String(when.getHours()).padStart(2, '0') + ':' +
+        String(when.getMinutes()).padStart(2, '0');
+
+      // Project-dropdown vullen
+      var projSel = document.getElementById('dbEntryProject');
+      projSel.innerHTML = '<option value="">— Geen project —</option>';
+      (allProjects || []).forEach(function(p) {
+        var opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        if (existingEntry && existingEntry.project_id === p.id) opt.selected = true;
+        projSel.appendChild(opt);
+      });
+      // Als allProjects leeg is, laad nu
+      if (!allProjects || !allProjects.length) {
+        api('GET', '/api/projects/').then(function(ps) {
+          allProjects = ps || [];
+          (ps || []).forEach(function(p) {
+            var opt = document.createElement('option');
+            opt.value = p.id; opt.textContent = p.name;
+            if (existingEntry && existingEntry.project_id === p.id) opt.selected = true;
+            projSel.appendChild(opt);
+          });
+        }).catch(function(){});
+      }
+      // editing-id op de form opslaan
+      modal.dataset.editingId = existingEntry ? existingEntry.id : '';
+      setTimeout(function(){ document.getElementById('dbEntryTitle').focus(); }, 50);
+    }
+
+    function closeDaybookEntryModal() {
+      var modal = document.getElementById('daybookEntryModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function saveDaybookEntry(e) {
+      e.preventDefault();
+      var modal = document.getElementById('daybookEntryModal');
+      var editingId = modal.dataset.editingId || '';
+      var title = (document.getElementById('dbEntryTitle').value || '').trim();
+      var desc = (document.getElementById('dbEntryDesc').value || '').trim();
+      var whenVal = (document.getElementById('dbEntryWhen').value || '').trim();
+      var durationVal = (document.getElementById('dbEntryDuration').value || '').trim();
+      var projId = (document.getElementById('dbEntryProject').value || '').trim();
+
+      if (!title) { showToast('Titel is verplicht', 'error'); return; }
+
+      var payload = {
+        title: title,
+        description: desc || null,
+        occurred_at: whenVal ? new Date(whenVal).toISOString() : null,
+        duration_minutes: durationVal ? parseInt(durationVal) : null,
+        project_id: projId || null,
+      };
+
+      var method = editingId ? 'PATCH' : 'POST';
+      var url = editingId ? ('/api/daybook/entries/' + editingId) : '/api/daybook/entries';
+
+      api(method, url, payload).then(function() {
+        showToast(editingId ? 'Notitie bijgewerkt' : 'Notitie toegevoegd', 'success');
+        closeDaybookEntryModal();
+        loadDaybook();
+      }).catch(function(err) {
+        showToast('Opslaan mislukt: ' + (err.message || ''), 'error');
+      });
+    }
+
+    function editDaybookEntry(id) {
+      var entry = daybookEntriesCache.find(function(e) { return e.id === id; });
+      if (!entry) { showToast('Entry niet gevonden', 'error'); return; }
+      if (entry.source === 'auto') {
+        showToast('Auto-entries kunnen niet bewerkt worden', 'error');
+        return;
+      }
+      openDaybookEntryModal(entry);
+    }
+
+    function deleteDaybookEntry(id) {
+      var entry = daybookEntriesCache.find(function(e) { return e.id === id; });
+      if (!entry) return;
+      showConfirm({
+        icon: '🗑️',
+        title: 'Notitie verwijderen?',
+        message: '"' + (entry.title || '') + '" wordt uit je dagboek gehaald. Audit-trail blijft bewaard.',
+        actionLabel: 'Verwijderen',
+        danger: true,
+        onConfirm: function() {
+          api('DELETE', '/api/daybook/entries/' + id).then(function() {
+            showToast('Notitie verwijderd', 'success');
+            loadDaybook();
+          }).catch(function(err) {
+            showToast('Verwijderen mislukt: ' + (err.message || ''), 'error');
+          });
+        },
+      });
+    }
+
+    function exportDaybookPDF() {
+      if (!daybookEntriesCache.length) {
+        showToast('Geen entries om te exporteren', 'error');
+        return;
+      }
+      var date = daybookCurrentDate || _todayIso();
+      var userName = (currentUser && (currentUser.first_name + ' ' + (currentUser.last_name || ''))) || (currentUser && currentUser.email) || 'Gebruiker';
+      var userSel = document.getElementById('dbUserId');
+      if (userSel && userSel.value) {
+        var opt = userSel.options[userSel.selectedIndex];
+        if (opt) userName = (opt.textContent || '').replace(/^[👤📖]\s*/, '');
+      }
+      try {
+        var doc = new window.jspdf.jsPDF();
+        // Header
+        doc.setFontSize(18);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Werkdagboek', 14, 18);
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.text(userName.trim() + '  ·  ' + date, 14, 26);
+
+        // Statistieken
+        var total = daybookEntriesCache.length;
+        var minutes = daybookEntriesCache.reduce(function(s, e) { return s + (e.duration_minutes || 0); }, 0);
+        var auto = daybookEntriesCache.filter(function(e) { return e.source === 'auto'; }).length;
+        doc.setFontSize(10);
+        doc.setTextColor(110, 110, 110);
+        doc.text(total + ' entries  ·  ' + minutes + ' min  ·  ' + auto + ' auto, ' + (total - auto) + ' handmatig', 14, 33);
+        doc.setTextColor(0, 0, 0);
+
+        // Tabel
+        var rows = daybookEntriesCache.map(function(e) {
+          var dt = new Date(e.occurred_at);
+          var time = dt.getHours().toString().padStart(2, '0') + ':' + dt.getMinutes().toString().padStart(2, '0');
+          var src = e.source === 'auto' ? 'AUTO' : 'manual';
+          var dur = e.duration_minutes ? (e.duration_minutes + ' min') : '';
+          var detail = e.title;
+          if (e.description) detail += '\n' + e.description;
+          if (e.project_name) detail += '\nProject: ' + e.project_name;
+          return [time, src, e.entry_type, detail, dur];
+        });
+        doc.autoTable({
+          startY: 40,
+          head: [['Tijd', 'Bron', 'Type', 'Activiteit', 'Duur']],
+          body: rows,
+          theme: 'striped',
+          headStyles: { fillColor: [124, 58, 237] },
+          styles: { fontSize: 9, cellPadding: 3, overflow: 'linebreak' },
+          columnStyles: {
+            0: { cellWidth: 16 },
+            1: { cellWidth: 16 },
+            2: { cellWidth: 36 },
+            3: { cellWidth: 'auto' },
+            4: { cellWidth: 18 },
+          },
+        });
+
+        // Footer
+        var pageCount = doc.internal.getNumberOfPages();
+        for (var i = 1; i <= pageCount; i++) {
+          doc.setPage(i);
+          doc.setFontSize(8);
+          doc.setTextColor(150, 150, 150);
+          doc.text('FieldOps Werkdagboek · pagina ' + i + ' van ' + pageCount, 14, doc.internal.pageSize.height - 8);
+        }
+        doc.save('Dagboek_' + userName.trim().replace(/\s+/g, '_') + '_' + date + '.pdf');
+        showToast('PDF gegenereerd', 'success');
+      } catch (err) {
+        showToast('PDF generatie mislukt: ' + (err.message || ''), 'error');
+      }
+    }
+
+    function openDaybookTeamOverview() {
+      api('GET', '/api/daybook/team-overview?days=7').then(function(data) {
+        if (!data) return;
+        var rows = (data.members || []).map(function(m) {
+          var hours = (m.total_minutes / 60).toFixed(1);
+          var lastDt = m.last_activity ? new Date(m.last_activity).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+          return '<tr style="border-bottom:1px solid var(--border);">' +
+            '<td style="padding:8px 10px;"><strong>' + escapeHtml(m.user_name) + '</strong></td>' +
+            '<td style="padding:8px 10px;color:var(--text-muted);font-size:12px;">' + escapeHtml(m.user_role || '') + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;font-weight:600;">' + m.entry_count + '</td>' +
+            '<td style="padding:8px 10px;text-align:right;">' + hours + ' u</td>' +
+            '<td style="padding:8px 10px;color:var(--text-dim);font-size:11px;">' + lastDt + '</td>' +
+            '</tr>';
+        }).join('');
+        var html =
+          '<div style="background:rgba(0,0,0,0.5);position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;" onclick="if(event.target===this)this.remove()">' +
+            '<div style="background:var(--card-bg);max-width:720px;width:100%;border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">' +
+                '<h2 style="margin:0;">👥 Team-dagboek — laatste ' + (data.days || 7) + ' dagen</h2>' +
+                '<button onclick="this.closest(\'div[onclick]\').remove()" style="background:none;border:none;font-size:24px;cursor:pointer;color:var(--text-dim);">&times;</button>' +
+              '</div>' +
+              '<p style="color:var(--text-muted);font-size:12px;margin:0 0 14px;">' + (data.team_size || 0) + ' team-leden actief.</p>' +
+              '<table style="width:100%;border-collapse:collapse;font-size:13px;">' +
+                '<thead><tr style="border-bottom:2px solid var(--border);">' +
+                  '<th style="text-align:left;padding:8px 10px;">Gebruiker</th>' +
+                  '<th style="text-align:left;padding:8px 10px;">Rol</th>' +
+                  '<th style="text-align:right;padding:8px 10px;">Entries</th>' +
+                  '<th style="text-align:right;padding:8px 10px;">Uren</th>' +
+                  '<th style="text-align:left;padding:8px 10px;">Laatste activiteit</th>' +
+                '</tr></thead>' +
+                '<tbody>' + (rows || '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text-dim);">Geen activiteit deze week</td></tr>') + '</tbody>' +
+              '</table>' +
+            '</div>' +
+          '</div>';
+        document.body.insertAdjacentHTML('beforeend', html);
+      }).catch(function(err) {
+        showToast('Team-overzicht laden mislukt: ' + (err.message || ''), 'error');
       });
     }
 
