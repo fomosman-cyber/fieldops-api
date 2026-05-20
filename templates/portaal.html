@@ -3673,6 +3673,24 @@
             </div>
           </div>
         </div>
+        <!-- Issue-tracker bridge (Linear/GitHub) — alleen in edit-mode -->
+        <div class="form-group" id="meldingExternalLinkWrap" style="display:none;margin-top:18px;padding:14px;border-radius:10px;background:rgba(124,58,237,0.05);border:1px solid rgba(124,58,237,0.18);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <strong style="color:var(--text);font-size:13px;">🔗 Open in issue-tracker</strong>
+            <span style="font-size:11px;color:var(--text-dim);">Linear · GitHub Issues</span>
+          </div>
+          <p style="font-size:11px;color:var(--text-muted);margin:0 0 10px;">Deep-link: vult titel + beschrijving + GPS-link + FieldOps-link voor. Klik om in nieuw tabblad te openen.</p>
+          <div style="display:grid;grid-template-columns:120px 1fr auto;gap:8px;align-items:center;">
+            <select id="extlinkTarget" onchange="onExtlinkTargetChange()" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:var(--bg);color:var(--text);">
+              <option value="linear">📋 Linear</option>
+              <option value="github">🐙 GitHub</option>
+            </select>
+            <input type="text" id="extlinkTeamOrRepo" placeholder="team-slug (linear) of owner/repo (github)" style="padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;background:var(--bg);color:var(--text);">
+            <button type="button" class="btn-primary" onclick="openExternalIssueLink()" style="white-space:nowrap;font-size:12px;padding:8px 12px;background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;">Open →</button>
+          </div>
+          <p id="extlinkHint" style="font-size:11px;color:var(--text-dim);margin:6px 0 0;"></p>
+        </div>
+
         <div class="form-actions">
           <button type="submit" class="btn-primary" id="meldingSubmitBtn">Melding aanmaken</button>
         </div>
@@ -8900,6 +8918,7 @@
       if (submitBtn) submitBtn.textContent = isEdit ? 'Wijzigingen opslaan' : 'Melding aanmaken';
 
       document.getElementById('meldingModal').classList.add('active');
+      setupExternalLinkSection(isEdit, editingMeldingId);
 
       api('GET', '/api/projects/').then(function(p) {
         allProjects = p || [];
@@ -15100,6 +15119,77 @@
       if (ph) ph.value = currentUser.phone || '';
       if (em) em.value = currentUser.email || '';
       if (rl) rl.value = currentUser.role || '';
+    }
+
+    // ── Issue-tracker bridge (Linear/GitHub) ────────────────────
+    // Backend: POST /api/integrations/external-link/melding/{id} (deep-link
+    // generator, geen OAuth). Knop verschijnt alleen in edit-mode van een
+    // bestaande melding. Laatste team_or_repo per target wordt onthouden in
+    // localStorage zodat user 'em niet steeds opnieuw hoeft te typen.
+    function setupExternalLinkSection(isEdit, meldingId) {
+      var wrap = document.getElementById('meldingExternalLinkWrap');
+      if (!wrap) return;
+      if (!isEdit || !meldingId) { wrap.style.display = 'none'; return; }
+      wrap.style.display = '';
+      // Restore laatste target + team_or_repo
+      var savedTarget = localStorage.getItem('fieldops_extlink_target') || 'linear';
+      var sel = document.getElementById('extlinkTarget');
+      if (sel) sel.value = savedTarget;
+      onExtlinkTargetChange();
+    }
+
+    function onExtlinkTargetChange() {
+      var sel = document.getElementById('extlinkTarget');
+      var inp = document.getElementById('extlinkTeamOrRepo');
+      var hint = document.getElementById('extlinkHint');
+      if (!sel || !inp) return;
+      var target = sel.value;
+      localStorage.setItem('fieldops_extlink_target', target);
+      var saved = localStorage.getItem('fieldops_extlink_repo_' + target) || '';
+      inp.value = saved;
+      if (target === 'linear') {
+        inp.placeholder = 'team-slug (bv. eng)';
+        if (hint) hint.innerHTML = 'Bv. <code>eng</code> → opens https://linear.app/eng/issue/new met FieldOps-context.';
+      } else {
+        inp.placeholder = 'owner/repo (bv. acme/infra-tickets)';
+        if (hint) hint.innerHTML = 'Bv. <code>acme/infra-tickets</code> → opens GitHub issue-create met FieldOps-context.';
+      }
+    }
+
+    function openExternalIssueLink() {
+      if (!editingMeldingId) {
+        showToast('Sla de melding eerst op voor je een issue aanmaakt', 'error');
+        return;
+      }
+      var sel = document.getElementById('extlinkTarget');
+      var inp = document.getElementById('extlinkTeamOrRepo');
+      if (!sel || !inp) return;
+      var target = sel.value;
+      var team = (inp.value || '').trim();
+      if (!team) {
+        showToast(target === 'linear' ? 'Team-slug is verplicht (bv. eng)' : 'owner/repo is verplicht (bv. acme/repo)', 'error');
+        inp.focus();
+        return;
+      }
+      if (target === 'github' && team.indexOf('/') === -1) {
+        showToast('GitHub: gebruik owner/repo formaat (bv. acme/infra-tickets)', 'error');
+        inp.focus();
+        return;
+      }
+      localStorage.setItem('fieldops_extlink_repo_' + target, team);
+      api('POST', '/api/integrations/external-link/melding/' + editingMeldingId, {
+        target: target,
+        team_or_repo: team,
+      }).then(function(res) {
+        if (res && res.url) {
+          window.open(res.url, '_blank', 'noopener,noreferrer');
+          showToast('Geopend in ' + (target === 'linear' ? 'Linear' : 'GitHub'), 'success');
+        } else {
+          showToast('Link genereren mislukte', 'error');
+        }
+      }).catch(function(err) {
+        showToast('Fout: ' + (err.message || 'onbekend'), 'error');
+      });
     }
 
     // ── Org-admin: organisatie-gegevens bewerken ─────────────────
