@@ -1211,6 +1211,34 @@ def contact_form(req: ContactRequest, request: Request):
     return {"message": "Bericht ontvangen"}
 
 
+@app.get("/prijzen", response_class=HTMLResponse)
+def prijzen():
+    """Pricing-pagina met 3 tiers (Starter/Pro/Enterprise) + feature-matrix + FAQ.
+
+    Statische HTML — geen template-variabelen. Linkt naar /prijzen/offerte-template.docx
+    voor downloadable Word-offerte (Pro-tier prijsstructuur).
+    """
+    html = (TEMPLATES_DIR / "prijzen.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
+
+
+@app.get("/prijzen/offerte-template.docx")
+def offerte_template():
+    """Download Word offerte-template voor FieldOps Pro jaarcontract.
+
+    Bevat alle voorwaarden + pricing + handtekeningenblok. Klant vult de
+    [PLACEHOLDER]-velden in via Find & Replace voor eigen organisatie.
+    """
+    path = TEMPLATES_DIR.parent / "static" / "offerte-template.docx"
+    if not path.exists():
+        raise HTTPException(404, "Offerte-template (nog) niet beschikbaar")
+    return FileResponse(
+        path,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename="offerte-fieldops-jaarcontract.docx",
+    )
+
+
 @app.get("/portaal", response_class=HTMLResponse)
 def portaal():
     """Serve de FieldOps portaal SPA met server-side config-injection."""
