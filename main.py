@@ -8,6 +8,45 @@ from pydantic import BaseModel
 import asyncio
 import httpx
 import os
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Sentry error-tracking — VÓÓR FastAPI() instantie zodat alle errors gevangen worden.
+# Zonder SENTRY_DSN env-var blijft het stilletjes uit (geen fout).
+# Sentry-sdk[fastapi] auto-instrumenteert FastAPI + SQLAlchemy + asyncio.
+# ═══════════════════════════════════════════════════════════════════════════
+_SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.sqlalchemy import SqlalchemyIntegration
+
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            environment=os.getenv("SENTRY_ENVIRONMENT", "production" if os.getenv("RENDER") else "dev"),
+            release=os.getenv("RENDER_GIT_COMMIT", "unknown")[:12],
+            # Performance: sample 10% van requests voor trace-data
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_RATE", "0.1")),
+            # Profiling: sample 10% van getraceerde requests
+            profiles_sample_rate=float(os.getenv("SENTRY_PROFILES_RATE", "0.1")),
+            integrations=[
+                FastApiIntegration(transaction_style="endpoint"),
+                SqlalchemyIntegration(),
+            ],
+            # PII: stuur GEEN user-data (email, ip) standaard — alleen exception+stack
+            send_default_pii=False,
+            # Negeer rate-limit errors (te veel ruis)
+            ignore_errors=["HTTPException"],
+            # Voor 429/401 statussen: niet rapporteren als errors
+            before_send=lambda event, hint: event if (hint.get("exc_info", [None])[0] is None
+                                                       or "HTTPException" not in str(hint.get("exc_info", [None])[0])) else None,
+        )
+        print(f"[sentry] Initialized — environment={os.getenv('SENTRY_ENVIRONMENT', 'production')}, release={os.getenv('RENDER_GIT_COMMIT', 'unknown')[:12]}")
+    except Exception as _e:
+        print(f"[sentry] Init failed (continuing without): {_e}")
+else:
+    print("[sentry] SENTRY_DSN niet gezet — error-tracking uit (set DSN voor productie)")
+
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
@@ -547,18 +586,19 @@ from starlette.middleware.base import BaseHTTPMiddleware as _BHM
 
 CSP_POLICY = " ".join([
     "default-src 'self';",
-    # Scripts: self + CDN's voor leaflet/jspdf, inline voor templates
-    "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net;",
+    # Scripts: self + CDN's voor leaflet/jspdf/Sentry, inline voor templates
+    "script-src 'self' 'unsafe-inline' https://unpkg.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://browser.sentry-cdn.com;",
     # Styles: self + unpkg (leaflet css) + inline-styles (Jinja templates)
     "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com;",
     "font-src 'self' data: https://fonts.gstatic.com;",
     # Images: self, data-URLs (foto-uploads), https voor tile-servers
     "img-src 'self' data: blob: https:;",
-    # XHR/fetch: self + tile-servers + geocoding + Resend
+    # XHR/fetch: self + tile-servers + geocoding + Resend + Sentry-ingest
     "connect-src 'self' https://tile.openstreetmap.org https://*.tile.openstreetmap.org "
     "https://server.arcgisonline.com https://*.basemaps.cartocdn.com "
     "https://*.tile.opentopomap.org https://nominatim.openstreetmap.org "
-    "https://api.resend.com https://accounts.google.com https://login.microsoftonline.com;",
+    "https://api.resend.com https://accounts.google.com https://login.microsoftonline.com "
+    "https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io;",
     # Forms posten alleen naar self
     "form-action 'self';",
     # Geen frame-embedding van extern (anti-clickjacking)
@@ -1165,8 +1205,17 @@ def contact_form(req: ContactRequest, request: Request):
 
 @app.get("/portaal", response_class=HTMLResponse)
 def portaal():
-    """Serve de FieldOps portaal SPA."""
+    """Serve de FieldOps portaal SPA met server-side config-injection."""
     html = (TEMPLATES_DIR / "portaal.html").read_text(encoding="utf-8")
+    # Inject Sentry public-DSN + environment voor frontend error-tracking.
+    # SENTRY_PUBLIC_DSN is by-design public; gebruikt apart van backend-DSN
+    # zodat je quota's gescheiden kunt monitoren.
+    sentry_dsn = os.getenv("SENTRY_PUBLIC_DSN", "").strip()
+    sentry_env = os.getenv("SENTRY_ENVIRONMENT", "production" if os.getenv("RENDER") else "dev")
+    release = os.getenv("RENDER_GIT_COMMIT", "unknown")[:12]
+    html = html.replace("{{SENTRY_DSN}}", sentry_dsn)
+    html = html.replace("{{SENTRY_ENV}}", sentry_env)
+    html = html.replace("{{RELEASE}}", release)
     return HTMLResponse(content=html)
 
 
@@ -1275,7 +1324,157 @@ pre{{margin:14px 0;}}</style></head>
 
 @app.get("/api/health")
 def health_check():
+    """Eenvoudig 200-OK voor load-balancers / liveness-probes."""
     return {"status": "ok"}
+
+
+@app.get("/api/status/detailed")
+def detailed_status_check():
+    """Uitgebreide health-check voor UptimeRobot/Pingdom + /status pagina.
+
+    Checkt:
+    - DB-connectie (lichte query)
+    - Sentry-config aanwezig
+    - Backup-service config aanwezig
+    - Resend (email) config aanwezig
+    - Render commit/release info
+
+    Geen auth — public endpoint voor monitoring. Geen credentials lekken.
+    """
+    checks = {}
+    overall = "ok"
+
+    # DB-check
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        checks["database"] = {"status": "ok", "message": "Connection OK"}
+    except Exception as e:
+        checks["database"] = {"status": "down", "message": f"DB error: {type(e).__name__}"}
+        overall = "degraded"
+
+    # Sentry-check
+    sentry_dsn = bool(os.getenv("SENTRY_DSN", "").strip())
+    checks["error_tracking"] = {
+        "status": "ok" if sentry_dsn else "not_configured",
+        "message": "Sentry configured" if sentry_dsn else "SENTRY_DSN not set (errors only in logs)",
+    }
+
+    # Backup-check
+    backup_configured = bool(os.getenv("S3_BUCKET") and os.getenv("AWS_ACCESS_KEY_ID"))
+    last_backup = None
+    try:
+        import backup_service
+        st = backup_service.get_status()
+        last_backup = st.get("last_success_at")
+    except Exception:
+        pass
+    checks["backup"] = {
+        "status": "ok" if backup_configured else "not_configured",
+        "message": ("Configured" + (f", last success: {last_backup}" if last_backup else "")) if backup_configured else "S3 env-vars not set",
+    }
+
+    # Email-service
+    resend_configured = bool(os.getenv("RESEND_API_KEY", "").strip())
+    checks["email"] = {
+        "status": "ok" if resend_configured else "not_configured",
+        "message": "Resend API key configured" if resend_configured else "RESEND_API_KEY not set",
+    }
+
+    # Release info
+    release = os.getenv("RENDER_GIT_COMMIT", "unknown")[:12]
+    deployed_at = os.getenv("RENDER_DEPLOY_AT", "")
+
+    return {
+        "status": overall,
+        "checks": checks,
+        "release": release,
+        "deployed_at": deployed_at,
+        "region": os.getenv("RENDER_REGION", "frankfurt"),
+        "timestamp": datetime.now(timezone.utc).isoformat() if "datetime" in globals() else None,
+    }
+
+
+@app.get("/status", response_class=HTMLResponse)
+def status_page():
+    """Publieke status-pagina — klant-vriendelijk + UptimeRobot-target.
+
+    Render-side fetcht /api/status/detailed en toont badges per component.
+    Branded met FieldOps-kleuren. Auto-refresh elke 60s.
+    """
+    html = """<!DOCTYPE html><html lang="nl"><head><meta charset="UTF-8">
+<title>FieldOps Status</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="Live status van het FieldOps-platform — uptime + service-health">
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+         max-width: 760px; margin: 0 auto; padding: 40px 24px;
+         background: #f8fafc; color: #1e293b; line-height: 1.6; }
+  h1 { font-size: 32px; margin: 0 0 8px; letter-spacing: -0.02em; }
+  .lead { color: #64748b; margin: 0 0 32px; font-size: 16px; }
+  .overall { padding: 24px; border-radius: 14px; margin-bottom: 24px; display: flex; align-items: center; gap: 16px;
+             font-size: 18px; font-weight: 600; }
+  .overall.ok { background: linear-gradient(135deg, #dcfce7, #bbf7d0); color: #14532d; }
+  .overall.degraded { background: linear-gradient(135deg, #fed7aa, #fdba74); color: #7c2d12; }
+  .overall.down { background: linear-gradient(135deg, #fecaca, #fca5a5); color: #7f1d1d; }
+  .overall .dot { width: 14px; height: 14px; border-radius: 50%; }
+  .overall.ok .dot { background: #16a34a; box-shadow: 0 0 0 5px rgba(22,163,74,0.2); }
+  .overall.degraded .dot { background: #ea580c; box-shadow: 0 0 0 5px rgba(234,88,12,0.2); }
+  .overall.down .dot { background: #dc2626; box-shadow: 0 0 0 5px rgba(220,38,38,0.2); }
+  .check { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px 20px;
+           margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+  .check-name { font-weight: 600; }
+  .check-msg { color: #94a3b8; font-size: 13px; margin-top: 2px; }
+  .badge { padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: #dcfce7; color: #14532d; }
+  .badge.not_configured { background: #fef3c7; color: #78350f; }
+  .badge.down { background: #fecaca; color: #7f1d1d; }
+  .meta { margin-top: 32px; padding-top: 24px; border-top: 1px solid #e2e8f0;
+          color: #94a3b8; font-size: 12px; }
+  .meta code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+  a { color: #0284c7; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .refresh { float: right; font-size: 12px; color: #94a3b8; }
+</style></head>
+<body>
+<h1>🟢 FieldOps Status <span class="refresh">↻ ververst elke 60s</span></h1>
+<p class="lead">Live status van het FieldOps-platform. Bij storing zie je het hier eerst.</p>
+<div id="overallBox" class="overall ok"><div class="dot"></div><div>Status laden…</div></div>
+<div id="checksList"></div>
+<div class="meta">
+  <strong>Hosting:</strong> Render Frankfurt (eu-central) · <strong>Release:</strong> <code id="release">—</code>
+  <br><br>
+  <a href="/portaal">→ Naar portaal</a> · <a href="/handleiding">Handleiding</a> · <a href="https://www.fieldopsapp.nl">Marketing-site</a>
+</div>
+<script>
+async function loadStatus() {
+  try {
+    const r = await fetch('/api/status/detailed');
+    const d = await r.json();
+    const overall = document.getElementById('overallBox');
+    overall.className = 'overall ' + (d.status === 'ok' ? 'ok' : d.status === 'down' ? 'down' : 'degraded');
+    overall.innerHTML = '<div class="dot"></div><div>' +
+      (d.status === 'ok' ? 'Alle systemen werken normaal' :
+       d.status === 'degraded' ? 'Verminderde service' : 'Storing actief') + '</div>';
+    document.getElementById('release').textContent = d.release || 'unknown';
+    const list = document.getElementById('checksList');
+    const labels = { database: '🗄️ Database', error_tracking: '🐛 Error Tracking', backup: '💾 Backup', email: '📧 Email Service' };
+    list.innerHTML = Object.keys(d.checks).map(k => {
+      const c = d.checks[k];
+      return '<div class="check"><div><div class="check-name">' + (labels[k] || k) + '</div><div class="check-msg">' + (c.message || '') + '</div></div><span class="badge ' + c.status + '">' + (c.status === 'ok' ? 'Operationeel' : c.status === 'not_configured' ? 'Niet ingesteld' : 'Storing') + '</span></div>';
+    }).join('');
+  } catch(e) {
+    document.getElementById('overallBox').innerHTML = '<div class="dot"></div><div>API onbereikbaar</div>';
+    document.getElementById('overallBox').className = 'overall down';
+  }
+}
+loadStatus();
+setInterval(loadStatus, 60000);
+</script>
+</body></html>"""
+    return HTMLResponse(content=html)
 
 
 
