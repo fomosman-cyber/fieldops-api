@@ -137,7 +137,6 @@ def test_coverage_counts_connected_users(client, admin_user, manager_user, monke
     data = r.json()
     assert data["google"]["connected"] == 1
     # Manager niet gekoppeld → in missing-count
-    user_rows = {u["email"]: u for u in data["users"]}
     assert any(u["google"] for u in data["users"])
     assert any(not u["google"] for u in data["users"])
 

@@ -19,8 +19,7 @@ select = ["F", "E9"]
 
 # Skips voor pragmatische redenen:
 #   F401: __init__.py mag re-exports doen via unused imports (zie per-file-ignores)
-#   F841: 13 bestaande unused-vars genegeerd in initial pass — cleanup in follow-up PR
-ignore = ["F841"]
+ignore = []
 
 [lint.per-file-ignores]
 "routers/__init__.py" = ["F401"]

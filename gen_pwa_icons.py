@@ -22,10 +22,6 @@ def make_icon(size: int, maskable: bool = False, transparent_bg: bool = False) -
         # afgeronde rechthoek achtergrond (volledig vlak)
         pass
 
-    # Maskable: laat 10% padding voor safe zone (iOS rounded corners knippen niet, Android wel)
-    pad = int(size * 0.18) if maskable else int(size * 0.12)
-    box = (pad, pad, size - pad, size - pad)
-
     # Logo: stylized "F" + onderstreping = veld/horizon symbool
     # Cirkel achtergrond met accent gradient
     circle_pad = int(size * 0.08)

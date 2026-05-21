@@ -328,11 +328,11 @@ def test_defect_delete_herberekent_element(client, admin_user):
         db.close()
     insp = _new_inspection(client, admin_user, a_id)
     el = insp["elementen"][0]
-    d1 = client.post(
+    client.post(
         f"/api/kunstwerken-inspecties/{insp['id']}/elementen/{el['id']}/defecten",
         json={"gebrek_naam": "Klein", "ernst": 1, "intensiteit": 1, "omvang_klasse": 1},
         headers=auth(admin_user),
-    ).json()
+    )
     d2 = client.post(
         f"/api/kunstwerken-inspecties/{insp['id']}/elementen/{el['id']}/defecten",
         json={"gebrek_naam": "Groot", "ernst": 3, "intensiteit": 3, "omvang_klasse": 5},

@@ -389,7 +389,6 @@ def erase_my_account(
     """
     user_id = current_user.id
     org_id = current_user.organization_id
-    original_email = current_user.email
     summary = _anonymize_user(db, current_user)
     # Loggen ZONDER user — anders gaat het rate-limit-spoor terug naar
     # de zojuist geanonimiseerde rij (en de log-event krijgt de redacted

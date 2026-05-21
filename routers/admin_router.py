@@ -623,7 +623,6 @@ def seed_meldingen_for_project(
     wegen = [a for a in assets if a.asset_type == "wegdek"]
     lantaarns = [a for a in assets if a.asset_type == "lantaarnpaal"]
     kunstwerken = [a for a in assets if a.asset_type in ("voegovergang", "kunstwerk", "brug")]
-    overig = [a for a in assets if a not in wegen and a not in lantaarns and a not in kunstwerken]
 
     count = max(4, min(payload.count or 14, 50))
 

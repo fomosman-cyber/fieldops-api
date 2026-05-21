@@ -303,7 +303,6 @@ FieldOps
 def send_demo_welcome(user, password: str, org) -> bool:
     """Welkomstmail na goedkeuring demo: inloggegevens + contact tekst."""
     login_url = FRONTEND_URL
-    user_name = f"{user.first_name} {user.last_name}".strip() or "daar"
 
     content = f"""
 <h2 style="color:#1e293b;font-size:22px;margin:0 0 8px;">Welkom bij FieldOps, {user.first_name}!</h2>

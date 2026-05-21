@@ -393,9 +393,7 @@ def export_mjop_pdf(
     pdf.ln(8)
 
     # Kerncijfers-grid (3 grote getallen)
-    total_min = sum(r["min_total"] for r in rows)
     total_max = sum(r["max_total"] for r in rows)
-    assets_count = len({r["asset_id"] for r in rows})
 
     pdf.set_font("Helvetica", "B", 13)
     pdf.cell(0, 8, "Kerncijfers", new_x="LMARGIN", new_y="NEXT")

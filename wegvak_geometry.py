@@ -87,7 +87,6 @@ def _project_on_linestring(p: Coord, coords: Sequence[Coord]) -> dict:
     """
     best = None
     cum_dist = 0.0
-    cum_dist_at_best = 0.0
 
     for i in range(len(coords) - 1):
         proj, t, dsq = _project_on_segment(p, coords[i], coords[i + 1])
@@ -100,7 +99,6 @@ def _project_on_linestring(p: Coord, coords: Sequence[Coord]) -> dict:
                 "dist_sq": dsq,
                 "dist_along_m": cum_dist + seg_len * t,
             }
-            cum_dist_at_best = cum_dist
         cum_dist += seg_len
 
     if best is None:

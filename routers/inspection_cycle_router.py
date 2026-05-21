@@ -201,7 +201,6 @@ def compliance_report(
       - norm-referentie
     """
     now = datetime.now(timezone.utc)
-    soon = now + timedelta(days=30)
 
     q = db.query(Asset).filter(
         Asset.organization_id == current_user.organization_id,

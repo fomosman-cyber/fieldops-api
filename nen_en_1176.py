@@ -171,7 +171,6 @@ def classify_en1176(*,
 
         if dominant_color_rgb:
             r, g, b = dominant_color_rgb
-            avg = (r + g + b) / 3
             if r > g + 30 and r > 100 and code in ("scherpe_randen", "ketting_slijtage", "verflagen_schilferend"):
                 confidence += 15
                 reasons.append("roest-tint zichtbaar")

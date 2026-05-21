@@ -78,8 +78,7 @@ def test_archive_then_excluded_from_list(client, admin_user):
 
 def test_tree_structure(client, admin_user):
     parent = _new_asset(client, admin_user, code="PARENT")
-    child = _new_asset(client, admin_user, code="CHILD",
-                       parent_asset_id=parent["id"])
+    _new_asset(client, admin_user, code="CHILD", parent_asset_id=parent["id"])
     r = client.get("/api/assets/tree", headers=auth(admin_user))
     assert r.status_code == 200
     tree = r.json()

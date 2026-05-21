@@ -175,8 +175,6 @@ def list_sensors(
 
     sensors = {}
     for m in meldingen:
-        # extract sensor info uit title (simpel grep)
-        title = m.title or ""
         info = sensors.setdefault(m.asset_id or "no-asset", {
             "asset_id": m.asset_id,
             "alert_count": 0,
