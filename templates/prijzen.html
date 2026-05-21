@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Prijzen — FieldOps</title>
+  <meta name="description" content="Transparante jaarprijzen voor FieldOps: Starter (€4.800/jr), Pro (€18.000/jr) of Enterprise op maat. Inclusief offerte-template download.">
+  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <style>
+    :root {
+      --accent: #1E40AF;
+      --accent-dark: #1E3A8A;
+      --accent-light: #DBEAFE;
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --border: #E2E8F0;
+      --text: #0F172A;
+      --text-muted: #475569;
+      --text-dim: #94A3B8;
+      --green: #16A34A;
+      --green-bg: #DCFCE7;
+      --shadow: 0 4px 16px rgba(15,23,42,0.05);
+      --shadow-lg: 0 20px 50px rgba(15,23,42,0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg); color: var(--text); margin: 0;
+      line-height: 1.6; letter-spacing: -0.005em;
+      -webkit-font-smoothing: antialiased;
+    }
+    .topbar {
+      background: var(--card); border-bottom: 1px solid var(--border);
+      padding: 14px 0; position: sticky; top: 0; z-index: 100;
+    }
+    .topbar-inner {
+      max-width: 1140px; margin: 0 auto; padding: 0 24px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .logo { font-weight: 800; font-size: 22px; color: var(--accent); letter-spacing: -0.02em; text-decoration: none; }
+    .nav-links a {
+      color: var(--text-muted); text-decoration: none; font-weight: 500;
+      margin-left: 24px; font-size: 14px;
+    }
+    .nav-links a:hover { color: var(--accent); }
+    .nav-links a.cta {
+      background: var(--accent); color: #fff; padding: 8px 18px; border-radius: 8px;
+    }
+    .nav-links a.cta:hover { background: var(--accent-dark); color: #fff; }
+
+    .container { max-width: 1140px; margin: 0 auto; padding: 0 24px; }
+
+    /* Hero */
+    .hero {
+      text-align: center; padding: 64px 24px 32px;
+    }
+    .hero h1 {
+      font-size: 48px; font-weight: 800; margin: 0 0 16px;
+      letter-spacing: -0.02em; line-height: 1.1; color: var(--text);
+    }
+    .hero h1 .accent { color: var(--accent); }
+    .hero p.lead {
+      font-size: 19px; color: var(--text-muted); margin: 0 auto;
+      max-width: 640px; line-height: 1.5;
+    }
+    .hero .badges {
+      display: flex; justify-content: center; gap: 24px; margin-top: 28px;
+      flex-wrap: wrap; font-size: 13px; color: var(--text-muted);
+    }
+    .hero .badge { display: flex; align-items: center; gap: 6px; }
+    .hero .badge::before {
+      content: "✓"; color: var(--green); font-weight: 700; font-size: 16px;
+    }
+
+    /* Tier cards */
+    .tiers {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 24px; padding: 32px 0 64px;
+    }
+    @media (max-width: 900px) { .tiers { grid-template-columns: 1fr; } }
+
+    .tier {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 16px; padding: 36px 32px;
+      display: flex; flex-direction: column; box-shadow: var(--shadow);
+      transition: transform .15s, box-shadow .15s;
+    }
+    .tier:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+    .tier.featured {
+      border-color: var(--accent); border-width: 2px;
+      box-shadow: var(--shadow-lg); position: relative;
+      transform: scale(1.03);
+    }
+    .tier.featured::before {
+      content: "MEEST GEKOZEN"; position: absolute; top: -12px; left: 50%;
+      transform: translateX(-50%); background: var(--accent); color: #fff;
+      padding: 4px 14px; border-radius: 999px; font-size: 11px;
+      font-weight: 700; letter-spacing: 0.05em;
+    }
+    .tier-name { font-size: 14px; font-weight: 700; color: var(--accent);
+      text-transform: uppercase; letter-spacing: 0.08em; margin: 0; }
+    .tier-tagline { font-size: 14px; color: var(--text-muted); margin: 6px 0 24px;
+      line-height: 1.5; min-height: 42px; }
+    .tier-price { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+    .tier-price .amount { font-size: 44px; font-weight: 800; letter-spacing: -0.03em; color: var(--text); }
+    .tier-price .period { font-size: 15px; color: var(--text-muted); font-weight: 500; }
+    .tier-price-sub { font-size: 13px; color: var(--text-dim); margin-bottom: 24px; }
+    .tier-cta {
+      display: block; text-align: center; padding: 12px 20px;
+      border-radius: 10px; font-weight: 600; text-decoration: none;
+      font-size: 14px; transition: all .15s; margin-bottom: 24px;
+    }
+    .tier-cta.primary {
+      background: var(--accent); color: #fff;
+    }
+    .tier-cta.primary:hover { background: var(--accent-dark); }
+    .tier-cta.secondary {
+      background: var(--accent-light); color: var(--accent);
+    }
+    .tier-cta.secondary:hover { background: #BFDBFE; }
+    .tier ul {
+      list-style: none; padding: 0; margin: 0;
+      font-size: 14px; color: var(--text); flex: 1;
+    }
+    .tier li { padding: 8px 0; display: flex; align-items: flex-start; gap: 10px; line-height: 1.45; }
+    .tier li::before {
+      content: "✓"; color: var(--green); font-weight: 700; flex-shrink: 0;
+      width: 16px; line-height: 1.45;
+    }
+    .tier li.minus::before { content: "—"; color: var(--text-dim); }
+
+    /* Feature-matrix */
+    .matrix-section {
+      background: var(--card); padding: 64px 0;
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    }
+    .matrix-section h2 {
+      text-align: center; font-size: 32px; font-weight: 800;
+      margin: 0 0 12px; color: var(--text); letter-spacing: -0.02em;
+    }
+    .matrix-section p.sub {
+      text-align: center; color: var(--text-muted); margin: 0 0 40px; font-size: 15px;
+    }
+    .matrix-table {
+      width: 100%; border-collapse: collapse; max-width: 960px; margin: 0 auto;
+      font-size: 14px;
+    }
+    .matrix-table th, .matrix-table td {
+      padding: 14px 18px; text-align: left; border-bottom: 1px solid var(--border);
+    }
+    .matrix-table th {
+      background: var(--bg); font-weight: 700; color: var(--text);
+    }
+    .matrix-table th.tier-col { text-align: center; }
+    .matrix-table td.tier-col { text-align: center; font-size: 16px; color: var(--green); font-weight: 700; }
+    .matrix-table td.tier-col.no { color: var(--text-dim); font-weight: 400; }
+    .matrix-table tr.group-header td {
+      background: var(--accent-light); font-weight: 700; color: var(--accent-dark);
+      text-transform: uppercase; font-size: 12px; letter-spacing: 0.05em;
+    }
+    .matrix-table tr:hover td { background: #FAFBFC; }
+
+    /* FAQ */
+    .faq-section { padding: 64px 0 32px; }
+    .faq-section h2 {
+      text-align: center; font-size: 32px; font-weight: 800;
+      margin: 0 0 12px; letter-spacing: -0.02em;
+    }
+    .faq-section p.sub {
+      text-align: center; color: var(--text-muted); margin: 0 0 40px;
+    }
+    .faq {
+      max-width: 760px; margin: 0 auto;
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      box-shadow: var(--shadow);
+    }
+    .faq-item { border-bottom: 1px solid var(--border); }
+    .faq-item:last-child { border-bottom: none; }
+    .faq summary {
+      padding: 22px 26px; cursor: pointer; font-weight: 600; font-size: 15px;
+      list-style: none; display: flex; justify-content: space-between; align-items: center;
+      color: var(--text);
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary::after {
+      content: "+"; font-size: 24px; font-weight: 400; color: var(--accent);
+      transition: transform .15s;
+    }
+    .faq details[open] summary::after { content: "−"; }
+    .faq summary:hover { background: #FAFBFC; }
+    .faq .answer {
+      padding: 0 26px 22px; color: var(--text-muted); font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* CTA-blok onderaan */
+    .cta-section {
+      background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+      color: #fff; padding: 56px 24px; text-align: center; margin-top: 64px;
+    }
+    .cta-section h2 {
+      font-size: 30px; font-weight: 800; margin: 0 0 12px; letter-spacing: -0.02em;
+    }
+    .cta-section p {
+      font-size: 16px; opacity: 0.92; margin: 0 0 28px; max-width: 580px;
+      margin-left: auto; margin-right: auto;
+    }
+    .cta-buttons {
+      display: flex; justify-content: center; gap: 14px; flex-wrap: wrap;
+    }
+    .cta-btn {
+      padding: 14px 26px; border-radius: 10px; font-weight: 600;
+      text-decoration: none; font-size: 15px; transition: all .15s;
+      display: inline-flex; align-items: center; gap: 8px;
+    }
+    .cta-btn.white { background: #fff; color: var(--accent); }
+    .cta-btn.white:hover { background: #F1F5F9; }
+    .cta-btn.outline {
+      background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,0.4);
+    }
+    .cta-btn.outline:hover { border-color: #fff; background: rgba(255,255,255,0.08); }
+
+    /* Footer */
+    footer {
+      background: var(--text); color: rgba(255,255,255,0.7);
+      padding: 32px 24px; text-align: center; font-size: 13px;
+    }
+    footer a { color: rgba(255,255,255,0.9); text-decoration: none; }
+    footer a:hover { color: #fff; }
+
+    /* FieldOps-anchor: prijzen-page-v1 (PR voor pricing-publicatie) */
+  </style>
+</head>
+<body>
+
+  <!-- ═══ Topbar ═══ -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="https://fieldopsapp.nl" class="logo">FieldOps</a>
+      <nav class="nav-links">
+        <a href="https://fieldopsapp.nl">Home</a>
+        <a href="/handleiding">Handleiding</a>
+        <a href="/portaal" class="cta">Inloggen</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ═══ Hero ═══ -->
+  <section class="hero container">
+    <h1>Transparante <span class="accent">prijzen</span> voor publieke ruimte</h1>
+    <p class="lead">
+      Eén jaarprijs per organisatie, onbeperkt gebruikers. Alle modules inbegrepen.
+      EU-hosting, AVG-conform, conform NEN 2767, CROW en NEN-EN 1176.
+    </p>
+    <div class="badges">
+      <span class="badge">14 dagen gratis sandbox</span>
+      <span class="badge">3-termijnen betaling</span>
+      <span class="badge">30-dagen geld-terug-garantie</span>
+      <span class="badge">Geen setup-kosten</span>
+    </div>
+  </section>
+
+  <!-- ═══ Tier cards ═══ -->
+  <section class="container">
+    <div class="tiers">
+
+      <!-- Starter -->
+      <div class="tier">
+        <h3 class="tier-name">Starter</h3>
+        <p class="tier-tagline">Kleinere gemeenten, aannemers tot 50 assets, of pilot-projecten.</p>
+        <div class="tier-price">
+          <span class="amount">€ 400</span>
+          <span class="period">/ maand</span>
+        </div>
+        <div class="tier-price-sub">€ 4.800,- per jaar excl. BTW · jaarlijks gefactureerd</div>
+        <a href="mailto:fomosman@gmail.com?subject=Starter-aanvraag%20FieldOps" class="tier-cta secondary">Vraag offerte aan</a>
+        <ul>
+          <li>Tot 50 assets, 3 projecten, 5 gebruikers</li>
+          <li>Alle inspectie-modules (NEN, CROW, NEN-EN 1176, VTA)</li>
+          <li>Meldingen + burger-portaal met QR-codes</li>
+          <li>IMBOR-asset-classificatie</li>
+          <li>Werkdagboek + CSV-export</li>
+          <li>E-mail support (kantoortijd, ≤ 24u)</li>
+          <li class="minus">Predictive maintenance</li>
+          <li class="minus">MJOP-generator</li>
+          <li class="minus">Integraties (GBI/Antea/BGT)</li>
+        </ul>
+      </div>
+
+      <!-- Pro (featured) -->
+      <div class="tier featured">
+        <h3 class="tier-name">Pro</h3>
+        <p class="tier-tagline">Gemeenten, waterschappen, beheerorganisaties met onbeperkte assets.</p>
+        <div class="tier-price">
+          <span class="amount">€ 1.500</span>
+          <span class="period">/ maand</span>
+        </div>
+        <div class="tier-price-sub">€ 18.000,- per jaar excl. BTW · 3-termijnen mogelijk</div>
+        <a href="/prijzen/offerte-template.docx" class="tier-cta primary">📄 Download offerte-template</a>
+        <ul>
+          <li><strong>Onbeperkt</strong> assets, projecten en gebruikers</li>
+          <li>Alle modules van Starter +</li>
+          <li>Predictive maintenance (30/60/90 dagen)</li>
+          <li>MJOP-generator met kosten-raming</li>
+          <li>Integraties: GBI, Antea, BGT/IMGeo, BAG, NWB</li>
+          <li>AI-foto-analyse (tot 10.000/maand inbegrepen)</li>
+          <li>Custom branding (logo, kleuren, PDF)</li>
+          <li>Data-migratie tot 50.000 assets gratis</li>
+          <li>2u onboarding + 1u follow-up na 30d</li>
+          <li>E-mail support ≤ 4u, kritieke storing ≤ 1u</li>
+          <li>99,5% uptime SLA</li>
+        </ul>
+      </div>
+
+      <!-- Enterprise -->
+      <div class="tier">
+        <h3 class="tier-name">Enterprise</h3>
+        <p class="tier-tagline">Provincies, RWS-regio's, grote multi-tenant aannemers.</p>
+        <div class="tier-price">
+          <span class="amount">Op maat</span>
+        </div>
+        <div class="tier-price-sub">Multi-tenant, white-label of on-premise mogelijk</div>
+        <a href="mailto:fomosman@gmail.com?subject=Enterprise-aanvraag%20FieldOps" class="tier-cta secondary">Plan kennismaking</a>
+        <ul>
+          <li>Alles uit Pro +</li>
+          <li>Multi-tenant (meerdere organisaties onder 1 contract)</li>
+          <li>White-label optie (eigen domein + logo)</li>
+          <li>On-premise of private cloud (Azure/AWS) mogelijk</li>
+          <li>Custom integraties (AFAS, Centric, Civision)</li>
+          <li>Dedicated account-manager</li>
+          <li>SLA op maat (24/7 mogelijk)</li>
+          <li>Aanbestedings-pakket (ISO 27001-statement, DPIA)</li>
+          <li>Quarterly business review</li>
+          <li>Data-migratie onbeperkt</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ═══ Feature-matrix ═══ -->
+  <section class="matrix-section">
+    <div class="container">
+      <h2>Vergelijk pakketten</h2>
+      <p class="sub">Een volledig overzicht van wat in elk pakket zit.</p>
+      <table class="matrix-table">
+        <thead>
+          <tr>
+            <th>Functionaliteit</th>
+            <th class="tier-col">Starter</th>
+            <th class="tier-col">Pro</th>
+            <th class="tier-col">Enterprise</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="group-header"><td colspan="4">Beheer + inspectie</td></tr>
+          <tr><td>Assets (IMBOR-conform)</td>
+            <td class="tier-col">≤ 50</td><td class="tier-col">∞</td><td class="tier-col">∞</td></tr>
+          <tr><td>Projecten</td>
+            <td class="tier-col">3</td><td class="tier-col">∞</td><td class="tier-col">∞</td></tr>
+          <tr><td>Gebruikers</td>
+            <td class="tier-col">5</td><td class="tier-col">∞</td><td class="tier-col">∞</td></tr>
+          <tr><td>Norm-modules (NEN 2767-2, CROW 134/145/146, NEN-EN 1176, NEN 3140, VTA)</td>
+            <td class="tier-col">✓</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>Meldingen + AI-classificatie</td>
+            <td class="tier-col">✓</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>Burger-portaal met QR-codes</td>
+            <td class="tier-col">✓</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>Werkdagboek + CSV-export</td>
+            <td class="tier-col">✓</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+
+          <tr class="group-header"><td colspan="4">Geavanceerd</td></tr>
+          <tr><td>Predictive maintenance (30/60/90d)</td>
+            <td class="tier-col no">—</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>MJOP-generator + kosten-raming</td>
+            <td class="tier-col no">—</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>AI-foto-analyses per maand</td>
+            <td class="tier-col">1.000</td><td class="tier-col">10.000</td><td class="tier-col">Onbeperkt</td></tr>
+          <tr><td>Custom branding (logo, PDF, portaal)</td>
+            <td class="tier-col no">—</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+
+          <tr class="group-header"><td colspan="4">Integraties</td></tr>
+          <tr><td>GBI, Antea, BGT/IMGeo, BAG, NWB</td>
+            <td class="tier-col no">—</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>Google + Microsoft Calendar</td>
+            <td class="tier-col">✓</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>Custom integraties (AFAS, Centric, etc.)</td>
+            <td class="tier-col no">—</td><td class="tier-col no">—</td><td class="tier-col">✓</td></tr>
+          <tr><td>Webhooks (HMAC-SHA256) + Slack/Teams</td>
+            <td class="tier-col no">—</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+
+          <tr class="group-header"><td colspan="4">Service + support</td></tr>
+          <tr><td>Onboarding-pakket (2u + 1u follow-up)</td>
+            <td class="tier-col no">Self-service</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>Data-migratie</td>
+            <td class="tier-col no">CSV-import</td><td class="tier-col">≤ 50.000 assets</td><td class="tier-col">Onbeperkt</td></tr>
+          <tr><td>E-mail support</td>
+            <td class="tier-col">≤ 24u</td><td class="tier-col">≤ 4u</td><td class="tier-col">≤ 1u</td></tr>
+          <tr><td>Kritieke storing response</td>
+            <td class="tier-col">Best effort</td><td class="tier-col">≤ 1u</td><td class="tier-col">24/7</td></tr>
+          <tr><td>Uptime SLA</td>
+            <td class="tier-col">99,0%</td><td class="tier-col">99,5%</td><td class="tier-col">99,9%</td></tr>
+          <tr><td>Dedicated account-manager</td>
+            <td class="tier-col no">—</td><td class="tier-col no">—</td><td class="tier-col">✓</td></tr>
+
+          <tr class="group-header"><td colspan="4">Security + compliance</td></tr>
+          <tr><td>EU-hosting (Frankfurt)</td>
+            <td class="tier-col">✓</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>2FA TOTP + backup-codes</td>
+            <td class="tier-col">✓</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>AVG-pakket (DPA + anonymisatie)</td>
+            <td class="tier-col">✓</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>Dagelijkse backup + 90 dagen retention</td>
+            <td class="tier-col">✓</td><td class="tier-col">✓</td><td class="tier-col">✓</td></tr>
+          <tr><td>On-premise / private cloud</td>
+            <td class="tier-col no">—</td><td class="tier-col no">—</td><td class="tier-col">✓</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══ FAQ ═══ -->
+  <section class="faq-section container">
+    <h2>Veelgestelde vragen</h2>
+    <p class="sub">Niet wat je zocht? Mail <a href="mailto:fomosman@gmail.com" style="color:var(--accent);">fomosman@gmail.com</a>.</p>
+    <div class="faq">
+      <details class="faq-item">
+        <summary>Hoe werkt de 3-termijnen-betaling?</summary>
+        <div class="answer">
+          Het jaarbedrag wordt in 3 gelijke termijnen gefactureerd: bij ondertekening (T+0), na 4 maanden (T+4) en na 8 maanden (T+8).
+          Voor Pro is dat dus 3× € 6.000,- excl. BTW. Betalingstermijn 30 dagen per factuur, via SEPA-incasso of bankoverschrijving.
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>Wat is de proefperiode?</summary>
+        <div class="answer">
+          14 dagen gratis sandbox-toegang na een 20-minuten demo. Daarna een proof-of-concept op één project (5-10 assets)
+          voor 4-8 weken, voordat we commercieel afsluiten. Geen automatische verlenging naar betaald — we starten pas na ondertekening.
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>Wat als ons asset-bestand groeit boven de Starter-limiet (50)?</summary>
+        <div class="answer">
+          We schalen mee zonder downtime. Upgrade van Starter naar Pro is een knop in het admin-paneel; we verrekenen pro-rata met je lopende contract.
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>Kan ik mijn data exporteren als ik wegga?</summary>
+        <div class="answer">
+          Altijd. CSV/JSON-export van alle assets, meldingen, inspecties, foto's en audit-logs binnen 5 werkdagen na verzoek.
+          Geen vendor lock-in: je data is jouw data.
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>Hoe zit het met AVG en data-residency?</summary>
+        <div class="answer">
+          Hosting in EU (Render Frankfurt), Postgres met encryptie-at-rest, DPA (verwerkersovereenkomst) wordt apart ondertekend.
+          Standaard inclusief: GDPR Art.17 anonymisatie, sub-processor-lijst met 14-dagen change-notification, en incident response procedure (24u meldtijd).
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>Wat zit er NIET in de prijs?</summary>
+        <div class="answer">
+          Custom integraties met legacy-systemen buiten de standaard-lijst (op offerte), on-premise hosting (alleen Enterprise),
+          AI-analyses boven het pakket-maximum (€ 0,15 per extra), en 24/7 telefoonsupport (alleen Enterprise).
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>Is FieldOps geschikt voor aanbestedingen?</summary>
+        <div class="answer">
+          Ja. Voor Enterprise-klanten leveren we standaard aanbestedings-bijlagen: technische beschrijving, beveiligingsverklaring,
+          ISO 27001-statement (Stage 1 audit gepland Q1 2027), DPIA-template, en sub-processor-lijst. Voor Pro op aanvraag inbegrepen.
+        </div>
+      </details>
+      <details class="faq-item">
+        <summary>Kan ik een DPIA krijgen?</summary>
+        <div class="answer">
+          Ja, we assisteren elke Opdrachtgever bij een Data Protection Impact Assessment conform AVG art. 35. Standaard-template
+          plus invul-sessie van 1 uur inbegrepen voor Pro en Enterprise.
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ═══ CTA-blok ═══ -->
+  <section class="cta-section">
+    <h2>Klaar om te starten?</h2>
+    <p>Plan een 20-minuten demo of download direct het offerte-template voor je organisatie.</p>
+    <div class="cta-buttons">
+      <a href="mailto:fomosman@gmail.com?subject=Demo-aanvraag%20FieldOps" class="cta-btn white">📅 Plan demo (20 min)</a>
+      <a href="/prijzen/offerte-template.docx" class="cta-btn outline">📄 Download offerte-template</a>
+    </div>
+  </section>
+
+  <!-- ═══ Footer ═══ -->
+  <footer>
+    <p>
+      FieldOps · EU-hosting (Frankfurt) · AVG-conform ·
+      <a href="https://fieldopsapp.nl">www.fieldopsapp.nl</a> ·
+      <a href="mailto:fomosman@gmail.com">fomosman@gmail.com</a>
+    </p>
+  </footer>
+
+</body>
+</html>
