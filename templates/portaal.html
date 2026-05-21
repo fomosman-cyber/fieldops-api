@@ -23,6 +23,39 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
   <link rel="apple-touch-icon" sizes="192x192" href="/static/icons/icon-192.png">
 
+  <!-- Sentry error-tracking — backend injecteert DSN via server-side replacement.
+       Zonder DSN blijft het stilletjes uit. CDN-loaded via CSP-allowlist. -->
+  <script src="https://browser.sentry-cdn.com/8.0.0/bundle.tracing.min.js" crossorigin="anonymous"></script>
+  <script>
+    (function() {
+      var dsn = "{{SENTRY_DSN}}";
+      if (!dsn || dsn.indexOf("{{") === 0) return;  // niet vervangen door server = uit
+      try {
+        Sentry.init({
+          dsn: dsn,
+          environment: "{{SENTRY_ENV}}",
+          release: "fieldops@{{RELEASE}}",
+          tracesSampleRate: 0.1,
+          // PII: nooit user-content sturen — alleen exception + stack
+          beforeSend: function(event) {
+            // Strip URL-params (kunnen tokens bevatten)
+            if (event.request && event.request.url) {
+              event.request.url = event.request.url.split("?")[0];
+            }
+            return event;
+          },
+          // Ignore noisy errors
+          ignoreErrors: [
+            "ResizeObserver loop limit exceeded",
+            "Non-Error promise rejection captured",
+            "NetworkError when attempting to fetch resource",
+          ],
+        });
+        console.log("[sentry-frontend] Initialized");
+      } catch (e) { console.warn("[sentry-frontend] init failed:", e); }
+    })();
+  </script>
+
   <!-- iOS splash screens -->
   <link rel="apple-touch-startup-image" href="/static/icons/splash-640x1136.png"  media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)">
   <link rel="apple-touch-startup-image" href="/static/icons/splash-750x1334.png"  media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)">
