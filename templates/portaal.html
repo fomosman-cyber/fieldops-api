@@ -1631,6 +1631,9 @@
           <select id="assetFilterProject" onchange="loadAssets()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
             <option value="">Alle projecten</option>
           </select>
+          <select id="assetFilterHoofdgroep" onchange="onAssetFilterHoofdgroepChange()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
+            <option value="">Alle hoofdgroepen</option>
+          </select>
           <select id="assetFilterType" onchange="loadAssets()" style="padding:6px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;">
             <option value="">Alle types</option>
           </select>
@@ -1998,6 +2001,10 @@
                 <option value="5">5 — Zeer slecht</option>
               </select>
             </div>
+          </div>
+          <div id="assetImborProps" style="display:none;margin-top:6px;padding:12px 14px;background:var(--card-bg-hover);border-radius:8px;">
+            <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:8px;">📐 IMBOR-eigenschappen <span style="font-weight:400;font-style:italic;">(optioneel)</span></div>
+            <div id="assetImborPropsFields" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
           </div>
           <div class="form-actions">
             <button type="submit" class="btn-primary" id="assetSubmitBtn" data-i18n="am_submit">Asset aanmaken</button>
@@ -11015,16 +11022,36 @@
 
       api('GET', '/api/assets/?' + qs.join('&')).then(function(items){
         allAssets = items || [];
-        // Vul type-filter eenmalig vanuit /types
+        // Vul hoofdgroep-filter eenmalig vanuit IMBOR-tree
+        var hgSel = document.getElementById('assetFilterHoofdgroep');
+        if (hgSel && hgSel.options.length <= 1) {
+          loadImborTree().then(function(){
+            Object.keys(IMBOR_TREE || {}).forEach(function(code){
+              var hg = IMBOR_TREE[code];
+              var opt = document.createElement('option');
+              opt.value = code;
+              opt.textContent = (hg.icon || '') + ' ' + hg.naam;
+              hgSel.appendChild(opt);
+            });
+          });
+        }
+        // Vul type-filter eenmalig vanuit /types (DB counts) — IMBOR-naam display als bekend
         if (document.getElementById('assetFilterType').options.length <= 1) {
-          api('GET', '/api/assets/types').then(function(types){
+          Promise.all([
+            api('GET', '/api/assets/types').catch(function(){ return []; }),
+            loadImborTree(),
+          ]).then(function(res){
+            var dbTypes = res[0] || [];
             var sel = document.getElementById('assetFilterType');
-            (types||[]).forEach(function(t){
+            dbTypes.forEach(function(t){
               var opt = document.createElement('option'); opt.value = t.asset_type;
-              opt.textContent = t.asset_type + ' ('+t.count+')';
+              var imborInfo = findImborType(t.asset_type);
+              var label = imborInfo ? imborInfo.info.naam : t.asset_type;
+              opt.textContent = label + ' ('+t.count+')';
+              opt.dataset.hoofdgroep = imborInfo ? imborInfo.groep : '__legacy__';
               sel.appendChild(opt);
             });
-          }).catch(function(){});
+          });
         }
 
         if (allAssets.length === 0) {
@@ -11057,7 +11084,7 @@
           '<td onclick="event.stopPropagation()" style="width:32px;"><input type="checkbox" class="asset-checkbox" value="'+a.id+'"></td>' +
           '<td style="font-weight:700;font-family:monospace;">'+escapeHtml(a.code)+'</td>' +
           '<td>'+escapeHtml(a.name || '—')+'</td>' +
-          '<td><span style="background:var(--card-bg-hover);padding:2px 8px;border-radius:6px;font-size:12px;">'+escapeHtml(a.asset_type)+'</span></td>' +
+          '<td><span style="background:var(--card-bg-hover);padding:2px 8px;border-radius:6px;font-size:12px;" title="'+escapeHtml(a.asset_type)+'">'+escapeHtml(imborTypeLabel(a.asset_type))+'</span></td>' +
           '<td style="color:var(--text-muted);">'+escapeHtml(projMap[a.project_id] || '—')+'</td>' +
           '<td style="text-align:center;">'+nen+'</td>' +
           '<td style="text-align:center;">'+open+'</td>' +
@@ -11221,8 +11248,32 @@
       });
     }
 
-    // ─── IMBOR-taxonomie (cascading dropdown) ───────────────────────────────
+    // ─── IMBOR-taxonomie (cascading dropdown + assets-filter) ──────────────
     var IMBOR_TREE = null;
+
+    function onAssetFilterHoofdgroepChange() {
+      var hg = document.getElementById('assetFilterHoofdgroep').value;
+      var typeSel = document.getElementById('assetFilterType');
+      // Toon/verberg type-opties op basis van hoofdgroep
+      var visibleCount = 0;
+      Array.from(typeSel.options).forEach(function(opt){
+        if (opt.value === '') { opt.hidden = false; return; }
+        var optHg = opt.dataset.hoofdgroep || '__legacy__';
+        var match = !hg || optHg === hg;
+        opt.hidden = !match;
+        if (match) visibleCount++;
+      });
+      // Als de huidige selectie verborgen wordt: reset naar 'Alle types'
+      if (typeSel.selectedOptions[0] && typeSel.selectedOptions[0].hidden) {
+        typeSel.value = '';
+      }
+      loadAssets();
+    }
+
+    function imborTypeLabel(code) {
+      var found = findImborType(code);
+      return found ? found.info.naam : code;
+    }
 
     function loadImborTree() {
       if (IMBOR_TREE) return Promise.resolve(IMBOR_TREE);
@@ -11281,9 +11332,13 @@
       var code = document.getElementById('assetImborType').value;
       var hint = document.getElementById('assetImborHint');
       document.getElementById('assetType').value = code;
-      if (!code) { hint.style.display = 'none'; return; }
+      if (!code) {
+        hint.style.display = 'none';
+        renderImborProperties(null, null);
+        return;
+      }
       var found = findImborType(code);
-      if (!found) { hint.style.display = 'none'; return; }
+      if (!found) { hint.style.display = 'none'; renderImborProperties(null, null); return; }
       var info = found.info;
       var norm = info.default_inspection_norm || 'Visueel';
       var freq = info.default_inspection_frequency_months || '—';
@@ -11293,6 +11348,82 @@
         (props ? '<br><strong>🏷️ Relevante velden:</strong> ' + escapeHtml(props) : '') +
         (info.bgt_class ? '<br><strong>🗺️ BGT-klasse:</strong> ' + escapeHtml(info.bgt_class) : '');
       hint.style.display = 'block';
+      // Render dynamische property-velden (behoud bestaande waardes uit edit-context)
+      renderImborProperties(info, window._assetEditProps || null);
+    }
+
+    function _propInputType(propName) {
+      // Heuristiek: numerieke velden op basis van suffix/prefix
+      var n = propName.toLowerCase();
+      var numericPatterns = [
+        '_m', '_mm', '_cm', '_l_s', '_kw', '_w', '_a', '_l', '_m2', '_m3',
+        '_jaar', '_ton', '_bar', '_uren', '_groepen', '_takken', '_richtingen',
+        '_pompen', '_schommels', '_plaatsen'
+      ];
+      if (n.indexOf('aantal') === 0 || n.indexOf('oppervlak') === 0 ||
+          n.indexOf('capaciteit') !== -1 || n.indexOf('bouwjaar') !== -1 ||
+          n.indexOf('plantjaar') !== -1) return 'number';
+      for (var i = 0; i < numericPatterns.length; i++) {
+        if (n.endsWith(numericPatterns[i])) return 'number';
+      }
+      return 'text';
+    }
+
+    function _propLabel(propName) {
+      // 'lengte_m' -> 'Lengte (m)', 'stamomtrek_cm' -> 'Stamomtrek (cm)'
+      var unitMap = { m:'m', mm:'mm', cm:'cm', kw:'kW', w:'W', a:'A', l:'L',
+                      m2:'m²', m3:'m³', jaar:'jaar', ton:'ton', bar:'bar',
+                      l_s:'L/s' };
+      var parts = propName.split('_');
+      var unit = null;
+      // Check laatste part als unit
+      var lastTwo = parts.slice(-2).join('_');
+      if (unitMap[lastTwo]) { unit = unitMap[lastTwo]; parts = parts.slice(0, -2); }
+      else if (unitMap[parts[parts.length-1]]) { unit = unitMap[parts[parts.length-1]]; parts = parts.slice(0, -1); }
+      var label = parts.map(function(p){ return p.charAt(0).toUpperCase()+p.slice(1); }).join(' ');
+      return unit ? label + ' (' + unit + ')' : label;
+    }
+
+    function renderImborProperties(info, existingValues) {
+      var wrap = document.getElementById('assetImborProps');
+      var fields = document.getElementById('assetImborPropsFields');
+      if (!wrap || !fields) return;
+      fields.innerHTML = '';
+      var props = (info && info.typical_properties) || [];
+      if (props.length === 0) { wrap.style.display = 'none'; return; }
+      props.forEach(function(p){
+        var inputType = _propInputType(p);
+        var label = _propLabel(p);
+        var val = (existingValues && existingValues[p] != null) ? existingValues[p] : '';
+        var div = document.createElement('div');
+        div.className = 'form-group';
+        div.style.margin = '0';
+        div.innerHTML =
+          '<label style="font-size:11px;color:var(--text-muted);margin-bottom:3px;">'+escapeHtml(label)+'</label>' +
+          '<input type="'+inputType+'" data-imbor-prop="'+escapeHtml(p)+'" value="'+escapeHtml(String(val))+'" '+
+          (inputType === 'number' ? 'step="any" ' : '') +
+          'style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:100%;">';
+        fields.appendChild(div);
+      });
+      wrap.style.display = 'block';
+    }
+
+    function collectImborProperties() {
+      var out = {};
+      var inputs = document.querySelectorAll('#assetImborPropsFields input[data-imbor-prop]');
+      inputs.forEach(function(inp){
+        var k = inp.dataset.imborProp;
+        var v = inp.value;
+        if (v === '' || v == null) return;
+        // Cast numerieke types
+        if (inp.type === 'number') {
+          var num = parseFloat(v);
+          if (!isNaN(num)) out[k] = num;
+        } else {
+          out[k] = v;
+        }
+      });
+      return Object.keys(out).length > 0 ? out : null;
     }
 
     function preselectImborType(typeCode) {
@@ -11331,6 +11462,10 @@
       if (typeSel) { typeSel.innerHTML = '<option value="">— Eerst hoofdgroep —</option>'; typeSel.disabled = true; }
       document.getElementById('assetImborHint').style.display = 'none';
       document.getElementById('assetTypeLegacy').style.display = 'none';
+      // Reset property-velden + edit-context
+      window._assetEditProps = null;
+      var propsWrap = document.getElementById('assetImborProps');
+      if (propsWrap) propsWrap.style.display = 'none';
       loadImborTree().then(populateImborGroepen);
       // Vul project-select
       var projSel = document.getElementById('assetProject');
@@ -11351,6 +11486,8 @@
       document.getElementById('assetEditId').value = id;
       document.getElementById('assetCode').value = a.code || '';
       document.getElementById('assetName').value = a.name || '';
+      // Bewaar bestaande properties zodat onImborTypeChange ze kan inserten
+      window._assetEditProps = a.properties || null;
       // IMBOR pre-select (wacht op tree-load die in openAssetModal startte)
       loadImborTree().then(function(){
         populateImborGroepen();
@@ -11400,6 +11537,7 @@
         installed_at: document.getElementById('assetInstalled').value || null,
         expected_lifespan_years: parseInt(document.getElementById('assetLifespan').value, 10) || null,
         condition_score: parseInt(document.getElementById('assetCondition').value, 10) || null,
+        properties: collectImborProperties(),
       };
       var promise = editId
         ? api('PUT', '/api/assets/'+editId, payload)
