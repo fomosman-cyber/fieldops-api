@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0284c7">
+  <title>Melding doen — FieldOps</title>
+  <meta name="description" content="Doe een melding over de openbare ruimte — direct vanaf je telefoon. Foto + locatie + beschrijving, klaar in 30 seconden.">
+  <meta name="robots" content="noindex,nofollow">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           margin: 0; padding: 0; background: #f8fafc; color: #1e293b; line-height: 1.5;
+           min-height: 100vh; min-height: 100dvh; }
+    .wrap { max-width: 560px; margin: 0 auto; padding: 0 0 80px; }
+    header { background: var(--brand, #0284c7); color: #fff; padding: 28px 24px; }
+    header img.logo { max-width: 140px; max-height: 60px; margin-bottom: 12px; background: rgba(255,255,255,0.9); padding: 6px 10px; border-radius: 8px; display: block; }
+    header h1 { font-size: 22px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
+    header p { font-size: 13px; opacity: 0.85; margin: 0; }
+    .container { padding: 20px; }
+    .intro { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px;
+             border: 1px solid #e2e8f0; font-size: 14px; color: #475569; line-height: 1.6; }
+    .field { background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #e2e8f0; }
+    .field label { display: block; font-size: 13px; font-weight: 600; color: #1e293b; margin-bottom: 6px; }
+    .field .hint { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+    .field input, .field select, .field textarea {
+      width: 100%; padding: 12px 14px; border: 1px solid #cbd5e1; border-radius: 8px;
+      font-size: 16px; font-family: inherit; color: #1e293b; background: #fff;
+    }
+    .field input:focus, .field select:focus, .field textarea:focus {
+      outline: none; border-color: var(--brand, #0284c7); box-shadow: 0 0 0 3px rgba(2,132,199,0.15);
+    }
+    .field textarea { resize: vertical; min-height: 80px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .photo-zone {
+      border: 2px dashed #cbd5e1; border-radius: 10px; padding: 28px 16px; text-align: center;
+      background: #f8fafc; cursor: pointer; min-height: 120px;
+      display: flex; align-items: center; justify-content: center; flex-direction: column;
+    }
+    .photo-zone.has-photo { padding: 8px; border-style: solid; border-color: var(--brand, #0284c7); }
+    .photo-zone img { max-width: 100%; max-height: 220px; border-radius: 8px; }
+    .photo-zone-empty { color: #94a3b8; font-size: 13px; }
+    .photo-zone-empty .icon { font-size: 36px; margin-bottom: 8px; opacity: 0.5; }
+    button.gps-btn {
+      background: var(--brand, #0284c7); color: #fff; border: none; padding: 12px 18px;
+      border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; width: 100%;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    button.gps-btn:disabled { opacity: 0.5; }
+    .submit-bar {
+      position: sticky; bottom: 0; background: #fff; padding: 16px; border-top: 1px solid #e2e8f0;
+      box-shadow: 0 -2px 10px rgba(0,0,0,0.04);
+    }
+    button.submit-btn {
+      width: 100%; padding: 16px; background: var(--brand, #0284c7); color: #fff; border: none;
+      border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; min-height: 56px;
+    }
+    button.submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .success {
+      background: linear-gradient(135deg, #dcfce7, #bbf7d0); color: #14532d; padding: 28px 20px;
+      border-radius: 16px; text-align: center; margin: 24px 0;
+    }
+    .success .icon { font-size: 56px; margin-bottom: 12px; }
+    .success h2 { margin: 0 0 8px; font-size: 22px; }
+    .success p { margin: 0; font-size: 14px; }
+    .error { background: #fecaca; color: #7f1d1d; padding: 12px 16px; border-radius: 8px; margin-bottom: 12px; font-size: 13px; }
+    .honeypot { position: absolute; left: -9999px; }
+    footer { text-align: center; font-size: 11px; color: #94a3b8; padding: 24px 20px; }
+    footer a { color: #94a3b8; text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="app">
+    <div style="padding: 60px 20px; text-align: center; color: #94a3b8;">
+      <div style="font-size: 48px; margin-bottom: 12px;">⏳</div>
+      <p>Meld-pagina laden…</p>
+    </div>
+  </div>
+  <footer>
+    Aangedreven door <a href="https://fieldopsapp.nl" target="_blank">FieldOps</a> · Audit-bound · EU-hosted
+  </footer>
+
+  <script>
+    var SLUG = window.location.pathname.split('/').pop();
+    var APP = document.getElementById('app');
+    var photoDataUrl = null;
+    var lat = null, lng = null;
+
+    function escapeHtml(s) {
+      return String(s || '').replace(/[&<>"']/g, function(c){
+        return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c];
+      });
+    }
+
+    function loadConfig() {
+      fetch('/api/public/org/' + encodeURIComponent(SLUG) + '/config')
+        .then(function(r) { return r.json(); })
+        .then(function(cfg) {
+          if (!cfg.enabled) {
+            APP.innerHTML = '<div style="padding:60px 20px;text-align:center;color:#94a3b8;">' +
+              '<div style="font-size:48px;margin-bottom:12px;">🚫</div>' +
+              '<p>Deze meld-pagina is niet (meer) beschikbaar.</p>' +
+              '<p style="font-size:12px;">Vraag de gemeente om een actuele link.</p></div>';
+            return;
+          }
+          // Brand color toepassen
+          if (cfg.brand_color) {
+            document.documentElement.style.setProperty('--brand', cfg.brand_color);
+            document.querySelector('meta[name="theme-color"]').setAttribute('content', cfg.brand_color);
+          }
+          renderForm(cfg);
+        })
+        .catch(function() {
+          APP.innerHTML = '<div class="error" style="margin:20px;">Kan meld-pagina niet laden. Controleer je internet en probeer opnieuw.</div>';
+        });
+    }
+
+    function renderForm(cfg) {
+      var catOptions = (cfg.categories || []).map(function(c) {
+        return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
+      }).join('');
+      var logoHtml = cfg.organization_logo
+        ? '<img class="logo" src="' + escapeHtml(cfg.organization_logo) + '" alt="Logo">'
+        : '';
+      var introHtml = cfg.intro_text
+        ? '<div class="intro">' + escapeHtml(cfg.intro_text).replace(/\n/g, '<br>') + '</div>'
+        : '<div class="intro">Doe hier een melding over de openbare ruimte. We pakken het zo snel mogelijk op.</div>';
+
+      APP.innerHTML =
+        '<header>' + logoHtml +
+          '<h1>Melding doen</h1>' +
+          '<p>' + escapeHtml(cfg.organization_name || 'Gemeente') + '</p>' +
+        '</header>' +
+        '<div class="container">' + introHtml +
+          '<div id="errorBox"></div>' +
+          '<form id="meldForm" autocomplete="off">' +
+            // Honeypot — onzichtbaar voor mensen, bots vullen 't
+            '<input type="text" name="website" class="honeypot" tabindex="-1" autocomplete="off">' +
+
+            '<div class="field">' +
+              '<label for="mTitle">Wat zie je? *</label>' +
+              '<input type="text" id="mTitle" required maxlength="255" placeholder="bv. Scheur in het wegdek" autocomplete="off">' +
+            '</div>' +
+
+            '<div class="field">' +
+              '<label for="mCat">Categorie</label>' +
+              '<select id="mCat"><option value="">— Kies een categorie —</option>' + catOptions + '</select>' +
+            '</div>' +
+
+            '<div class="field">' +
+              '<label for="mDesc">Toelichting</label>' +
+              '<textarea id="mDesc" maxlength="5000" placeholder="Wat is er precies? Hoe lang is het er al?"></textarea>' +
+            '</div>' +
+
+            '<div class="field">' +
+              '<label>Locatie</label>' +
+              '<button type="button" class="gps-btn" id="gpsBtn" onclick="getGps()">📍 Gebruik mijn locatie</button>' +
+              '<div id="gpsStatus" class="hint" style="margin-top:8px;"></div>' +
+              '<input type="text" id="mLocDesc" maxlength="500" placeholder="Adres of straat (optioneel)" style="margin-top:8px;">' +
+            '</div>' +
+
+            '<div class="field">' +
+              '<label>Foto (optioneel)</label>' +
+              '<div class="photo-zone" id="photoZone" onclick="document.getElementById(\'photoInput\').click()">' +
+                '<div class="photo-zone-empty"><div class="icon">📷</div>Tik om foto te maken</div>' +
+              '</div>' +
+              '<input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;" onchange="onPhotoChange(event)">' +
+            '</div>' +
+
+            '<div class="field">' +
+              '<label>Jouw gegevens (optioneel, voor terugkoppeling)</label>' +
+              '<div class="row">' +
+                '<input type="text" id="mName" maxlength="120" placeholder="Naam">' +
+                '<input type="email" id="mEmail" maxlength="120" placeholder="E-mail">' +
+              '</div>' +
+              '<input type="tel" id="mPhone" maxlength="30" placeholder="Telefoon (optioneel)" style="margin-top:8px;">' +
+            '</div>' +
+          '</form>' +
+        '</div>' +
+        '<div class="submit-bar">' +
+          '<button type="button" class="submit-btn" onclick="submitMelding()" id="submitBtn">📤 Melding versturen</button>' +
+        '</div>';
+    }
+
+    function getGps() {
+      var btn = document.getElementById('gpsBtn');
+      var status = document.getElementById('gpsStatus');
+      if (!navigator.geolocation) {
+        status.textContent = '⚠️ GPS niet beschikbaar in deze browser';
+        status.style.color = '#dc2626';
+        return;
+      }
+      btn.disabled = true;
+      btn.innerHTML = '⏳ Locatie ophalen…';
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+        status.innerHTML = '✓ Locatie vastgelegd (nauwkeurigheid ±' + Math.round(pos.coords.accuracy) + 'm)';
+        status.style.color = '#16a34a';
+        btn.innerHTML = '✓ Locatie opgeslagen — opnieuw';
+        btn.disabled = false;
+      }, function(err) {
+        status.textContent = '⚠️ Locatie niet beschikbaar (geef toestemming via browser-instellingen)';
+        status.style.color = '#dc2626';
+        btn.innerHTML = '📍 Gebruik mijn locatie';
+        btn.disabled = false;
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
+    }
+
+    function onPhotoChange(e) {
+      var f = e.target.files && e.target.files[0];
+      if (!f) return;
+      if (f.size > 5 * 1024 * 1024) {
+        showError('Foto te groot (max 5 MB). Probeer een kleinere foto.');
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        photoDataUrl = ev.target.result;
+        var zone = document.getElementById('photoZone');
+        zone.classList.add('has-photo');
+        zone.innerHTML = '<img src="' + photoDataUrl + '" alt="Foto">';
+      };
+      reader.readAsDataURL(f);
+    }
+
+    function showError(msg) {
+      var box = document.getElementById('errorBox');
+      box.innerHTML = '<div class="error">⚠️ ' + escapeHtml(msg) + '</div>';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function clearError() {
+      var box = document.getElementById('errorBox');
+      if (box) box.innerHTML = '';
+    }
+
+    function submitMelding() {
+      clearError();
+      var title = document.getElementById('mTitle').value.trim();
+      if (!title) {
+        showError('Geef een korte titel mee (wat zie je?)');
+        return;
+      }
+      var payload = {
+        title: title,
+        description: document.getElementById('mDesc').value.trim() || null,
+        category: document.getElementById('mCat').value || null,
+        lat: lat, lng: lng,
+        location_description: document.getElementById('mLocDesc').value.trim() || null,
+        photo_data_url: photoDataUrl,
+        melder_name: document.getElementById('mName').value.trim() || null,
+        melder_email: document.getElementById('mEmail').value.trim() || null,
+        melder_phone: document.getElementById('mPhone').value.trim() || null,
+        website: '', // honeypot
+      };
+
+      var btn = document.getElementById('submitBtn');
+      btn.disabled = true;
+      btn.textContent = '⏳ Versturen…';
+
+      fetch('/api/public/org/' + encodeURIComponent(SLUG) + '/melding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(function(r) {
+        if (!r.ok) return r.json().then(function(j) { throw new Error(j.detail || ('HTTP ' + r.status)); });
+        return r.json();
+      }).then(function(res) {
+        APP.innerHTML =
+          '<div style="padding:20px;">' +
+            '<div class="success">' +
+              '<div class="icon">✅</div>' +
+              '<h2>Bedankt!</h2>' +
+              '<p>' + escapeHtml(res.message || 'Je melding is ontvangen.') + '</p>' +
+            '</div>' +
+            '<p style="text-align:center;font-size:13px;color:#64748b;">Referentie: <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:11px;">' + escapeHtml(res.melding_id || '—') + '</code></p>' +
+            '<div style="text-align:center;margin-top:24px;">' +
+              '<button class="submit-btn" style="max-width:240px;" onclick="location.reload()">+ Nog een melding</button>' +
+            '</div>' +
+          '</div>';
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }).catch(function(err) {
+        btn.disabled = false;
+        btn.textContent = '📤 Melding versturen';
+        showError('Versturen mislukt: ' + (err.message || 'Probeer opnieuw'));
+      });
+    }
+
+    loadConfig();
+  </script>
+</body>
+</html>

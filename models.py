@@ -62,6 +62,14 @@ class Organization(Base):
     # Voorbeeld: "https://www.gbiworld.nl/Asset/?code={asset_code}"
     beheer_provider_label = Column(String(80), nullable=True)  # bv "GBI World"
     beheer_provider_url_template = Column(Text, nullable=True)
+    # Burger-portaal lite — publieke meld-pagina /meld/{slug}
+    # Burgers melden zonder login. Org-admin kiest slug + welke categorieën +
+    # default project. Spam-bescherming via rate-limit + honeypot.
+    public_meld_slug = Column(String(60), unique=True, nullable=True, index=True)
+    public_meld_enabled = Column(Boolean, default=False, nullable=False)
+    public_meld_default_project_id = Column(String, ForeignKey("projects.id"), nullable=True)
+    public_meld_categories = Column(Text, nullable=True)  # JSON-array van categorieën
+    public_meld_intro_text = Column(Text, nullable=True)  # welkom-tekst voor de melder
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     users = relationship("User", back_populates="organization")
