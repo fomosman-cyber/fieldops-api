@@ -1944,19 +1944,18 @@
               <input type="text" id="assetCode" placeholder="bv. WV-001" required>
             </div>
             <div class="form-group">
-              <label data-i18n="am_type">Asset-type</label> *
-              <select id="assetType" required>
-                <option value="">—</option>
-                <option value="wegdek">Wegdek</option>
-                <option value="kunstwerk">Kunstwerk (brug/viaduct/sluis)</option>
-                <option value="lantaarnpaal">Lantaarnpaal</option>
-                <option value="put">Put / riolering</option>
-                <option value="watergang">Watergang</option>
-                <option value="kering">Kering / dijk / damwand</option>
-                <option value="verkeer">Verkeer (bord/markering/VRI)</option>
-                <option value="groen">Groen (boom/berm)</option>
-                <option value="overig">Overig</option>
-              </select>
+              <label data-i18n="am_type">Asset-type (IMBOR)</label> *
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                <select id="assetHoofdgroep" onchange="onImborGroepChange()" required>
+                  <option value="">— Hoofdgroep —</option>
+                </select>
+                <select id="assetImborType" onchange="onImborTypeChange()" disabled>
+                  <option value="">— Eerst hoofdgroep —</option>
+                </select>
+              </div>
+              <input type="hidden" id="assetType" required>
+              <div id="assetImborHint" style="display:none;margin-top:8px;padding:8px 10px;background:var(--card-bg-hover);border-left:3px solid var(--primary);border-radius:6px;font-size:12px;color:var(--text-muted);line-height:1.5;"></div>
+              <div id="assetTypeLegacy" style="display:none;margin-top:6px;font-size:11px;color:var(--text-dim);font-style:italic;"></div>
             </div>
           </div>
           <div class="form-group">
@@ -11222,6 +11221,100 @@
       });
     }
 
+    // ─── IMBOR-taxonomie (cascading dropdown) ───────────────────────────────
+    var IMBOR_TREE = null;
+
+    function loadImborTree() {
+      if (IMBOR_TREE) return Promise.resolve(IMBOR_TREE);
+      return api('GET', '/api/imbor/tree').then(function(tree){
+        IMBOR_TREE = tree;
+        return tree;
+      }).catch(function(){
+        IMBOR_TREE = {};
+        return IMBOR_TREE;
+      });
+    }
+
+    function populateImborGroepen() {
+      var sel = document.getElementById('assetHoofdgroep');
+      if (!sel) return;
+      sel.innerHTML = '<option value="">— Hoofdgroep —</option>';
+      Object.keys(IMBOR_TREE || {}).forEach(function(code){
+        var hg = IMBOR_TREE[code];
+        var opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = (hg.icon || '') + ' ' + hg.naam + ' (' + (hg.asset_types || []).length + ')';
+        sel.appendChild(opt);
+      });
+    }
+
+    function onImborGroepChange() {
+      var groep = document.getElementById('assetHoofdgroep').value;
+      var typeSel = document.getElementById('assetImborType');
+      var hint = document.getElementById('assetImborHint');
+      typeSel.innerHTML = '<option value="">— Kies type —</option>';
+      typeSel.disabled = !groep;
+      document.getElementById('assetType').value = '';
+      hint.style.display = 'none';
+      document.getElementById('assetTypeLegacy').style.display = 'none';
+      if (!groep || !IMBOR_TREE || !IMBOR_TREE[groep]) return;
+      var types = IMBOR_TREE[groep].asset_types || [];
+      types.forEach(function(t){
+        var opt = document.createElement('option');
+        opt.value = t.code;
+        opt.textContent = t.naam;
+        typeSel.appendChild(opt);
+      });
+    }
+
+    function findImborType(code) {
+      if (!IMBOR_TREE || !code) return null;
+      var found = null;
+      Object.keys(IMBOR_TREE).forEach(function(g){
+        var match = (IMBOR_TREE[g].asset_types || []).find(function(t){ return t.code === code; });
+        if (match) found = { groep: g, info: match };
+      });
+      return found;
+    }
+
+    function onImborTypeChange() {
+      var code = document.getElementById('assetImborType').value;
+      var hint = document.getElementById('assetImborHint');
+      document.getElementById('assetType').value = code;
+      if (!code) { hint.style.display = 'none'; return; }
+      var found = findImborType(code);
+      if (!found) { hint.style.display = 'none'; return; }
+      var info = found.info;
+      var norm = info.default_inspection_norm || 'Visueel';
+      var freq = info.default_inspection_frequency_months || '—';
+      var props = (info.typical_properties || []).slice(0, 5).join(', ');
+      hint.innerHTML =
+        '<strong>📋 Default inspectie:</strong> ' + escapeHtml(norm) + ' · elke ' + freq + ' mnd' +
+        (props ? '<br><strong>🏷️ Relevante velden:</strong> ' + escapeHtml(props) : '') +
+        (info.bgt_class ? '<br><strong>🗺️ BGT-klasse:</strong> ' + escapeHtml(info.bgt_class) : '');
+      hint.style.display = 'block';
+    }
+
+    function preselectImborType(typeCode) {
+      var groepSel = document.getElementById('assetHoofdgroep');
+      var typeSel = document.getElementById('assetImborType');
+      var legacy = document.getElementById('assetTypeLegacy');
+      if (!typeCode) return;
+      var found = findImborType(typeCode);
+      if (found) {
+        groepSel.value = found.groep;
+        onImborGroepChange();
+        typeSel.value = typeCode;
+        onImborTypeChange();
+        legacy.style.display = 'none';
+      } else {
+        // Legacy / niet-IMBOR waarde: behoud + toon notitie
+        document.getElementById('assetType').value = typeCode;
+        legacy.textContent = '⚠️ Bestaand type "' + typeCode + '" — niet in IMBOR-taxonomie. Kies hoofdgroep om te migreren.';
+        legacy.style.display = 'block';
+      }
+    }
+
     function openAssetModal() {
       document.getElementById('assetModalTitle').textContent = 'Nieuw Asset';
       document.getElementById('assetSubmitBtn').textContent = 'Asset aanmaken';
@@ -11231,6 +11324,14 @@
       });
       document.getElementById('assetType').value = '';
       document.getElementById('assetCondition').value = '';
+      // Reset IMBOR-dropdowns + laad tree als nog niet ingeladen
+      var groepSel = document.getElementById('assetHoofdgroep');
+      var typeSel = document.getElementById('assetImborType');
+      if (groepSel) groepSel.value = '';
+      if (typeSel) { typeSel.innerHTML = '<option value="">— Eerst hoofdgroep —</option>'; typeSel.disabled = true; }
+      document.getElementById('assetImborHint').style.display = 'none';
+      document.getElementById('assetTypeLegacy').style.display = 'none';
+      loadImborTree().then(populateImborGroepen);
       // Vul project-select
       var projSel = document.getElementById('assetProject');
       projSel.innerHTML = '<option value="">— Geen project —</option>';
@@ -11250,7 +11351,11 @@
       document.getElementById('assetEditId').value = id;
       document.getElementById('assetCode').value = a.code || '';
       document.getElementById('assetName').value = a.name || '';
-      document.getElementById('assetType').value = a.asset_type || '';
+      // IMBOR pre-select (wacht op tree-load die in openAssetModal startte)
+      loadImborTree().then(function(){
+        populateImborGroepen();
+        preselectImborType(a.asset_type || '');
+      });
       document.getElementById('assetProject').value = a.project_id || '';
       document.getElementById('assetLocDesc').value = a.location_description || '';
       document.getElementById('assetLat').value = a.lat != null ? a.lat : '';
