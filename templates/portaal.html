@@ -1099,6 +1099,7 @@
         </div>
       </div>
       <span id="syncStatusBadge" style="display:none;font-size:11px;padding:3px 8px;border-radius:10px;background:#fbbf24;color:#78350f;font-weight:600;cursor:pointer;" onclick="syncQueueRetry()" title="Klik om opnieuw te proberen">⏳ <span id="syncStatusCount">0</span></span>
+      <button id="tourRestartBtn" class="notif-btn" aria-label="Herstart rondleiding" onclick="if(window.FieldOpsTour){FieldOpsTour.start(true);}" title="Herstart rondleiding" style="font-size:18px;">?</button>
       <div class="user-pill">
         <div class="user-avatar" id="userAvatar">U</div>
         <span class="user-name" id="userName">Gebruiker</span>
@@ -20213,5 +20214,356 @@
       });
     })();
   </script>
+
+  <!-- ═══ ONBOARDING-TOUR v1 ═══════════════════════════════════════════════
+       Lichtgewicht eigen tour-engine (geen externe deps). Auto-start bij
+       eerste login, restart-knop in topbar (?). LocalStorage als state. -->
+  <style>
+    .fo-tour-overlay {
+      position: fixed; inset: 0; background: rgba(15,23,42,0.55);
+      z-index: 9998; opacity: 0; transition: opacity 220ms ease;
+      pointer-events: none;
+    }
+    .fo-tour-overlay.active { opacity: 1; pointer-events: auto; }
+    .fo-tour-cutout {
+      position: fixed; z-index: 9999; border-radius: 10px;
+      box-shadow: 0 0 0 9999px rgba(15,23,42,0.55), 0 0 0 4px rgba(124,58,237,0.7);
+      transition: all 260ms cubic-bezier(.4,.0,.2,1);
+      pointer-events: none;
+    }
+    .fo-tour-tooltip {
+      position: fixed; z-index: 10000; background: #fff; color: #0f172a;
+      border-radius: 14px; box-shadow: 0 20px 50px rgba(0,0,0,0.28);
+      width: 360px; max-width: calc(100vw - 32px); padding: 20px 22px;
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      transition: top 260ms cubic-bezier(.4,.0,.2,1), left 260ms cubic-bezier(.4,.0,.2,1);
+    }
+    .fo-tour-tooltip h3 {
+      margin: 0 0 8px; font-size: 17px; font-weight: 700; letter-spacing: -0.01em;
+      color: #0f172a;
+    }
+    .fo-tour-tooltip p {
+      margin: 0 0 16px; font-size: 14px; line-height: 1.55; color: #475569;
+    }
+    .fo-tour-progress {
+      font-size: 11px; font-weight: 600; color: #94a3b8; text-transform: uppercase;
+      letter-spacing: 0.05em; margin-bottom: 6px;
+    }
+    .fo-tour-actions {
+      display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    }
+    .fo-tour-actions .fo-tour-skip {
+      background: transparent; border: none; color: #94a3b8; cursor: pointer;
+      font-size: 13px; padding: 6px 10px; border-radius: 6px;
+    }
+    .fo-tour-actions .fo-tour-skip:hover { color: #475569; background: #f1f5f9; }
+    .fo-tour-actions .fo-tour-nav { display: flex; gap: 8px; }
+    .fo-tour-actions button.fo-tour-btn {
+      padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 600;
+      cursor: pointer; border: 1px solid #e2e8f0; background: #f8fafc; color: #475569;
+      transition: all 150ms;
+    }
+    .fo-tour-actions button.fo-tour-btn:hover { background: #f1f5f9; }
+    .fo-tour-actions button.fo-tour-btn.primary {
+      background: linear-gradient(135deg, #7c3aed, #5b21b6); border-color: #5b21b6;
+      color: #fff;
+    }
+    .fo-tour-actions button.fo-tour-btn.primary:hover { filter: brightness(1.08); }
+    .fo-tour-actions button.fo-tour-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    /* Center-modus voor welkom + afsluit */
+    .fo-tour-tooltip.fo-tour-center {
+      top: 50% !important; left: 50% !important; transform: translate(-50%,-50%);
+      width: 420px;
+    }
+    /* Mobiel: tooltip altijd onderaan */
+    @media (max-width: 720px) {
+      .fo-tour-tooltip:not(.fo-tour-center) {
+        top: auto !important; left: 16px !important; right: 16px;
+        bottom: 16px; width: auto;
+      }
+    }
+  </style>
+
+  <div class="fo-tour-overlay" id="foTourOverlay"></div>
+  <div class="fo-tour-cutout" id="foTourCutout" style="display:none;"></div>
+  <div class="fo-tour-tooltip" id="foTourTooltip" style="display:none;top:-9999px;left:-9999px;">
+    <div class="fo-tour-progress" id="foTourProgress">Stap 1 van 1</div>
+    <h3 id="foTourTitle">Titel</h3>
+    <p id="foTourBody">Body</p>
+    <div class="fo-tour-actions">
+      <button class="fo-tour-skip" id="foTourSkip" type="button">Overslaan</button>
+      <div class="fo-tour-nav">
+        <button class="fo-tour-btn" id="foTourPrev" type="button">Vorige</button>
+        <button class="fo-tour-btn primary" id="foTourNext" type="button">Volgende →</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var TOUR_VERSION = 'v1';
+      var TOUR_KEY = 'fieldops_tour_' + TOUR_VERSION + '_done';
+
+      // ── Tour-stappen ────────────────────────────────────────────────────
+      // selector=null → center-modus (geen target-highlight)
+      // page → optionele page-switch via navigateTo() voor de step rendert
+      var STEPS = [
+        {
+          selector: null,
+          title: '👋 Welkom bij FieldOps',
+          body: 'In ongeveer 2 minuten laten we de belangrijkste functies zien. ' +
+                'Op elk moment overslaan kan via Overslaan rechtsboven — je vindt deze ' +
+                'rondleiding altijd terug via de "?"-knop in de topbar.',
+          position: 'center',
+        },
+        {
+          selector: 'a[data-page="dashboard"]',
+          page: 'dashboard',
+          title: '📊 Dashboard',
+          body: 'Live overzicht van je organisatie: open meldingen, geplande inspecties, ' +
+                'kritieke assets en KPI\'s.',
+          position: 'right',
+        },
+        {
+          selector: 'a[data-page="meldingen"]',
+          page: 'meldingen',
+          title: '🔔 Meldingen',
+          body: 'Hier komen alle storingen binnen — van burger-portaal, e-mail, of medewerkers. ' +
+                'AI-classificatie + bulk-toewijzen + heatmap helpen je sneller schakelen.',
+          position: 'right',
+        },
+        {
+          selector: 'a[data-page="assets"]',
+          page: 'assets',
+          title: '🗂️ Assets (IMBOR)',
+          body: 'Beheer al je objecten conform de IMBOR-standaard (CROW). ' +
+                'Bij elk type krijg je automatisch de juiste inspectie-norm (NEN/CROW/VTA) en frequentie.',
+          position: 'right',
+        },
+        {
+          selector: 'a[data-page="kunstwerken"]',
+          page: 'kunstwerken',
+          title: '🔍 Inspecties',
+          body: 'Norm-conforme inspecties: NEN 2767-2 voor kunstwerken, NEN-EN 1176 voor speeltoestellen, ' +
+                'NEN 3140 voor elektra. Foto\'s krijgen AI-classificatie.',
+          position: 'right',
+        },
+        {
+          selector: 'a[data-page="dagboek"]',
+          page: 'dagboek',
+          title: '📔 Werkdagboek',
+          body: 'Auto-gevuld dagverslag van wat er gebeurde: inspecties, opleveringen, GPS-tracks. ' +
+                'Exporteer als CSV voor je opdrachtgever.',
+          position: 'right',
+        },
+        {
+          selector: 'a[data-page="predictive"]',
+          page: 'predictive',
+          title: '🔮 Voorspeller',
+          body: 'Predictive maintenance: zie welke assets de komende 30/60/90 dagen falen op basis ' +
+                'van NEN-degradatie + historische meldingen.',
+          position: 'right',
+        },
+        {
+          selector: '#notifBellBtn',
+          title: '🔕 Notificaties',
+          body: 'In-app meldingen + e-mail voor urgente events. Klik op de bel om recente ' +
+                'updates te zien.',
+          position: 'bottom',
+        },
+        {
+          selector: null,
+          title: '🚀 Klaar om te beginnen',
+          body: 'Dat was het! Maak je eerste asset aan via <strong>Assets → + Nieuw</strong>, ' +
+                'of upload een bulk-import via <strong>Instellingen → GBI/IMBOR import</strong>. ' +
+                'Vragen? De "?"-knop in de topbar opent deze tour weer.',
+          position: 'center',
+        },
+      ];
+
+      // ── Engine ──────────────────────────────────────────────────────────
+      var overlay = document.getElementById('foTourOverlay');
+      var cutout = document.getElementById('foTourCutout');
+      var tooltip = document.getElementById('foTourTooltip');
+      var titleEl = document.getElementById('foTourTitle');
+      var bodyEl = document.getElementById('foTourBody');
+      var progressEl = document.getElementById('foTourProgress');
+      var skipBtn = document.getElementById('foTourSkip');
+      var prevBtn = document.getElementById('foTourPrev');
+      var nextBtn = document.getElementById('foTourNext');
+
+      var state = { index: 0, active: false };
+
+      function positionTooltip(targetRect, position) {
+        var margin = 16;
+        var tw = tooltip.offsetWidth;
+        var th = tooltip.offsetHeight;
+        var vw = window.innerWidth;
+        var vh = window.innerHeight;
+        var top, left;
+        if (position === 'right') {
+          left = targetRect.right + margin;
+          top = targetRect.top + (targetRect.height / 2) - (th / 2);
+          if (left + tw > vw - margin) {
+            // Fallback naar onder
+            left = Math.max(margin, Math.min(targetRect.left, vw - tw - margin));
+            top = targetRect.bottom + margin;
+          }
+        } else if (position === 'bottom') {
+          top = targetRect.bottom + margin;
+          left = targetRect.left + (targetRect.width / 2) - (tw / 2);
+        } else if (position === 'left') {
+          left = targetRect.left - tw - margin;
+          top = targetRect.top + (targetRect.height / 2) - (th / 2);
+        } else { // top
+          top = targetRect.top - th - margin;
+          left = targetRect.left + (targetRect.width / 2) - (tw / 2);
+        }
+        // Clamp binnen viewport
+        top = Math.max(margin, Math.min(top, vh - th - margin));
+        left = Math.max(margin, Math.min(left, vw - tw - margin));
+        tooltip.style.top = top + 'px';
+        tooltip.style.left = left + 'px';
+        tooltip.style.transform = '';
+      }
+
+      function showStep(idx) {
+        var step = STEPS[idx];
+        if (!step) { finish(); return; }
+        state.index = idx;
+        // Page-switch indien nodig
+        if (step.page && typeof navigateTo === 'function') {
+          try { navigateTo(step.page); } catch (e) {}
+        }
+        // UI update
+        titleEl.textContent = step.title;
+        bodyEl.innerHTML = step.body;
+        progressEl.textContent = 'Stap ' + (idx + 1) + ' van ' + STEPS.length;
+        prevBtn.disabled = idx === 0;
+        nextBtn.textContent = idx === STEPS.length - 1 ? '✓ Klaar' : 'Volgende →';
+
+        // Wacht kort op page-switch DOM
+        setTimeout(function() {
+          var isCenter = !step.selector || step.position === 'center';
+          if (isCenter) {
+            cutout.style.display = 'none';
+            tooltip.classList.add('fo-tour-center');
+            tooltip.style.display = 'block';
+            tooltip.style.top = '';
+            tooltip.style.left = '';
+          } else {
+            tooltip.classList.remove('fo-tour-center');
+            var target = document.querySelector(step.selector);
+            if (!target) {
+              // Target niet gevonden → toon als center fallback
+              cutout.style.display = 'none';
+              tooltip.classList.add('fo-tour-center');
+              tooltip.style.display = 'block';
+              return;
+            }
+            var r = target.getBoundingClientRect();
+            cutout.style.display = 'block';
+            cutout.style.top = (r.top - 4) + 'px';
+            cutout.style.left = (r.left - 4) + 'px';
+            cutout.style.width = (r.width + 8) + 'px';
+            cutout.style.height = (r.height + 8) + 'px';
+            tooltip.style.display = 'block';
+            // Wait 1 frame voor afmetingen
+            requestAnimationFrame(function() {
+              positionTooltip(r, step.position || 'bottom');
+            });
+          }
+        }, step.page ? 120 : 0);
+      }
+
+      function start(force) {
+        if (state.active) return;
+        if (!force && localStorage.getItem(TOUR_KEY)) return;
+        state.active = true;
+        overlay.classList.add('active');
+        showStep(0);
+        document.addEventListener('keydown', onKey);
+      }
+
+      function finish() {
+        state.active = false;
+        overlay.classList.remove('active');
+        cutout.style.display = 'none';
+        tooltip.style.display = 'none';
+        tooltip.classList.remove('fo-tour-center');
+        localStorage.setItem(TOUR_KEY, new Date().toISOString());
+        document.removeEventListener('keydown', onKey);
+      }
+
+      function next() {
+        if (state.index >= STEPS.length - 1) { finish(); return; }
+        showStep(state.index + 1);
+      }
+      function prev() {
+        if (state.index > 0) showStep(state.index - 1);
+      }
+      function skip() { finish(); }
+
+      function onKey(e) {
+        if (!state.active) return;
+        if (e.key === 'Escape') { skip(); e.preventDefault(); }
+        else if (e.key === 'ArrowRight') { next(); e.preventDefault(); }
+        else if (e.key === 'ArrowLeft') { prev(); e.preventDefault(); }
+      }
+
+      // Wire buttons
+      skipBtn.addEventListener('click', skip);
+      prevBtn.addEventListener('click', prev);
+      nextBtn.addEventListener('click', next);
+      // Klik op overlay = skip-bevestiging
+      overlay.addEventListener('click', function(e) {
+        if (e.target === overlay) skip();
+      });
+      // Re-position bij resize
+      window.addEventListener('resize', function() {
+        if (!state.active) return;
+        var step = STEPS[state.index];
+        if (!step || !step.selector) return;
+        var target = document.querySelector(step.selector);
+        if (target) {
+          var r = target.getBoundingClientRect();
+          cutout.style.top = (r.top - 4) + 'px';
+          cutout.style.left = (r.left - 4) + 'px';
+          cutout.style.width = (r.width + 8) + 'px';
+          cutout.style.height = (r.height + 8) + 'px';
+          positionTooltip(r, step.position || 'bottom');
+        }
+      });
+
+      // Publiek API
+      window.FieldOpsTour = {
+        start: start,
+        stop: finish,
+        next: next,
+        prev: prev,
+        reset: function() { localStorage.removeItem(TOUR_KEY); },
+        STEPS: STEPS,
+      };
+
+      // Auto-trigger: na eerste succesvolle login + DOM klaar
+      function autoTrigger() {
+        if (localStorage.getItem(TOUR_KEY)) return;
+        var attempts = 0;
+        var check = setInterval(function() {
+          attempts++;
+          var ready = window.currentUser && document.querySelector('a[data-page="dashboard"]');
+          if (ready) {
+            clearInterval(check);
+            setTimeout(function() { start(false); }, 1200);
+          }
+          if (attempts > 60) clearInterval(check);  // ~30s opgeven
+        }, 500);
+      }
+
+      if (document.readyState === 'complete') autoTrigger();
+      else window.addEventListener('load', autoTrigger);
+    })();
+  </script>
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
 </body>
 </html>
