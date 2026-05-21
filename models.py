@@ -144,7 +144,9 @@ class Project(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    organization = relationship("Organization")
+    # NB: expliciete foreign_keys vereist sinds Organization.public_meld_default_project_id
+    # ook een FK Organization→Project introduceerde — anders ambigue join-paths
+    organization = relationship("Organization", foreign_keys=[organization_id])
     creator = relationship("User", foreign_keys=[created_by])
 
 
