@@ -1027,6 +1027,7 @@ def _parse_coords(row: dict, mapping: dict[str, list[str]]) -> tuple[Optional[fl
 async def import_assets_csv(
     request: Request,
     file: UploadFile = File(..., description="CSV. Auto-detecteert kolomnamen — code/objectnummer, type/objecttype/categorie, naam/omschrijving, lat-lng of RD x/y."),
+    dry_run: bool = Query(False, description="Als true: parse + valideer maar commit niet. Voor preview-flow in UI-wizard."),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -1041,6 +1042,9 @@ async def import_assets_csv(
       - parent_code ⇐ parent_code, parent, hoofdobject, ouder_code, ...
 
     Bestaande codes worden geüpdatet (idempotent), nieuwe codes aangemaakt.
+
+    Dry-run modus: parse + valideer alle rijen + tel created/updated zonder
+    DB-commit. Voor UI-wizard preview voordat klant echt commit.
     """
     if not can_manage_assets(current_user):
         raise HTTPException(status_code=403, detail="Geen rechten voor bulk-import")
@@ -1159,6 +1163,38 @@ async def import_assets_csv(
         if asset and code_to_id[parent_code] != asset.id:
             asset.parent_asset_id = code_to_id[parent_code]
 
+    # Sample-rows voor UI-preview (eerste 5 rijen met gemapte velden)
+    preview_rows = []
+    for row in rows[:5]:
+        prev = {
+            "code": _get(row, mapping, "code"),
+            "asset_type": _get(row, mapping, "asset_type"),
+            "name": _get(row, mapping, "name"),
+            "location_description": _get(row, mapping, "location_description"),
+        }
+        try:
+            la, ln, _ = _parse_coords(row, mapping)
+            if la is not None and ln is not None:
+                prev["lat"] = round(la, 6)
+                prev["lng"] = round(ln, 6)
+        except Exception:
+            pass
+        preview_rows.append(prev)
+
+    if dry_run:
+        # Rollback alle wijzigingen, geen audit-log
+        db.rollback()
+        return {
+            "dry_run": True,
+            "created": created,
+            "updated": updated,
+            "errors": errors,
+            "total_rows": len(rows),
+            "detected_mapping": mapping,
+            "delimiter": delimiter,
+            "preview_rows": preview_rows,
+        }
+
     db.commit()
     log_action(db, request, current_user,
                action=ACTION.ASSET_BULK_IMPORT, entity_type="asset",
@@ -1167,7 +1203,8 @@ async def import_assets_csv(
                       "mapping": mapping})
 
     return {"created": created, "updated": updated, "errors": errors,
-            "detected_mapping": mapping, "delimiter": delimiter}
+            "detected_mapping": mapping, "delimiter": delimiter,
+            "preview_rows": preview_rows, "total_rows": len(rows)}
 
 
 @router.post("/import/geojson")

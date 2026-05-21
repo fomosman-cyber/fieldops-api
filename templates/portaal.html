@@ -1451,10 +1451,11 @@
           <h1>Meldingen</h1>
           <p>Bekijk en beheer alle meldingen uit het veld.</p>
         </div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="toggleRapportagePanel()">Rapportage</button>
           <button class="btn-secondary" onclick="document.getElementById('meldingCsvInput').click()" title="Importeer meldingen via CSV-bestand">📥 CSV importeren</button>
           <input type="file" id="meldingCsvInput" accept=".csv" style="display:none;" onchange="handleMeldingCsvUpload(this)">
+          <button class="btn-secondary" onclick="openMeldingExportModal()" title="Exporteer meldingen als CSV voor import in GBI/iAsset">📤 GBI-export</button>
           <button class="btn-primary" onclick="openMeldingModal()">+ Nieuwe Melding</button>
         </div>
       </div>
@@ -1586,7 +1587,7 @@
           <p data-i18n="ph_assets_sub">De fysieke objecten waarop je onderhoudt en meldt — wegvakken, lantaarnpalen, putten, voegovergangen, kunstwerken. Elke asset krijgt een uniek nummer + GPS-locatie zodat meldingen en metingen automatisch koppelen. Importeer in bulk via CSV of NWB-wegvakken.</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn-secondary" onclick="document.getElementById('assetCsvInput').click()" data-i18n="csv_importeren">CSV importeren</button>
+          <button class="btn-secondary" onclick="openAssetImportWizard()" data-i18n="csv_importeren" title="Importeer assets uit GBI/iAsset/Antea CSV-export">📊 CSV importeren</button>
           <input type="file" id="assetCsvInput" accept=".csv" style="display:none;" onchange="importAssetsCsv(event)">
           <button class="btn-secondary" onclick="openNwbZoekModal()" style="display:inline-flex;align-items:center;gap:6px;">🛣️ Wegvakken uit NWB <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.05em;">NIEUW</span></button>
           <button class="btn-primary" onclick="openAssetModal()">+ Nieuw Asset</button>
@@ -1713,6 +1714,186 @@
             </select>
           </div>
           <div id="predList" style="display:flex;flex-direction:column;gap:10px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ MELDING-EXPORT NAAR GBI ═══════ -->
+    <div class="modal-overlay" id="meldingExportModal">
+      <div class="modal" style="max-width:540px;">
+        <button class="modal-close" onclick="closeMeldingExportModal()">&times;</button>
+        <h2>📤 Meldingen exporteren</h2>
+        <p class="subtitle">
+          Genereer een CSV-export voor handmatige import in GBI World, iAsset of Antea Beheer.
+          Geen API-koppeling nodig — werk-bonnen aanmaken doet GBI zelf na import.
+        </p>
+
+        <div class="form-group">
+          <label>Format</label>
+          <select id="mexFormat" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+            <option value="imbor">IMBOR / GBI-conform (aanbevolen)</option>
+            <option value="mor-plus">MOR+ standaard (gemeenten)</option>
+            <option value="standard">FieldOps-native (alle velden)</option>
+          </select>
+          <p style="font-size:11px;color:var(--text-dim);margin-top:4px;">
+            IMBOR: objectnummer, objecttype, prioriteit, status, lat/lng, omschrijving. Direct importeerbaar in GBI.
+          </p>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="form-group">
+            <label>Status filter</label>
+            <select id="mexStatus" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+              <option value="">Alle statussen</option>
+              <option value="open">Open</option>
+              <option value="in_behandeling">In behandeling</option>
+              <option value="opgelost">Opgelost</option>
+              <option value="afgerond">Afgerond</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Project</label>
+            <select id="mexProject" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;">
+              <option value="">Alle projecten</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Periode</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+            <button type="button" class="btn-secondary" onclick="setMexPreset('all')" style="font-size:11px;padding:5px 10px;">Alles</button>
+            <button type="button" class="btn-secondary" onclick="setMexPreset('month')" style="font-size:11px;padding:5px 10px;">Deze maand</button>
+            <button type="button" class="btn-secondary" onclick="setMexPreset('lastmonth')" style="font-size:11px;padding:5px 10px;">Vorige maand</button>
+            <button type="button" class="btn-secondary" onclick="setMexPreset('quarter')" style="font-size:11px;padding:5px 10px;">Dit kwartaal</button>
+            <button type="button" class="btn-secondary" onclick="setMexPreset('year')" style="font-size:11px;padding:5px 10px;">Dit jaar</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:var(--text-dim);">Van</label>
+              <input type="date" id="mexFrom" style="width:100%;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-dim);">Tot (incl.)</label>
+              <input type="date" id="mexTo" style="width:100%;">
+            </div>
+          </div>
+        </div>
+
+        <div style="background:rgba(2,132,199,0.05);border-radius:8px;padding:10px 12px;font-size:11px;color:var(--text-muted);line-height:1.6;margin-bottom:14px;">
+          <strong style="color:var(--text);">Hoe te importeren in GBI World:</strong>
+          <ol style="margin:6px 0 0 18px;padding:0;">
+            <li>Download CSV hieronder</li>
+            <li>Open GBI World → Modules → Import</li>
+            <li>Selecteer "CSV import" → kies dit bestand</li>
+            <li>Bevestig kolom-mapping (auto-detect werkt vaak meteen)</li>
+            <li>Importeer → meldingen verschijnen als werkbonnen</li>
+          </ol>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" onclick="closeMeldingExportModal()">Annuleren</button>
+          <button type="button" class="btn-primary" onclick="downloadMeldingExport()">📥 Download CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ ASSET CSV-IMPORT WIZARD ═══════ -->
+    <div class="modal-overlay" id="assetImportWizardModal">
+      <div class="modal" style="max-width:760px;">
+        <button class="modal-close" onclick="closeAssetImportWizard()">&times;</button>
+        <h2>📊 Assets importeren uit CSV</h2>
+        <p class="subtitle">
+          Importeer een CSV-export uit GBI World, iAsset, Antea Beheer of een eigen tool.
+          Auto-mapping van Nederlandse kolomnamen — geen handmatig mappen nodig.
+          <a href="/gbi-imbor-import-setup" target="_blank" style="color:var(--accent);text-decoration:none;">→ Setup-handleiding</a>
+        </p>
+
+        <!-- Stap 1: Upload -->
+        <div id="aiwStep1" style="margin-top:18px;">
+          <div id="aiwDropZone" style="border:2px dashed var(--border);border-radius:14px;padding:36px 24px;text-align:center;background:var(--card-bg-hover);cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('aiwFileInput').click()">
+            <div style="font-size:48px;margin-bottom:12px;opacity:0.5;">📂</div>
+            <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px;">Sleep een CSV hierheen</div>
+            <div style="font-size:12px;color:var(--text-muted);">of klik om bestand te kiezen</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:12px;">Ondersteund: comma- of semicolon-delimited, UTF-8 of Windows-1252</div>
+          </div>
+          <input type="file" id="aiwFileInput" accept=".csv,text/csv" style="display:none;" onchange="aiwHandleFile(event.target.files[0])">
+          <div style="margin-top:16px;padding:12px;background:rgba(2,132,199,0.05);border-radius:8px;font-size:12px;color:var(--text-muted);line-height:1.6;">
+            <strong style="color:var(--text);">Verwachte kolommen (auto-detect):</strong>
+            <ul style="margin:8px 0 0 18px;padding:0;">
+              <li><code>code</code> / <code>objectnummer</code> / <code>asset_id</code> — verplicht</li>
+              <li><code>asset_type</code> / <code>objecttype</code> / <code>categorie</code> — verplicht</li>
+              <li><code>naam</code> / <code>omschrijving</code></li>
+              <li><code>lat</code>/<code>lng</code> of <code>RD x/y</code> (auto-converted naar WGS84)</li>
+              <li><code>locatie</code> / <code>straat</code> / <code>adres</code></li>
+              <li><code>parent_code</code> / <code>hoofdobject</code> (voor hiërarchie)</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Stap 2: Preview + Dry-run resultaten -->
+        <div id="aiwStep2" style="display:none;margin-top:18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div>
+              <strong style="color:var(--text);" id="aiwFileName">filename.csv</strong>
+              <span style="color:var(--text-dim);font-size:12px;margin-left:8px;" id="aiwFileSize"></span>
+            </div>
+            <button class="btn-secondary" onclick="aiwReset()" style="font-size:12px;padding:5px 10px;">↻ Ander bestand</button>
+          </div>
+
+          <!-- Dry-run summary -->
+          <div id="aiwSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:14px;">
+            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
+              <div style="font-size:22px;font-weight:800;color:var(--text);" id="aiwTotal">—</div>
+              <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;">Totaal rijen</div>
+            </div>
+            <div style="background:rgba(22,163,74,0.06);border:1px solid rgba(22,163,74,0.3);border-radius:10px;padding:12px;text-align:center;">
+              <div style="font-size:22px;font-weight:800;color:#16a34a;" id="aiwCreated">—</div>
+              <div style="font-size:10px;color:#15803d;text-transform:uppercase;letter-spacing:0.06em;">Nieuw aanmaken</div>
+            </div>
+            <div style="background:rgba(2,132,199,0.06);border:1px solid rgba(2,132,199,0.3);border-radius:10px;padding:12px;text-align:center;">
+              <div style="font-size:22px;font-weight:800;color:#0284c7;" id="aiwUpdated">—</div>
+              <div style="font-size:10px;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em;">Bijwerken</div>
+            </div>
+            <div style="background:rgba(234,88,12,0.06);border:1px solid rgba(234,88,12,0.3);border-radius:10px;padding:12px;text-align:center;">
+              <div style="font-size:22px;font-weight:800;color:#ea580c;" id="aiwErrors">—</div>
+              <div style="font-size:10px;color:#9a3412;text-transform:uppercase;letter-spacing:0.06em;">Fouten</div>
+            </div>
+          </div>
+
+          <!-- Detected mapping -->
+          <div style="margin-bottom:14px;padding:10px 12px;background:var(--card-bg-hover);border-radius:8px;font-size:11px;">
+            <strong style="color:var(--text);">Gedetecteerde kolom-mapping:</strong>
+            <div id="aiwMappingDisplay" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;"></div>
+          </div>
+
+          <!-- Preview rows -->
+          <div style="margin-bottom:14px;">
+            <strong style="color:var(--text);font-size:12px;">Eerste 5 rijen preview:</strong>
+            <div style="margin-top:6px;overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
+              <table style="width:100%;border-collapse:collapse;font-size:11px;" id="aiwPreviewTable">
+                <thead style="background:var(--card-bg-hover);"><tr>
+                  <th style="padding:6px 10px;text-align:left;">Code</th>
+                  <th style="padding:6px 10px;text-align:left;">Type</th>
+                  <th style="padding:6px 10px;text-align:left;">Naam</th>
+                  <th style="padding:6px 10px;text-align:left;">Locatie</th>
+                  <th style="padding:6px 10px;text-align:left;">GPS</th>
+                </tr></thead>
+                <tbody id="aiwPreviewBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Errors (collapsible) -->
+          <div id="aiwErrorsBlock" style="display:none;margin-bottom:14px;padding:10px;background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2);border-radius:8px;">
+            <strong style="color:#dc2626;font-size:12px;">⚠️ Foutmeldingen per rij:</strong>
+            <div id="aiwErrorsList" style="margin-top:8px;font-size:11px;font-family:'JetBrains Mono',monospace;max-height:120px;overflow-y:auto;"></div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" onclick="closeAssetImportWizard()">Annuleren</button>
+            <button type="button" class="btn-primary" onclick="aiwCommit()" id="aiwCommitBtn">💾 Definitief importeren</button>
+          </div>
         </div>
       </div>
     </div>
@@ -11580,6 +11761,293 @@
         showToast('Import mislukt: ' + err.message, 'error');
       }).finally(function() {
         updateNwbImportBtn();
+      });
+    }
+
+    // ── Melding-export naar GBI-conform CSV (laag 3) ─────────────
+    function openMeldingExportModal() {
+      var modal = document.getElementById('meldingExportModal');
+      if (!modal) return;
+      // Project-dropdown vullen
+      var projSel = document.getElementById('mexProject');
+      projSel.innerHTML = '<option value="">Alle projecten</option>';
+      (allProjects || []).forEach(function(p) {
+        var opt = document.createElement('option');
+        opt.value = p.id; opt.textContent = p.name;
+        projSel.appendChild(opt);
+      });
+      if (!allProjects || !allProjects.length) {
+        api('GET', '/api/projects/').then(function(ps) {
+          allProjects = ps || [];
+          (ps || []).forEach(function(p) {
+            var opt = document.createElement('option');
+            opt.value = p.id; opt.textContent = p.name;
+            projSel.appendChild(opt);
+          });
+        }).catch(function(){});
+      }
+      // Default: alle statussen, deze maand
+      document.getElementById('mexStatus').value = '';
+      setMexPreset('month');
+      modal.classList.add('active');
+    }
+
+    function closeMeldingExportModal() {
+      var modal = document.getElementById('meldingExportModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function setMexPreset(preset) {
+      var today = new Date();
+      var from = null, to = null;
+      if (preset === 'all') {
+        from = null; to = null;
+      } else if (preset === 'month') {
+        from = new Date(today.getFullYear(), today.getMonth(), 1);
+        to = today;
+      } else if (preset === 'lastmonth') {
+        from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        to = new Date(today.getFullYear(), today.getMonth(), 0);
+      } else if (preset === 'quarter') {
+        var qStart = Math.floor(today.getMonth() / 3) * 3;
+        from = new Date(today.getFullYear(), qStart, 1);
+        to = today;
+      } else if (preset === 'year') {
+        from = new Date(today.getFullYear(), 0, 1);
+        to = today;
+      }
+      var iso = function(d) {
+        if (!d) return '';
+        return d.getFullYear() + '-' +
+          String(d.getMonth() + 1).padStart(2, '0') + '-' +
+          String(d.getDate()).padStart(2, '0');
+      };
+      document.getElementById('mexFrom').value = iso(from);
+      document.getElementById('mexTo').value = iso(to);
+    }
+
+    function downloadMeldingExport() {
+      var format = document.getElementById('mexFormat').value || 'imbor';
+      var status = document.getElementById('mexStatus').value;
+      var project = document.getElementById('mexProject').value;
+      var fromV = document.getElementById('mexFrom').value;
+      var toV = document.getElementById('mexTo').value;
+
+      var qs = 'format=' + encodeURIComponent(format);
+      if (status) qs += '&status=' + encodeURIComponent(status);
+      if (project) qs += '&project_id=' + encodeURIComponent(project);
+      if (fromV) qs += '&from=' + encodeURIComponent(fromV);
+      if (toV) qs += '&to=' + encodeURIComponent(toV);
+
+      var token = localStorage.getItem('fieldops_token') || '';
+      showToast('CSV genereren...', 'info');
+      fetch('/api/meldingen/export.csv?' + qs, {
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+      }).then(function(r) {
+        if (!r.ok) return r.json().then(function(j) { throw new Error(j.detail || ('HTTP ' + r.status)); });
+        var disp = r.headers.get('Content-Disposition') || '';
+        var match = disp.match(/filename="([^"]+)"/);
+        var filename = match ? match[1] : ('meldingen-export-' + format + '.csv');
+        var count = r.headers.get('X-Export-Count') || '?';
+        return r.blob().then(function(blob) { return { blob: blob, filename: filename, count: count }; });
+      }).then(function(result) {
+        var url = window.URL.createObjectURL(result.blob);
+        var a = document.createElement('a');
+        a.href = url; a.download = result.filename;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        closeMeldingExportModal();
+        showToast(result.count + ' meldingen geëxporteerd naar ' + format.toUpperCase(), 'success');
+      }).catch(function(err) {
+        showToast('Export mislukt: ' + (err.message || ''), 'error');
+      });
+    }
+
+    // ── Asset CSV-import wizard (laag 2 GBI-aansluiting) ─────────
+    // Multi-stap: upload → dry-run (preview + counts) → bevestig → echt importeren
+    var _aiwFile = null;
+    var _aiwDryRunResult = null;
+
+    function openAssetImportWizard() {
+      aiwReset();
+      var modal = document.getElementById('assetImportWizardModal');
+      if (modal) modal.classList.add('active');
+      // Drag-and-drop bind (idempotent)
+      var dz = document.getElementById('aiwDropZone');
+      if (dz && !dz._dragBound) {
+        ['dragenter', 'dragover'].forEach(function(ev) {
+          dz.addEventListener(ev, function(e) {
+            e.preventDefault(); e.stopPropagation();
+            dz.style.borderColor = '#0284c7';
+            dz.style.background = 'rgba(2,132,199,0.06)';
+          });
+        });
+        ['dragleave', 'drop'].forEach(function(ev) {
+          dz.addEventListener(ev, function(e) {
+            e.preventDefault(); e.stopPropagation();
+            dz.style.borderColor = 'var(--border)';
+            dz.style.background = 'var(--card-bg-hover)';
+          });
+        });
+        dz.addEventListener('drop', function(e) {
+          var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+          if (f) aiwHandleFile(f);
+        });
+        dz._dragBound = true;
+      }
+    }
+
+    function closeAssetImportWizard() {
+      var modal = document.getElementById('assetImportWizardModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function aiwReset() {
+      _aiwFile = null;
+      _aiwDryRunResult = null;
+      document.getElementById('aiwStep1').style.display = '';
+      document.getElementById('aiwStep2').style.display = 'none';
+      var input = document.getElementById('aiwFileInput');
+      if (input) input.value = '';
+    }
+
+    function aiwHandleFile(file) {
+      if (!file) return;
+      if (!/\.csv$/i.test(file.name) && file.type !== 'text/csv') {
+        showToast('Alleen CSV-bestanden worden ondersteund', 'error');
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        showToast('Bestand te groot (max 50 MB). Splits in kleinere bestanden.', 'error');
+        return;
+      }
+      _aiwFile = file;
+      // Direct dry-run uitvoeren
+      var fd = new FormData();
+      fd.append('file', file);
+      var token = localStorage.getItem('fieldops_token') || '';
+      showToast('CSV analyseren...', 'info');
+      var commitBtn = document.getElementById('aiwCommitBtn');
+      if (commitBtn) { commitBtn.disabled = true; commitBtn.textContent = '⏳ Analyseren...'; }
+
+      fetch('/api/assets/import/csv?dry_run=true', {
+        method: 'POST',
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        body: fd,
+      }).then(function(r) {
+        if (!r.ok) {
+          return r.json().then(function(j) {
+            var d = j.detail;
+            if (typeof d === 'string') throw new Error(d);
+            if (d && typeof d === 'object') throw Object.assign(new Error(d.error || 'CSV-fout'), { _detailObj: d });
+            throw new Error('Onbekende fout (HTTP ' + r.status + ')');
+          });
+        }
+        return r.json();
+      }).then(function(res) {
+        _aiwDryRunResult = res;
+        aiwRenderPreview(res, file);
+      }).catch(function(err) {
+        if (err._detailObj) {
+          // Bestaande error-modal hergebruiken
+          closeAssetImportWizard();
+          showCsvImportErrorModal(err._detailObj);
+        } else {
+          showToast('CSV analyse mislukt: ' + (err.message || 'fout'), 'error');
+        }
+      }).finally(function() {
+        if (commitBtn) { commitBtn.disabled = false; commitBtn.textContent = '💾 Definitief importeren'; }
+      });
+    }
+
+    function aiwRenderPreview(res, file) {
+      // Switch naar stap 2
+      document.getElementById('aiwStep1').style.display = 'none';
+      document.getElementById('aiwStep2').style.display = '';
+
+      // Filename + size
+      document.getElementById('aiwFileName').textContent = file.name;
+      var sizeKb = (file.size / 1024).toFixed(1);
+      var sizeStr = file.size > 1024 * 1024 ? (file.size / 1024 / 1024).toFixed(2) + ' MB' : sizeKb + ' KB';
+      document.getElementById('aiwFileSize').textContent = sizeStr + ' · delimiter: ' + (res.delimiter === ';' ? 'semicolon' : 'comma');
+
+      // Counts
+      document.getElementById('aiwTotal').textContent = res.total_rows || 0;
+      document.getElementById('aiwCreated').textContent = res.created || 0;
+      document.getElementById('aiwUpdated').textContent = res.updated || 0;
+      var errs = (res.errors || []).length;
+      document.getElementById('aiwErrors').textContent = errs;
+
+      // Mapping display
+      var mappingEl = document.getElementById('aiwMappingDisplay');
+      var mapping = res.detected_mapping || {};
+      var mappingHtml = Object.keys(mapping).map(function(target) {
+        return '<span style="background:var(--card-bg);border:1px solid var(--border);padding:3px 8px;border-radius:12px;font-family:\'JetBrains Mono\',monospace;font-size:10px;">' +
+          target + ' <span style="color:var(--text-dim);">←</span> ' + escapeHtml(mapping[target]) +
+          '</span>';
+      }).join('');
+      mappingEl.innerHTML = mappingHtml || '<em style="color:var(--text-dim);">geen mapping</em>';
+
+      // Preview rows
+      var tbody = document.getElementById('aiwPreviewBody');
+      var rows = res.preview_rows || [];
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;text-align:center;color:var(--text-dim);">Geen preview-rijen beschikbaar</td></tr>';
+      } else {
+        tbody.innerHTML = rows.map(function(r) {
+          var gps = (r.lat != null && r.lng != null) ? r.lat.toFixed(5) + ', ' + r.lng.toFixed(5) : '<span style="color:var(--text-dim);">—</span>';
+          return '<tr style="border-top:1px solid var(--border);">' +
+            '<td style="padding:6px 10px;font-family:\'JetBrains Mono\',monospace;">' + escapeHtml(r.code || '') + '</td>' +
+            '<td style="padding:6px 10px;">' + escapeHtml(r.asset_type || '') + '</td>' +
+            '<td style="padding:6px 10px;">' + escapeHtml(r.name || '') + '</td>' +
+            '<td style="padding:6px 10px;color:var(--text-muted);">' + escapeHtml((r.location_description || '').slice(0, 40)) + '</td>' +
+            '<td style="padding:6px 10px;font-family:\'JetBrains Mono\',monospace;font-size:10px;">' + gps + '</td>' +
+          '</tr>';
+        }).join('');
+      }
+
+      // Errors
+      var errBlock = document.getElementById('aiwErrorsBlock');
+      var errList = document.getElementById('aiwErrorsList');
+      if (errs > 0) {
+        errBlock.style.display = '';
+        errList.innerHTML = res.errors.slice(0, 20).map(function(e) {
+          return '<div style="padding:3px 0;">Rij ' + e.row + ': ' + escapeHtml(e.error) + '</div>';
+        }).join('') + (errs > 20 ? '<div style="padding:3px 0;color:var(--text-dim);font-style:italic;">... en ' + (errs - 20) + ' meer</div>' : '');
+      } else {
+        errBlock.style.display = 'none';
+      }
+    }
+
+    function aiwCommit() {
+      if (!_aiwFile) {
+        showToast('Geen bestand geselecteerd', 'error');
+        return;
+      }
+      var commitBtn = document.getElementById('aiwCommitBtn');
+      if (commitBtn) { commitBtn.disabled = true; commitBtn.textContent = '⏳ Importeren...'; }
+
+      var fd = new FormData();
+      fd.append('file', _aiwFile);
+      var token = localStorage.getItem('fieldops_token') || '';
+      // dry_run=false (default)
+      fetch('/api/assets/import/csv', {
+        method: 'POST',
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        body: fd,
+      }).then(function(r) {
+        if (!r.ok) return r.json().then(function(j) { throw new Error(j.detail || 'Import mislukt'); });
+        return r.json();
+      }).then(function(res) {
+        showToast('✅ Geïmporteerd: ' + (res.created || 0) + ' nieuw, ' + (res.updated || 0) + ' bijgewerkt' +
+                  (res.errors && res.errors.length ? ' (' + res.errors.length + ' fouten)' : ''),
+                  res.errors && res.errors.length ? 'warning' : 'success');
+        closeAssetImportWizard();
+        loadAssets();
+      }).catch(function(err) {
+        showToast('Import mislukt: ' + (err.message || ''), 'error');
+      }).finally(function() {
+        if (commitBtn) { commitBtn.disabled = false; commitBtn.textContent = '💾 Definitief importeren'; }
       });
     }
 

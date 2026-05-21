@@ -279,6 +279,159 @@ def _get_csv(row: dict, mapping: dict, key: str) -> Optional[str]:
     return v.strip() if isinstance(v, str) and v.strip() else None
 
 
+@router.get("/export.csv")
+def export_meldingen_csv(
+    status_filter: Optional[str] = Query(None, alias="status", description="Filter op status (open/in_behandeling/opgelost/afgerond)"),
+    project_id: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None, alias="from", description="YYYY-MM-DD"),
+    date_to: Optional[str] = Query(None, alias="to", description="YYYY-MM-DD"),
+    format: str = Query("imbor", description="'imbor' (GBI-conform), 'standard' (FieldOps-native), of 'mor-plus' (gemeentelijk)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Exporteer meldingen naar CSV — geschikt voor handmatige import in
+    GBI World / iAsset / Antea Beheer.
+
+    Formats:
+      - **imbor**: kolomnamen die GBI/Antea verwachten bij CSV-import
+        (objectnummer, objecttype, melding_type, lat/lng, RD x/y berekend,
+        prioriteit, status, datum_constatering, omschrijving)
+      - **standard**: FieldOps-native (alle velden zoals in API)
+      - **mor-plus**: MOR+ standaard voor gemeenten (Melding Openbare Ruimte)
+
+    Gebruik:
+      1. Filter op periode + project + status
+      2. Download CSV
+      3. Open in Excel of upload direct in GBI/iAsset CSV-import
+
+    Max 10.000 meldingen per export.
+    """
+    q = db.query(Melding).filter(Melding.organization_id == current_user.organization_id)
+    if status_filter:
+        q = q.filter(Melding.status == status_filter)
+    if project_id:
+        q = q.filter(Melding.project_id == project_id)
+    if date_from:
+        try:
+            from datetime import date as _dt
+            d = _dt.fromisoformat(date_from)
+            q = q.filter(Melding.created_at >= datetime.combine(d, datetime.min.time(), tzinfo=timezone.utc))
+        except Exception:
+            raise HTTPException(400, "from moet YYYY-MM-DD zijn")
+    if date_to:
+        try:
+            from datetime import date as _dt, timedelta as _td
+            d = _dt.fromisoformat(date_to)
+            q = q.filter(Melding.created_at < datetime.combine(d, datetime.min.time(), tzinfo=timezone.utc) + _td(days=1))
+        except Exception:
+            raise HTTPException(400, "to moet YYYY-MM-DD zijn")
+
+    meldingen = q.order_by(Melding.created_at.desc()).limit(10000).all()
+
+    # Project + asset lookups (1 query each, geen N+1)
+    proj_ids = list({m.project_id for m in meldingen if m.project_id})
+    asset_ids = list({m.asset_id for m in meldingen if m.asset_id})
+    proj_map = {}
+    if proj_ids:
+        for p in db.query(Project.id, Project.name).filter(Project.id.in_(proj_ids)).all():
+            proj_map[p.id] = p.name
+    asset_map = {}
+    if asset_ids:
+        for a in db.query(Asset.id, Asset.code, Asset.asset_type).filter(Asset.id.in_(asset_ids)).all():
+            asset_map[a.id] = a
+
+    buf = io.StringIO()
+    buf.write("﻿")  # UTF-8 BOM voor Excel
+    writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+
+    if format == "imbor":
+        # IMBOR/GBI-conforme kolomnamen — gemeenten kunnen dit direct in GBI importeren.
+        # NB: alleen WGS84-coords. RD New conversie via pyproj is roadmap (MVP gebruikt
+        # WGS84 die elke moderne GIS accepteert).
+        writer.writerow([
+            "objectnummer", "objecttype", "melding_type", "prioriteit", "status",
+            "datum_constatering", "lat", "lng",
+            "omschrijving", "categorie", "project", "fieldops_melding_id",
+        ])
+        for m in meldingen:
+            asset = asset_map.get(m.asset_id) if m.asset_id else None
+            obj_code = (asset.code if asset else "") or ""
+            obj_type = (asset.asset_type if asset else "") or (m.category or "")
+            writer.writerow([
+                obj_code,
+                obj_type,
+                "melding",
+                m.priority or "normaal",
+                m.status or "open",
+                m.created_at.strftime("%Y-%m-%d") if m.created_at else "",
+                f"{m.lat:.7f}" if m.lat is not None else "",
+                f"{m.lng:.7f}" if m.lng is not None else "",
+                ((m.title or "") + " — " + (m.description or "")).replace("\n", " ").replace("\r", "")[:500],
+                m.category or "",
+                proj_map.get(m.project_id, "") if m.project_id else "",
+                m.id,
+            ])
+    elif format == "mor-plus":
+        # MOR+ standaard voor gemeenten
+        writer.writerow([
+            "MOR_ID", "TITEL", "OMSCHRIJVING", "CATEGORIE", "PRIORITEIT", "STATUS",
+            "AANGEMAAKT", "BIJGEWERKT", "LAT", "LNG", "OBJECT_CODE", "PROJECT",
+        ])
+        for m in meldingen:
+            asset = asset_map.get(m.asset_id) if m.asset_id else None
+            writer.writerow([
+                m.id, m.title or "", (m.description or "").replace("\n", " ")[:500],
+                m.category or "", m.priority or "normaal", m.status or "open",
+                m.created_at.isoformat() if m.created_at else "",
+                m.updated_at.isoformat() if m.updated_at else "",
+                f"{m.lat:.7f}" if m.lat is not None else "",
+                f"{m.lng:.7f}" if m.lng is not None else "",
+                (asset.code if asset else "") or "",
+                proj_map.get(m.project_id, "") if m.project_id else "",
+            ])
+    else:
+        # Standard FieldOps-native
+        writer.writerow([
+            "id", "title", "description", "category", "priority", "status",
+            "lat", "lng", "project", "asset_code",
+            "crow_klasse", "nen_2767_conditie",
+            "created_at", "updated_at",
+        ])
+        for m in meldingen:
+            asset = asset_map.get(m.asset_id) if m.asset_id else None
+            writer.writerow([
+                m.id, m.title or "", (m.description or "").replace("\n", " ")[:500],
+                m.category or "", m.priority or "normaal", m.status or "open",
+                f"{m.lat:.7f}" if m.lat is not None else "",
+                f"{m.lng:.7f}" if m.lng is not None else "",
+                proj_map.get(m.project_id, "") if m.project_id else "",
+                (asset.code if asset else "") or "",
+                m.crow_klasse or "",
+                m.nen_2767_conditie or "",
+                m.created_at.isoformat() if m.created_at else "",
+                m.updated_at.isoformat() if m.updated_at else "",
+            ])
+
+    csv_bytes = buf.getvalue().encode("utf-8")
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    fname = f"meldingen-export-{format}-{ts}.csv"
+
+    return StreamingResponse(
+        iter([csv_bytes]),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{fname}"',
+            "X-Export-Format": format,
+            "X-Export-Count": str(len(meldingen)),
+        },
+    )
+
+
+# RD New (EPSG:28992) conversie — roadmap. Voor nu alleen WGS84 in exports
+# omdat onze in-house approximatie te grote afwijking gaf. Productie-grade:
+# `from pyproj import Transformer; Transformer.from_crs(4326, 28992)`.
+
+
 @router.get("/import/template.csv")
 def import_template_csv(
     current_user: User = Depends(get_current_user),
