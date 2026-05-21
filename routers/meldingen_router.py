@@ -177,6 +177,13 @@ def create_melding(
     """Nieuwe melding aanmaken."""
     if not can_create_meldingen(current_user):
         raise HTTPException(status_code=403, detail="Je rol heeft geen rechten om meldingen aan te maken")
+    # Photo-offload naar S3 (als geconfigureerd) — backwards compat: base64
+    # blijft werken als env-vars niet gezet zijn
+    from photo_storage import maybe_offload
+    org_id = current_user.organization_id
+    photo_url_final = maybe_offload(data.photo_url, organization_id=org_id, kind="melding")
+    photo_after_url_final = maybe_offload(data.photo_after_url, organization_id=org_id, kind="melding-after")
+
     melding = Melding(
         title=data.title,
         description=data.description,
@@ -184,8 +191,8 @@ def create_melding(
         priority=data.priority or "normaal",
         lat=data.lat,
         lng=data.lng,
-        photo_url=data.photo_url,
-        photo_after_url=data.photo_after_url,
+        photo_url=photo_url_final,
+        photo_after_url=photo_after_url_final,
         project_id=data.project_id,
         asset_id=getattr(data, "asset_id", None),
         organization_id=current_user.organization_id,
@@ -783,6 +790,18 @@ def update_melding(
         else:
             # Leeg-string normaliseren naar None zodat FK NULL wordt
             update_data["project_id"] = None
+
+    # Photo-offload bij updates van photo_url / photo_after_url
+    from photo_storage import maybe_offload, is_data_url
+    org_id = current_user.organization_id
+    if "photo_url" in update_data and is_data_url(update_data["photo_url"]):
+        offloaded = maybe_offload(update_data["photo_url"], organization_id=org_id, kind="melding")
+        if offloaded:
+            update_data["photo_url"] = offloaded
+    if "photo_after_url" in update_data and is_data_url(update_data["photo_after_url"]):
+        offloaded = maybe_offload(update_data["photo_after_url"], organization_id=org_id, kind="melding-after")
+        if offloaded:
+            update_data["photo_after_url"] = offloaded
 
     for field, value in update_data.items():
         setattr(melding, field, value)
