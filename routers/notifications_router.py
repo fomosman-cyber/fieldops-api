@@ -13,7 +13,6 @@ Notifications worden NIET via deze endpoints aangemaakt — alleen door de
 direct (zou anders spam-vector zijn).
 """
 from datetime import datetime, timezone, timedelta
-from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func

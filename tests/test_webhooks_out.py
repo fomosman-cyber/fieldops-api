@@ -3,11 +3,10 @@
 Mock httpx zodat we niet echt naar internet bellen tijdens tests.
 """
 
-import json
 from unittest.mock import patch, MagicMock
 
 from database import SessionLocal
-from models import WebhookEndpoint, WebhookDelivery
+from models import WebhookDelivery
 from webhooks import sign_payload, matches_pattern
 from tests.conftest import auth
 

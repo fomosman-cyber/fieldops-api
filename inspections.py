@@ -21,7 +21,7 @@ import hashlib
 import json
 import os
 import re
-from typing import Any, Optional
+from typing import Optional
 
 import httpx
 

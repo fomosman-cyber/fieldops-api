@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 from datetime import datetime, timedelta, timezone
 from database import get_db
 from models import User, Organization, AuditLog
 from schemas import OrganizationResponse, OrganizationUpdate
-from auth import get_current_user, require_admin
+from auth import get_current_user
 from permissions import require_org_admin
 from audit import log_action, ACTION
 

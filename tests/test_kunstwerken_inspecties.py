@@ -11,11 +11,9 @@ Dekking:
   - Multi-tenant isolation (org A ziet org B niet)
   - Scoring-formule unit tests
 """
-import pytest
-from datetime import datetime, timezone
 
 from database import SessionLocal
-from models import Asset, Inspection, InspectionElement, InspectionDefect, Melding
+from models import Asset, Melding
 from tests.conftest import auth, _make_user
 import nen2767_scoring as scoring
 import kunstwerken_taxonomy as kt

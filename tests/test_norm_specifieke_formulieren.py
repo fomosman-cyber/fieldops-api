@@ -10,11 +10,9 @@ Dekt alle 5 normen die naast NEN 2767-2 leven:
 Plus cross-type validatie: een veld is alleen accepteerbaar voor het juiste
 kunstwerk_type (bv. vta_risicoklasse op een brug-defect = 400).
 """
-import pytest
-from datetime import datetime, timezone
 
 from database import SessionLocal
-from models import Asset, Inspection, InspectionElement, InspectionDefect
+from models import Asset
 from tests.conftest import auth
 
 
@@ -242,7 +240,9 @@ def test_nen3140_metingen_accepted_voor_verlichting(client, admin_user):
         asset = _make_asset(db, user=admin_user, code="LM-001", asset_type="verlichting")
     finally:
         db.close()
-    insp = _new_inspection(client, admin_user, asset.id)
+    # NEN 3140-keuring vereist nu inspecteur_certificaat (VOP/VP/VIOP)
+    insp = _new_inspection(client, admin_user, asset.id,
+                           inspecteur_certificaat="VP")
     el_id = _first_element_id(client, admin_user, insp["id"])
     r = _add_defect(client, admin_user, insp["id"], el_id, {
         "gebrek_naam": "Slechte isolatie",

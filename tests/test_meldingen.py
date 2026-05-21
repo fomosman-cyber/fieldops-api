@@ -1,8 +1,6 @@
 """RBAC-matrix tests voor meldingen-router. Eén test per rol per actie."""
 
 import pytest
-from database import SessionLocal
-from models import Melding
 from tests.conftest import auth
 
 

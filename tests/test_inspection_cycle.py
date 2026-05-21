@@ -6,12 +6,11 @@ Dekking:
   - 5 cycle-router endpoints
   - Multi-tenant isolation
 """
-import pytest
 from datetime import datetime, timedelta, timezone
 
 from database import SessionLocal
 from models import Asset, Inspection
-from tests.conftest import auth, _make_user
+from tests.conftest import auth
 import inspection_cycle as cycle
 
 

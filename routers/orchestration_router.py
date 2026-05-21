@@ -31,7 +31,6 @@ from orchestration import (
     assign_cluster,
     my_clusters,
     cluster_summary,
-    users_with_skill,
 )
 from crow_kosten import SKILL_CODES, MAATREGEL_TO_SKILL
 

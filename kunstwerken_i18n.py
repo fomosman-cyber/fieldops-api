@@ -9,7 +9,6 @@ Frontend roept `GET /api/kunstwerken-inspecties/i18n/{lang}` om de
 label-map voor een bepaalde taal op te halen.
 """
 from __future__ import annotations
-from typing import Optional
 
 
 # ─────────────────────────────────────────────────────────────────────────────

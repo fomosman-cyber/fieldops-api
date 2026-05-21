@@ -24,7 +24,7 @@ zodat queries en PDF-rapport altijd identieke waarden tonen.
 """
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List
+from typing import Optional
 import csv
 import io
 import re
@@ -35,7 +35,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from database import get_db
 from models import (
-    User, Asset, Project, Melding,
+    User, Asset, Melding,
     Inspection, InspectionElement, InspectionDefect, InspectionAnswer,
 )
 from schemas import (
@@ -1058,7 +1058,7 @@ def export_inspection_csv(
 
     w.writerow([])
     w.writerow([f"Geëxporteerd op {datetime.now(timezone.utc).isoformat()}"])
-    w.writerow([f"Conform NEN 2767-2 + CROW 134"])
+    w.writerow(["Conform NEN 2767-2 + CROW 134"])
     w.writerow(["LET OP: scores berekend volgens NEN 2767-2 worst-defect-rule"])
 
     buf.seek(0)

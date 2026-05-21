@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User, Oplevering, OpleveringPunt, Asset
 from auth import get_current_user
-from audit import log_action, ACTION
+from audit import log_action
 from email_service import send_oplevering_email
 
 

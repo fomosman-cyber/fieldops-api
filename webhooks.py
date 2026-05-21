@@ -21,7 +21,7 @@ import hashlib
 import hmac
 import json
 import time
-from typing import Any, Optional
+from typing import Optional
 
 import httpx
 

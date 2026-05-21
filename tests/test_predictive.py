@@ -115,7 +115,6 @@ def test_asset_risk_404(client, admin_user):
 def test_crow_klasse_drives_risk_score(org, admin_user):
     """CROW E3 op een melding moet score significant verhogen via W_CROW (30 pt)."""
     from models import Melding
-    from datetime import datetime, timezone
 
     a = _make_asset_in_db(org, admin_user, code="CROW-E3", installed_years_ago=5,
                           lifespan=20, condition=2)
@@ -144,8 +143,7 @@ def test_crow_klasse_drives_risk_score(org, admin_user):
 def test_crow_klasse_lookup_KO_GO():
     """Sanity check op crow_kosten lookup-module."""
     from crow_kosten import (
-        lookup_maatregel, klasse_to_categorie, klasse_to_termijn,
-        klasse_to_risk_points,
+        lookup_maatregel, klasse_to_categorie, klasse_to_risk_points,
     )
     # M2 → KO
     assert klasse_to_categorie("M2") == "KO"

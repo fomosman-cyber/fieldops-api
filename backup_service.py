@@ -33,7 +33,6 @@ import io
 import subprocess
 import shutil
 from datetime import datetime, timezone
-from typing import Optional
 
 
 S3_BUCKET = os.getenv("S3_BUCKET", "")

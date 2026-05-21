@@ -163,7 +163,6 @@ async def drive_upload(
 
     Body: multipart met 'file' veld. Returnt {file_id, web_view_link}.
     """
-    from fastapi import UploadFile, File
     form = await request.form()
     f = form.get("file")
     if f is None or not hasattr(f, "filename"):

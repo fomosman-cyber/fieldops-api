@@ -20,7 +20,6 @@ from __future__ import annotations
 import base64
 import json
 import os
-import time
 from typing import Optional
 
 # pywebpush is een lichte dependency die de hele encryptie/JWT/fetch afhandelt.
@@ -88,7 +87,6 @@ def generate_vapid_keys() -> dict:
     """
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.hazmat.primitives import serialization
 
     private_key = ec.generate_private_key(ec.SECP256R1(), default_backend())
     raw_priv = private_key.private_numbers().private_value.to_bytes(32, "big")
@@ -103,5 +101,5 @@ def generate_vapid_keys() -> dict:
     print("Add to Render env:")
     for k, v in out.items():
         print(f"  {k}={v}")
-    print(f"  VAPID_SUBJECT=mailto:info@fieldopsapp.nl")
+    print("  VAPID_SUBJECT=mailto:info@fieldopsapp.nl")
     return out

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Project, User, Melding
-from schemas import ProjectCreate, ProjectResponse, ProjectUpdate
+from schemas import ProjectCreate, ProjectUpdate
 from auth import get_current_user, require_admin
 from audit import log_action, ACTION
 

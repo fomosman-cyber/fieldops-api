@@ -686,8 +686,8 @@ def export_mjop_pdf(
 
         pdf.set_font("Helvetica", "", 10)
         pdf.multi_cell(0, 5,
-            f"Hieronder de uitgewerkte berekening voor de duurste MJOP-regel in "
-            f"dit rapport, zodat je kunt zien hoe min/max tot stand komt.\n"
+            "Hieronder de uitgewerkte berekening voor de duurste MJOP-regel in "
+            "dit rapport, zodat je kunt zien hoe min/max tot stand komt.\n"
         )
         pdf.ln(2)
 

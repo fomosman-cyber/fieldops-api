@@ -20,16 +20,15 @@ manueel hercomputeren.
 """
 from __future__ import annotations
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
 
 from database import get_db
-from models import User, Asset, Inspection
+from models import User, Asset
 from auth import get_current_user
-from audit import log_action, ACTION
+from audit import log_action
 
 import inspection_cycle as cycle
 

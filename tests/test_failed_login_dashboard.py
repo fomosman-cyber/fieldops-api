@@ -10,7 +10,6 @@ de bestaande rate-limit-pipeline al schrijft.
 
 from datetime import datetime, timezone, timedelta
 import json
-import pytest
 
 from auth import (
     LOGIN_RATE_LIMIT_PER_EMAIL,

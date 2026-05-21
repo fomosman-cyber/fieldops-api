@@ -1,8 +1,9 @@
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, FileResponse, Response
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone  # noqa: F401 — used in /api/status/* defensive guards
 from pathlib import Path
 from pydantic import BaseModel
 import asyncio
@@ -1173,9 +1174,8 @@ class ContactRequest(BaseModel):
 def contact_form(req: ContactRequest, request: Request):
     """Ontvang contactformulier en stuur notificatie email."""
     from auth import check_public_post_rate_limit
-    from audit import log_action, ACTION
+    from audit import ACTION
     from models import AuditLog
-    from datetime import datetime, timezone
 
     # Anti-spam: 3 per email of 10 per IP per uur. Voorkomt mailbom + quota-uit.
     db = SessionLocal()
