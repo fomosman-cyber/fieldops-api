@@ -23,7 +23,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 import math
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func
 
 from models import Asset, Melding, Inspection, InspectionElement, InspectionDefect
 from crow_kosten import klasse_to_risk_points, KLASSE_RISK_POINTS

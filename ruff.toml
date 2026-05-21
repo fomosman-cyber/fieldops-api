@@ -1,0 +1,31 @@
+# Ruff config voor FieldOps — bewust minimaal voor first-pass.
+# Doel: catch echte bugs (unused imports, undefined names) zonder de codebase
+# in een lint-storm te zetten. Stijl-regels uitgebreid in vervolg-PR.
+
+target-version = "py312"
+line-length = 120
+extend-exclude = [
+    "tests/_old_*.py",
+    "reshape_to_*.py",   # one-off scripts
+    "seed_*.py",
+]
+
+[lint]
+# Minimale regelset:
+#   F = pyflakes (unused imports, undefined names, redefinition)
+#   E9 = syntax-errors (catastrofale fouten)
+#   I = isort (imports gesorteerd) — uit voor nu (te veel churn op grote files)
+select = ["F", "E9"]
+
+# Skips voor pragmatische redenen:
+#   F401: __init__.py mag re-exports doen via unused imports (zie per-file-ignores)
+#   F841: 13 bestaande unused-vars genegeerd in initial pass — cleanup in follow-up PR
+ignore = ["F841"]
+
+[lint.per-file-ignores]
+"routers/__init__.py" = ["F401"]
+"tests/conftest.py" = ["F401", "E402"]  # late imports zijn intentional voor env-vars
+
+[format]
+# Ruff format is geen prio in eerste pass — uit
+quote-style = "preserve"

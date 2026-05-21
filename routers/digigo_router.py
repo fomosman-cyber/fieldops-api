@@ -23,7 +23,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Asset, Project
+from models import User, Asset
 from auth import get_current_user
 
 router = APIRouter(prefix="/api/digigo", tags=["DigiGO / OGC API"])

@@ -90,7 +90,7 @@ def _check_rate_limit(db: Session, ip: str, slug: str) -> None:
     if n >= 5:
         raise HTTPException(
             status_code=429,
-            detail=f"Te veel meldingen vanaf dit IP. Probeer over 15 minuten opnieuw.",
+            detail="Te veel meldingen vanaf dit IP. Probeer over 15 minuten opnieuw.",
         )
 
 

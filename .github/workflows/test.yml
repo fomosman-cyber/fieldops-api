@@ -1,4 +1,4 @@
-name: tests
+name: CI
 
 on:
   push:
@@ -7,10 +7,32 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Voorkom dubbele runs op opeenvolgende pushes naar dezelfde branch
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    name: Lint (Ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install Ruff
+        run: pip install "ruff>=0.6.0"
+      - name: Ruff check
+        run: ruff check . --output-format=github
+
   pytest:
+    name: Tests (pytest)
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: lint  # Lint moet groen zijn voordat we tests draaien
 
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +49,7 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run pytest
-        run: pytest tests/ -ra
+        run: pytest tests/ -ra --tb=short
         env:
           # Tests draaien standaard in stub-mode (geen echte AI-calls)
           ANTHROPIC_API_KEY: ""

@@ -1,14 +1,12 @@
 """Job Orchestration Engine — clustering + skills + savings."""
 
-import pytest
 from database import SessionLocal
-from models import Melding, UserSkill, JobCluster
+from models import Melding, UserSkill
 from orchestration import (
-    generate_clusters, users_with_skill, maatregel_specialists,
-    haversine_km,
+    users_with_skill, haversine_km,
 )
 from crow_kosten import (
-    SKILL_CODES, MAATREGEL_TO_SKILL, maatregel_to_skill,
+    SKILL_CODES, maatregel_to_skill,
     estimate_cluster_hours,
 )
 from tests.conftest import auth

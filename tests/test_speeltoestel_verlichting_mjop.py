@@ -1,9 +1,8 @@
 """Tests voor speeltoestel (NEN-EN 1176), verlichting (NEN 3140) en MJOP-export."""
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from database import SessionLocal
-from models import Asset, Inspection
+from models import Asset
 from tests.conftest import auth
 import kunstwerken_taxonomy as kt
 import mjop_kosten as mjop

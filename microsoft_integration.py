@@ -30,7 +30,6 @@ Setup eenmalig:
 
 from __future__ import annotations
 import os
-import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from urllib.parse import urlencode

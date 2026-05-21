@@ -9,7 +9,7 @@
 from datetime import datetime, timezone, timedelta
 from database import SessionLocal
 from models import Asset, Melding
-from predictive import compute_asset_risk, find_geo_clusters, SCORE_VERSION
+from predictive import compute_asset_risk, SCORE_VERSION
 from tests.conftest import auth
 
 
@@ -58,8 +58,9 @@ def test_score_version_is_v2_1(org, admin_user):
         r = compute_asset_risk(db, a)
     finally:
         db.close()
-    assert r["score_version"] == "v2.1-trend"
-    assert SCORE_VERSION == "v2.1-trend"
+    # v2.1-trend → v2.2-norm-aware: inspectie-historie + norm-overrides toegevoegd
+    assert r["score_version"] == "v2.2-norm-aware"
+    assert SCORE_VERSION == "v2.2-norm-aware"
 
 
 # ─── Trend-detectie ───────────────────────────────────────────────────────────

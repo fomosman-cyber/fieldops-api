@@ -341,7 +341,7 @@ FieldOps
 
     return send_email(
         user.email,
-        f"Welkom bij FieldOps - uw account is klaar",
+        "Welkom bij FieldOps - uw account is klaar",
         _base_template(content, "Account geactiveerd"),
     )
 
@@ -359,7 +359,6 @@ def send_oplevering_email(oplevering, recipients: list[str], *, trigger: str = "
         dict met counts: {"sent": int, "failed": int, "skipped": int}
     """
     import json
-    from datetime import datetime
 
     if not recipients:
         return {"sent": 0, "failed": 0, "skipped": 0}

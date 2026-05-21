@@ -25,7 +25,7 @@ import io
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func
 from pydantic import BaseModel, Field
 
 from database import get_db

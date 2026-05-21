@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from database import get_db
-from models import User, GoogleOAuthToken, MicrosoftOAuthToken, Melding, Organization
+from models import User, GoogleOAuthToken, MicrosoftOAuthToken, Melding
 from auth import get_current_user
 from permissions import require_org_admin
 from pydantic import BaseModel
@@ -193,7 +193,7 @@ def make_external_link(
     description_lines.append("")
     description_lines.append(melding.description or "")
     description_lines.append("")
-    description_lines.append(f"---")
+    description_lines.append("---")
     description_lines.append(f"Open in FieldOps: {portal_url}")
     description = "\n".join(description_lines)
 

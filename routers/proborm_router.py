@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session, joinedload
 
 from database import get_db
-from models import User, Asset, Inspection, InspectionElement, InspectionAnswer
+from models import User, Asset, Inspection, InspectionElement
 from auth import get_current_user
 
 router = APIRouter(prefix="/api/proborm", tags=["PROBORM"])

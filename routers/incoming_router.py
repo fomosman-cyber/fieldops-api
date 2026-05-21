@@ -26,8 +26,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import IncomingWebhook, Melding, User, Project, Asset
-from auth import get_current_user
+from models import IncomingWebhook, Melding, User
 from permissions import require_org_admin
 from audit import log_action, ACTION
 

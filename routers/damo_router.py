@@ -16,8 +16,7 @@ Productie-versie: caching + bulk-import-job voor 1000+ objecten.
 MVP: directe calls + per-object processing.
 """
 from __future__ import annotations
-from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel

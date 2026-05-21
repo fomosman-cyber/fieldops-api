@@ -5,7 +5,6 @@
   POST /api/nwb/import-wegvakken
 """
 
-from datetime import datetime, timezone
 import json
 from typing import Optional
 
@@ -17,7 +16,7 @@ from database import get_db
 from models import Asset, User
 from auth import get_current_user
 from permissions import require_org_admin, UserRole
-from audit import log_action, ACTION
+from audit import log_action
 import nwb_integration as nwb
 
 router = APIRouter(prefix="/api/nwb", tags=["NWB-Wegvakken"])

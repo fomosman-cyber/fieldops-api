@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import Optional
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from database import get_db

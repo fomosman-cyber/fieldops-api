@@ -19,9 +19,7 @@ en fallback naar generic JSON. Resultaat: titel = subject, description = body
 from datetime import datetime, timezone
 from typing import Optional, List
 import json
-import base64
 import secrets
-import urllib.parse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -29,7 +27,6 @@ from pydantic import BaseModel, Field
 
 from database import get_db
 from models import EmailInboxRoute, Melding, Project, User
-from auth import get_current_user
 from permissions import require_org_admin
 from audit import log_action
 

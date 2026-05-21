@@ -6,12 +6,11 @@ Dekking:
   - GET /<DOC>.md — whitelisted setup-docs serving
 """
 
-import os
 from datetime import datetime, timezone, timedelta
 
 from tests.conftest import auth
 from database import SessionLocal
-from models import GoogleOAuthToken, MicrosoftOAuthToken, User
+from models import GoogleOAuthToken, User
 from auth import hash_password
 
 

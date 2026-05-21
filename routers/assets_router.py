@@ -16,10 +16,10 @@ from typing import Optional, List, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func
 
 from database import get_db
-from models import Asset, Melding, User, Project
+from models import Asset, Melding, User
 from schemas import AssetCreate, AssetUpdate, AssetResponse
 from auth import get_current_user
 from permissions import can_manage_assets, require_org_admin

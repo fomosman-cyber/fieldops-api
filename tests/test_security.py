@@ -10,7 +10,6 @@ import pytest
 
 from auth import (
     validate_password_strength,
-    check_login_rate_limit,
     LOGIN_RATE_LIMIT_PER_EMAIL,
     LOGIN_RATE_LIMIT_PER_IP,
     LOGIN_RATE_LIMIT_WINDOW_MIN,

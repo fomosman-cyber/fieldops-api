@@ -19,16 +19,15 @@ Auth: in productie via X-API-Key + per-sensor scope. In MVP via reguliere
 JWT-auth voor admins.
 """
 from __future__ import annotations
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from typing import Optional
-import json
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Asset, Melding
+from models import User, Melding
 from auth import get_current_user
 from audit import log_action
 

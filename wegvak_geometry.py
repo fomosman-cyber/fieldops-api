@@ -14,7 +14,7 @@ Publieke functies:
 from __future__ import annotations
 
 from math import radians, sin, cos, sqrt, atan2
-from typing import Iterable, List, Sequence, Tuple
+from typing import List, Sequence, Tuple
 
 
 Coord = Sequence[float]   # [lng, lat]

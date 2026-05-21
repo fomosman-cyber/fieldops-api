@@ -21,17 +21,15 @@ Endpoint:
   GET  /api/ai/status     Versie + capabilities
 """
 from __future__ import annotations
-import base64
-import io
 from datetime import datetime, timezone
-from typing import Optional, List
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Asset, Inspection, InspectionDefect, InspectionElement
+from models import User, InspectionDefect, InspectionElement
 from auth import get_current_user
 
 import kunstwerken_taxonomy as kt
