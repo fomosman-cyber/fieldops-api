@@ -50,7 +50,7 @@ else:
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router, kunstwerken_inspecties_router, inspection_cycle_router, mjop_router, risico_router, bag_router, iso55000_router, digigo_router, iot_router, proborm_router, damo_router, ai_photo_router, compliance_router, daybook_router, notifications_router, email_inbox_router, mfa_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router, kunstwerken_inspecties_router, inspection_cycle_router, mjop_router, risico_router, bag_router, iso55000_router, digigo_router, iot_router, proborm_router, damo_router, ai_photo_router, compliance_router, daybook_router, notifications_router, email_inbox_router, mfa_router, public_meld_router
 from audit import assign_request_id
 
 # Maak alle tabellen aan
@@ -212,6 +212,11 @@ def _run_migrations():
                 "streetview_provider_url_template": "TEXT",
                 "beheer_provider_label":            "VARCHAR(80)",
                 "beheer_provider_url_template":     "TEXT",
+                "public_meld_slug":                 "VARCHAR(60)",
+                "public_meld_enabled":              "BOOLEAN DEFAULT FALSE NOT NULL",
+                "public_meld_default_project_id":   "VARCHAR",
+                "public_meld_categories":           "TEXT",
+                "public_meld_intro_text":           "TEXT",
             }
             org_missing = [c for c in org_extra if c not in ocols]
             if org_missing:
@@ -711,6 +716,7 @@ app.include_router(notifications_router.router)
 app.include_router(email_inbox_router.router)
 app.include_router(email_inbox_router.incoming_router)
 app.include_router(mfa_router.router)
+app.include_router(public_meld_router.router)
 
 
 # Request-ID middleware — koppelt elke request aan een correlatie-ID dat
@@ -1216,6 +1222,17 @@ def portaal():
     html = html.replace("{{SENTRY_DSN}}", sentry_dsn)
     html = html.replace("{{SENTRY_ENV}}", sentry_env)
     html = html.replace("{{RELEASE}}", release)
+    return HTMLResponse(content=html)
+
+
+@app.get("/meld/{slug}", response_class=HTMLResponse)
+def public_meld_page(slug: str):
+    """Publieke meld-pagina — burgers melden zonder login.
+
+    Slug-validatie + branding gebeurt client-side via /api/public/org/{slug}/config.
+    De HTML zelf is generiek; geen leakage van bestaan van orgs.
+    """
+    html = (TEMPLATES_DIR / "meld-publiek.html").read_text(encoding="utf-8")
     return HTMLResponse(content=html)
 
 

@@ -2845,6 +2845,55 @@
               </p>
             </div>
 
+            <!-- Burger-portaal lite (publieke meld-pagina) -->
+            <div style="margin-top:8px;padding-top:14px;border-top:1px dashed var(--border);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <div style="font-size:13px;font-weight:600;color:var(--text);">📢 Burger-portaal (publieke meld-pagina)</div>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+                  <input type="checkbox" id="orgPublicMeldEnabled"> Aan
+                </label>
+              </div>
+              <p style="color:var(--text-muted);font-size:11px;margin:0 0 12px;line-height:1.5;">
+                Stel een publieke meld-pagina in waar burgers zonder login meldingen kunnen indienen.
+                Gebruik QR-codes op assets of publiceer de URL op je gemeente-site.
+                Spam-bescherming via rate-limit + honeypot is standaard ingebouwd.
+              </p>
+              <div style="display:grid;grid-template-columns:1fr 2fr;gap:10px;">
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:3px;">URL-slug</label>
+                  <input type="text" id="orgPublicMeldSlug" placeholder="gemeentex" maxlength="60" pattern="[a-z0-9-]+" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;">
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:3px;">Publieke URL</label>
+                  <div style="display:flex;gap:6px;align-items:center;">
+                    <input type="text" id="orgPublicMeldUrl" readonly style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg-hover);color:var(--text-muted);font-family:'JetBrains Mono',monospace;font-size:11px;" placeholder="(set slug eerst)">
+                    <button type="button" class="btn-secondary" onclick="copyPublicMeldUrl()" style="font-size:11px;padding:7px 10px;" title="Kopieer URL">📋</button>
+                    <button type="button" class="btn-secondary" onclick="downloadPublicMeldQR()" style="font-size:11px;padding:7px 10px;" title="Download QR-code">🔲 QR</button>
+                  </div>
+                </div>
+              </div>
+              <div style="margin-top:10px;">
+                <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:3px;">Welkom-tekst (optioneel)</label>
+                <textarea id="orgPublicMeldIntro" rows="2" maxlength="500" placeholder="bv. 'Welkom! Gemeente X waardeert je betrokkenheid bij onze openbare ruimte.'" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-family:inherit;font-size:12px;resize:vertical;"></textarea>
+              </div>
+              <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:3px;">Default project</label>
+                  <select id="orgPublicMeldProject" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;">
+                    <option value="">— Geen —</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:3px;">Categorieën (komma-gescheiden)</label>
+                  <input type="text" id="orgPublicMeldCategories" placeholder="Wegdek, Verlichting, Groen, Riolering" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:12px;">
+                </div>
+              </div>
+              <p style="font-size:10px;color:var(--text-dim);margin-top:6px;line-height:1.5;">
+                Slug-vereisten: 3-60 tekens, alleen kleine letters / cijfers / hyphens. Niet wijzigbaar als bestaande URLs in gebruik zijn.
+                Leeg laat de meld-pagina uitgeschakeld.
+              </p>
+            </div>
+
             <!-- Externe beheer-systeem deep-link (GBI / iAsset / Antea / eigen) -->
             <div style="margin-top:8px;padding-top:14px;border-top:1px dashed var(--border);">
               <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;">🏢 Extern beheer-systeem</div>
@@ -17767,6 +17816,43 @@
         var bhUrl = document.getElementById('orgBeheerUrlTemplate');
         if (bhLabel) bhLabel.value = org.beheer_provider_label || '';
         if (bhUrl) bhUrl.value = org.beheer_provider_url_template || '';
+        // Burger-portaal lite
+        var pmEnabled = document.getElementById('orgPublicMeldEnabled');
+        var pmSlug = document.getElementById('orgPublicMeldSlug');
+        var pmIntro = document.getElementById('orgPublicMeldIntro');
+        var pmProj = document.getElementById('orgPublicMeldProject');
+        var pmCats = document.getElementById('orgPublicMeldCategories');
+        if (pmEnabled) pmEnabled.checked = !!org.public_meld_enabled;
+        if (pmSlug) { pmSlug.value = org.public_meld_slug || ''; _updatePublicMeldUrl(); }
+        if (pmIntro) pmIntro.value = org.public_meld_intro_text || '';
+        if (pmCats) {
+          var cats = [];
+          try { cats = JSON.parse(org.public_meld_categories || '[]'); } catch (e) {}
+          pmCats.value = Array.isArray(cats) ? cats.join(', ') : '';
+        }
+        // Project-dropdown vullen (gebruik allProjects)
+        if (pmProj) {
+          pmProj.innerHTML = '<option value="">— Geen —</option>';
+          (allProjects || []).forEach(function(p) {
+            var opt = document.createElement('option');
+            opt.value = p.id; opt.textContent = p.name;
+            if (org.public_meld_default_project_id === p.id) opt.selected = true;
+            pmProj.appendChild(opt);
+          });
+          if (!allProjects || !allProjects.length) {
+            api('GET', '/api/projects/').then(function(ps) {
+              allProjects = ps || [];
+              (ps || []).forEach(function(p) {
+                var opt = document.createElement('option');
+                opt.value = p.id; opt.textContent = p.name;
+                if (org.public_meld_default_project_id === p.id) opt.selected = true;
+                pmProj.appendChild(opt);
+              });
+            }).catch(function(){});
+          }
+        }
+        // Slug input → URL preview
+        if (pmSlug) pmSlug.addEventListener('input', _updatePublicMeldUrl);
       }).catch(function(err){
         console.error('Org laden mislukt:', err);
       });
@@ -17801,6 +17887,46 @@
       if (preview) preview.innerHTML = '<span style="color:var(--text-dim);font-size:11px;">Geen logo</span>';
       var input = document.getElementById('orgLogoInput');
       if (input) input.value = '';
+    }
+
+    // Burger-portaal lite helpers
+    function _updatePublicMeldUrl() {
+      var slug = (document.getElementById('orgPublicMeldSlug').value || '').toLowerCase().trim();
+      var urlEl = document.getElementById('orgPublicMeldUrl');
+      if (!urlEl) return;
+      if (slug && /^[a-z0-9-]+$/.test(slug)) {
+        urlEl.value = window.location.origin + '/meld/' + slug;
+      } else {
+        urlEl.value = slug ? '(ongeldige slug)' : '';
+      }
+    }
+
+    function copyPublicMeldUrl() {
+      var input = document.getElementById('orgPublicMeldUrl');
+      if (!input || !input.value || input.value.indexOf('http') !== 0) {
+        showToast('Vul eerst een geldige slug in', 'error');
+        return;
+      }
+      try {
+        navigator.clipboard.writeText(input.value).then(function() {
+          showToast('URL gekopieerd', 'success');
+        });
+      } catch (e) {
+        showToast('Kopiëren mislukt — selecteer handmatig', 'error');
+      }
+    }
+
+    function downloadPublicMeldQR() {
+      var slug = (document.getElementById('orgPublicMeldSlug').value || '').toLowerCase().trim();
+      if (!slug || !/^[a-z0-9][a-z0-9-]+[a-z0-9]$/.test(slug)) {
+        showToast('Vul eerst een geldige slug in + sla op', 'error');
+        return;
+      }
+      // Server-side endpoint — vereist dat de slug opgeslagen + enabled is
+      var qrUrl = '/api/public/org/' + encodeURIComponent(slug) + '/qr.png';
+      // Open in nieuw tabblad — user kan rechtsklikken / save
+      window.open(qrUrl, '_blank', 'noopener');
+      showToast('QR-code opent in nieuw tabblad — rechtsklik om op te slaan', 'info');
     }
 
     function syncBrandColorFromPicker() {
@@ -17839,6 +17965,23 @@
         showToast('Street-view URL moet {lat} placeholder bevatten', 'error');
         return;
       }
+      // Burger-portaal lite — validatie + payload
+      var pmEnabled = !!(document.getElementById('orgPublicMeldEnabled') || {}).checked;
+      var pmSlug = trim('orgPublicMeldSlug').toLowerCase();
+      var pmIntro = trim('orgPublicMeldIntro');
+      var pmProj = (document.getElementById('orgPublicMeldProject') || {}).value || null;
+      var pmCatsRaw = trim('orgPublicMeldCategories');
+      // Categorieën splitsen op comma's
+      var pmCats = pmCatsRaw ? pmCatsRaw.split(',').map(function(c){ return c.trim(); }).filter(function(c){ return c.length > 0; }) : [];
+      if (pmEnabled && !pmSlug) {
+        showToast('Vul een slug in om burger-portaal aan te zetten', 'error');
+        return;
+      }
+      if (pmSlug && !/^[a-z0-9][a-z0-9-]{1,58}[a-z0-9]$/.test(pmSlug)) {
+        showToast('Slug: 3-60 tekens, alleen letters/cijfers/hyphens, geen edge-hyphens', 'error');
+        return;
+      }
+
       var bhLabel = trim('orgBeheerLabel');
       var bhUrlTmpl = trim('orgBeheerUrlTemplate');
       if (bhUrlTmpl && !/^https?:\/\//i.test(bhUrlTmpl)) {
@@ -17863,6 +18006,11 @@
         streetview_provider_url_template: svUrlTmpl || null,
         beheer_provider_label:            bhLabel || null,
         beheer_provider_url_template:     bhUrlTmpl || null,
+        public_meld_slug:                 pmSlug || null,
+        public_meld_enabled:              pmEnabled,
+        public_meld_intro_text:           pmIntro || null,
+        public_meld_default_project_id:   pmProj || null,
+        public_meld_categories:           pmCats.length ? JSON.stringify(pmCats) : null,
       };
       if (!payload.name) {
         showToast('Organisatie-naam mag niet leeg zijn', 'error');
