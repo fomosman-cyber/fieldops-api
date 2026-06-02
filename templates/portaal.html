@@ -3716,6 +3716,7 @@
           <select id="kwNewAsset" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
             <option value="">— Laden —</option>
           </select>
+          <div id="kwNewGpsHint" style="display:none;margin-top:6px;font-size:11px;padding:6px 10px;border-radius:6px;line-height:1.4;"></div>
         </div>
         <div>
           <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_type">Type (override)</label>
@@ -4976,6 +4977,7 @@
         kwcat_kunstwerken: 'Kunstwerken', kwcat_groen: 'Groen', kwcat_markering: 'Markering',
         kwcat_verlichting: 'Verlichting', kwcat_ondergronds: 'Ondergronds',
         kwcat_aantal: 'inspecties', kwcat_types: 'types', kwm_kies_type: '— Kies type —',
+        kw_gps_zoeken: 'Dichtstbijzijnde asset bepalen…', kw_gps_gevonden: 'Dichtstbijzijnde asset geselecteerd', kw_gps_geen: 'Geen asset binnen 50 m — kies handmatig',
         kwd_en1176_title: 'NEN-EN 1176 veiligheids-classificatie',
         kwd_en1176_acute: '🚨 Toestel direct afsluiten — gebruik blokkeren tot herstel',
         kwd_vta_title: 'VTA boom-classificatie (Mattheck)',
@@ -5451,6 +5453,7 @@
         kwcat_kunstwerken: 'Civil structures', kwcat_groen: 'Green', kwcat_markering: 'Markings',
         kwcat_verlichting: 'Lighting', kwcat_ondergronds: 'Underground',
         kwcat_aantal: 'inspections', kwcat_types: 'types', kwm_kies_type: '— Select type —',
+        kw_gps_zoeken: 'Finding nearest asset…', kw_gps_gevonden: 'Nearest asset selected', kw_gps_geen: 'No asset within 50 m — select manually',
         kwd_en1176_title: 'NEN-EN 1176 safety classification',
         kwd_en1176_acute: '🚨 Close playground equipment immediately — block use until repaired',
         kwd_vta_title: 'VTA tree classification (Mattheck)',
@@ -5926,6 +5929,7 @@
         kwcat_kunstwerken: 'Kunstbauwerke', kwcat_groen: 'Grün', kwcat_markering: 'Markierung',
         kwcat_verlichting: 'Beleuchtung', kwcat_ondergronds: 'Untergrund',
         kwcat_aantal: 'Inspektionen', kwcat_types: 'Typen', kwm_kies_type: '— Typ wählen —',
+        kw_gps_zoeken: 'Nächstgelegenes Objekt suchen…', kw_gps_gevonden: 'Nächstgelegenes Objekt ausgewählt', kw_gps_geen: 'Kein Objekt innerhalb 50 m — manuell wählen',
         kwd_en1176_title: 'NEN-EN 1176 Sicherheits-Klassifikation',
         kwd_en1176_acute: '🚨 Gerät sofort sperren — Nutzung bis zur Reparatur blockieren',
         kwd_vta_title: 'VTA Baum-Klassifikation (Mattheck)',
@@ -6401,6 +6405,7 @@
         kwcat_kunstwerken: 'Ouvrages d\'art', kwcat_groen: 'Espaces verts', kwcat_markering: 'Marquage',
         kwcat_verlichting: 'Éclairage', kwcat_ondergronds: 'Souterrain',
         kwcat_aantal: 'inspections', kwcat_types: 'types', kwm_kies_type: '— Choisir un type —',
+        kw_gps_zoeken: 'Recherche de l\'objet le plus proche…', kw_gps_gevonden: 'Objet le plus proche sélectionné', kw_gps_geen: 'Aucun objet à moins de 50 m — sélection manuelle',
         kwd_en1176_title: 'Classification de sécurité NEN-EN 1176',
         kwd_en1176_acute: '🚨 Fermer l\'équipement immédiatement — bloquer l\'usage jusqu\'à réparation',
         kwd_vta_title: 'Classification VTA arbre (Mattheck)',
@@ -6876,6 +6881,7 @@
         kwcat_kunstwerken: 'Sanat yapıları', kwcat_groen: 'Yeşil alan', kwcat_markering: 'İşaretleme',
         kwcat_verlichting: 'Aydınlatma', kwcat_ondergronds: 'Yeraltı',
         kwcat_aantal: 'muayene', kwcat_types: 'tip', kwm_kies_type: '— Tip seçin —',
+        kw_gps_zoeken: 'En yakın varlık aranıyor…', kw_gps_gevonden: 'En yakın varlık seçildi', kw_gps_geen: '50 m içinde varlık yok — elle seçin',
         kwd_en1176_title: 'NEN-EN 1176 güvenlik sınıflandırması',
         kwd_en1176_acute: '🚨 Cihazı hemen kapat — onarıma kadar kullanımı engelle',
         kwd_vta_title: 'VTA ağaç sınıflandırması (Mattheck)',
@@ -14242,6 +14248,8 @@
       document.getElementById('kwNewInspecteurNaam').value = '';
       document.getElementById('kwNewWeer').value = '';
       document.getElementById('kwNewOpdrachtgever').value = '';
+      var _gpsHint = document.getElementById('kwNewGpsHint');
+      if (_gpsHint) { _gpsHint.style.display = 'none'; _gpsHint.textContent = ''; }
 
       // Vul type-dropdown — optgroups per categorie + respecteer actieve categorie-filter
       var typeSel = document.getElementById('kwNewType');
@@ -14282,6 +14290,8 @@
         });
         // Re-bind onchange zodat type-hint update bij asset-selectie
         sel.onchange = onKwNewTypeChange;
+        // TODO#3: GPS — pre-selecteer de dichtstbijzijnde asset binnen 50 m
+        _kwAutoSelectNearestAsset(items || []);
       });
 
       // Reset NEN-EN 1176 sectie en norm-hint
@@ -14335,6 +14345,63 @@
     }
     function closeNieuweKunstwerkModal() {
       document.getElementById('nieuweKunstwerkModal').classList.remove('active');
+    }
+
+    // ── TODO#3: GPS auto-detect dichtstbijzijnde asset ───────────────────
+    // Bij het openen van de inspectie-modal de asset binnen 50 m automatisch
+    // pre-selecteren. Faalt stil terug op handmatig kiezen (geen GPS, geweigerd,
+    // niets binnen bereik, of als de gebruiker ondertussen zelf al koos).
+    function _haversineMeters(lat1, lng1, lat2, lng2) {
+      var R = 6371000; // aarde-straal (m)
+      var toRad = function(d){ return d * Math.PI / 180; };
+      var dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+      var a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2) * Math.sin(dLng/2);
+      return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+    }
+
+    function _kwAutoSelectNearestAsset(assets) {
+      var sel = document.getElementById('kwNewAsset');
+      var hint = document.getElementById('kwNewGpsHint');
+      if (!sel || !navigator.geolocation) return;
+      var located = (assets || []).filter(function(a){
+        return a.lat != null && a.lng != null &&
+               !isNaN(parseFloat(a.lat)) && !isNaN(parseFloat(a.lng));
+      });
+      if (!located.length) return; // geen asset met GPS-coördinaten
+      var setHint = function(bg, color, txt) {
+        if (!hint) return;
+        hint.style.display = 'block';
+        hint.style.background = bg;
+        hint.style.color = color;
+        hint.textContent = txt;
+      };
+      setHint('rgba(0,0,0,0.04)', 'var(--text-muted)',
+        '📍 ' + (t('kw_gps_zoeken') || 'Dichtstbijzijnde asset bepalen…'));
+      navigator.geolocation.getCurrentPosition(function(pos){
+        // Respecteer een keuze die de gebruiker ondertussen zelf maakte
+        if (sel.value) { if (hint) hint.style.display = 'none'; return; }
+        var ulat = pos.coords.latitude, ulng = pos.coords.longitude;
+        var best = null, bestD = Infinity;
+        located.forEach(function(a){
+          var d = _haversineMeters(ulat, ulng, parseFloat(a.lat), parseFloat(a.lng));
+          if (d < bestD) { bestD = d; best = a; }
+        });
+        if (best && bestD <= 50) {
+          sel.value = best.id;
+          onKwNewTypeChange();
+          setHint('rgba(16,163,74,0.10)', '#15803d',
+            '📍 ' + (t('kw_gps_gevonden') || 'Dichtstbijzijnde asset geselecteerd') +
+            ' (' + Math.round(bestD) + ' m): ' + (best.code || ''));
+        } else {
+          setHint('rgba(0,0,0,0.04)', 'var(--text-dim)',
+            '📍 ' + (t('kw_gps_geen') || 'Geen asset binnen 50 m — kies handmatig') +
+            (best ? ' (' + Math.round(bestD) + ' m)' : ''));
+        }
+      }, function(){
+        // GPS geweigerd of mislukt → stil terug op handmatig kiezen
+        if (hint) hint.style.display = 'none';
+      }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 });
     }
 
     function submitNieuweKunstwerkInspectie() {
