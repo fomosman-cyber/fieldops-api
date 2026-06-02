@@ -1628,6 +1628,7 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="openAssetImportWizard()" data-i18n="csv_importeren" title="Importeer assets uit GBI/iAsset/Antea CSV-export">📊 CSV importeren</button>
           <input type="file" id="assetCsvInput" accept=".csv" style="display:none;" onchange="importAssetsCsv(event)">
+          <button class="btn-secondary" onclick="openGeojsonImportWizard()" title="Importeer wegvakken uit een GeoJSON-bestand (GBI/BGT-export) met automatische IMBOR-classificatie" style="display:inline-flex;align-items:center;gap:6px;">🗺️ GeoJSON-import <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.05em;">NIEUW</span></button>
           <button class="btn-secondary" onclick="openNwbZoekModal()" style="display:inline-flex;align-items:center;gap:6px;">🛣️ Wegvakken uit NWB <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.05em;">NIEUW</span></button>
           <button class="btn-primary" onclick="openAssetModal()">+ Nieuw Asset</button>
         </div>
@@ -1935,6 +1936,102 @@
           <div class="form-actions">
             <button type="button" class="btn-secondary" onclick="closeAssetImportWizard()">Annuleren</button>
             <button type="button" class="btn-primary" onclick="aiwCommit()" id="aiwCommitBtn">💾 Definitief importeren</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ GEOJSON-IMPORT WIZARD (wegvakken) ═══════ -->
+    <div class="modal-overlay" id="geojsonImportWizardModal">
+      <div class="modal" style="max-width:780px;">
+        <button class="modal-close" onclick="closeGeojsonImportWizard()">&times;</button>
+        <h2>🗺️ Wegvakken importeren uit GeoJSON</h2>
+        <p class="subtitle">
+          Upload een GeoJSON-export (GBI/BGT/NWB). FieldOps maakt per feature een asset:
+          lijnen worden wegvakken (met lengte + geometrie), punten worden punt-assets.
+          Het <strong>IMBOR-type</strong> wordt automatisch herkend en RD-coördinaten
+          worden naar WGS84 omgezet.
+        </p>
+
+        <!-- Stap 1: Upload -->
+        <div id="giwStep1" style="margin-top:18px;">
+          <div style="margin-bottom:12px;">
+            <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Project (optioneel)</label>
+            <select id="giwProject" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+              <option value="">— Geen project —</option>
+            </select>
+          </div>
+          <div id="giwDropZone" style="border:2px dashed var(--border);border-radius:14px;padding:36px 24px;text-align:center;background:var(--card-bg-hover);cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('giwFileInput').click()">
+            <div style="font-size:48px;margin-bottom:12px;opacity:0.5;">🗺️</div>
+            <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px;">Sleep een GeoJSON hierheen</div>
+            <div style="font-size:12px;color:var(--text-muted);">of klik om bestand te kiezen (.geojson / .json)</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:12px;">FeatureCollection met LineString / MultiLineString / Point — WGS84 of RD (EPSG:28992)</div>
+          </div>
+          <input type="file" id="giwFileInput" accept=".geojson,.json,application/geo+json,application/json" style="display:none;" onchange="giwHandleFile(event.target.files[0])">
+          <div style="margin-top:16px;padding:12px;background:rgba(2,132,199,0.05);border-radius:8px;font-size:12px;color:var(--text-muted);line-height:1.6;">
+            <strong style="color:var(--text);">Automatische IMBOR-classificatie</strong> uit de properties:
+            <code>asfalt</code>→wegvak_asfalt, <code>klinker</code>→wegvak_elementen,
+            <code>fietspad</code>, <code>trottoir</code>, <code>rotonde</code>, <code>drempel</code>…
+            Een geldige IMBOR-code in <code>asset_type</code>/<code>objecttype</code> wordt direct overgenomen.
+          </div>
+        </div>
+
+        <!-- Stap 2: Preview -->
+        <div id="giwStep2" style="display:none;margin-top:18px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <div><strong style="color:var(--text);" id="giwFileName">bestand.geojson</strong>
+              <span style="color:var(--text-dim);font-size:12px;margin-left:8px;" id="giwFileSize"></span></div>
+            <button class="btn-secondary" onclick="giwReset()" style="font-size:12px;padding:5px 10px;">↻ Ander bestand</button>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin-bottom:14px;">
+            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
+              <div style="font-size:22px;font-weight:800;color:var(--text);" id="giwTotal">—</div>
+              <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;">Features</div>
+            </div>
+            <div style="background:rgba(22,163,74,0.06);border:1px solid rgba(22,163,74,0.3);border-radius:10px;padding:12px;text-align:center;">
+              <div style="font-size:22px;font-weight:800;color:#16a34a;" id="giwCreated">—</div>
+              <div style="font-size:10px;color:#15803d;text-transform:uppercase;letter-spacing:0.06em;">Aanmaken</div>
+            </div>
+            <div style="background:rgba(234,88,12,0.06);border:1px solid rgba(234,88,12,0.3);border-radius:10px;padding:12px;text-align:center;">
+              <div style="font-size:22px;font-weight:800;color:#ea580c;" id="giwSkipped">—</div>
+              <div style="font-size:10px;color:#9a3412;text-transform:uppercase;letter-spacing:0.06em;">Overslaan</div>
+            </div>
+            <div style="background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.3);border-radius:10px;padding:12px;text-align:center;">
+              <div style="font-size:22px;font-weight:800;color:#dc2626;" id="giwErrors">—</div>
+              <div style="font-size:10px;color:#991b1b;text-transform:uppercase;letter-spacing:0.06em;">Fouten</div>
+            </div>
+          </div>
+
+          <div style="margin-bottom:14px;padding:10px 12px;background:var(--card-bg-hover);border-radius:8px;font-size:11px;">
+            <strong style="color:var(--text);">IMBOR-classificatie:</strong>
+            <div id="giwByType" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;"></div>
+          </div>
+
+          <div style="margin-bottom:14px;">
+            <strong style="color:var(--text);font-size:12px;">Eerste features:</strong>
+            <div style="margin-top:6px;overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
+              <table style="width:100%;border-collapse:collapse;font-size:11px;">
+                <thead style="background:var(--card-bg-hover);"><tr>
+                  <th style="padding:6px 10px;text-align:left;">Code</th>
+                  <th style="padding:6px 10px;text-align:left;">IMBOR-type</th>
+                  <th style="padding:6px 10px;text-align:left;">Geom</th>
+                  <th style="padding:6px 10px;text-align:left;">Lengte</th>
+                  <th style="padding:6px 10px;text-align:left;">Naam</th>
+                </tr></thead>
+                <tbody id="giwPreviewBody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="giwErrorsBlock" style="display:none;margin-bottom:14px;padding:10px;background:rgba(220,38,38,0.06);border:1px solid rgba(220,38,38,0.2);border-radius:8px;">
+            <strong style="color:#dc2626;font-size:12px;">⚠️ Fouten per feature:</strong>
+            <div id="giwErrorsList" style="margin-top:8px;font-size:11px;font-family:'JetBrains Mono',monospace;max-height:120px;overflow-y:auto;"></div>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" onclick="closeGeojsonImportWizard()">Annuleren</button>
+            <button type="button" class="btn-primary" onclick="giwCommit()" id="giwCommitBtn">💾 Definitief importeren</button>
           </div>
         </div>
       </div>
@@ -12451,6 +12548,159 @@
         showToast('Import mislukt: ' + (err.message || ''), 'error');
       }).finally(function() {
         if (commitBtn) { commitBtn.disabled = false; commitBtn.textContent = '💾 Definitief importeren'; }
+      });
+    }
+
+    // ── GeoJSON-import wizard (wegvakken) — TODO#4 fase 2 ──────────────
+    var _giwFile = null;
+    var _giwDryRunResult = null;
+
+    function openGeojsonImportWizard() {
+      giwReset();
+      var sel = document.getElementById('giwProject');
+      if (sel) {
+        sel.innerHTML = '<option value="">— Geen project —</option>' +
+          (allProjects || []).map(function(p) {
+            return '<option value="' + p.id + '">' + escapeHtml(p.name || p.naam || '') + '</option>';
+          }).join('');
+      }
+      var modal = document.getElementById('geojsonImportWizardModal');
+      if (modal) modal.classList.add('active');
+    }
+
+    function closeGeojsonImportWizard() {
+      var modal = document.getElementById('geojsonImportWizardModal');
+      if (modal) modal.classList.remove('active');
+    }
+
+    function giwReset() {
+      _giwFile = null;
+      _giwDryRunResult = null;
+      document.getElementById('giwStep1').style.display = '';
+      document.getElementById('giwStep2').style.display = 'none';
+      var input = document.getElementById('giwFileInput');
+      if (input) input.value = '';
+    }
+
+    function _giwForm(file, dryRun) {
+      var fd = new FormData();
+      fd.append('file', file);
+      var proj = document.getElementById('giwProject');
+      if (proj && proj.value) fd.append('project_id', proj.value);
+      fd.append('dry_run', dryRun ? 'true' : 'false');
+      return fd;
+    }
+
+    function giwHandleFile(file) {
+      if (!file) return;
+      if (!/\.(geojson|json)$/i.test(file.name)) {
+        showToast('Alleen .geojson of .json wordt ondersteund', 'error');
+        return;
+      }
+      if (file.size > 50 * 1024 * 1024) {
+        showToast('Bestand te groot (max 50 MB)', 'error');
+        return;
+      }
+      _giwFile = file;
+      var token = localStorage.getItem('fieldops_token') || '';
+      showToast('GeoJSON analyseren...', 'info');
+      var btn = document.getElementById('giwCommitBtn');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyseren...'; }
+      fetch('/api/imports/geojson', {
+        method: 'POST',
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        body: _giwForm(file, true),
+      }).then(function(r) {
+        if (!r.ok) return r.json().then(function(j) { throw new Error(j.detail || ('HTTP ' + r.status)); });
+        return r.json();
+      }).then(function(res) {
+        _giwDryRunResult = res;
+        giwRenderPreview(res, file);
+      }).catch(function(err) {
+        showToast('Analyse mislukt: ' + (err.message || 'fout'), 'error');
+      }).finally(function() {
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Definitief importeren'; }
+      });
+    }
+
+    function giwRenderPreview(res, file) {
+      document.getElementById('giwStep1').style.display = 'none';
+      document.getElementById('giwStep2').style.display = '';
+      document.getElementById('giwFileName').textContent = file.name;
+      var sizeStr = file.size > 1024 * 1024
+        ? (file.size / 1024 / 1024).toFixed(2) + ' MB'
+        : (file.size / 1024).toFixed(1) + ' KB';
+      document.getElementById('giwFileSize').textContent = sizeStr;
+      document.getElementById('giwTotal').textContent = res.total_features || 0;
+      document.getElementById('giwCreated').textContent =
+        res.would_create != null ? res.would_create : (res.created || 0);
+      document.getElementById('giwSkipped').textContent = res.skipped || 0;
+      var errs = (res.errors || []).length;
+      document.getElementById('giwErrors').textContent = errs;
+
+      var bt = res.by_type || {};
+      document.getElementById('giwByType').innerHTML = Object.keys(bt).length
+        ? Object.keys(bt).map(function(k) {
+            return '<span style="background:var(--card-bg);border:1px solid var(--border);padding:3px 8px;border-radius:12px;font-size:10px;"><strong>' +
+              escapeHtml(k) + '</strong> · ' + bt[k] + '</span>';
+          }).join('')
+        : '<em style="color:var(--text-dim);">geen</em>';
+
+      var rows = res.preview || [];
+      var tbody = document.getElementById('giwPreviewBody');
+      var herkKleur = { expliciet: '#16a34a', trefwoord: '#0284c7', default: '#a16207', fallback: '#64748b' };
+      if (!rows.length) {
+        tbody.innerHTML = '<tr><td colspan="5" style="padding:14px;text-align:center;color:var(--text-dim);">Geen preview</td></tr>';
+      } else {
+        tbody.innerHTML = rows.map(function(r) {
+          var c = herkKleur[r.herkomst] || '#64748b';
+          var len = r.length_m != null ? Math.round(r.length_m) + ' m' : '<span style="color:var(--text-dim);">—</span>';
+          var rd = r.rd_geconverteerd ? ' <span title="RD naar WGS84 geconverteerd" style="color:#a16207;">⟲RD</span>' : '';
+          return '<tr style="border-top:1px solid var(--border);">' +
+            '<td style="padding:6px 10px;font-family:\'JetBrains Mono\',monospace;">' + escapeHtml(r.code || '') + '</td>' +
+            '<td style="padding:6px 10px;">' + escapeHtml(r.asset_type || '') +
+              ' <span style="font-size:9px;color:' + c + ';">(' + escapeHtml(r.herkomst || '') + ')</span></td>' +
+            '<td style="padding:6px 10px;">' + escapeHtml(r.geom || '') + rd + '</td>' +
+            '<td style="padding:6px 10px;">' + len + '</td>' +
+            '<td style="padding:6px 10px;color:var(--text-muted);">' + escapeHtml((r.naam || '').slice(0, 36)) + '</td>' +
+          '</tr>';
+        }).join('');
+      }
+
+      var errBlock = document.getElementById('giwErrorsBlock');
+      if (errs > 0) {
+        errBlock.style.display = '';
+        document.getElementById('giwErrorsList').innerHTML = res.errors.slice(0, 20).map(function(e) {
+          return '<div style="padding:3px 0;">Feature ' + e.feature + ': ' + escapeHtml(e.error) + '</div>';
+        }).join('') + (errs > 20 ? '<div style="color:var(--text-dim);font-style:italic;">... en ' + (errs - 20) + ' meer</div>' : '');
+      } else {
+        errBlock.style.display = 'none';
+      }
+    }
+
+    function giwCommit() {
+      if (!_giwFile) { showToast('Geen bestand geselecteerd', 'error'); return; }
+      var btn = document.getElementById('giwCommitBtn');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Importeren...'; }
+      var token = localStorage.getItem('fieldops_token') || '';
+      fetch('/api/imports/geojson', {
+        method: 'POST',
+        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+        body: _giwForm(_giwFile, false),
+      }).then(function(r) {
+        if (!r.ok) return r.json().then(function(j) { throw new Error(j.detail || 'Import mislukt'); });
+        return r.json();
+      }).then(function(res) {
+        showToast('✅ Geïmporteerd: ' + (res.created || 0) + ' assets' +
+          (res.skipped ? ', ' + res.skipped + ' overgeslagen' : '') +
+          (res.errors && res.errors.length ? ' (' + res.errors.length + ' fouten)' : ''),
+          res.errors && res.errors.length ? 'warning' : 'success');
+        closeGeojsonImportWizard();
+        if (typeof loadAssets === 'function') loadAssets();
+      }).catch(function(err) {
+        showToast('Import mislukt: ' + (err.message || ''), 'error');
+      }).finally(function() {
+        if (btn) { btn.disabled = false; btn.textContent = '💾 Definitief importeren'; }
       });
     }
 
