@@ -1281,6 +1281,15 @@ def handleiding():
     return HTMLResponse(content=html)
 
 
+@app.get("/releasenotes", response_class=HTMLResponse)
+def releasenotes():
+    """Publieke releasenotes ('Wat is nieuw?') — bereikbaar zonder login.
+    Linkt vanuit portaal-header (✨-knop). Curated changelog in klantentaal;
+    nieuwe release toevoegen = blok bovenaan templates/releasenotes.html."""
+    html = (TEMPLATES_DIR / "releasenotes.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
+
+
 @app.get("/gbi-imbor-import-setup", response_class=HTMLResponse)
 def gbi_imbor_import_setup_docs():
     """Publieke setup-handleiding voor GBI/iAsset/Antea integratie."""
