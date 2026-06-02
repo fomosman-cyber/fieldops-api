@@ -1971,15 +1971,24 @@
             <select id="assetProject"><option value="">—</option></select>
           </div>
           <div class="form-group">
+            <label>🔍 Zoek adres of plaats <span style="color:var(--text-dim);font-weight:400;font-size:11px;">(Google Maps)</span></label>
+            <input type="text" id="assetPlaceSearch" placeholder="bv. Lekdijk 12 Waalwijk" autocomplete="off">
+            <p id="assetPlaceSearchHint" style="font-size:11px;color:var(--text-dim);margin:4px 0 0;">Tik een adres; coördinaten worden automatisch ingevuld. Of vul GPS handmatig in.</p>
+          </div>
+          <div class="form-group">
             <label data-i18n="am_locatie">Locatie-omschrijving</label>
             <input type="text" id="assetLocDesc" placeholder="bv. A12 km 45.2 noord-zijde">
           </div>
           <div class="form-group">
             <label>GPS</label>
-            <div style="display:flex;gap:8px;">
-              <input type="text" id="assetLat" placeholder="Lat" style="flex:1;">
-              <input type="text" id="assetLng" placeholder="Lng" style="flex:1;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <input type="text" id="assetLat" placeholder="Lat" style="flex:1;min-width:100px;" oninput="updateAssetMapPreview()">
+              <input type="text" id="assetLng" placeholder="Lng" style="flex:1;min-width:100px;" oninput="updateAssetMapPreview()">
               <button type="button" class="btn-secondary" onclick="getAssetLocation()" style="white-space:nowrap;">📍 GPS</button>
+              <button type="button" class="btn-secondary" id="assetNavigateBtn" onclick="navigateToAsset()" style="white-space:nowrap;display:none;" title="Open Google Maps directions vanaf jouw locatie">🧭 Navigeer</button>
+            </div>
+            <div id="assetMapPreview" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card-bg-hover);">
+              <img id="assetMapPreviewImg" src="" alt="Locatie preview" style="display:block;width:100%;height:auto;max-height:220px;object-fit:cover;">
             </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
@@ -11475,6 +11484,17 @@
         var opt = document.createElement('option'); opt.value = p.id; opt.textContent = p.name || p.naam;
         projSel.appendChild(opt);
       });
+      // Reset adres-zoeken + map preview
+      var placeSearch = document.getElementById('assetPlaceSearch');
+      if (placeSearch) placeSearch.value = '';
+      var placeHint = document.getElementById('assetPlaceSearchHint');
+      if (placeHint) placeHint.textContent = 'Tik een adres; coördinaten worden automatisch ingevuld. Of vul GPS handmatig in.';
+      var mapPreview = document.getElementById('assetMapPreview');
+      if (mapPreview) mapPreview.style.display = 'none';
+      var navBtn = document.getElementById('assetNavigateBtn');
+      if (navBtn) navBtn.style.display = 'none';
+      // Init Google Places autocomplete (lazy)
+      setTimeout(setupAssetPlacesAutocomplete, 300);
       document.getElementById('assetModal').classList.add('active');
     }
 
@@ -11501,6 +11521,8 @@
       if (a.installed_at) document.getElementById('assetInstalled').value = a.installed_at.substr(0,10);
       document.getElementById('assetLifespan').value = a.expected_lifespan_years || '';
       document.getElementById('assetCondition').value = a.condition_score || '';
+      // Toon map-preview als asset al GPS heeft
+      setTimeout(updateAssetMapPreview, 100);
     }
 
     function closeAssetModal() {
@@ -16114,6 +16136,96 @@
       if (!lat || !lng) { showToast('Geen coördinaten beschikbaar', 'error'); return; }
       // Universal Street View URL (open in nieuw tab/native app)
       var url = 'https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + lat + ',' + lng;
+      window.open(url, '_blank', 'noopener');
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ── ASSET MAPS — adres-autocomplete + mini-map preview + navigatie ──
+    // ══════════════════════════════════════════════════════════════════════
+    // Maps-anchor: asset-maps-v1
+    var _assetPlacesAutocomplete = null;
+    var _assetMapsKey = null;
+
+    function setupAssetPlacesAutocomplete() {
+      var input = document.getElementById('assetPlaceSearch');
+      if (!input || _assetPlacesAutocomplete) return;
+      loadGoogleMaps().then(function(ok) {
+        if (!ok || !window.google) {
+          var hint = document.getElementById('assetPlaceSearchHint');
+          if (hint) hint.textContent = '⚠️ Adres-zoeken vereist Google Maps (niet geactiveerd). Vul GPS handmatig in.';
+          input.disabled = true;
+          input.placeholder = 'Adres-zoeken niet geactiveerd';
+          return;
+        }
+        var ac = new google.maps.places.Autocomplete(input, {
+          types: ['geocode'],
+          componentRestrictions: { country: 'nl' },
+          fields: ['geometry', 'formatted_address', 'name'],
+        });
+        ac.addListener('place_changed', function() {
+          var place = ac.getPlace();
+          if (!place || !place.geometry || !place.geometry.location) return;
+          var lat = place.geometry.location.lat();
+          var lng = place.geometry.location.lng();
+          document.getElementById('assetLat').value = lat.toFixed(7);
+          document.getElementById('assetLng').value = lng.toFixed(7);
+          // Auto-fill locatie-omschrijving als die nog leeg is
+          var locDesc = document.getElementById('assetLocDesc');
+          if (locDesc && !locDesc.value && place.formatted_address) {
+            locDesc.value = place.formatted_address;
+          }
+          var hint = document.getElementById('assetPlaceSearchHint');
+          if (hint) hint.textContent = '✓ ' + (place.formatted_address || place.name || 'Locatie ingesteld');
+          updateAssetMapPreview();
+        });
+        _assetPlacesAutocomplete = ac;
+      }).catch(function(){
+        var hint = document.getElementById('assetPlaceSearchHint');
+        if (hint) hint.textContent = '⚠️ Kon Google Maps niet laden — vul GPS handmatig in.';
+      });
+    }
+
+    function updateAssetMapPreview() {
+      var lat = (document.getElementById('assetLat') || {}).value;
+      var lng = (document.getElementById('assetLng') || {}).value;
+      var preview = document.getElementById('assetMapPreview');
+      var navBtn = document.getElementById('assetNavigateBtn');
+      if (!preview) return;
+      if (!lat || !lng || isNaN(parseFloat(lat)) || isNaN(parseFloat(lng))) {
+        preview.style.display = 'none';
+        if (navBtn) navBtn.style.display = 'none';
+        return;
+      }
+      // Fetch Maps-key cached
+      if (_assetMapsKey === null) {
+        api('GET', '/api/config/maps-key').then(function(cfg) {
+          _assetMapsKey = (cfg && cfg.configured && cfg.key) ? cfg.key : '';
+          updateAssetMapPreview();
+        }).catch(function(){ _assetMapsKey = ''; });
+        return;
+      }
+      if (!_assetMapsKey) {
+        preview.style.display = 'none';
+        if (navBtn) navBtn.style.display = ''; // Navigatie werkt zonder key
+        return;
+      }
+      // Static Map URL — rond 600x300 voor scherpe display
+      var url = 'https://maps.googleapis.com/maps/api/staticmap?' +
+                'center=' + lat + ',' + lng +
+                '&zoom=17&size=600x250&scale=2' +
+                '&markers=color:0x0EA5E9%7C' + lat + ',' + lng +
+                '&key=' + encodeURIComponent(_assetMapsKey);
+      document.getElementById('assetMapPreviewImg').src = url;
+      preview.style.display = '';
+      if (navBtn) navBtn.style.display = '';
+    }
+
+    function navigateToAsset() {
+      var lat = (document.getElementById('assetLat') || {}).value;
+      var lng = (document.getElementById('assetLng') || {}).value;
+      if (!lat || !lng) { showToast('Geen coördinaten beschikbaar', 'error'); return; }
+      // Google Maps Directions universal URL — opent in app op mobile, web op desktop
+      var url = 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng + '&travelmode=driving';
       window.open(url, '_blank', 'noopener');
     }
 
