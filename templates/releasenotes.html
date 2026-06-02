@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Wat is nieuw — FieldOps</title>
+  <meta name="description" content="Releasenotes van FieldOps: de nieuwste features en verbeteringen voor inspectie, onderhoud en beheer van Nederlandse infrastructuur (NEN 2767-2, CROW, IMBOR).">
+  <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
+  <style>
+    :root {
+      --accent: #1E40AF;
+      --accent-dark: #1E3A8A;
+      --accent-light: #DBEAFE;
+      --bg: #F8FAFC;
+      --card: #FFFFFF;
+      --border: #E2E8F0;
+      --text: #0F172A;
+      --text-muted: #475569;
+      --text-dim: #94A3B8;
+      --green: #16A34A;
+      --green-bg: #DCFCE7;
+      --amber: #B45309;
+      --amber-bg: #FEF3C7;
+      --violet: #6D28D9;
+      --violet-bg: #EDE9FE;
+      --shadow: 0 4px 16px rgba(15,23,42,0.05);
+      --shadow-lg: 0 20px 50px rgba(15,23,42,0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg); color: var(--text); margin: 0;
+      line-height: 1.6; letter-spacing: -0.005em;
+      -webkit-font-smoothing: antialiased;
+    }
+    .topbar {
+      background: var(--card); border-bottom: 1px solid var(--border);
+      padding: 14px 0; position: sticky; top: 0; z-index: 100;
+    }
+    .topbar-inner {
+      max-width: 880px; margin: 0 auto; padding: 0 24px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .logo { font-weight: 800; font-size: 22px; color: var(--accent); letter-spacing: -0.02em; text-decoration: none; }
+    .nav-links a {
+      color: var(--text-muted); text-decoration: none; font-weight: 500;
+      margin-left: 24px; font-size: 14px;
+    }
+    .nav-links a:hover { color: var(--accent); }
+    .nav-links a.cta {
+      background: var(--accent); color: #fff; padding: 8px 18px; border-radius: 8px;
+    }
+    .nav-links a.cta:hover { background: var(--accent-dark); color: #fff; }
+
+    .container { max-width: 880px; margin: 0 auto; padding: 0 24px; }
+
+    /* Hero */
+    .hero { text-align: center; padding: 56px 24px 24px; }
+    .hero .kicker {
+      display: inline-block; font-size: 13px; font-weight: 700; letter-spacing: 0.04em;
+      text-transform: uppercase; color: var(--accent); background: var(--accent-light);
+      padding: 6px 14px; border-radius: 999px; margin-bottom: 18px;
+    }
+    .hero h1 {
+      font-size: 42px; font-weight: 800; margin: 0 0 14px;
+      letter-spacing: -0.02em; line-height: 1.1; color: var(--text);
+    }
+    .hero p.lead {
+      font-size: 18px; color: var(--text-muted); margin: 0 auto;
+      max-width: 600px; line-height: 1.5;
+    }
+
+    /* Timeline */
+    .timeline { padding: 24px 0 72px; }
+    .release {
+      position: relative; background: var(--card); border: 1px solid var(--border);
+      border-radius: 16px; padding: 28px 30px; margin-bottom: 22px; box-shadow: var(--shadow);
+    }
+    .release-head {
+      display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+      margin-bottom: 18px; padding-bottom: 16px; border-bottom: 1px dashed var(--border);
+    }
+    .release-version {
+      font-size: 20px; font-weight: 800; color: var(--text); letter-spacing: -0.01em;
+    }
+    .release-date {
+      font-size: 13px; font-weight: 600; color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .release-pill {
+      margin-left: auto; font-size: 12px; font-weight: 700; color: var(--accent);
+      background: var(--accent-light); padding: 4px 12px; border-radius: 999px;
+    }
+    .release ul { list-style: none; margin: 0; padding: 0; }
+    .release li {
+      display: flex; gap: 12px; align-items: flex-start; padding: 9px 0;
+      font-size: 15px; color: var(--text-muted);
+    }
+    .release li + li { border-top: 1px solid #F1F5F9; }
+    .tag {
+      flex-shrink: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.02em;
+      text-transform: uppercase; padding: 3px 9px; border-radius: 6px; margin-top: 2px;
+      min-width: 78px; text-align: center;
+    }
+    .tag.nieuw { color: var(--green); background: var(--green-bg); }
+    .tag.verbetering { color: var(--accent); background: var(--accent-light); }
+    .tag.fix { color: var(--amber); background: var(--amber-bg); }
+    .tag.norm { color: var(--violet); background: var(--violet-bg); }
+    .release li b { color: var(--text); font-weight: 700; }
+
+    .footer {
+      text-align: center; padding: 32px 24px 56px; color: var(--text-dim); font-size: 13px;
+    }
+    .footer a { color: var(--accent); text-decoration: none; font-weight: 600; }
+
+    @media (max-width: 640px) {
+      .hero h1 { font-size: 32px; }
+      .release { padding: 22px 20px; }
+      .release li { flex-direction: column; gap: 4px; }
+      .tag { min-width: 0; }
+      .nav-links a { margin-left: 14px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a href="/portaal" class="logo">FieldOps</a>
+      <nav class="nav-links">
+        <a href="/handleiding">Handleiding</a>
+        <a href="/prijzen">Prijzen</a>
+        <a href="/portaal" class="cta">Naar het portaal</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero">
+    <span class="kicker">Releasenotes</span>
+    <h1>Wat is nieuw in FieldOps</h1>
+    <p class="lead">Elke release maakt inspecteren, onderhouden en rapporteren van de openbare ruimte sneller en normconformer. Hieronder de belangrijkste verbeteringen — nieuwste bovenaan.</p>
+  </section>
+
+  <div class="container">
+    <div class="timeline">
+
+      <!--
+        ── ONDERHOUD: nieuwe release toevoegen ──
+        Kopieer een <article class="release"> blok bovenaan deze lijst.
+        Tags: nieuw | verbetering | fix | norm  (zie .tag-stijlen).
+        Houd het in klantentaal: wat kan de gebruiker nu wat eerst niet kon.
+      -->
+
+      <article class="release">
+        <div class="release-head">
+          <span class="release-version">v2.5 — Kaart &amp; taxonomie</span>
+          <span class="release-date">Mei 2026</span>
+          <span class="release-pill">Laatste release</span>
+        </div>
+        <ul>
+          <li><span class="tag nieuw">Nieuw</span><span><b>Google Maps in de asset-modal</b> — typ een adres en de coördinaten + mini-kaart worden automatisch ingevuld. Eén klik op 🧭 Navigeer opent de route vanaf je locatie.</span></li>
+          <li><span class="tag nieuw">Nieuw</span><span><b>IMBOR-asset­taxonomie</b> met cascading dropdown — kies hoofdgroep (Wegen, Kunstwerken, Riolering…) en het juiste IMBOR-type met bijbehorende velden verschijnt automatisch.</span></li>
+          <li><span class="tag nieuw">Nieuw</span><span><b>Transparante prijzen­pagina</b> (/prijzen) met drie pakketten en een direct downloadbare offerte-template.</span></li>
+          <li><span class="tag verbetering">Beter</span><span><b>Onboarding-rondleiding</b> voor nieuwe gebruikers — een interactieve tour die de belangrijkste schermen uitlegt. Altijd opnieuw te starten via het <b>?</b> in de balk.</span></li>
+        </ul>
+      </article>
+
+      <article class="release">
+        <div class="release-head">
+          <span class="release-version">v2.4 — Normconforme inspecties</span>
+          <span class="release-date">Mei 2026</span>
+        </div>
+        <ul>
+          <li><span class="tag norm">Norm</span><span><b>Inspectie-cyclus­automatisering</b> — FieldOps bewaakt per asset de inspectiefrequentie volgens NEN 2767-2 en CROW en zet verlopen of bijna-verlopen inspecties bovenaan.</span></li>
+          <li><span class="tag norm">Norm</span><span><b>Speeltoestellen (NEN-EN 1176)</b> en <b>openbare verlichting (NEN 3140)</b> als volwaardige inspectietypen met eigen checklist en risicoklassen.</span></li>
+          <li><span class="tag norm">Norm</span><span><b>VTA-bomeninspectie</b> — visuele boomveiligheidscontrole met Mattheck-risicoklasse, geïntegreerd in de inspectie­module.</span></li>
+          <li><span class="tag nieuw">Nieuw</span><span><b>MJOP-export met bedragen</b> — meerjarenonderhoudsplan inclusief kostenraming op basis van de GWW-kostengids.</span></li>
+        </ul>
+      </article>
+
+      <article class="release">
+        <div class="release-head">
+          <span class="release-version">v2.3 — Koppelingen</span>
+          <span class="release-date">Mei 2026</span>
+        </div>
+        <ul>
+          <li><span class="tag nieuw">Nieuw</span><span><b>NWB-wegvakken import</b> — landelijke wegvakgeometrie rechtstreeks als assets inladen.</span></li>
+          <li><span class="tag nieuw">Nieuw</span><span><b>BAG- en DigiGO-koppeling</b> voor adres- en objectgegevens, plus een <b>ISO 55000-readiness</b> overzicht voor assetmanagement-volwassenheid.</span></li>
+          <li><span class="tag verbetering">Beter</span><span><b>PROBORM &amp; DAMO</b> data-uitwisseling — beter aansluiten op bestaande gemeentelijke beheersystemen.</span></li>
+        </ul>
+      </article>
+
+      <article class="release">
+        <div class="release-head">
+          <span class="release-version">v2.2 — De Voorspeller</span>
+          <span class="release-date">April 2026</span>
+        </div>
+        <ul>
+          <li><span class="tag nieuw">Nieuw</span><span><b>Voorspellend onderhoud (NEN 2767-2)</b> — combineert leeftijd, conditiescore en meldingenhistorie en laat zien welke assets binnen 6–24 maanden van NEN 3 naar 4 degraderen. Vroeg inspecteren is 3–5× goedkoper dan noodreparatie.</span></li>
+          <li><span class="tag nieuw">Nieuw</span><span><b>Clusters</b> — meldingen die dicht bij elkaar liggen worden automatisch gegroepeerd zodat je ze in één rit kunt afhandelen.</span></li>
+        </ul>
+      </article>
+
+      <article class="release">
+        <div class="release-head">
+          <span class="release-version">v2.1 — Veldwerk</span>
+          <span class="release-date">April 2026</span>
+        </div>
+        <ul>
+          <li><span class="tag nieuw">Nieuw</span><span><b>Mijn Dag</b> — mobiele dagplanner die je meldingen en inspecties voor vandaag op volgorde van route zet.</span></li>
+          <li><span class="tag nieuw">Nieuw</span><span><b>Werkdagboek</b> — automatische registratie van wat je waar hebt gedaan, klaar voor verantwoording.</span></li>
+          <li><span class="tag nieuw">Nieuw</span><span><b>Opleveren-module</b> — werk formeel opleveren met foto's, handtekening en een proces-verbaal als PDF.</span></li>
+          <li><span class="tag verbetering">Beter</span><span><b>Kaart met meldingen</b> — alle meldingen in kleur op de kaart, met directe navigatie naar elk punt.</span></li>
+        </ul>
+      </article>
+
+    </div>
+  </div>
+
+  <footer class="footer">
+    <p>Vragen of een wens voor een volgende release? Mail <a href="mailto:info@fieldopsapp.nl">info@fieldopsapp.nl</a>.<br>
+    FieldOps · veldregistratie &amp; assetmanagement voor de openbare ruimte · <a href="/portaal">Naar het portaal</a></p>
+  </footer>
+</body>
+</html>

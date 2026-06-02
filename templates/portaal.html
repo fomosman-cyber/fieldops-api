@@ -1078,6 +1078,7 @@
         <option value="tr">🇹🇷 TR</option>
       </select>
       <button class="notif-btn" id="helpBtn" aria-label="Handleiding" onclick="window.open('/handleiding', '_blank')" title="Open handleiding">❓</button>
+      <button class="notif-btn" id="releaseNotesBtn" aria-label="Wat is nieuw?" onclick="window.open('/releasenotes', '_blank')" title="Wat is nieuw? — releasenotes">✨</button>
       <button class="notif-btn" id="themeBtn" aria-label="Donker thema" onclick="toggleTheme()" title="Donker/licht thema">🌓</button>
       <button class="notif-btn" id="pushBtn" aria-label="Push notificaties" onclick="togglePushNotifications()" title="Browser push notificaties aan/uit (separate van in-app bell)" style="display:none;">📱</button>
       <!-- PWA install-knop in topbar (alleen zichtbaar als installable + niet al standalone) -->
@@ -1334,6 +1335,10 @@
           </div>
           <div style="height:260px;position:relative;">
             <canvas id="trendChart"></canvas>
+            <div id="trendChartEmpty" style="display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--text-dim);gap:6px;pointer-events:none;">
+              <div style="font-size:32px;opacity:0.4;">📈</div>
+              <div style="font-size:14px;font-weight:600;" data-i18n="trend_geen_data">Geen meldingen in deze periode</div>
+            </div>
           </div>
         </div>
         <div class="card animate-in">
@@ -2000,7 +2005,7 @@
               <label data-i18n="am_lifespan">Levensduur (jaar)</label>
               <input type="number" id="assetLifespan" min="1" max="150" placeholder="bv. 30">
             </div>
-            <div class="form-group">
+            <div class="form-group" id="assetConditionGroup">
               <label data-i18n="am_condition">NEN-conditie 1-5</label>
               <select id="assetCondition">
                 <option value="">—</option>
@@ -4693,6 +4698,7 @@
         jan:'Jan',feb:'Feb',mrt:'Mrt',apr:'Apr',mei:'Mei',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',okt:'Okt',nov:'Nov',dec:'Dec',
         // Charts
         nieuw_chart: 'Nieuw', opgelost_chart: 'Opgelost',
+        trend_geen_data: 'Geen meldingen in deze periode',
         // Footer
         privacy: 'Privacy',
         // Misc
@@ -4803,6 +4809,7 @@
         geen_categorie: 'Geen categorie',
         zonder_titel: 'Zonder titel',
         aangemaakt_label: 'Aangemaakt:',
+        hersteld_label: 'Hersteld:',
         door: 'Door:',
         gps_locatie: 'GPS LOCATIE',
         coordinaten: 'Coordinaten:',
@@ -5211,6 +5218,7 @@
         goedenacht: 'Good night', goedemorgen: 'Good morning', goedemiddag: 'Good afternoon', goedenavond: 'Good evening',
         jan:'Jan',feb:'Feb',mrt:'Mar',apr:'Apr',mei:'May',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',okt:'Oct',nov:'Nov',dec:'Dec',
         nieuw_chart: 'New', opgelost_chart: 'Resolved',
+        trend_geen_data: 'No reports in this period',
         privacy: 'Privacy',
         fout_laden: 'Error loading', er_ging_iets_mis: 'Something went wrong.',
         verstuurd: 'Sent', geaccepteerd: 'Accepted', verlopen: 'Expired',
@@ -5296,6 +5304,7 @@
         geen_categorie: 'No category',
         zonder_titel: 'Untitled',
         aangemaakt_label: 'Created:',
+        hersteld_label: 'Resolved:',
         door: 'By:',
         gps_locatie: 'GPS LOCATION',
         coordinaten: 'Coordinates:',
@@ -5684,6 +5693,7 @@
         goedenacht: 'Gute Nacht', goedemorgen: 'Guten Morgen', goedemiddag: 'Guten Tag', goedenavond: 'Guten Abend',
         jan:'Jan',feb:'Feb',mrt:'Mär',apr:'Apr',mei:'Mai',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',okt:'Okt',nov:'Nov',dec:'Dez',
         nieuw_chart: 'Neu', opgelost_chart: 'Gelöst',
+        trend_geen_data: 'Keine Meldungen in diesem Zeitraum',
         privacy: 'Datenschutz',
         fout_laden: 'Fehler beim Laden', er_ging_iets_mis: 'Etwas ist schiefgelaufen.',
         verstuurd: 'Gesendet', geaccepteerd: 'Akzeptiert', verlopen: 'Abgelaufen',
@@ -5769,6 +5779,7 @@
         geen_categorie: 'Keine Kategorie',
         zonder_titel: 'Ohne Titel',
         aangemaakt_label: 'Erstellt:',
+        hersteld_label: 'Behoben:',
         door: 'Von:',
         gps_locatie: 'GPS-STANDORT',
         coordinaten: 'Koordinaten:',
@@ -6157,6 +6168,7 @@
         goedenacht: 'Bonne nuit', goedemorgen: 'Bonjour', goedemiddag: 'Bon après-midi', goedenavond: 'Bonsoir',
         jan:'Jan',feb:'Fév',mrt:'Mar',apr:'Avr',mei:'Mai',jun:'Jun',jul:'Jul',aug:'Aoû',sep:'Sep',okt:'Oct',nov:'Nov',dec:'Déc',
         nieuw_chart: 'Nouveau', opgelost_chart: 'Résolu',
+        trend_geen_data: 'Aucun signalement sur cette période',
         privacy: 'Confidentialité',
         fout_laden: 'Erreur de chargement', er_ging_iets_mis: 'Quelque chose s\'est mal passé.',
         verstuurd: 'Envoyé', geaccepteerd: 'Accepté', verlopen: 'Expiré',
@@ -6242,6 +6254,7 @@
         geen_categorie: 'Pas de catégorie',
         zonder_titel: 'Sans titre',
         aangemaakt_label: 'Créé le :',
+        hersteld_label: 'Résolu le :',
         door: 'Par :',
         gps_locatie: 'LOCALISATION GPS',
         coordinaten: 'Coordonnées :',
@@ -6630,6 +6643,7 @@
         goedenacht: 'İyi geceler', goedemorgen: 'Günaydın', goedemiddag: 'İyi günler', goedenavond: 'İyi akşamlar',
         jan:'Oca',feb:'Şub',mrt:'Mar',apr:'Nis',mei:'May',jun:'Haz',jul:'Tem',aug:'Ağu',sep:'Eyl',okt:'Eki',nov:'Kas',dec:'Ara',
         nieuw_chart: 'Yeni', opgelost_chart: 'Çözüldü',
+        trend_geen_data: 'Bu dönemde bildirim yok',
         privacy: 'Gizlilik',
         fout_laden: 'Yükleme hatası', er_ging_iets_mis: 'Bir şeyler yanlış gitti.',
         verstuurd: 'Gönderildi', geaccepteerd: 'Kabul edildi', verlopen: 'Süresi doldu',
@@ -6715,6 +6729,7 @@
         geen_categorie: 'Kategori yok',
         zonder_titel: 'Başlıksız',
         aangemaakt_label: 'Oluşturulma:',
+        hersteld_label: 'Çözüldü:',
         door: 'Tarafından:',
         gps_locatie: 'GPS KONUMU',
         coordinaten: 'Koordinatlar:',
@@ -9304,18 +9319,31 @@
           if (numMonths > 36) numMonths = 36;
         }
         var tLabels = [], tNieuw = [], tOpgelost = [];
+        // B4: anker de LAATSTE maand op 'nu' (of op 'tot' bij een vrije periode), zodat
+        // de lopende maand altijd in beeld is. Oude logica startte op periodFrom en liet
+        // de huidige maand buiten beeld — daardoor leek de grafiek leeg of achterlopend.
+        var trendEndDt = (periodFrom && periodTo)
+          ? new Date(periodTo.getFullYear(), periodTo.getMonth(), 1)
+          : new Date(now.getFullYear(), now.getMonth(), 1);
         for (var mi = numMonths - 1; mi >= 0; mi--) {
-          var startDt = periodFrom || new Date(now.getFullYear(), now.getMonth() - numMonths + 1, 1);
-          var dt = new Date(startDt.getFullYear(), startDt.getMonth() + (numMonths - 1 - mi), 1);
+          var dt = new Date(trendEndDt.getFullYear(), trendEndDt.getMonth() - mi, 1);
           var key = dt.getFullYear() + '-' + String(dt.getMonth()+1).padStart(2,'0');
           tLabels.push(monthNames[dt.getMonth()] + (numMonths > 12 ? ' ' + dt.getFullYear().toString().slice(2) : ''));
           tNieuw.push(monthData[key] ? monthData[key].nieuw : 0);
           tOpgelost.push(monthData[key] ? monthData[key].opgelost : 0);
         }
 
-        if (trendChartInstance) trendChartInstance.destroy();
+        if (trendChartInstance) { trendChartInstance.destroy(); trendChartInstance = null; }
         var tCtx = document.getElementById('trendChart');
-        if (tCtx) {
+        var trendEmptyEl = document.getElementById('trendChartEmpty');
+        var trendTotaal = tNieuw.concat(tOpgelost).reduce(function(a, b){ return a + b; }, 0);
+        if (tCtx && trendTotaal === 0) {
+          // Geen datapunten in dit venster — toon een nette hint i.p.v. een lege grafiek
+          tCtx.style.display = 'none';
+          if (trendEmptyEl) trendEmptyEl.style.display = 'flex';
+        } else if (tCtx) {
+          tCtx.style.display = '';
+          if (trendEmptyEl) trendEmptyEl.style.display = 'none';
           trendChartInstance = new Chart(tCtx, {
             type: 'line',
             data: {
@@ -10592,7 +10620,17 @@
           // Meta
           doc.setFontSize(10); normal(); doc.setTextColor(100,116,139);
           var datum = new Date(m.created_at).toLocaleDateString(currentLang,{day:'2-digit',month:'long',year:'numeric'}) + ' ' + new Date(m.created_at).toLocaleTimeString(currentLang,{hour:'2-digit',minute:'2-digit'});
-          doc.text(t('aangemaakt_label')+' '+datum+'  |  '+t('door')+' '+(m.creator_name||t('onbekend')), M, py); py += 12;
+          doc.text(t('aangemaakt_label')+' '+datum+'  |  '+t('door')+' '+(m.creator_name||t('onbekend')), M, py); py += 6;
+          // B6: hersteldatum bij afgehandelde meldingen. Datamodel heeft (nog) geen
+          // resolved_at-kolom; updated_at is het moment van de laatste statuswijziging.
+          if (m.status === 'opgelost' || m.status === 'afgerond') {
+            var _hd = m.resolved_at || m.updated_at;
+            if (_hd) {
+              var hersteld = new Date(_hd).toLocaleDateString(currentLang,{day:'2-digit',month:'long',year:'numeric'}) + ' ' + new Date(_hd).toLocaleTimeString(currentLang,{hour:'2-digit',minute:'2-digit'});
+              doc.text(t('hersteld_label')+' '+hersteld, M, py); py += 6;
+            }
+          }
+          py += 6;
 
           // Info blok
           doc.setFillColor(245,247,250);
@@ -11309,8 +11347,19 @@
       });
     }
 
+    // B1: NEN 2767-conditiescore geldt voor kunstwerken e.d., niet voor wegen/
+    // verhardingen (die via CROW-beeldkwaliteit worden beoordeeld). Verberg het
+    // conditie-veld daarom voor IMBOR-hoofdgroep 'wegen'; toon het voor de rest.
+    function updateAssetConditionVisibility() {
+      var groepEl = document.getElementById('assetHoofdgroep');
+      var grp = document.getElementById('assetConditionGroup');
+      if (!groepEl || !grp) return;
+      grp.style.display = (groepEl.value === 'wegen') ? 'none' : '';
+    }
+
     function onImborGroepChange() {
       var groep = document.getElementById('assetHoofdgroep').value;
+      updateAssetConditionVisibility();
       var typeSel = document.getElementById('assetImborType');
       var hint = document.getElementById('assetImborHint');
       typeSel.innerHTML = '<option value="">— Kies type —</option>';
