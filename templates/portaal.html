@@ -1066,6 +1066,7 @@
         <a data-page="admin" onclick="navigateTo('admin')" id="topNavAdmin" style="display:none;">Admin Overzicht</a>
         <a data-page="integraties" onclick="navigateTo('integraties')" id="topNavIntegraties" style="display:none;">Integraties</a>
         <a data-page="instellingen" onclick="navigateTo('instellingen')">Instellingen</a>
+        <a data-page="compliance" onclick="navigateTo('compliance')">Compliance</a>
       </nav>
     </div>
     <div class="topbar-right">
@@ -3613,6 +3614,37 @@
             <tr><td colspan="7" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- ═══════ COMPLIANCE & NORM-CONFORMITEIT ═══════ -->
+    <div class="page-section" id="page-compliance">
+      <div class="page-header">
+        <div>
+          <h1>Compliance &amp; norm-conformiteit</h1>
+          <p>Verifieerbaar bewijs dat FieldOps de NEN- en CROW-normen voor wegbeheer implementeert — onderbouwd met broncode en geautomatiseerde tests. Bron voor de CROW-keurmerk-aanvraag en aanbestedingen.</p>
+        </div>
+        <button class="btn-secondary" onclick="loadCompliance()">↻ Vernieuwen</button>
+      </div>
+
+      <div id="compHero" style="background:linear-gradient(135deg,#1e3a8a,#0284c7);color:#fff;border-radius:16px;padding:22px 26px;margin-bottom:20px;">
+        <div style="font-size:12px;text-transform:uppercase;letter-spacing:0.08em;opacity:0.85;">Norm-conformiteit wegbeheersysteem</div>
+        <div id="compHeroBody" style="margin-top:8px;font-size:15px;">Laden…</div>
+      </div>
+
+      <div style="margin-bottom:8px;font-size:13px;font-weight:700;color:var(--text-muted);">Gedekte normen</div>
+      <div id="compNormen" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:24px;"></div>
+
+      <h3 style="margin:0 0 4px;">Conformiteitsmatrix</h3>
+      <p style="font-size:13px;color:var(--text-dim);margin:0 0 14px;">Per normdomein: wat de norm vraagt, de status en het bewijs in de broncode (module + geautomatiseerde test).</p>
+      <div id="compMatrix" style="display:flex;flex-direction:column;gap:12px;"></div>
+
+      <h3 style="margin:28px 0 4px;">Informatiebeveiliging &amp; AVG</h3>
+      <p style="font-size:13px;color:var(--text-dim);margin:0 0 14px;">Data-compliance voor enterprise-klanten en aanbestedingen.</p>
+      <div id="compSecurity" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;"></div>
+
+      <div style="margin-top:20px;padding:14px 16px;background:var(--card-bg-hover);border-radius:10px;font-size:13px;color:var(--text-muted);">
+        📄 Het volledige <strong>conformiteitsdossier</strong> (Word/PDF) is beschikbaar als bijlage voor de keurmerk-aanvraag en aanbestedingen. Live data via <code>GET /api/compliance/norm-conformance</code>; elke claim is verifieerbaar in code + geautomatiseerde test.
       </div>
     </div>
 
@@ -7968,6 +8000,7 @@
       if (page === 'dashboard') { loadDashboardStats(); loadDashboardPredictiveWidget(); }
       if (page === 'integraties') loadIntegrations();
       if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); loadOrgEditForm(); loadOrgAuditSummary(); refreshMfaStatus(); }
+      if (page === 'compliance') loadCompliance();
       if (page === 'dagboek') initDaybook();
     }
 
@@ -17444,6 +17477,78 @@
           });
         },
       });
+    }
+
+    // ── Compliance & norm-conformiteit dashboard ──────────────────────
+    var _COMP_STATUS_KLEUR = { volledig: '#16a34a', gedeeltelijk: '#b45309' };
+
+    function loadCompliance() {
+      var matrix = document.getElementById('compMatrix');
+      if (matrix) matrix.innerHTML = '<div style="color:var(--text-dim);padding:20px;">Laden…</div>';
+      api('GET', '/api/compliance/norm-conformance').then(renderCompliance).catch(function() {
+        if (matrix) matrix.innerHTML = '<div style="color:#dc2626;padding:20px;">Conformiteits-data laden mislukt.</div>';
+      });
+      api('GET', '/api/compliance/status').then(renderCompSecurity).catch(function() {});
+    }
+
+    function renderCompliance(d) {
+      var s = d.samenvatting || {};
+      var hero = document.getElementById('compHeroBody');
+      if (hero) {
+        hero.innerHTML = '<span style="font-size:42px;font-weight:800;line-height:1;">' + (s.dekkingsgraad_pct || 0) + '%</span>' +
+          '<span style="font-size:15px;margin-left:10px;opacity:0.92;">' + (s.volledig || 0) + ' van ' + (s.criteria_totaal || 0) +
+          ' normdomeinen volledig geïmplementeerd &amp; getest</span>';
+      }
+      var normenEl = document.getElementById('compNormen');
+      if (normenEl) {
+        normenEl.innerHTML = (d.normen || []).map(function(n) {
+          return '<span style="background:var(--card-bg);border:1px solid var(--border);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--text);">' + escapeHtml(n) + '</span>';
+        }).join('');
+      }
+      var matrix = document.getElementById('compMatrix');
+      if (matrix) {
+        matrix.innerHTML = (d.criteria || []).map(function(c) {
+          var kleur = _COMP_STATUS_KLEUR[c.status] || '#64748b';
+          var statusTxt = c.status === 'volledig' ? 'Volledig' : (c.status === 'gedeeltelijk' ? 'Gedeeltelijk' : c.status);
+          var bewijs = (c.modules || []).map(function(m) {
+            return '<code style="background:var(--card-bg-hover);padding:1px 6px;border-radius:4px;font-size:11px;">' + escapeHtml(m) + '</code>';
+          }).join(' ');
+          var tests = (c.tests || []).map(function(t) {
+            return '<span style="color:var(--text-dim);font-size:11px;">' + escapeHtml(t) + '</span>';
+          }).join(' · ');
+          return '<div style="border:1px solid var(--border);border-left:4px solid ' + kleur + ';border-radius:10px;padding:14px 16px;background:var(--card-bg);">' +
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">' +
+              '<div style="font-weight:700;font-size:15px;color:var(--text);">' + escapeHtml(c.domein) + '</div>' +
+              '<span style="background:' + kleur + '18;color:' + kleur + ';font-weight:700;font-size:12px;padding:3px 10px;border-radius:999px;white-space:nowrap;">✓ ' + statusTxt + '</span>' +
+            '</div>' +
+            '<div style="font-size:12px;font-weight:600;color:var(--accent);margin-top:3px;">' + escapeHtml(c.norm) + '</div>' +
+            '<div style="font-size:13px;color:var(--text-muted);margin-top:5px;">' + escapeHtml(c.criterium) + '</div>' +
+            '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">' + bewijs + '</div>' +
+            (tests ? '<div style="margin-top:5px;">' + tests + '</div>' : '') +
+          '</div>';
+        }).join('');
+      }
+    }
+
+    function renderCompSecurity(st) {
+      var host = document.getElementById('compSecurity');
+      if (!host) return;
+      function card(title, value, sub) {
+        return '<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;">' +
+          '<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim);">' + title + '</div>' +
+          '<div style="font-size:15px;font-weight:700;color:var(--text);margin-top:3px;">' + value + '</div>' +
+          (sub ? '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">' + sub + '</div>' : '') +
+        '</div>';
+      }
+      var iso = st.iso27001 || {}, avg = st.avg_compliance || {}, enc = st.encryption || {}, bk = st.backups || {}, au = st.audit_trail || {};
+      host.innerHTML =
+        card('Datalocatie', escapeHtml(st.data_location || '—'), 'EU-only hosting') +
+        card('AVG / GDPR', escapeHtml(avg.status || '—'), 'Verwerker (art. 28) · DPA beschikbaar') +
+        card('ISO 27001:2022', (iso.controls_implemented_pct != null ? iso.controls_implemented_pct + '% controls' : 'aligned'), 'Certificering ' + escapeHtml(iso.certification_target || '')) +
+        card('Sub-processors', (st.sub_processors_count != null ? st.sub_processors_count : '—') + ' geregistreerd', 'Met DPA + SCCs') +
+        card('Versleuteling', escapeHtml(enc.at_rest || 'AES-256') + ' / ' + escapeHtml(enc.in_transit || 'TLS 1.3'), 'At rest / in transit') +
+        card('Audit-trail', escapeHtml(au.type || 'append-only') + ', ' + (au.retention_years || 5) + ' jr', 'Alle mutaties + admin-acties') +
+        card('Back-ups', escapeHtml(bk.frequency || 'daily') + ', ' + (bk.retention_days || 30) + ' dgn', 'RTO ' + (bk.rto_hours || 4) + 'u / RPO ' + (bk.rpo_hours || 1) + 'u');
     }
 
     function loadIntegrations() {
