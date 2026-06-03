@@ -1,27 +1,28 @@
-"""GeoJSON-import voor wegvakken en punt-assets.
+"""GeoJSON- en shapefile-import voor wegvakken en punt-assets.
 
-POST /api/imports/geojson — upload een GeoJSON FeatureCollection en laat FieldOps
-er automatisch assets van maken. Bedoeld voor gemeente-exports (GBI/BGT/NWB):
+Endpoints (multipart upload):
+  POST /api/imports/geojson    — GeoJSON FeatureCollection
+  POST /api/imports/shapefile  — shapefile als .zip (.shp + .dbf + .shx) of los .shp
 
+Beide voeden dezelfde pipeline (_process_features). Per feature:
   - LineString / MultiLineString  -> wegvak-asset (is_segment=True) met lengte,
     bewaarde geometrie en bounding-box
-  - Point                          -> punt-asset
-
-Per feature wordt:
+  - Point (en Polygon -> centroid)  -> punt-asset
   - asset_type automatisch IMBOR-geclassificeerd uit de properties (of via een
-    opgegeven default), met herkomst-vermelding in het resultaat;
-  - de centroid als lat/lng gezet en de bounding-box opgeslagen;
-  - RD (EPSG:28992) automatisch herkend en naar WGS84 geconverteerd.
+    opgegeven default), met herkomst-vermelding
+  - centroid als lat/lng; RD (EPSG:28992) auto-herkend + geconverteerd naar WGS84
 
-`dry_run=true` geeft een preview (niets wordt opgeslagen). Bestaande asset-codes
-binnen de organisatie worden overgeslagen (geen duplicaten).
+`dry_run=true` geeft een preview (niets opgeslagen). Bestaande asset-codes binnen
+de organisatie worden overgeslagen (geen duplicaten).
 
-Dit is de 'slimme' wegvak-importer; /api/assets/import/geojson blijft de simpele
+Dit is de 'slimme' importer; /api/assets/import/geojson blijft de simpele
 punt-importer die expliciete code + asset_type per feature vereist.
 """
 from __future__ import annotations
 
+import io
 import json
+import zipfile
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
@@ -127,7 +128,8 @@ def _convert_geometry(geom: dict) -> Optional[dict]:
     """Normaliseer een GeoJSON-geometrie naar WGS84.
 
     Returns dict met:
-      type:  'Point' | 'LineString' | 'MultiLineString'
+      type:  'Point' | 'LineString' | 'MultiLineString'  (Polygon/MultiPolygon
+             worden als Point-centroid teruggegeven)
       parts: list van coordinaten-lijsten ([lng,lat]) per onderdeel
       flat:  alle coordinaten plat (voor centroid/bbox)
       was_rd: of RD->WGS84 conversie is toegepast
@@ -135,7 +137,7 @@ def _convert_geometry(geom: dict) -> Optional[dict]:
     """
     t = geom.get("type")
     c = geom.get("coordinates")
-    if not isinstance(c, list):
+    if not isinstance(c, (list, tuple)):
         return None
     try:
         if t == "Point":
@@ -147,7 +149,7 @@ def _convert_geometry(geom: dict) -> Optional[dict]:
                 pt = _rd_point(pt)
             return {"type": t, "parts": [[pt]], "flat": [pt], "was_rd": rd}
         if t == "LineString":
-            pts = [[float(p[0]), float(p[1])] for p in c if isinstance(p, list) and len(p) >= 2]
+            pts = [[float(p[0]), float(p[1])] for p in c if isinstance(p, (list, tuple)) and len(p) >= 2]
             if len(pts) < 2:
                 return None
             rd = _is_rd(pts[0])
@@ -157,9 +159,9 @@ def _convert_geometry(geom: dict) -> Optional[dict]:
         if t == "MultiLineString":
             parts: list[list[list[float]]] = []
             for line in c:
-                if not isinstance(line, list):
+                if not isinstance(line, (list, tuple)):
                     continue
-                pts = [[float(p[0]), float(p[1])] for p in line if isinstance(p, list) and len(p) >= 2]
+                pts = [[float(p[0]), float(p[1])] for p in line if isinstance(p, (list, tuple)) and len(p) >= 2]
                 if len(pts) >= 2:
                     parts.append(pts)
             if not parts:
@@ -169,6 +171,20 @@ def _convert_geometry(geom: dict) -> Optional[dict]:
                 parts = [[_rd_point(p) for p in part] for part in parts]
             flat = [p for part in parts for p in part]
             return {"type": t, "parts": parts, "flat": flat, "was_rd": rd}
+        if t in ("Polygon", "MultiPolygon"):
+            # Vlak-objecten (parkeervlak, plein, ...) -> centroid als punt-asset.
+            rings = c if t == "Polygon" else [ring for poly in c for ring in poly]
+            pts = [[float(p[0]), float(p[1])]
+                   for ring in rings if isinstance(ring, (list, tuple))
+                   for p in ring if isinstance(p, (list, tuple)) and len(p) >= 2]
+            if not pts:
+                return None
+            rd = _is_rd(pts[0])
+            if rd:
+                pts = [_rd_point(p) for p in pts]
+            cx = round(sum(p[0] for p in pts) / len(pts), 7)
+            cy = round(sum(p[1] for p in pts) / len(pts), 7)
+            return {"type": "Point", "parts": [[[cx, cy]]], "flat": pts, "was_rd": rd}
     except (TypeError, ValueError, IndexError):
         return None
     return None
@@ -185,29 +201,65 @@ def _stored_geometry(conv: dict) -> Optional[str]:
     return json.dumps(geom, separators=(",", ":"))
 
 
-@router.post("/geojson")
-async def import_geojson(
-    request: Request,
-    file: UploadFile = File(..., description="GeoJSON FeatureCollection (WGS84 of RD/EPSG:28992)."),
-    project_id: Optional[str] = Form(None),
-    default_type: Optional[str] = Form(None, description="IMBOR-code als fallback-type."),
-    code_prefix: str = Form("WV", description="Prefix voor auto-gegenereerde codes."),
-    dry_run: bool = Form(False),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    if not can_manage_assets(current_user):
-        raise HTTPException(status_code=403, detail="Geen rechten voor import")
+def _jsonsafe(v):
+    """Maak een DBF-waarde JSON-serialiseerbaar (datums/bytes -> string)."""
+    if v is None or isinstance(v, (bool, int, float, str)):
+        return v
+    return str(v)
 
-    raw = await file.read()
+
+def _shapefile_to_features(raw: bytes, filename: str) -> list[dict]:
+    """Lees een shapefile (.zip met .shp/.dbf/.shx, of los .shp) en geef een
+    GeoJSON-achtige feature-lijst terug. Coordinaten blijven zoals ze zijn —
+    RD wordt later in _convert_geometry herkend en omgezet."""
     try:
-        data = json.loads(raw.decode("utf-8-sig"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise HTTPException(status_code=400, detail=f"Ongeldig GeoJSON: {e}")
+        import shapefile  # pyshp
+    except ImportError:
+        raise HTTPException(status_code=500,
+                            detail="Shapefile-import niet beschikbaar (pyshp ontbreekt)")
 
-    features = data.get("features") if isinstance(data, dict) else None
-    if not isinstance(features, list):
-        raise HTTPException(status_code=400, detail="Verwacht een GeoJSON FeatureCollection")
+    shp = dbf = shx = None
+    if zipfile.is_zipfile(io.BytesIO(raw)):
+        with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+            for n in zf.namelist():
+                low = n.lower()
+                if low.endswith(".shp"):
+                    shp = io.BytesIO(zf.read(n))
+                elif low.endswith(".dbf"):
+                    dbf = io.BytesIO(zf.read(n))
+                elif low.endswith(".shx"):
+                    shx = io.BytesIO(zf.read(n))
+        if shp is None:
+            raise HTTPException(status_code=400, detail="ZIP bevat geen .shp-bestand")
+    else:
+        shp = io.BytesIO(raw)
+
+    try:
+        reader = shapefile.Reader(shp=shp, dbf=dbf, shx=shx)
+        features: list[dict] = []
+        if dbf is not None:
+            for sr in reader.shapeRecords():
+                rec = sr.record.as_dict() if sr.record is not None else {}
+                props = {k: _jsonsafe(v) for k, v in rec.items()}
+                features.append({"type": "Feature",
+                                 "geometry": sr.shape.__geo_interface__,
+                                 "properties": props})
+        else:
+            for shape in reader.shapes():
+                features.append({"type": "Feature",
+                                 "geometry": shape.__geo_interface__,
+                                 "properties": {}})
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Kan shapefile niet lezen: {e}")
+    return features
+
+
+def _process_features(db: Session, current_user: User, request: Request, features: list, *,
+                      project_id: Optional[str], default_type: Optional[str],
+                      code_prefix: str, dry_run: bool, filename: Optional[str], fmt: str) -> dict:
+    """Gedeelde import-pipeline voor GeoJSON- én shapefile-features."""
     if len(features) > _MAX_FEATURES:
         raise HTTPException(status_code=400,
                             detail=f"Te veel features ({len(features)}); max {_MAX_FEATURES} per import")
@@ -274,7 +326,7 @@ async def import_geojson(
             extra = dict(props)
             extra["bbox"] = bbox
             extra["_import"] = {
-                "bron": "geojson", "bestand": file.filename,
+                "bron": fmt, "bestand": filename,
                 "imbor_herkomst": herkomst, "rd_geconverteerd": conv["was_rd"],
             }
             db.add(Asset(
@@ -305,8 +357,62 @@ async def import_geojson(
     log_action(db, request, current_user,
                action=ACTION.ASSET_BULK_IMPORT, entity_type="asset",
                extra={"created": created, "skipped": skipped, "errors": len(errors),
-                      "filename": file.filename, "format": "geojson", "by_type": by_type})
+                      "filename": filename, "format": fmt, "by_type": by_type})
     return {
         "created": created, "skipped": skipped, "errors": errors,
         "total_features": len(features), "by_type": by_type, "preview": preview,
     }
+
+
+@router.post("/geojson")
+async def import_geojson(
+    request: Request,
+    file: UploadFile = File(..., description="GeoJSON FeatureCollection (WGS84 of RD/EPSG:28992)."),
+    project_id: Optional[str] = Form(None),
+    default_type: Optional[str] = Form(None, description="IMBOR-code als fallback-type."),
+    code_prefix: str = Form("WV", description="Prefix voor auto-gegenereerde codes."),
+    dry_run: bool = Form(False),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not can_manage_assets(current_user):
+        raise HTTPException(status_code=403, detail="Geen rechten voor import")
+
+    raw = await file.read()
+    try:
+        data = json.loads(raw.decode("utf-8-sig"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise HTTPException(status_code=400, detail=f"Ongeldig GeoJSON: {e}")
+
+    features = data.get("features") if isinstance(data, dict) else None
+    if not isinstance(features, list):
+        raise HTTPException(status_code=400, detail="Verwacht een GeoJSON FeatureCollection")
+
+    return _process_features(
+        db, current_user, request, features,
+        project_id=project_id, default_type=default_type,
+        code_prefix=code_prefix, dry_run=dry_run, filename=file.filename, fmt="geojson",
+    )
+
+
+@router.post("/shapefile")
+async def import_shapefile(
+    request: Request,
+    file: UploadFile = File(..., description="Shapefile als .zip (.shp + .dbf + .shx) of los .shp."),
+    project_id: Optional[str] = Form(None),
+    default_type: Optional[str] = Form(None, description="IMBOR-code als fallback-type."),
+    code_prefix: str = Form("WV", description="Prefix voor auto-gegenereerde codes."),
+    dry_run: bool = Form(False),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not can_manage_assets(current_user):
+        raise HTTPException(status_code=403, detail="Geen rechten voor import")
+
+    raw = await file.read()
+    features = _shapefile_to_features(raw, file.filename or "")
+    return _process_features(
+        db, current_user, request, features,
+        project_id=project_id, default_type=default_type,
+        code_prefix=code_prefix, dry_run=dry_run, filename=file.filename, fmt="shapefile",
+    )

@@ -1628,7 +1628,7 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="openAssetImportWizard()" data-i18n="csv_importeren" title="Importeer assets uit GBI/iAsset/Antea CSV-export">📊 CSV importeren</button>
           <input type="file" id="assetCsvInput" accept=".csv" style="display:none;" onchange="importAssetsCsv(event)">
-          <button class="btn-secondary" onclick="openGeojsonImportWizard()" title="Importeer wegvakken uit een GeoJSON-bestand (GBI/BGT-export) met automatische IMBOR-classificatie" style="display:inline-flex;align-items:center;gap:6px;">🗺️ GeoJSON-import <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.05em;">NIEUW</span></button>
+          <button class="btn-secondary" onclick="openGeojsonImportWizard()" title="Importeer wegvakken uit GeoJSON of shapefile (.zip) — GBI/BGT-export met automatische IMBOR-classificatie" style="display:inline-flex;align-items:center;gap:6px;">🗺️ Import GeoJSON/SHP <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.05em;">NIEUW</span></button>
           <button class="btn-secondary" onclick="openNwbZoekModal()" style="display:inline-flex;align-items:center;gap:6px;">🛣️ Wegvakken uit NWB <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.05em;">NIEUW</span></button>
           <button class="btn-primary" onclick="openAssetModal()">+ Nieuw Asset</button>
         </div>
@@ -1945,9 +1945,9 @@
     <div class="modal-overlay" id="geojsonImportWizardModal">
       <div class="modal" style="max-width:780px;">
         <button class="modal-close" onclick="closeGeojsonImportWizard()">&times;</button>
-        <h2>🗺️ Wegvakken importeren uit GeoJSON</h2>
+        <h2>🗺️ Wegvakken importeren (GeoJSON / shapefile)</h2>
         <p class="subtitle">
-          Upload een GeoJSON-export (GBI/BGT/NWB). FieldOps maakt per feature een asset:
+          Upload een GeoJSON- of shapefile-export (GBI/BGT/NWB). FieldOps maakt per feature een asset:
           lijnen worden wegvakken (met lengte + geometrie), punten worden punt-assets.
           Het <strong>IMBOR-type</strong> wordt automatisch herkend en RD-coördinaten
           worden naar WGS84 omgezet.
@@ -1963,11 +1963,11 @@
           </div>
           <div id="giwDropZone" style="border:2px dashed var(--border);border-radius:14px;padding:36px 24px;text-align:center;background:var(--card-bg-hover);cursor:pointer;transition:all 0.2s;" onclick="document.getElementById('giwFileInput').click()">
             <div style="font-size:48px;margin-bottom:12px;opacity:0.5;">🗺️</div>
-            <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px;">Sleep een GeoJSON hierheen</div>
-            <div style="font-size:12px;color:var(--text-muted);">of klik om bestand te kiezen (.geojson / .json)</div>
-            <div style="font-size:11px;color:var(--text-dim);margin-top:12px;">FeatureCollection met LineString / MultiLineString / Point — WGS84 of RD (EPSG:28992)</div>
+            <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px;">Sleep een GeoJSON of shapefile hierheen</div>
+            <div style="font-size:12px;color:var(--text-muted);">of klik om bestand te kiezen (.geojson / .json / .zip-shapefile)</div>
+            <div style="font-size:11px;color:var(--text-dim);margin-top:12px;">Lijnen (wegvakken) of punten — WGS84 of RD (EPSG:28992). Shapefile als .zip met .shp + .dbf + .shx.</div>
           </div>
-          <input type="file" id="giwFileInput" accept=".geojson,.json,application/geo+json,application/json" style="display:none;" onchange="giwHandleFile(event.target.files[0])">
+          <input type="file" id="giwFileInput" accept=".geojson,.json,.zip,.shp,application/geo+json,application/json,application/zip" style="display:none;" onchange="giwHandleFile(event.target.files[0])">
           <div style="margin-top:16px;padding:12px;background:rgba(2,132,199,0.05);border-radius:8px;font-size:12px;color:var(--text-muted);line-height:1.6;">
             <strong style="color:var(--text);">Automatische IMBOR-classificatie</strong> uit de properties:
             <code>asfalt</code>→wegvak_asfalt, <code>klinker</code>→wegvak_elementen,
@@ -12616,10 +12616,15 @@
       return fd;
     }
 
+    function _giwEndpoint(file) {
+      // .zip/.shp -> shapefile-importer; anders GeoJSON-importer
+      return /\.(zip|shp)$/i.test(file.name) ? '/api/imports/shapefile' : '/api/imports/geojson';
+    }
+
     function giwHandleFile(file) {
       if (!file) return;
-      if (!/\.(geojson|json)$/i.test(file.name)) {
-        showToast('Alleen .geojson of .json wordt ondersteund', 'error');
+      if (!/\.(geojson|json|zip|shp)$/i.test(file.name)) {
+        showToast('Ondersteund: .geojson, .json of shapefile (.zip)', 'error');
         return;
       }
       if (file.size > 50 * 1024 * 1024) {
@@ -12631,7 +12636,7 @@
       showToast('GeoJSON analyseren...', 'info');
       var btn = document.getElementById('giwCommitBtn');
       if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyseren...'; }
-      fetch('/api/imports/geojson', {
+      fetch(_giwEndpoint(file), {
         method: 'POST',
         headers: token ? { 'Authorization': 'Bearer ' + token } : {},
         body: _giwForm(file, true),
@@ -12708,7 +12713,7 @@
       var btn = document.getElementById('giwCommitBtn');
       if (btn) { btn.disabled = true; btn.textContent = '⏳ Importeren...'; }
       var token = localStorage.getItem('fieldops_token') || '';
-      fetch('/api/imports/geojson', {
+      fetch(_giwEndpoint(_giwFile), {
         method: 'POST',
         headers: token ? { 'Authorization': 'Bearer ' + token } : {},
         body: _giwForm(_giwFile, false),
