@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
 
+import crow_keurmerk
 from models import User
 from auth import get_current_user
 
@@ -340,3 +341,14 @@ def security_posture(current_user: User = Depends(get_current_user)):
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "note": "Detailed documentation available on request: compliance@fieldopsapp.nl",
     }
+
+
+@router.get("/norm-conformance")
+def norm_conformance(current_user: User = Depends(get_current_user)):
+    """Norm-conformiteit wegbeheersysteem (NEN/CROW) — live, machine-leesbaar.
+
+    Bron voor het CROW-keurmerk-dossier en voor aanbestedingen: per criterium de
+    norm, status en het bewijs (module + endpoint-groep + test in de repo)."""
+    data = crow_keurmerk.dossier()
+    data["generated_at"] = datetime.now(timezone.utc).isoformat()
+    return data
