@@ -7894,7 +7894,9 @@
       if (page === 'opleveren') loadOpleveringen();
       if (page === 'kunstwerken') loadKunstwerkInspecties();
       if (page === 'mijn-dag') loadMijnDag();
-      if (page === 'dashboard') loadDashboardPredictiveWidget();
+      // B3: ook de hoofd-stats verversen (niet alleen de predictive-widget), zodat
+      // meldingen die in Mijn Dag zijn afgerond meteen kloppen op het Dashboard.
+      if (page === 'dashboard') { loadDashboardStats(); loadDashboardPredictiveWidget(); }
       if (page === 'integraties') loadIntegrations();
       if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); loadOrgEditForm(); loadOrgAuditSummary(); refreshMfaStatus(); }
       if (page === 'dagboek') initDaybook();
@@ -11148,6 +11150,18 @@
       _assetSearchTimer = setTimeout(loadAssets, 300);
     }
 
+    // B5: wis alle asset-filters en toon de volledige lijst weer.
+    function resetAssetFilters() {
+      ['assetFilterProject', 'assetFilterHoofdgroep', 'assetFilterType'].forEach(function(id) {
+        var el = document.getElementById(id); if (el) el.value = '';
+      });
+      var s = document.getElementById('assetSearch'); if (s) s.value = '';
+      // hoofdgroep-narrowing op de type-dropdown ongedaan maken
+      var typeSel = document.getElementById('assetFilterType');
+      if (typeSel) Array.from(typeSel.options).forEach(function(o) { o.hidden = false; });
+      loadAssets();
+    }
+
     function loadAssets() {
       var tbody = document.getElementById('assetsBody');
       var listWrap = document.getElementById('assetsList');
@@ -11169,7 +11183,7 @@
       var pf = projSel.value; if (pf) qs.push('project_id='+encodeURIComponent(pf));
       var tf = document.getElementById('assetFilterType').value; if (tf) qs.push('asset_type='+encodeURIComponent(tf));
       var sq = document.getElementById('assetSearch').value; if (sq) qs.push('q='+encodeURIComponent(sq));
-      qs.push('limit=500');
+      qs.push('limit=1000');
 
       api('GET', '/api/assets/?' + qs.join('&')).then(function(items){
         allAssets = items || [];
@@ -11210,7 +11224,18 @@
           countEl.textContent = '';
           return;
         }
-        countEl.textContent = allAssets.length + ' assets';
+        // B5: maak zichtbaar waarom niet alle assets tonen — actief filter of
+        // afkap op de limiet — zodat "11 assets, waar is de rest?" nooit een
+        // mysterie is. Filters: project / type / zoekterm.
+        var _afFilter = !!(pf || tf || sq);
+        var _afParts = [allAssets.length + ' assets'];
+        if (allAssets.length >= 1000) {
+          _afParts.push('<span style="color:#ea580c;">eerste 1000 — verfijn met zoeken</span>');
+        }
+        if (_afFilter) {
+          _afParts.push('<a href="#" onclick="resetAssetFilters();return false;" style="color:var(--accent);text-decoration:none;font-weight:600;">filter actief — toon alles ✕</a>');
+        }
+        countEl.innerHTML = _afParts.join('&nbsp;&nbsp;·&nbsp;&nbsp;');
         renderAssetRows(allAssets);
       }).catch(function(err){
         tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--red);">'+escapeHtml(err.message||'fout')+'</td></tr>';
