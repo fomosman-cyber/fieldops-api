@@ -5072,6 +5072,7 @@
         ph_kunstwerken: 'Inspecties',
         ph_kunstwerken_sub: 'Formele inspecties per categorie: Kunstwerken (NEN 2767-2 + CROW 134), Groen (VTA + NEN-EN 1176 + NEN 2767-4), Markering (CROW 145), Verlichting (NEN 3140) en Ondergronds (NEN 3399).',
         kwcat_kunstwerken: 'Kunstwerken', kwcat_groen: 'Groen', kwcat_markering: 'Markering',
+        kwcat_wegen: 'Wegen',
         kwcat_verlichting: 'Verlichting', kwcat_ondergronds: 'Ondergronds',
         kwcat_aantal: 'inspecties', kwcat_types: 'types', kwm_kies_type: '— Kies type —',
         kw_gps_zoeken: 'Dichtstbijzijnde asset bepalen…', kw_gps_gevonden: 'Dichtstbijzijnde asset geselecteerd', kw_gps_geen: 'Geen asset binnen 50 m — kies handmatig',
@@ -5548,6 +5549,7 @@
         ph_kunstwerken: 'Inspections',
         ph_kunstwerken_sub: 'Formal inspections by category: Civil structures (NEN 2767-2 + CROW 134), Green (VTA + NEN-EN 1176 + NEN 2767-4), Markings (CROW 145), Lighting (NEN 3140) and Underground (NEN 3399).',
         kwcat_kunstwerken: 'Civil structures', kwcat_groen: 'Green', kwcat_markering: 'Markings',
+        kwcat_wegen: 'Roads',
         kwcat_verlichting: 'Lighting', kwcat_ondergronds: 'Underground',
         kwcat_aantal: 'inspections', kwcat_types: 'types', kwm_kies_type: '— Select type —',
         kw_gps_zoeken: 'Finding nearest asset…', kw_gps_gevonden: 'Nearest asset selected', kw_gps_geen: 'No asset within 50 m — select manually',
@@ -6024,6 +6026,7 @@
         ph_kunstwerken: 'Inspektionen',
         ph_kunstwerken_sub: 'Formelle Inspektionen nach Kategorie: Kunstbauwerke (NEN 2767-2 + CROW 134), Grün (VTA + NEN-EN 1176 + NEN 2767-4), Markierung (CROW 145), Beleuchtung (NEN 3140) und Untergrund (NEN 3399).',
         kwcat_kunstwerken: 'Kunstbauwerke', kwcat_groen: 'Grün', kwcat_markering: 'Markierung',
+        kwcat_wegen: 'Straßen',
         kwcat_verlichting: 'Beleuchtung', kwcat_ondergronds: 'Untergrund',
         kwcat_aantal: 'Inspektionen', kwcat_types: 'Typen', kwm_kies_type: '— Typ wählen —',
         kw_gps_zoeken: 'Nächstgelegenes Objekt suchen…', kw_gps_gevonden: 'Nächstgelegenes Objekt ausgewählt', kw_gps_geen: 'Kein Objekt innerhalb 50 m — manuell wählen',
@@ -6500,6 +6503,7 @@
         ph_kunstwerken: 'Inspections',
         ph_kunstwerken_sub: 'Inspections formelles par catégorie : Ouvrages d\'art (NEN 2767-2 + CROW 134), Espaces verts (VTA + NEN-EN 1176 + NEN 2767-4), Marquage (CROW 145), Éclairage (NEN 3140) et Souterrain (NEN 3399).',
         kwcat_kunstwerken: 'Ouvrages d\'art', kwcat_groen: 'Espaces verts', kwcat_markering: 'Marquage',
+        kwcat_wegen: 'Voirie',
         kwcat_verlichting: 'Éclairage', kwcat_ondergronds: 'Souterrain',
         kwcat_aantal: 'inspections', kwcat_types: 'types', kwm_kies_type: '— Choisir un type —',
         kw_gps_zoeken: 'Recherche de l\'objet le plus proche…', kw_gps_gevonden: 'Objet le plus proche sélectionné', kw_gps_geen: 'Aucun objet à moins de 50 m — sélection manuelle',
@@ -6976,6 +6980,7 @@
         ph_kunstwerken: 'Muayeneler',
         ph_kunstwerken_sub: 'Kategoriye göre resmi muayeneler: Sanat yapıları (NEN 2767-2 + CROW 134), Yeşil alan (VTA + NEN-EN 1176 + NEN 2767-4), İşaretleme (CROW 145), Aydınlatma (NEN 3140) ve Yeraltı (NEN 3399).',
         kwcat_kunstwerken: 'Sanat yapıları', kwcat_groen: 'Yeşil alan', kwcat_markering: 'İşaretleme',
+        kwcat_wegen: 'Yollar',
         kwcat_verlichting: 'Aydınlatma', kwcat_ondergronds: 'Yeraltı',
         kwcat_aantal: 'muayene', kwcat_types: 'tip', kwm_kies_type: '— Tip seçin —',
         kw_gps_zoeken: 'En yakın varlık aranıyor…', kw_gps_gevonden: 'En yakın varlık seçildi', kw_gps_geen: '50 m içinde varlık yok — elle seçin',
@@ -14354,12 +14359,13 @@
     // ── Categorieën — groepering van de 15 inspectie-types ──────
     var KUNSTWERK_CATEGORIES = {
       kunstwerken: { label: 'Kunstwerken', icon: '🌉', color: '#0284c7', types: ['brug','viaduct','tunnel','sluis','stuw','duiker','kademuur','gemaal'] },
+      wegen:       { label: 'Wegen',       icon: '🛣️',  color: '#0891b2', types: ['wegdek_asfalt','wegdek_elementen'] },
       groen:       { label: 'Groen',       icon: '🌳', color: '#16a34a', types: ['boom','kunstgrasveld','speeltoestel','fontein'] },
-      markering:   { label: 'Markering',   icon: '🛣️',  color: '#f59e0b', types: ['wegmarkering'] },
+      markering:   { label: 'Markering',   icon: '〰️',  color: '#f59e0b', types: ['wegmarkering'] },
       verlichting: { label: 'Verlichting', icon: '💡', color: '#eab308', types: ['verlichting'] },
       ondergronds: { label: 'Ondergronds', icon: '🚰', color: '#64748b', types: ['riolering'] },
     };
-    var KUNSTWERK_CATEGORY_ORDER = ['kunstwerken','groen','markering','verlichting','ondergronds'];
+    var KUNSTWERK_CATEGORY_ORDER = ['kunstwerken','wegen','groen','markering','verlichting','ondergronds'];
     var _kwCategoryFilter = ''; // '' = alle, anders categorie-key
 
     function kunstwerkCategoryForType(typeKey) {
@@ -14589,7 +14595,9 @@
       speeltoestel: '🛝 NEN-EN 1176 + Warenwetbesluit Attractie-/Speeltoestellen. Hoofdinspectie 1×/jaar verplicht.',
       boom:         '🌳 VTA (Visual Tree Assessment) volgens Mattheck. Risicoklasse 1-5; cyclus afhankelijk van klasse.',
       verlichting:  '💡 NEN 3140 elektrische keuring 5-jaarlijks. Inspecteur moet VOP/VP/VIOP-gekwalificeerd zijn.',
-      wegmarkering: '🛣️ CROW 145 retroreflectie-meting. Hoofdwegen jaarlijks; vervangen bij RL droog < 80 mcd.',
+      wegmarkering: '〰️ CROW 145 retroreflectie-meting. Hoofdwegen jaarlijks; vervangen bij RL droog < 80 mcd.',
+      wegdek_asfalt: '🛣️ CROW 146a visuele inspectie asfaltverharding. Schadebeelden: rafeling, scheuren, spoorvorming. Klasse L/M/E.',
+      wegdek_elementen: '🛣️ CROW 146b visuele inspectie elementenverharding (klinkers/tegels). Voegwijdte, oneffenheid, ontbrekende elementen.',
       riolering:    '🚰 NEN 3399 + NEN-EN 13508-2 schadecodes. Visuele camera-inspectie; eindklasse per streng.',
       brug: '🌉 NEN 2767-2 + CROW 134. Hoofdinspectie 6-jaarlijks; defect-score uit ernst × intensiteit × omvang.',
       viaduct: '🌉 NEN 2767-2 + CROW 134. Hoofdinspectie 6-jaarlijks.',
