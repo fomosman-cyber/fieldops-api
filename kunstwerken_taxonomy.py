@@ -19,6 +19,8 @@ het testbaar zonder fixtures.
 from __future__ import annotations
 from typing import Optional
 
+from crow_146 import CROW_146A_SCHADEBEELDEN, CROW_146B_SCHADEBEELDEN
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Kunstwerk-types die deze module ondersteunt
@@ -40,6 +42,8 @@ KUNSTWERK_TYPES = {
     "fontein": "Fontein (NEN 2767-4)",
     "kunstgrasveld": "Kunstgrasveld (NEN 2767-4)",
     "wegmarkering": "Wegmarkering (CROW 145)",
+    "wegdek_asfalt": "Wegdek asfalt (CROW 146a)",
+    "wegdek_elementen": "Wegdek elementen (CROW 146b)",
 }
 
 # Aliassen — input-normalisatie
@@ -82,6 +86,22 @@ _TYPE_ALIASES = {
     "wegmarkeringen": "wegmarkering",
     "belijning": "wegmarkering",
     "crow145": "wegmarkering",
+    # Wegdek / verharding (CROW 146) — sluit aan op IMBOR-wegvak-asset_types.
+    "wegdek": "wegdek_asfalt",
+    "wegvak_asfalt": "wegdek_asfalt",
+    "asfalt": "wegdek_asfalt",
+    "asfaltverharding": "wegdek_asfalt",
+    "fietspad": "wegdek_asfalt",
+    "rijbaan": "wegdek_asfalt",
+    "crow146": "wegdek_asfalt",
+    "crow146a": "wegdek_asfalt",
+    "wegvak_elementen": "wegdek_elementen",
+    "elementenverharding": "wegdek_elementen",
+    "klinkers": "wegdek_elementen",
+    "klinker": "wegdek_elementen",
+    "bestrating": "wegdek_elementen",
+    "trottoir": "wegdek_elementen",
+    "crow146b": "wegdek_elementen",
 }
 
 
@@ -982,6 +1002,89 @@ _WEGMARKERING_ELEMENTEN = [
 ]
 
 
+# ── Wegdek / verharding (CROW 146a asfalt, 146b elementen) ──────────────────
+# De CROW 146-schadebeelden vormen direct de gebrek-picker per deklaag-element.
+def _crow146_gebreken(schadebeelden: list[dict]) -> list[dict]:
+    return [{"code": s["code"], "naam": s["naam"]} for s in schadebeelden]
+
+
+_WEGDEK_ASFALT_ELEMENTEN = [
+    {
+        "code": "WEGDEK.DEKLAAG",
+        "naam": "Asfaltdeklaag (toplaag)",
+        "groep": "afwerking",
+        "gebreken": _crow146_gebreken(CROW_146A_SCHADEBEELDEN),
+    },
+    {
+        "code": "WEGDEK.VLAKHEID",
+        "naam": "Vlakheid / spoorvorming",
+        "groep": "constructief",
+        "gebreken": [
+            {"code": "spoorvorming", "naam": "Spoorvorming (langsonvlakheid wielspoor)"},
+            {"code": "dwarsonvlakheid", "naam": "Dwarsonvlakheid / golfvorming"},
+            {"code": "zetting", "naam": "Zetting / verzakking ondergrond"},
+        ],
+    },
+    {
+        "code": "WEGDEK.AFWATERING",
+        "naam": "Afwatering / goten / kolken",
+        "groep": "installatie",
+        "gebreken": [
+            {"code": "waterstagnatie", "naam": "Waterstagnatie / plasvorming"},
+            {"code": "kolk_verstopt", "naam": "Verstopte/verzakte straatkolk"},
+            {"code": "goot_defect", "naam": "Beschadigde goot / molgoot"},
+        ],
+    },
+    {
+        "code": "WEGDEK.KANTOPSLUITING",
+        "naam": "Kantopsluiting / banden",
+        "groep": "constructief",
+        "gebreken": [
+            {"code": "band_verzakt", "naam": "Verzakte/losse band"},
+            {"code": "band_beschadigd", "naam": "Beschadigde band"},
+            {"code": "voeg_open", "naam": "Open/uitgespoelde voeg"},
+        ],
+    },
+]
+
+_WEGDEK_ELEMENTEN_ELEMENTEN = [
+    {
+        "code": "WEGDEK.ELEMENTENVERHARDING",
+        "naam": "Elementenverharding (klinkers/tegels)",
+        "groep": "afwerking",
+        "gebreken": _crow146_gebreken(CROW_146B_SCHADEBEELDEN),
+    },
+    {
+        "code": "WEGDEK.VLAKHEID",
+        "naam": "Vlakheid / verzakking",
+        "groep": "constructief",
+        "gebreken": [
+            {"code": "oneffenheid", "naam": "Oneffenheid / rateleffect"},
+            {"code": "zetting", "naam": "Zetting / verzakking"},
+            {"code": "wortelopdruk", "naam": "Wortelopdruk"},
+        ],
+    },
+    {
+        "code": "WEGDEK.AFWATERING",
+        "naam": "Afwatering / goten / kolken",
+        "groep": "installatie",
+        "gebreken": [
+            {"code": "waterstagnatie", "naam": "Waterstagnatie / plasvorming"},
+            {"code": "kolk_verstopt", "naam": "Verstopte/verzakte straatkolk"},
+        ],
+    },
+    {
+        "code": "WEGDEK.KANTOPSLUITING",
+        "naam": "Kantopsluiting / banden",
+        "groep": "constructief",
+        "gebreken": [
+            {"code": "band_verzakt", "naam": "Verzakte/losse band"},
+            {"code": "voeg_open", "naam": "Open/uitgespoelde voeg"},
+        ],
+    },
+]
+
+
 _ELEMENTEN_PER_TYPE = {
     "brug": _BRUG_ELEMENTEN,
     "viaduct": _VIADUCT_ELEMENTEN,
@@ -998,6 +1101,8 @@ _ELEMENTEN_PER_TYPE = {
     "fontein": _FONTEIN_ELEMENTEN,
     "kunstgrasveld": _KUNSTGRAS_ELEMENTEN,
     "wegmarkering": _WEGMARKERING_ELEMENTEN,
+    "wegdek_asfalt": _WEGDEK_ASFALT_ELEMENTEN,
+    "wegdek_elementen": _WEGDEK_ELEMENTEN_ELEMENTEN,
 }
 
 
