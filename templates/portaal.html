@@ -20083,15 +20083,24 @@
               var proj = allProjects.find(function(p) { return p.id === m.project_id; });
               if (proj) projName = proj.name;
             }
+            // F7: foto-thumbnail op de marker (kleur-codering blijft via de ring).
+            var _photo = m.photo_url || '';
+            var _mSize = _photo ? 40 : 32;
+            var _iconHtml = _photo
+              ? '<div style="width:40px;height:40px;border-radius:50%;border:3px solid '+color+';box-shadow:0 2px 8px rgba(0,0,0,0.5);background:'+color+';overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:16px;">'
+                  + '<img src="'+_photo+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\''+emoji+'\';">'
+                  + '</div>'
+              : '<div style="width:32px;height:32px;border-radius:50%;background:'+color+';border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;">'+emoji+'</div>';
             var icon = L.divIcon({
               className: '',
-              html: '<div style="width:32px;height:32px;border-radius:50%;background:'+color+';border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;">'+emoji+'</div>',
-              iconSize: [32, 32],
-              iconAnchor: [16, 16]
+              html: _iconHtml,
+              iconSize: [_mSize, _mSize],
+              iconAnchor: [_mSize / 2, _mSize / 2]
             });
             var marker = L.marker([m.lat, m.lng], { icon: icon })
               .bindPopup(
                 '<div style="min-width:200px;font-family:DM Sans,sans-serif;">' +
+                (_photo ? '<img src="'+_photo+'" alt="" style="width:100%;max-height:150px;object-fit:cover;border-radius:8px;margin-bottom:6px;display:block;" onerror="this.style.display=\'none\';">' : '') +
                 '<strong style="font-size:14px;">'+m.title+'</strong>' +
                 (projName ? '<br><span style="color:#00d4ff;font-size:11px;">📂 '+projName+'</span>' : '') +
                 '<br><span style="color:#888;font-size:12px;">'+emoji+' '+(m.category||t('geen_categorie'))+'</span><br>' +
