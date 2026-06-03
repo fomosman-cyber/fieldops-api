@@ -1,6 +1,9 @@
+import base64
 import csv
 import io
 import math
+import os
+import zipfile
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
@@ -256,10 +259,48 @@ _MELDING_CSV_ALIASES = {
     "project_id":  ["project_id", "projectid"],
     "project":     ["project", "project_naam", "projectnaam", "projectname", "project_name"],
     "asset_code":  ["asset_code", "assetcode", "object_code", "objectcode", "objectnummer"],
+    "photo":       ["photo", "foto", "photo_url", "foto_url", "fotourl", "afbeelding",
+                    "image", "image_url", "bestand", "filename", "bestandsnaam"],
 }
 
 # Toegestane priority-waarden (case-insensitive). Onbekend → "normaal".
 _VALID_PRIORITIES = {"laag", "normaal", "hoog", "kritiek"}
+
+# Foto-import (F5): max grootte per foto (ruw, vóór base64). Grotere worden overgeslagen.
+_MAX_PHOTO_BYTES = 8 * 1024 * 1024
+_PHOTO_EXT_MIME = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+                   "webp": "image/webp", "gif": "image/gif"}
+
+
+def _load_photos_zip(raw: bytes) -> dict:
+    """basename (lowercase) → data-URL (base64). Niet-afbeeldingen/oversized overgeslagen."""
+    out: dict = {}
+    if not raw or not zipfile.is_zipfile(io.BytesIO(raw)):
+        return out
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        for n in zf.namelist():
+            if n.endswith("/"):
+                continue
+            ext = n.rsplit(".", 1)[-1].lower() if "." in n else ""
+            mime = _PHOTO_EXT_MIME.get(ext)
+            if not mime:
+                continue
+            data = zf.read(n)
+            if not data or len(data) > _MAX_PHOTO_BYTES:
+                continue
+            b64 = base64.b64encode(data).decode("ascii")
+            out[os.path.basename(n).lower()] = f"data:{mime};base64,{b64}"
+    return out
+
+
+def _resolve_photo(value: Optional[str], photo_map: dict) -> Optional[str]:
+    """CSV-fotowaarde → photo_url: directe (data-)URL, of bestandsnaam uit de zip."""
+    if not value:
+        return None
+    v = value.strip()
+    if v.lower().startswith(("http://", "https://", "data:")):
+        return v
+    return photo_map.get(os.path.basename(v).lower())
 
 
 def _norm(s: str) -> str:
@@ -477,7 +518,8 @@ def import_template_csv(
 @router.post("/import/csv")
 async def import_meldingen_csv(
     request: Request,
-    file: UploadFile = File(..., description="CSV met meldingen. Verplichte kolom: title (of titel). Optioneel: description, category, priority, lat, lng, project (naam) of project_id, asset_code."),
+    file: UploadFile = File(..., description="CSV met meldingen. Verplichte kolom: title (of titel). Optioneel: description, category, priority, lat, lng, project (naam) of project_id, asset_code, foto."),
+    photos: Optional[UploadFile] = File(None, description="Optionele .zip met foto's; de CSV-fotokolom verwijst dan naar bestandsnamen."),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -559,7 +601,12 @@ async def import_meldingen_csv(
     # Geo-assets voor auto-linking (alleen die lat/lng hebben)
     geo_assets = [a for a in assets if a.lat is not None and a.lng is not None]
 
+    # F5: optionele foto-zip inladen (bestandsnaam → base64 data-URL)
+    photo_map = _load_photos_zip(await photos.read()) if photos is not None else {}
+    from photo_storage import maybe_offload
+
     created = 0
+    photos_matched = 0
     errors: list[dict] = []
     warnings: list[dict] = []
     rows = list(reader)
@@ -629,6 +676,15 @@ async def import_meldingen_csv(
         # Auto-link aan dichtstbijzijnde asset binnen 200m als geen expliciete asset_code
         if not melding.asset_id:
             _auto_link_nearest_asset(melding, geo_assets, max_m=200.0)
+        # F5: foto koppelen (directe URL in CSV, of bestandsnaam uit de zip)
+        photo_val = _get_csv(row, mapping, "photo")
+        resolved_photo = _resolve_photo(photo_val, photo_map)
+        if resolved_photo:
+            melding.photo_url = maybe_offload(
+                resolved_photo, organization_id=current_user.organization_id, kind="melding")
+            photos_matched += 1
+        elif photo_val:
+            warnings.append({"row": i, "warning": f"foto '{photo_val}' niet gevonden (geen URL en niet in zip)"})
         db.add(melding)
         created += 1
 
@@ -641,6 +697,7 @@ async def import_meldingen_csv(
 
     return {
         "created": created,
+        "photos_matched": photos_matched,
         "total_rows": len(rows),
         "errors": errors,
         "warnings": warnings,
