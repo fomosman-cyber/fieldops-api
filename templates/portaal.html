@@ -1943,6 +1943,65 @@
       </div>
     </div>
 
+    <!-- ═══════ BEELDKWALITEIT-SCHOUW (CAR 2023) ═══════ -->
+    <div class="modal-overlay" id="schouwModal">
+      <div class="modal" style="max-width:840px;max-height:92vh;overflow-y:auto;">
+        <button class="modal-close" onclick="closeSchouwModal()">&times;</button>
+        <h2>📋 Beeldkwaliteit-schouw (CAR 2023)</h2>
+        <p class="subtitle">
+          Schouw wegmeubilair op beeldkwaliteit (A+ t/m D, CROW-systematiek) i.p.v. NEN-conditie.
+          Eindoordeel = slechtste aspect; een object voldoet als het <strong>gelijk of hoger</strong>
+          scoort dan het ambitieniveau van de gemeente.
+        </p>
+
+        <div style="display:flex;align-items:center;gap:12px;margin:14px 0;flex-wrap:wrap;">
+          <label style="font-size:13px;font-weight:600;color:var(--text-muted);">Ambitieniveau gemeente:</label>
+          <select id="schouwAmbitie" onchange="schouwRecompute(); _schouwRenderRonde();" style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);"></select>
+        </div>
+
+        <!-- Object scoren -->
+        <div style="background:var(--card-bg-hover);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px;">
+            <div>
+              <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Objecttype</label>
+              <select id="schouwType" onchange="schouwRenderAspecten()" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);"></select>
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Locatie / code (optioneel)</label>
+              <input id="schouwLocatie" placeholder="bv. Dijkweg t.h.v. 12" style="width:100%;padding:9px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            </div>
+          </div>
+          <div id="schouwAspecten" style="margin-top:8px;"></div>
+          <div id="schouwOordeel" style="display:none;margin-top:12px;padding:12px 14px;border-radius:10px;align-items:center;gap:12px;flex-wrap:wrap;"></div>
+          <div style="margin-top:12px;text-align:right;">
+            <button class="btn-primary" onclick="schouwAddObject()" id="schouwAddBtn" disabled>+ Toevoegen aan ronde</button>
+          </div>
+        </div>
+
+        <!-- Wijk-overzicht -->
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <strong style="font-size:14px;color:var(--text);">Schouwronde — wijk-overzicht</strong>
+            <button class="btn-secondary" onclick="schouwExportCsv()" id="schouwExportBtn" style="font-size:12px;padding:5px 10px;" disabled>⬇ CSV</button>
+          </div>
+          <div id="schouwSummary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px;margin-bottom:12px;"></div>
+          <div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;">
+            <table style="width:100%;border-collapse:collapse;font-size:12px;">
+              <thead style="background:var(--card-bg-hover);"><tr>
+                <th style="padding:6px 10px;text-align:left;">#</th>
+                <th style="padding:6px 10px;text-align:left;">Type</th>
+                <th style="padding:6px 10px;text-align:left;">Locatie</th>
+                <th style="padding:6px 10px;text-align:center;">Oordeel</th>
+                <th style="padding:6px 10px;text-align:center;">Voldoet</th>
+                <th style="padding:6px 10px;"></th>
+              </tr></thead>
+              <tbody id="schouwRondeBody"><tr><td colspan="6" style="padding:14px;text-align:center;color:var(--text-dim);">Nog geen objecten gescoord</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══════ GEOJSON-IMPORT WIZARD (wegvakken) ═══════ -->
     <div class="modal-overlay" id="geojsonImportWizardModal">
       <div class="modal" style="max-width:780px;">
@@ -2583,7 +2642,10 @@
           <h1 data-i18n="ph_kunstwerken">Inspecties</h1>
           <p data-i18n="ph_kunstwerken_sub">Formele inspecties per categorie: <strong>Kunstwerken</strong> (NEN 2767-2 + CROW 134), <strong>Groen</strong> (VTA + NEN-EN 1176 + NEN 2767-4), <strong>Markering</strong> (CROW 145), <strong>Verlichting</strong> (NEN 3140) en <strong>Ondergronds</strong> (NEN 3399). Element-decompositie, gebrek-classificatie, conditiescore 1-6 of risicoklasse 1-5, ondertekend PDF-rapport.</p>
         </div>
-        <button class="btn-primary" onclick="openNieuweKunstwerkInspectieModal()">+ <span data-i18n="kw_nieuwe_inspectie">Nieuwe inspectie</span></button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="openSchouwModal()" title="CAR2023 beeldkwaliteit-schouw van wegmeubilair (A+ t/m D)" style="display:inline-flex;align-items:center;gap:6px;">📋 Beeldkwaliteit-schouw <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.05em;">NIEUW</span></button>
+          <button class="btn-primary" onclick="openNieuweKunstwerkInspectieModal()">+ <span data-i18n="kw_nieuwe_inspectie">Nieuwe inspectie</span></button>
+        </div>
       </div>
 
       <!-- Categorie-tegels -->
@@ -12600,6 +12662,182 @@
     // ── GeoJSON-import wizard (wegvakken) — TODO#4 fase 2 ──────────────
     var _giwFile = null;
     var _giwDryRunResult = null;
+
+    // ── Beeldkwaliteit-schouw (CAR 2023) — F3 fase 2 ──────────────────
+    var _carCatalogus = null;
+    var _schouwRonde = [];          // afgeronde objecten in deze ronde
+    var _schouwCurrent = {};        // aspect_code -> klasse (huidig object)
+    var _schouwLastOordeel = null;
+    var _KLASSE_KLEUR = { 'A+': '#15803d', 'A': '#16a34a', 'B': '#0284c7', 'C': '#ea580c', 'D': '#dc2626' };
+
+    function openSchouwModal() {
+      var modal = document.getElementById('schouwModal');
+      if (!modal) return;
+      modal.classList.add('active');
+      if (_carCatalogus) { _schouwInit(); return; }
+      api('GET', '/api/car2023/catalogus').then(function(cat) {
+        _carCatalogus = cat;
+        _schouwInit();
+      }).catch(function() { showToast('Beeldkwaliteit-catalogus laden mislukt', 'error'); });
+    }
+
+    function closeSchouwModal() {
+      var m = document.getElementById('schouwModal');
+      if (m) m.classList.remove('active');
+    }
+
+    function _schouwInit() {
+      var amb = document.getElementById('schouwAmbitie');
+      amb.innerHTML = _carCatalogus.klassen.map(function(k) {
+        return '<option value="' + k.klasse + '"' + (k.klasse === _carCatalogus.default_ambitie ? ' selected' : '') +
+          '>' + k.klasse + ' — ' + escapeHtml(k.naam) + '</option>';
+      }).join('');
+      var ts = document.getElementById('schouwType');
+      ts.innerHTML = '<option value="">— Kies objecttype —</option>' + _carCatalogus.types.map(function(t) {
+        return '<option value="' + t.key + '">' + escapeHtml(t.naam) + '</option>';
+      }).join('');
+      document.getElementById('schouwLocatie').value = '';
+      document.getElementById('schouwAspecten').innerHTML = '';
+      document.getElementById('schouwOordeel').style.display = 'none';
+      document.getElementById('schouwAddBtn').disabled = true;
+      _schouwCurrent = {}; _schouwLastOordeel = null;
+      _schouwRenderRonde();
+    }
+
+    function schouwRenderAspecten() {
+      _schouwCurrent = {}; _schouwLastOordeel = null;
+      var type = document.getElementById('schouwType').value;
+      var host = document.getElementById('schouwAspecten');
+      document.getElementById('schouwOordeel').style.display = 'none';
+      document.getElementById('schouwAddBtn').disabled = true;
+      if (!type) { host.innerHTML = ''; return; }
+      var typeDef = _carCatalogus.types.find(function(t) { return t.key === type; });
+      var aspByCode = {}; _carCatalogus.aspecten.forEach(function(a) { aspByCode[a.code] = a; });
+      host.innerHTML = typeDef.aspecten.map(function(code) {
+        var a = aspByCode[code] || { naam: code, uitleg: '' };
+        var btns = _carCatalogus.klassen.map(function(k) {
+          return '<button type="button" class="schouw-kbtn" data-aspect="' + code + '" data-klasse="' + k.klasse +
+            '" onclick="schouwPick(\'' + code + '\',\'' + k.klasse + '\')" title="' + escapeHtml(k.naam) +
+            '" style="flex:1;padding:7px 0;border:1px solid var(--border);background:var(--bg);color:var(--text);border-radius:6px;cursor:pointer;font-weight:700;font-size:13px;">' + k.klasse + '</button>';
+        }).join('');
+        return '<div style="margin-bottom:10px;">' +
+          '<div style="font-size:12px;font-weight:600;color:var(--text);">' + escapeHtml(a.naam) + '</div>' +
+          '<div style="font-size:11px;color:var(--text-dim);margin-bottom:5px;">' + escapeHtml(a.uitleg) + '</div>' +
+          '<div style="display:flex;gap:5px;" data-aspect-row="' + code + '">' + btns + '</div></div>';
+      }).join('');
+    }
+
+    function schouwPick(aspect, klasse) {
+      _schouwCurrent[aspect] = klasse;
+      document.querySelectorAll('[data-aspect-row="' + aspect + '"] .schouw-kbtn').forEach(function(b) {
+        var on = b.getAttribute('data-klasse') === klasse;
+        b.style.background = on ? 'var(--accent)' : 'var(--bg)';
+        b.style.color = on ? '#fff' : 'var(--text)';
+        b.style.borderColor = on ? 'var(--accent)' : 'var(--border)';
+      });
+      schouwRecompute();
+    }
+
+    // Eindoordeel = worst-aspect (client-side, instant). Klassen-scores komen uit
+    // de API-catalogus, dus consistent met /api/car2023/score.
+    function schouwRecompute() {
+      var type = document.getElementById('schouwType').value;
+      var typeDef = type && _carCatalogus ? _carCatalogus.types.find(function(t) { return t.key === type; }) : null;
+      var oordeelEl = document.getElementById('schouwOordeel');
+      if (!typeDef) { oordeelEl.style.display = 'none'; document.getElementById('schouwAddBtn').disabled = true; return; }
+      var scoreOf = {}, klasseOf = {};
+      _carCatalogus.klassen.forEach(function(k) { scoreOf[k.klasse] = k.score; klasseOf[k.score] = k.klasse; });
+      var picked = typeDef.aspecten.filter(function(a) { return _schouwCurrent[a]; });
+      var ontbrekend = typeDef.aspecten.filter(function(a) { return !_schouwCurrent[a]; });
+      var overall = null;
+      if (picked.length) {
+        var minScore = Math.min.apply(null, picked.map(function(a) { return scoreOf[_schouwCurrent[a]]; }));
+        overall = klasseOf[minScore];
+      }
+      var ambitie = document.getElementById('schouwAmbitie').value;
+      var voldoet = !!(overall && scoreOf[overall] >= scoreOf[ambitie]);
+      _schouwLastOordeel = { overall_klasse: overall, voldoet: voldoet, ontbrekende_aspecten: ontbrekend };
+
+      if (!overall) { oordeelEl.style.display = 'none'; document.getElementById('schouwAddBtn').disabled = true; return; }
+      var kleur = _KLASSE_KLEUR[overall] || '#64748b';
+      var badge = voldoet
+        ? '<span style="background:rgba(22,163,74,0.12);color:#15803d;padding:3px 10px;border-radius:999px;font-weight:700;font-size:12px;">✓ Voldoet aan ambitie ' + ambitie + '</span>'
+        : '<span style="background:rgba(220,38,38,0.10);color:#dc2626;padding:3px 10px;border-radius:999px;font-weight:700;font-size:12px;">✗ Voldoet niet (ambitie ' + ambitie + ')</span>';
+      var ontbr = ontbrekend.length ? '<span style="font-size:11px;color:var(--text-dim);">nog te scoren: ' + ontbrekend.length + '</span>' : '';
+      oordeelEl.style.display = 'flex';
+      oordeelEl.style.background = kleur + '14';
+      oordeelEl.style.border = '1px solid ' + kleur + '55';
+      oordeelEl.innerHTML = '<span style="font-size:13px;color:var(--text-muted);">Eindoordeel</span>' +
+        '<span style="font-size:26px;font-weight:800;color:' + kleur + ';letter-spacing:-1px;">' + overall + '</span>' + badge + ontbr;
+      document.getElementById('schouwAddBtn').disabled = ontbrekend.length !== 0;
+    }
+
+    function schouwAddObject() {
+      var type = document.getElementById('schouwType').value;
+      if (!type || !_schouwLastOordeel || !_schouwLastOordeel.overall_klasse) return;
+      var typeDef = _carCatalogus.types.find(function(t) { return t.key === type; });
+      _schouwRonde.push({
+        typeNaam: typeDef ? typeDef.naam : type,
+        locatie: document.getElementById('schouwLocatie').value.trim(),
+        overall: _schouwLastOordeel.overall_klasse,
+        voldoet: _schouwLastOordeel.voldoet,
+      });
+      document.getElementById('schouwType').value = '';
+      document.getElementById('schouwLocatie').value = '';
+      document.getElementById('schouwAspecten').innerHTML = '';
+      document.getElementById('schouwOordeel').style.display = 'none';
+      document.getElementById('schouwAddBtn').disabled = true;
+      _schouwCurrent = {}; _schouwLastOordeel = null;
+      _schouwRenderRonde();
+      showToast('Object toegevoegd aan ronde', 'success');
+    }
+
+    function schouwRemove(idx) { _schouwRonde.splice(idx, 1); _schouwRenderRonde(); }
+
+    function _schouwRenderRonde() {
+      if (!_carCatalogus) return;
+      var ambitie = (document.getElementById('schouwAmbitie') || {}).value || _carCatalogus.default_ambitie || 'B';
+      var perKlasse = {}; _carCatalogus.klassen.forEach(function(k) { perKlasse[k.klasse] = 0; });
+      var voldoetN = 0;
+      _schouwRonde.forEach(function(o) { if (o.overall in perKlasse) perKlasse[o.overall]++; if (o.voldoet) voldoetN++; });
+      var total = _schouwRonde.length;
+      var pct = total ? Math.round(voldoetN / total * 100) : 0;
+      var cards = '<div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:20px;font-weight:800;">' + total + '</div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;">objecten</div></div>';
+      cards += '<div style="background:' + (pct >= 80 ? 'rgba(22,163,74,0.08)' : 'rgba(234,88,12,0.08)') + ';border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center;"><div style="font-size:20px;font-weight:800;color:' + (pct >= 80 ? '#15803d' : '#ea580c') + ';">' + pct + '%</div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;">voldoet ≥' + ambitie + '</div></div>';
+      _carCatalogus.klassen.forEach(function(k) {
+        if (!perKlasse[k.klasse]) return;
+        var kleur = _KLASSE_KLEUR[k.klasse] || '#64748b';
+        cards += '<div style="background:' + kleur + '12;border:1px solid ' + kleur + '44;border-radius:10px;padding:10px;text-align:center;"><div style="font-size:20px;font-weight:800;color:' + kleur + ';">' + perKlasse[k.klasse] + '</div><div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;">klasse ' + k.klasse + '</div></div>';
+      });
+      document.getElementById('schouwSummary').innerHTML = cards;
+
+      var body = document.getElementById('schouwRondeBody');
+      document.getElementById('schouwExportBtn').disabled = total === 0;
+      if (!total) { body.innerHTML = '<tr><td colspan="6" style="padding:14px;text-align:center;color:var(--text-dim);">Nog geen objecten gescoord</td></tr>'; return; }
+      body.innerHTML = _schouwRonde.map(function(o, i) {
+        var kleur = _KLASSE_KLEUR[o.overall] || '#64748b';
+        return '<tr style="border-top:1px solid var(--border);">' +
+          '<td style="padding:6px 10px;">' + (i + 1) + '</td>' +
+          '<td style="padding:6px 10px;">' + escapeHtml(o.typeNaam) + '</td>' +
+          '<td style="padding:6px 10px;color:var(--text-muted);">' + escapeHtml(o.locatie || '—') + '</td>' +
+          '<td style="padding:6px 10px;text-align:center;"><span style="font-weight:800;color:' + kleur + ';">' + o.overall + '</span></td>' +
+          '<td style="padding:6px 10px;text-align:center;">' + (o.voldoet ? '<span style="color:#16a34a;">✓</span>' : '<span style="color:#dc2626;">✗</span>') + '</td>' +
+          '<td style="padding:6px 10px;text-align:right;"><button onclick="schouwRemove(' + i + ')" style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:14px;" title="Verwijderen">✕</button></td></tr>';
+      }).join('');
+    }
+
+    function schouwExportCsv() {
+      if (!_schouwRonde.length) return;
+      var ambitie = document.getElementById('schouwAmbitie').value;
+      var rows = [['nr', 'type', 'locatie', 'beeldkwaliteit', 'voldoet_aan_' + ambitie]];
+      _schouwRonde.forEach(function(o, i) { rows.push([i + 1, o.typeNaam, o.locatie || '', o.overall, o.voldoet ? 'ja' : 'nee']); });
+      var csv = rows.map(function(r) { return r.map(function(c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';'); }).join('\n');
+      var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'beeldkwaliteit-schouw.csv';
+      a.click();
+    }
 
     function openGeojsonImportWizard() {
       giwReset();
