@@ -1,5 +1,7 @@
-"""Tests voor de GeoJSON-wegvak-importer (POST /api/imports/geojson)."""
+"""Tests voor de GeoJSON- en shapefile-importer (POST /api/imports/*)."""
+import io
 import json
+import zipfile
 
 from database import SessionLocal
 from models import Asset
@@ -149,3 +151,111 @@ def test_not_a_featurecollection(client, admin_user):
         headers=auth(admin_user),
     )
     assert r.status_code == 400
+
+
+# ── Shapefile-importer (POST /api/imports/shapefile) ──────────────────────
+
+def _make_shp_zip(records, fields, geom="line"):
+    """Bouw in-memory een shapefile-zip. records = [(coords, (waarde,...)), ...]."""
+    import shapefile
+    shp_b, shx_b, dbf_b = io.BytesIO(), io.BytesIO(), io.BytesIO()
+    st = shapefile.POLYLINE if geom == "line" else shapefile.POINT
+    w = shapefile.Writer(shp=shp_b, shx=shx_b, dbf=dbf_b, shapeType=st)
+    for fname, ftype, fsize in fields:
+        w.field(fname, ftype, fsize)
+    for coords, rec in records:
+        if geom == "line":
+            w.line([coords])
+        else:
+            w.point(coords[0], coords[1])
+        w.record(*rec)
+    w.close()
+    zb = io.BytesIO()
+    with zipfile.ZipFile(zb, "w") as zf:
+        zf.writestr("data.shp", shp_b.getvalue())
+        zf.writestr("data.shx", shx_b.getvalue())
+        zf.writestr("data.dbf", dbf_b.getvalue())
+    return zb.getvalue()
+
+
+def _post_shp(client, user, zip_bytes, **form):
+    return client.post(
+        "/api/imports/shapefile",
+        files={"file": ("wegen.zip", zip_bytes, "application/zip")},
+        data={k: str(v) for k, v in form.items()},
+        headers=auth(user),
+    )
+
+
+_SHP_FIELDS = [("straatnaam", "C", 50), ("functie", "C", 40)]
+
+
+def test_shapefile_polyline_import(client, admin_user):
+    zb = _make_shp_zip(
+        [([[4.2070, 51.9940], [4.2080, 51.9945]], ("Dijkweg", "rijbaan asfalt")),
+         ([[4.2090, 51.9950], [4.2100, 51.9955]], ("Vlietpad", "fietspad"))],
+        fields=_SHP_FIELDS, geom="line",
+    )
+    r = _post_shp(client, admin_user, zb)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["created"] == 2
+    assert body["by_type"].get("wegvak_asfalt") == 1
+    assert body["by_type"].get("fietspad") == 1
+
+    a = _get_asset(admin_user.organization_id, asset_type="wegvak_asfalt")
+    assert a.is_segment is True
+    assert a.length_m and a.length_m > 50
+    assert a.geometry_geojson and "LineString" in a.geometry_geojson
+    assert a.name == "Dijkweg"
+
+
+def test_shapefile_rd_converted(client, admin_user):
+    zb = _make_shp_zip(
+        [([[74000.0, 444000.0], [74100.0, 444050.0]], ("RD-weg", "asfalt"))],
+        fields=_SHP_FIELDS, geom="line",
+    )
+    r = _post_shp(client, admin_user, zb)
+    assert r.status_code == 200, r.text
+    assert r.json()["preview"][0]["rd_geconverteerd"] is True
+    a = _get_asset(admin_user.organization_id, asset_type="wegvak_asfalt")
+    assert 50.0 < a.lat < 54.0 and 3.0 < a.lng < 7.0
+
+
+def test_shapefile_point_import(client, admin_user):
+    zb = _make_shp_zip(
+        [([4.2075, 51.9942], ("LM-7", "lichtmast"))],
+        fields=[("code", "C", 20), ("objecttype", "C", 30)], geom="point",
+    )
+    r = _post_shp(client, admin_user, zb)
+    assert r.status_code == 200, r.text
+    assert r.json()["created"] == 1
+    lm = _get_asset(admin_user.organization_id, code="LM-7")
+    assert lm.is_segment is False
+    assert lm.length_m is None
+
+
+def test_shapefile_dry_run(client, admin_user):
+    zb = _make_shp_zip(
+        [([[4.2070, 51.9940], [4.2080, 51.9945]], ("Dijkweg", "asfalt"))],
+        fields=_SHP_FIELDS, geom="line",
+    )
+    r = _post_shp(client, admin_user, zb, dry_run=True)
+    assert r.status_code == 200, r.text
+    assert r.json()["would_create"] == 1
+    assert _get_asset(admin_user.organization_id, asset_type="wegvak_asfalt") is None
+
+
+def test_shapefile_not_a_zip(client, admin_user):
+    r = client.post(
+        "/api/imports/shapefile",
+        files={"file": ("x.zip", b"not a zip at all", "application/zip")},
+        headers=auth(admin_user),
+    )
+    assert r.status_code == 400
+
+
+def test_shapefile_viewer_forbidden(client, viewer_user):
+    zb = _make_shp_zip([([[4.20, 51.99], [4.21, 51.99]], ("x", "asfalt"))], fields=_SHP_FIELDS)
+    r = _post_shp(client, viewer_user, zb)
+    assert r.status_code == 403
