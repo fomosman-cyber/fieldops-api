@@ -6,11 +6,12 @@ hier meteen een 500 geven.
 """
 
 
-def test_releasenotes_page(client):
+def test_releasenotes_page_empty(client):
+    # Pagina blijft bestaan maar is tijdelijk leeggehaald (pre-launch).
     r = client.get("/releasenotes")
     assert r.status_code == 200
     assert "text/html" in r.headers["content-type"]
-    assert "Wat is nieuw" in r.text
+    assert "Nog geen release notes" in r.text
 
 
 def test_handleiding_page(client):
@@ -19,7 +20,7 @@ def test_handleiding_page(client):
     assert "text/html" in r.headers["content-type"]
 
 
-def test_prijzen_page(client):
+def test_prijzen_page_removed(client):
+    # Prijzenpagina is op verzoek verwijderd -> 404.
     r = client.get("/prijzen")
-    assert r.status_code == 200
-    assert "text/html" in r.headers["content-type"]
+    assert r.status_code == 404

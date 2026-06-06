@@ -2,8 +2,21 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>FieldOps — Portaal</title>
+
+  <!-- Zoom-lock: de portaal gedraagt zich als een vaste native-app op telefoon —
+       geen pinch- of dubbeltik-zoom op dashboard/hoofdpagina. iOS Safari negeert
+       user-scalable=no in een tab, dus pinch wordt ook via gesture-events geblokkeerd.
+       touch-action: manipulation schakelt dubbeltik-zoom uit maar laat scrollen intact. -->
+  <style>html, body { touch-action: manipulation; }</style>
+  <script>
+    (function () {
+      ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (ev) {
+        document.addEventListener(ev, function (e) { e.preventDefault(); }, { passive: false });
+      });
+    })();
+  </script>
   <meta name="robots" content="noindex, nofollow">
   <link rel="canonical" href="https://portaal.fieldopsapp.nl/portaal">
 
@@ -1079,7 +1092,7 @@
         <option value="tr">🇹🇷 TR</option>
       </select>
       <button class="notif-btn" id="helpBtn" aria-label="Handleiding" onclick="window.open('/handleiding', '_blank')" title="Open handleiding">❓</button>
-      <button class="notif-btn" id="releaseNotesBtn" aria-label="Wat is nieuw?" onclick="window.open('/releasenotes', '_blank')" title="Wat is nieuw? — releasenotes">✨</button>
+      <button class="notif-btn" id="releaseNotesBtn" aria-label="Wat is nieuw?" style="display:none;" onclick="window.open('/releasenotes', '_blank')" title="Wat is nieuw? — releasenotes">✨</button>
       <button class="notif-btn" id="themeBtn" aria-label="Donker thema" onclick="toggleTheme()" title="Donker/licht thema">🌓</button>
       <button class="notif-btn" id="pushBtn" aria-label="Push notificaties" onclick="togglePushNotifications()" title="Browser push notificaties aan/uit (separate van in-app bell)" style="display:none;">📱</button>
       <!-- PWA install-knop in topbar (alleen zichtbaar als installable + niet al standalone) -->

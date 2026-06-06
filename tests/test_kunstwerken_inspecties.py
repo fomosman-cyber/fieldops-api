@@ -941,3 +941,81 @@ def test_boom_vragen_endpoint(client, admin_user):
     assert "VTA.STAM_HOLTE_PCT" in vragen_codes
     assert "VTA.STAM_ZWAM" in vragen_codes
     assert "CONSTR.WAPENING" not in vragen_codes  # geen beton-vragen voor bomen
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PDF-rapport export
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Geldige 1x1 PNG — voor foto-bewijs + handtekening-inbedding in de PDF.
+_PNG_1x1 = ("data:image/png;base64,"
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNk"
+            "YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+
+
+def test_export_pdf_smoke(client, admin_user):
+    """Volledige flow: inspectie + defect + foto + CROW-klasse -> ondertekend PDF."""
+    from models import InspectionDefect
+
+    db = SessionLocal()
+    try:
+        a_id = _make_asset(db, user=admin_user, asset_type="brug", code="KW-PDF").id
+    finally:
+        db.close()
+    insp = _new_inspection(client, admin_user, a_id)
+    el = insp["elementen"][0]
+    r = client.post(
+        f"/api/kunstwerken-inspecties/{insp['id']}/elementen/{el['id']}/defecten",
+        json={"gebrek_naam": "Scheurvorming", "gebrek_code": "scheurvorming-langs",
+              "ernst": 3, "intensiteit": 2, "omvang_klasse": 4},
+        headers=auth(admin_user),
+    )
+    assert r.status_code == 200, r.text
+    d_id = r.json()["id"]
+
+    db = SessionLocal()
+    try:
+        dd = db.query(InspectionDefect).filter(InspectionDefect.id == d_id).first()
+        dd.photo_url = _PNG_1x1
+        dd.crow_klasse = "M2"
+        db.commit()
+    finally:
+        db.close()
+
+    client.post(f"/api/kunstwerken-inspecties/{insp['id']}/complete", headers=auth(admin_user))
+    r = client.post(f"/api/kunstwerken-inspecties/{insp['id']}/sign",
+                    json={"signature_data_url": _PNG_1x1}, headers=auth(admin_user))
+    assert r.status_code == 200, r.text
+
+    r = client.get(f"/api/kunstwerken-inspecties/{insp['id']}/export.pdf",
+                   headers=auth(admin_user))
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"].startswith("application/pdf")
+    body = r.content
+    assert body[:4] == b"%PDF"
+    assert len(body) > 1000
+
+    detail = client.get(f"/api/kunstwerken-inspecties/{insp['id']}",
+                        headers=auth(admin_user)).json()
+    assert detail["pdf_generated_at"] is not None
+
+
+def test_export_pdf_draft_zonder_defecten(client, admin_user):
+    """PDF moet ook genereren voor een lege draft (geen defecten, geen handtekening)."""
+    db = SessionLocal()
+    try:
+        a_id = _make_asset(db, user=admin_user, asset_type="viaduct", code="KW-PDF2").id
+    finally:
+        db.close()
+    insp = _new_inspection(client, admin_user, a_id, kunstwerk_type="viaduct")
+    r = client.get(f"/api/kunstwerken-inspecties/{insp['id']}/export.pdf",
+                   headers=auth(admin_user))
+    assert r.status_code == 200, r.text
+    assert r.content[:4] == b"%PDF"
+
+
+def test_export_pdf_unknown_404(client, admin_user):
+    """Onbekende inspectie-id geeft 404 (org-scoping via _get_inspection_or_404)."""
+    r = client.get("/api/kunstwerken-inspecties/does-not-exist/export.pdf",
+                   headers=auth(admin_user))
+    assert r.status_code == 404
