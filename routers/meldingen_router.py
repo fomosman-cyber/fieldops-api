@@ -133,8 +133,14 @@ def _enrich_classification(melding: Melding) -> bool:
 router = APIRouter(prefix="/api/meldingen", tags=["Meldingen"])
 
 
-def _melding_to_response(melding: Melding) -> dict:
-    """Converteer Melding naar response dict met creator_name."""
+def _melding_to_response(melding: Melding, include_photos: bool = True) -> dict:
+    """Converteer Melding naar response dict met creator_name.
+
+    include_photos=False maakt een *lichte* response: photo_url/photo_after_url
+    worden weggelaten (None) zodat de lijst geen ~MBs base64 per melding bevat.
+    De has_photo/has_photo_after vlaggen geven dan aan of er foto's bestaan,
+    zodat de client desgewenst de volledige melding kan ophalen.
+    """
     creator = melding.creator
     creator_name = f"{creator.first_name} {creator.last_name}" if creator else None
     return {
@@ -146,8 +152,10 @@ def _melding_to_response(melding: Melding) -> dict:
         "status": melding.status,
         "lat": melding.lat,
         "lng": melding.lng,
-        "photo_url": melding.photo_url,
-        "photo_after_url": melding.photo_after_url,
+        "photo_url": melding.photo_url if include_photos else None,
+        "photo_after_url": melding.photo_after_url if include_photos else None,
+        "has_photo": bool(melding.photo_url),
+        "has_photo_after": bool(melding.photo_after_url),
         "project_id": melding.project_id,
         "created_by": melding.created_by,
         "created_at": melding.created_at,
@@ -158,17 +166,22 @@ def _melding_to_response(melding: Melding) -> dict:
 @router.get("/", response_model=list[MeldingResponse])
 def list_meldingen(
     project_id: Optional[str] = Query(None),
+    with_photos: bool = Query(False, description="Inclusief base64-foto's (zwaar). Default licht: alleen has_photo-vlaggen."),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Alle meldingen van de organisatie ophalen, optioneel gefilterd op project."""
+    """Alle meldingen van de organisatie ophalen, optioneel gefilterd op project.
+
+    Default = *licht* (geen base64-foto's) zodat de lijst snel laadt. Foto's
+    komen mee met `?with_photos=1` of via het detail-endpoint per melding.
+    """
     query = db.query(Melding).filter(
         Melding.organization_id == current_user.organization_id,
     )
     if project_id:
         query = query.filter(Melding.project_id == project_id)
     meldingen = query.order_by(Melding.created_at.desc()).all()
-    return [_melding_to_response(m) for m in meldingen]
+    return [_melding_to_response(m, include_photos=with_photos) for m in meldingen]
 
 
 @router.post("/", response_model=MeldingResponse)

@@ -2,7 +2,7 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>FieldOps — Portaal</title>
   <meta name="robots" content="noindex, nofollow">
   <link rel="canonical" href="https://portaal.fieldopsapp.nl/portaal">
@@ -94,7 +94,7 @@
       --orange: #ea580c;
       --red: #dc2626;
       --sidebar-w: 260px;
-      --topbar-h: 64px;
+      --topbar-h: 68px;
     }
 
     /* Dark theme — Palantir/Linear-feel. Geactiveerd via [data-theme="dark"]
@@ -148,6 +148,10 @@
     html[data-theme="dark"] .modal { background: var(--card-bg) !important; color: var(--text); }
 
     html { scroll-behavior: smooth; }
+
+    /* Zoom vastzetten: voorkom pinch-zoom + elastisch (rubber-band) scrollen.
+       pan-x pan-y houdt normaal scrollen intact (niet touch-action:none). */
+    html, body { touch-action: pan-x pan-y; overscroll-behavior: none; }
 
     body {
       font-family: 'DM Sans', sans-serif;
@@ -246,6 +250,10 @@
       display: flex;
       align-items: center;
       gap: 16px;
+      /* Niet laten krimpen/afkappen — login-pill + iconen blijven volledig
+         zichtbaar, ook op smalle schermen. */
+      flex-shrink: 0;
+      flex-wrap: nowrap;
     }
 
     .notif-btn {
@@ -983,7 +991,9 @@
     }
 
     @media (max-width: 768px) {
-      :root { --topbar-h: 52px; }
+      /* Hogere mobiele topbar zodat de user-pill + iconen rechtsboven niet
+         worden afgekapt (was 52px). */
+      :root { --topbar-h: 64px; }
       .hamburger { display: flex; padding: 10px; font-size: 24px; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
       .sidebar { transform: translateX(-100%); }
       .sidebar.open { transform: translateX(0); }
@@ -10166,8 +10176,16 @@
       // als bij nieuwe melding) ipv de oude beperkte detail-modal. Dit
       // garandeert dat edit-form gelijk is aan create-form, inclusief CROW
       // + NEN-2767 classificatie + asset-koppeling + auto-advies.
-      openMeldingModal(id);
-      return;
+      // De lijst is sinds perf/meldingen-light foto-loos; haal eerst de
+      // volledige melding (mét foto's) op, werk allMeldingen bij, dán open.
+      api('GET', '/api/meldingen/' + id).then(function(m) {
+        if (!Array.isArray(allMeldingen)) allMeldingen = [];
+        var idx = allMeldingen.findIndex(function(x){ return x.id === m.id; });
+        if (idx >= 0) allMeldingen[idx] = m; else allMeldingen.push(m);
+        openMeldingModal(m.id);
+      }).catch(function(err){
+        showToast('Kan melding niet laden: ' + (err.message || 'onbekend'), 'error');
+      });
     }
 
     function _legacyOpenMeldingDetail(id) {
@@ -10579,10 +10597,12 @@
       document.getElementById('rapOpen').textContent = filtered.filter(function(m){return m.status==='open';}).length;
       document.getElementById('rapAfgerond').textContent = filtered.filter(function(m){return m.status==='afgerond'||m.status==='opgelost';}).length;
       document.getElementById('rapKritiekCount').textContent = filtered.filter(function(m){return m.priority==='kritiek';}).length;
-      // Genereer PDF en open als preview in popup
-      generatePdfBlob(filtered, function(blob) {
-        var url = URL.createObjectURL(blob);
-        window.open(url, 'FieldOps_Preview', 'width=900,height=700,scrollbars=yes');
+      // Genereer PDF en open als preview in popup (eerst foto's ophalen)
+      enrichWithPhotosForPdf(filtered, function(withPhotos) {
+        generatePdfBlob(withPhotos, function(blob) {
+          var url = URL.createObjectURL(blob);
+          window.open(url, 'FieldOps_Preview', 'width=900,height=700,scrollbars=yes');
+        });
       });
     }
 
@@ -10626,18 +10646,20 @@
 
       // PDF download — open in new tab + download fallback
       if (type === 'pdf') {
-        generatePdfBlob(filtered, function(blob) {
-          var url = URL.createObjectURL(blob);
-          // Open directly in new tab
-          var win = window.open(url, '_blank');
-          // Fallback: if popup blocked, download instead
-          if (!win || win.closed || typeof win.closed === 'undefined') {
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = 'FieldOps_Rapportage_'+new Date().toISOString().slice(0,10)+'.pdf';
-            a.click();
-          }
-          showToast(t('pdf_gedownload')+' '+filtered.length+' '+t('meldingen').toLowerCase());
+        enrichWithPhotosForPdf(filtered, function(withPhotos) {
+          generatePdfBlob(withPhotos, function(blob) {
+            var url = URL.createObjectURL(blob);
+            // Open directly in new tab
+            var win = window.open(url, '_blank');
+            // Fallback: if popup blocked, download instead
+            if (!win || win.closed || typeof win.closed === 'undefined') {
+              var a = document.createElement('a');
+              a.href = url;
+              a.download = 'FieldOps_Rapportage_'+new Date().toISOString().slice(0,10)+'.pdf';
+              a.click();
+            }
+            showToast(t('pdf_gedownload')+' '+withPhotos.length+' '+t('meldingen').toLowerCase());
+          });
         });
       }
     }
@@ -10668,6 +10690,34 @@
         };
         img.onerror = function() { resolve(null); };
         img.src = url;
+      });
+    }
+
+    // De meldingen-lijst is foto-loos (perf/meldingen-light). Vóór een PDF-
+    // export halen we de volledige foto's op en plakken ze op de gefilterde
+    // meldingen, zodat de PDF de VÓÓR/NA-foto's behoudt. Export is een
+    // expliciete actie, dus de extra laadtijd is acceptabel.
+    function enrichWithPhotosForPdf(filtered, done) {
+      var needsPhotos = filtered.some(function(m){
+        return (m.has_photo && !m.photo_url) || (m.has_photo_after && !m.photo_after_url);
+      });
+      if (!needsPhotos) { done(filtered); return; }
+      showToast('Foto’s laden voor PDF…');
+      api('GET', '/api/meldingen/?with_photos=1').then(function(full) {
+        var byId = {};
+        (full || []).forEach(function(m){ byId[m.id] = m; });
+        filtered.forEach(function(m){
+          var f = byId[m.id];
+          if (f) {
+            if (f.photo_url) m.photo_url = f.photo_url;
+            if (f.photo_after_url) m.photo_after_url = f.photo_after_url;
+          }
+        });
+        done(filtered);
+      }).catch(function(err){
+        // Bij fout: ga door zonder (extra) foto's, blokkeer de export niet.
+        showToast('Kon foto’s niet laden, PDF zonder foto’s: ' + (err.message || 'onbekend'), 'error');
+        done(filtered);
       });
     }
 

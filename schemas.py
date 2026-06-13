@@ -239,6 +239,8 @@ class MeldingResponse(BaseModel):
     lng: Optional[float]
     photo_url: Optional[str] = None
     photo_after_url: Optional[str] = None
+    has_photo: bool = False
+    has_photo_after: bool = False
     project_id: Optional[str]
     created_by: str
     created_at: datetime
