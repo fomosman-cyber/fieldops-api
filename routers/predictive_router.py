@@ -24,10 +24,12 @@ def at_risk(
     db: Session = Depends(get_db),
     min_score: int = Query(60, ge=0, le=100),
     asset_type: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None, description="Filter op project (#13)"),
     limit: int = Query(100, ge=1, le=500),
 ):
     return list_at_risk(db, current_user.organization_id,
-                        min_score=min_score, asset_type=asset_type, limit=limit)
+                        min_score=min_score, asset_type=asset_type,
+                        project_id=project_id, limit=limit)
 
 
 @router.get("/asset/{asset_id}")

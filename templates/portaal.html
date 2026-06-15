@@ -1750,16 +1750,34 @@
           </div>
         </div>
         <div class="card">
-          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
             <h3 data-i18n="top_assets_aandacht">Top assets met aandachtspunt</h3>
-            <select id="predMinScore" onchange="loadPredictiveList()" style="padding:5px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;">
-              <option value="60" selected>Score &ge; 60</option>
-              <option value="40">Score &ge; 40</option>
-              <option value="20">Score &ge; 20</option>
-              <option value="0">Alle</option>
-            </select>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <select id="predProjectFilter" onchange="loadPredictiveList()" style="padding:5px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;max-width:200px;">
+                <option value="" selected>📁 Alle projecten</option>
+              </select>
+              <select id="predMinScore" onchange="loadPredictiveList()" style="padding:5px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;">
+                <option value="60" selected>Score &ge; 60</option>
+                <option value="40">Score &ge; 40</option>
+                <option value="20">Score &ge; 20</option>
+                <option value="0">Alle</option>
+              </select>
+            </div>
           </div>
           <div id="predList" style="display:flex;flex-direction:column;gap:10px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ VOORSPELLER → MELDINGEN DRILL-DOWN (#13) ═══════ -->
+    <div class="modal-overlay" id="assetMeldingenModal">
+      <div class="modal" style="max-width:640px;">
+        <button class="modal-close" onclick="closeAssetMeldingenModal()">&times;</button>
+        <h2 id="assetMeldingenModalTitle">Meldingen op asset</h2>
+        <p class="subtitle" id="assetMeldingenModalSub" style="margin-bottom:14px;"></p>
+        <div id="assetMeldingenList" style="display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow-y:auto;"></div>
+        <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn-secondary" id="assetMeldingenOpenAssetBtn" style="font-size:13px;">Open asset →</button>
         </div>
       </div>
     </div>
@@ -16459,6 +16477,7 @@
           emptyEl.style.display = ''; content.style.display = 'none'; return;
         }
         emptyEl.style.display = 'none'; content.style.display = '';
+        _fillPredProjectFilter();
         document.getElementById('predTotal').textContent = s.total_assets;
         document.getElementById('predBandLaag').textContent = s.bands.laag;
         document.getElementById('predBandMatig').textContent = s.bands.matig;
@@ -16477,11 +16496,18 @@
       });
     }
 
+    var predAtRiskCache = [];  // laatste at-risk items — voor meldingen-drilldown (#13)
+
     function loadPredictiveList() {
       var min = document.getElementById('predMinScore').value;
+      var projEl = document.getElementById('predProjectFilter');
+      var proj = projEl ? projEl.value : '';
       var listEl = document.getElementById('predList');
       listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Laden...</div>';
-      api('GET', '/api/predictive/at-risk?min_score='+min+'&limit=20').then(function(items){
+      var url = '/api/predictive/at-risk?min_score='+min+'&limit=20';
+      if (proj) url += '&project_id=' + encodeURIComponent(proj);
+      api('GET', url).then(function(items){
+        predAtRiskCache = items || [];
         if (!items.length) {
           listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">' + t('es_geen_assets_drempel') + '</div>';
           return;
@@ -16511,12 +16537,105 @@
             '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">leeftijd '+r.components.age+'pt · conditie '+r.components.condition+'pt · meldingen '+r.components.meldingen+'pt</div>' +
             degBadge +
             '</div>' +
-            '<button class="btn-secondary" style="font-size:11px;padding:5px 10px;" onclick="navigateTo(\'assets\');setTimeout(function(){openAssetEditModal(\''+r.asset_id+'\')},250)">Bekijken</button>' +
+            '<div style="display:flex;flex-direction:column;gap:6px;">' +
+              '<button class="btn-primary" style="font-size:11px;padding:5px 10px;white-space:nowrap;" onclick="openAssetMeldingenDrilldown(\''+r.asset_id+'\')">🔔 Meldingen</button>' +
+              '<button class="btn-secondary" style="font-size:11px;padding:5px 10px;white-space:nowrap;" onclick="navigateTo(\'assets\');setTimeout(function(){openAssetEditModal(\''+r.asset_id+'\')},250)">Asset →</button>' +
+            '</div>' +
             '</div>';
         }).join('');
       }).catch(function(err){
         listEl.innerHTML = '<div style="color:var(--red);padding:20px;">'+escapeHtml(err.message||'fout')+'</div>';
       });
+    }
+
+    // Vul de project-filter-dropdown van de Voorspeller (#13)
+    function _fillPredProjectFilter() {
+      var sel = document.getElementById('predProjectFilter');
+      if (!sel) return;
+      function render(projects) {
+        var current = sel.value;
+        sel.innerHTML = '<option value="">📁 ' + (t('alle_projecten') || 'Alle projecten') + '</option>';
+        (projects || []).forEach(function(p){
+          var opt = document.createElement('option');
+          opt.value = p.id; opt.textContent = p.name;
+          sel.appendChild(opt);
+        });
+        if (current) sel.value = current;  // keuze behouden bij refresh
+      }
+      if (allProjects && allProjects.length) {
+        render(allProjects);
+      } else {
+        api('GET', '/api/projects/').then(function(ps){
+          allProjects = ps || [];
+          render(allProjects);
+        }).catch(function(){ render([]); });
+      }
+    }
+
+    // Drill-down: toon de meldingen die op een asset zitten (#13 — Mo's bug:
+    // klikken gaf alleen de asset, niet de meldingen erop).
+    function openAssetMeldingenDrilldown(assetId) {
+      var modal = document.getElementById('assetMeldingenModal');
+      if (!modal) return;
+      var cached = predAtRiskCache.find(function(r){ return r.asset_id === assetId; });
+      var asset = (allAssets || []).find(function(a){ return a.id === assetId; });
+      var code = (cached && cached.asset_code) || (asset && asset.code) || assetId;
+      var type = (cached && cached.asset_type) || (asset && asset.asset_type) || '';
+      document.getElementById('assetMeldingenModalTitle').textContent = '🔔 Meldingen op ' + code;
+      document.getElementById('assetMeldingenModalSub').textContent = type ? ('Asset-type: ' + type) : '';
+      var listEl = document.getElementById('assetMeldingenList');
+      listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Laden...</div>';
+      // "Open asset" knop koppelen
+      var openBtn = document.getElementById('assetMeldingenOpenAssetBtn');
+      openBtn.onclick = function(){
+        closeAssetMeldingenModal();
+        navigateTo('assets');
+        setTimeout(function(){ openAssetEditModal(assetId); }, 250);
+      };
+      modal.classList.add('active');
+
+      api('GET', '/api/meldingen/?asset_id=' + encodeURIComponent(assetId)).then(function(items){
+        if (!items || !items.length) {
+          listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);">' +
+            '<div style="font-size:32px;margin-bottom:8px;">📭</div>' +
+            '<div style="font-weight:600;color:var(--text);margin-bottom:4px;">Geen meldingen op deze asset</div>' +
+            '<div style="font-size:12px;">Het risico komt uit leeftijd, conditiescore of buurt-signaal — niet uit losse meldingen.</div>' +
+            '</div>';
+          return;
+        }
+        var statusColor = { open:'#dc2626', in_behandeling:'#f59e0b', opgelost:'#16a34a', afgerond:'#64748b' };
+        listEl.innerHTML = items.map(function(m){
+          var sc = statusColor[m.status] || '#64748b';
+          var dt = m.created_at ? new Date(m.created_at) : null;
+          var when = dt && !isNaN(dt.getTime())
+            ? dt.toLocaleDateString('nl-NL', {day:'2-digit', month:'short', year:'numeric'}) + ' ' +
+              dt.toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam'})
+            : '';
+          var prio = m.priority ? '<span style="background:var(--card-bg-hover);padding:1px 7px;border-radius:6px;font-size:11px;">'+escapeHtml(m.priority)+'</span>' : '';
+          var thumb = m.photo_url
+            ? '<img src="'+m.photo_url+'" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:pointer;" onclick="navigateTo(\'meldingen\');setTimeout(function(){openMeldingDetail&&openMeldingDetail(\''+m.id+'\')},250)">'
+            : '<div style="width:54px;height:54px;border-radius:8px;background:var(--card-bg-hover);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px;">🔔</div>';
+          var gps = (m.lat && m.lng) ? '<span title="GPS">📍 '+m.lat.toFixed(4)+', '+m.lng.toFixed(4)+'</span>' : '';
+          return '<div style="display:flex;gap:12px;align-items:flex-start;border:1px solid var(--border);border-left:3px solid '+sc+';border-radius:10px;padding:10px 12px;">' +
+            thumb +
+            '<div style="flex:1;min-width:0;">' +
+              '<div style="font-weight:700;word-wrap:break-word;">'+escapeHtml(m.title||'(zonder titel)')+'</div>' +
+              '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:5px;font-size:11px;color:var(--text-dim);">' +
+                '<span style="color:'+sc+';font-weight:700;text-transform:uppercase;">'+escapeHtml(m.status||'')+'</span>' + prio +
+                (when ? '<span>🕑 '+when+'</span>' : '') + gps +
+              '</div>' +
+              (m.description ? '<div style="font-size:12px;color:var(--text-muted);margin-top:5px;white-space:pre-wrap;word-wrap:break-word;">'+escapeHtml(m.description)+'</div>' : '') +
+            '</div>' +
+          '</div>';
+        }).join('');
+      }).catch(function(err){
+        listEl.innerHTML = '<div style="color:var(--red);padding:20px;">'+escapeHtml(err.message||'Fout bij laden')+'</div>';
+      });
+    }
+
+    function closeAssetMeldingenModal() {
+      var modal = document.getElementById('assetMeldingenModal');
+      if (modal) modal.classList.remove('active');
     }
 
     function loadDashboardPredictiveWidget() {
@@ -18406,7 +18525,9 @@
       }
       listEl.innerHTML = entries.map(function(e) {
         var dt = new Date(e.occurred_at);
-        var time = dt.getHours().toString().padStart(2, '0') + ':' + dt.getMinutes().toString().padStart(2, '0');
+        // Forceer Europe/Amsterdam: backend levert UTC met offset, browser-tz
+        // mag de werkdagboek-tijd niet verschuiven (bug #11).
+        var time = isNaN(dt.getTime()) ? '' : dt.toLocaleTimeString('nl-NL', {hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam'});
         var isAuto = e.source === 'auto';
         var iconClass = isAuto ? 'auto' : 'manual';
         var icon = _daybookIconFor(e.entry_type, e.source);

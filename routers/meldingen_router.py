@@ -158,15 +158,18 @@ def _melding_to_response(melding: Melding) -> dict:
 @router.get("/", response_model=list[MeldingResponse])
 def list_meldingen(
     project_id: Optional[str] = Query(None),
+    asset_id: Optional[str] = Query(None, description="Filter op asset — gebruikt o.a. door Voorspeller-drilldown (#13)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Alle meldingen van de organisatie ophalen, optioneel gefilterd op project."""
+    """Alle meldingen van de organisatie ophalen, optioneel gefilterd op project en/of asset."""
     query = db.query(Melding).filter(
         Melding.organization_id == current_user.organization_id,
     )
     if project_id:
         query = query.filter(Melding.project_id == project_id)
+    if asset_id:
+        query = query.filter(Melding.asset_id == asset_id)
     meldingen = query.order_by(Melding.created_at.desc()).all()
     return [_melding_to_response(m) for m in meldingen]
 
