@@ -1,6 +1,7 @@
 import base64
 import csv
 import io
+import json
 import math
 import os
 import zipfile
@@ -13,6 +14,7 @@ from pydantic import BaseModel, Field
 from database import get_db
 from models import Melding, Project, Asset, User
 from schemas import MeldingCreate, MeldingResponse, MeldingUpdate
+from melding_norm_forms import norm_form_voor, alle_norm_velden_keys
 from auth import get_current_user
 from permissions import (
     can_create_meldingen, can_change_status, can_edit_melding_full,
@@ -133,6 +135,20 @@ def _enrich_classification(melding: Melding) -> bool:
 router = APIRouter(prefix="/api/meldingen", tags=["Meldingen"])
 
 
+def _clean_norm_data(norm_data) -> Optional[str]:
+    """Sanitize norm_data (#16) → JSON-string, of None.
+
+    Behoudt alleen bekende norm-veld-keys en niet-lege waarden, zodat de
+    opslag niet vervuild raakt met willekeurige client-velden.
+    """
+    if not norm_data or not isinstance(norm_data, dict):
+        return None
+    allowed = alle_norm_velden_keys()
+    cleaned = {k: v for k, v in norm_data.items()
+               if k in allowed and v not in (None, "", [])}
+    return json.dumps(cleaned, ensure_ascii=False) if cleaned else None
+
+
 def _melding_to_response(melding: Melding) -> dict:
     """Converteer Melding naar response dict met creator_name + asset-koppeling."""
     creator = melding.creator
@@ -140,6 +156,13 @@ def _melding_to_response(melding: Melding) -> dict:
     # Asset-koppeling meegeven — nodig voor melding-document (#12) en de
     # asset-koppeling in de melding-modal.
     asset = melding.asset if melding.asset_id else None
+    # Norm-specifieke velden (#16) — opgeslagen als JSON-string
+    norm_data = None
+    if melding.norm_data_json:
+        try:
+            norm_data = json.loads(melding.norm_data_json)
+        except (ValueError, TypeError):
+            norm_data = None
     return {
         "id": melding.id,
         "title": melding.title,
@@ -163,6 +186,7 @@ def _melding_to_response(melding: Melding) -> dict:
         "nen_2767_conditie": melding.nen_2767_conditie,
         "onderhoud_categorie": melding.onderhoud_categorie,
         "gw_maatregel": melding.gw_maatregel,
+        "norm_data": norm_data,
         "created_by": melding.created_by,
         "created_at": melding.created_at,
         "creator_name": creator_name,
@@ -229,6 +253,7 @@ def create_melding(
         gw_maatregel=getattr(data, "gw_maatregel", None),
         gw_term=getattr(data, "gw_term", None),
         gw_kosten_orde=getattr(data, "gw_kosten_orde", None),
+        norm_data_json=_clean_norm_data(getattr(data, "norm_data", None)),
     )
     db.add(melding)
     db.commit()
@@ -776,6 +801,23 @@ def enrich_all_classifications(
     }
 
 
+@router.get("/form-schema")
+def melding_form_schema(
+    asset_type: Optional[str] = Query(None, description="Asset-type (vrij/alias); leeg = geen norm-velden"),
+    current_user: User = Depends(get_current_user),
+):
+    """Norm-specifieke invulvelden voor een asset-type (#16).
+
+    Gebruikt door de melding-modal om dynamisch de juiste NEN/CROW-velden te
+    tonen per asset/categorie. Verharding (CROW 146) heeft een eigen sectie en
+    geeft hier een lege veldenlijst terug.
+
+    NB: deze route staat bewust vóór /{melding_id} zodat 'form-schema' niet als
+    melding-id wordt opgevat.
+    """
+    return norm_form_voor(asset_type)
+
+
 @router.get("/{melding_id}", response_model=MeldingResponse)
 def get_melding(
     melding_id: str,
@@ -831,6 +873,12 @@ def update_melding(
     else:
         raise HTTPException(status_code=403, detail="Geen rechten om meldingen te wijzigen")
 
+    # Norm-data (#16) apart afhandelen: het model-veld heet norm_data_json en
+    # wordt als JSON-string opgeslagen. Uit update_data halen vóór de generieke
+    # before-snapshot + setattr-loop (het model heeft geen 'norm_data'-attribuut).
+    norm_data_present = "norm_data" in update_data
+    norm_data_value = update_data.pop("norm_data", None)
+
     before = {k: getattr(melding, k) for k in update_data.keys()}
     status_change = has_status_field and update_data["status"] != melding.status
 
@@ -880,6 +928,8 @@ def update_melding(
 
     for field, value in update_data.items():
         setattr(melding, field, value)
+    if norm_data_present:
+        melding.norm_data_json = _clean_norm_data(norm_data_value)
     db.commit()
     db.refresh(melding)
 

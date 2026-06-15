@@ -4696,6 +4696,13 @@
             </div>
           </div>
         </div>
+        <!-- Dynamisch norm-formulier per asset-type (#16) -->
+        <div class="form-group" id="meldingNormSection" style="display:none;border:1px solid var(--border);border-radius:10px;padding:14px;background:rgba(124,58,237,0.04);">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px;" id="meldingNormTitle">Norm-specifieke velden</div>
+          <p style="font-size:11px;color:var(--text-dim);margin:0 0 10px;" id="meldingNormSub"></p>
+          <div id="meldingNormFields" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
+        </div>
+
         <!-- Issue-tracker bridge (Linear/GitHub) — alleen in edit-mode -->
         <div class="form-group" id="meldingExternalLinkWrap" style="display:none;margin-top:18px;padding:14px;border-radius:10px;background:rgba(124,58,237,0.05);border:1px solid rgba(124,58,237,0.18);">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -10121,6 +10128,8 @@
       // Document-knop alleen bij een bestaande (opgeslagen) melding (#12)
       var docBtn = document.getElementById('meldingDocumentBtn');
       if (docBtn) docBtn.style.display = isEdit ? '' : 'none';
+      // Norm-sectie resetten; edit-mode vult 'm zo opnieuw met data (#16)
+      renderMeldingNormForm(null);
 
       document.getElementById('meldingModal').classList.add('active');
       setupExternalLinkSection(isEdit, editingMeldingId);
@@ -10145,6 +10154,8 @@
             if (catSel && m.category) catSel.value = m.category;
           }, 50);
           if (m.project_id) loadAssetsForMelding(m.asset_id);
+          // Norm-specifieke velden herstellen op basis van asset-type (#16)
+          renderMeldingNormForm(m.asset_type, m.norm_data);
           // CROW/NEN herstellen
           var crowFields = {
             crowSchadegroep: m.crow_schadegroep,
@@ -10755,6 +10766,25 @@
         y += 3;
       }
 
+      // ── Norm-specifieke velden per asset-type (#16) ──
+      if (m.norm_data && Object.keys(m.norm_data).length) {
+        // Probeer leesbare labels uit het gecachte schema; val anders terug op de key.
+        var schema = _normFormCache[m.asset_type];
+        var labelFor = {};
+        if (schema && schema.velden) schema.velden.forEach(function(v){ labelFor[v.key] = v.label; });
+        doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+        doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+        doc.text('NORM-SPECIFIEKE METINGEN', M, y); y += 6;
+        normal(); doc.setTextColor(30,41,59); doc.setFontSize(10);
+        Object.keys(m.norm_data).forEach(function(k){
+          var label = labelFor[k] || k.replace(/_/g, ' ');
+          bold(); doc.text(doc.splitTextToSize(label + ':', 48), M, y);
+          normal(); doc.text(doc.splitTextToSize(String(m.norm_data[k]), W-2*M-50), M+50, y);
+          y += 6;
+        });
+        y += 3;
+      }
+
       // ── Omschrijving ──
       doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
       doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
@@ -11346,6 +11376,8 @@
         gw_maatregel: crowAdvies?.maatregel || null,
         gw_term: crowAdvies?.gw_term || null,
         gw_kosten_orde: crowAdvies?.kosten_orde || null,
+        // Norm-specifieke velden per asset-type (#16)
+        norm_data: collectMeldingNormData(),
       };
 
       function resetForm() {
@@ -11361,6 +11393,7 @@
           var el = document.getElementById(id); if (el) el.value = '';
         });
         var advies = document.getElementById('crowAdvies'); if (advies) advies.style.display = 'none';
+        renderMeldingNormForm(null);  // norm-velden verbergen/leegmaken (#16)
         resetMeldingPhotoState();
       }
 
@@ -19919,7 +19952,11 @@
 
     function onMeldingAssetChange() {
       var assetId = document.getElementById('meldingAsset').value;
-      if (!assetId) return;
+      if (!assetId) {
+        // Asset losgekoppeld → norm-velden verbergen (#16)
+        renderMeldingNormForm(null);
+        return;
+      }
       var asset = meldingAssets.find(function(a){ return a.id === assetId; });
       if (!asset) return;
       // Vul GPS van de asset (alleen als de velden nog leeg/ouder zijn)
@@ -19934,6 +19971,72 @@
       if (!titleField.value && asset.location_description) {
         titleField.placeholder = 'bijv. Schade aan ' + asset.code + ' (' + asset.location_description + ')';
       }
+      // Dynamisch norm-formulier voor dit asset-type (#16)
+      renderMeldingNormForm(asset.asset_type);
+    }
+
+    // ── Dynamisch norm-formulier per asset-type (#16) ──────────────────────
+    var _normFormCache = {};      // asset_type -> schema (van /form-schema)
+    var _currentNormSchema = null;
+
+    function renderMeldingNormForm(assetType, existingData) {
+      var section = document.getElementById('meldingNormSection');
+      var fieldsEl = document.getElementById('meldingNormFields');
+      if (!section || !fieldsEl) return;
+      if (!assetType) {
+        section.style.display = 'none'; fieldsEl.innerHTML = ''; _currentNormSchema = null;
+        return;
+      }
+      function apply(schema) {
+        _currentNormSchema = schema;
+        if (!schema || !schema.velden || !schema.velden.length) {
+          section.style.display = 'none'; fieldsEl.innerHTML = ''; return;
+        }
+        document.getElementById('meldingNormTitle').textContent = '🇳🇱 ' + (schema.norm_label || 'Norm-specifieke velden');
+        document.getElementById('meldingNormSub').textContent = 'Invulvelden voor asset-type: ' + assetType;
+        var data = existingData || {};
+        fieldsEl.innerHTML = schema.velden.map(function(v){
+          var id = 'normfld_' + v.key;
+          var val = data[v.key] != null ? data[v.key] : '';
+          var label = '<label style="font-size:11px;color:var(--text-muted);">' + escapeHtml(v.label) + (v.suffix ? ' (' + escapeHtml(v.suffix) + ')' : '') + '</label>';
+          var input;
+          if (v.type === 'select') {
+            input = '<select id="' + id + '" data-normkey="' + v.key + '" style="width:100%;">'
+              + '<option value="">—</option>'
+              + (v.opties || []).map(function(o){ return '<option value="' + escapeHtml(o) + '"' + (String(val) === String(o) ? ' selected' : '') + '>' + escapeHtml(o) + '</option>'; }).join('')
+              + '</select>';
+          } else if (v.type === 'number') {
+            input = '<input type="number" id="' + id + '" data-normkey="' + v.key + '" value="' + escapeHtml(String(val)) + '"'
+              + (v.min != null ? ' min="' + v.min + '"' : '') + (v.max != null ? ' max="' + v.max + '"' : '') + (v.step != null ? ' step="' + v.step + '"' : '')
+              + ' style="width:100%;">';
+          } else {
+            input = '<input type="text" id="' + id + '" data-normkey="' + v.key + '" value="' + escapeHtml(String(val)) + '" style="width:100%;">';
+          }
+          var help = v.help ? '<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">' + escapeHtml(v.help) + '</div>' : '';
+          return '<div>' + label + input + help + '</div>';
+        }).join('');
+        section.style.display = '';
+      }
+      if (_normFormCache[assetType]) { apply(_normFormCache[assetType]); return; }
+      api('GET', '/api/meldingen/form-schema?asset_type=' + encodeURIComponent(assetType)).then(function(schema){
+        _normFormCache[assetType] = schema;
+        apply(schema);
+      }).catch(function(){ section.style.display = 'none'; });
+    }
+
+    function collectMeldingNormData() {
+      var section = document.getElementById('meldingNormSection');
+      var fieldsEl = document.getElementById('meldingNormFields');
+      if (!section || !fieldsEl || section.style.display === 'none') return null;
+      var out = {};
+      fieldsEl.querySelectorAll('[data-normkey]').forEach(function(el){
+        var k = el.getAttribute('data-normkey');
+        var v = el.value;
+        if (v !== '' && v != null) {
+          out[k] = (el.type === 'number') ? parseFloat(v) : v;
+        }
+      });
+      return Object.keys(out).length ? out : null;
     }
 
     function onMeldingPhotoChange(event) {

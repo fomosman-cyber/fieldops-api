@@ -145,6 +145,14 @@ def _run_migrations():
                     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_onderhoud_cat ON meldingen(onderhoud_categorie)"))
                 print("[migration] meldingen CROW-kolommen toegevoegd.")
 
+            # Norm-specifieke invulvelden per asset-type (#16) — vrije JSON-string
+            mcols = [c["name"] for c in insp.get_columns("meldingen")]  # refresh
+            if "norm_data_json" not in mcols:
+                print("[migration] meldingen.norm_data_json kolom toevoegen...")
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE meldingen ADD COLUMN norm_data_json TEXT"))
+                print("[migration] meldingen.norm_data_json toegevoegd.")
+
         # NWB-Wegvakken architectuur — assets uitgebreid met geometry + WVK_ID (v3.4)
         if "assets" in insp.get_table_names():
             acols = [c["name"] for c in insp.get_columns("assets")]

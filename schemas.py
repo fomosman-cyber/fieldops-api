@@ -226,6 +226,8 @@ class MeldingCreate(BaseModel):
     gw_maatregel: Optional[str] = None
     gw_term: Optional[str] = None
     gw_kosten_orde: Optional[str] = None
+    # Norm-specifieke invulvelden per asset-type (#16) — vrije dict
+    norm_data: Optional[dict] = None
 
 
 class MeldingResponse(BaseModel):
@@ -254,6 +256,7 @@ class MeldingResponse(BaseModel):
     nen_2767_conditie: Optional[int] = None
     onderhoud_categorie: Optional[str] = None
     gw_maatregel: Optional[str] = None
+    norm_data: Optional[dict] = None        # norm-specifieke velden per asset-type (#16)
     created_by: str
     created_at: datetime
     creator_name: Optional[str] = None
@@ -271,6 +274,7 @@ class MeldingUpdate(BaseModel):
     photo_after_url: Optional[str] = None
     asset_id: Optional[str] = None
     project_id: Optional[str] = None      # null = ontkoppel project
+    norm_data: Optional[dict] = None      # norm-specifieke velden per asset-type (#16)
 
 
 # Asset
