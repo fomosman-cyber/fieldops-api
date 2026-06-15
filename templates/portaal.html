@@ -1613,7 +1613,7 @@
         <div class="card" style="overflow-x:auto;">
           <table class="data-table">
             <thead>
-              <tr><th style="width:32px;"><input type="checkbox" id="selectAllMeldingen" onchange="toggleAllMeldingen(this)"></th><th>Titel</th><th>Categorie</th><th>Prioriteit</th><th>Status</th><th>Project</th><th>Datum</th><th style="width:48px;text-align:right;"></th></tr>
+              <tr><th style="width:32px;"><input type="checkbox" id="selectAllMeldingen" onchange="toggleAllMeldingen(this)"></th><th style="width:52px;">Foto</th><th>Titel</th><th>Categorie</th><th>Prioriteit</th><th>Status</th><th>Project</th><th>Datum</th><th style="width:48px;text-align:right;"></th></tr>
             </thead>
             <tbody id="meldingenBody"></tbody>
           </table>
@@ -10005,12 +10005,46 @@
       document.body.insertAdjacentHTML('beforeend', html);
     }
 
+    // Lazy foto-thumbnails in de meldingen-lijst: alleen zichtbare rijen halen
+    // hun thumbnail op (via het /thumbnail-endpoint, authed fetch → objectURL),
+    // zodat de lijst licht/snel blijft (geen base64 in de lijst-payload).
+    var _meldingThumbObserver = null;
+    function _lazyLoadMeldingThumbs() {
+      var thumbs = document.querySelectorAll('.melding-thumb[data-thumb-mid]');
+      if (!('IntersectionObserver' in window)) {
+        thumbs.forEach(_loadMeldingThumb);
+        return;
+      }
+      if (_meldingThumbObserver) _meldingThumbObserver.disconnect();
+      _meldingThumbObserver = new IntersectionObserver(function(entries){
+        entries.forEach(function(en){
+          if (en.isIntersecting) {
+            _meldingThumbObserver.unobserve(en.target);
+            _loadMeldingThumb(en.target);
+          }
+        });
+      }, { rootMargin: '300px' });
+      thumbs.forEach(function(el){ _meldingThumbObserver.observe(el); });
+    }
+    function _loadMeldingThumb(el) {
+      var id = el.getAttribute('data-thumb-mid');
+      if (!id || el._loaded) return;
+      el._loaded = true;
+      fetch(API_URL + '/api/meldingen/' + id + '/thumbnail', { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function(res){ if (!res.ok) throw new Error('thumb'); return res.blob(); })
+        .then(function(blob){
+          var url = URL.createObjectURL(blob);
+          el.innerHTML = '<img src="' + url + '" alt="" style="width:100%;height:100%;object-fit:cover;" onload="URL.revokeObjectURL(this.src)">';
+        })
+        .catch(function(){ /* placeholder 📷 laten staan */ });
+    }
+
     function loadMeldingen() {
       var empty = document.getElementById('meldingenEmpty');
       var list = document.getElementById('meldingenList');
       empty.style.display = 'none';
       list.style.display = 'block';
-      document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="8"><div class="loading-spinner">'+t('meldingen_laden')+'</div></td></tr>';
+      document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="9"><div class="loading-spinner">'+t('meldingen_laden')+'</div></td></tr>';
       api('GET', '/api/meldingen/').then(function(meldingen) {
         allMeldingen = meldingen || [];
         var tbody = document.getElementById('meldingenBody');
@@ -10032,6 +10066,9 @@
           }
           return '<tr style="cursor:pointer;">' +
             '<td onclick="event.stopPropagation()"><input type="checkbox" class="melding-checkbox" value="'+m.id+'"></td>' +
+            '<td onclick="openMeldingDetail(\''+m.id+'\')" style="padding:4px 8px;">' + (m.has_photo
+                ? '<div class="melding-thumb" data-thumb-mid="'+m.id+'" style="width:40px;height:40px;border-radius:6px;background:var(--card-bg-hover);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text-dim);overflow:hidden;">📷</div>'
+                : '<div style="width:40px;height:40px;border-radius:6px;background:var(--card-bg-hover);opacity:0.35;"></div>') + '</td>' +
             '<td onclick="openMeldingDetail(\''+m.id+'\')"><strong>'+m.title+'</strong></td>' +
             '<td onclick="openMeldingDetail(\''+m.id+'\')">'+(m.category||'-')+'</td>' +
             '<td onclick="openMeldingDetail(\''+m.id+'\')"><span class="status-badge '+(prioColors[m.priority]||'')+'">'+(m.priority||'normaal')+'</span></td>' +
@@ -10045,6 +10082,7 @@
             '</tr>';
         }).join('');
         document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
+        _lazyLoadMeldingThumbs();  // foto-thumbnails lazy laden (alleen zichtbare rijen)
         // Bind change-events op nieuwe checkboxes voor bulk-bar
         document.querySelectorAll('.melding-checkbox').forEach(function(cb){
           cb.addEventListener('change', updateBulkBar);

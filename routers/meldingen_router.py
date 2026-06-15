@@ -7,7 +7,7 @@ import os
 import zipfile
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response, RedirectResponse
 from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -862,6 +862,42 @@ def get_melding(
     if not melding:
         raise HTTPException(status_code=404, detail="Melding niet gevonden")
     return _melding_to_response(melding)
+
+
+@router.get("/{melding_id}/thumbnail")
+def melding_thumbnail(
+    melding_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kleine thumbnail van de melding-foto — voor de lijst-weergave.
+
+    De lijst stuurt geen base64 meer mee (perf); deze endpoint decodeert de
+    base64-foto en schaalt 'm naar ~96px JPEG zodat de lijst snel kleine
+    thumbnails kan tonen. Bij een externe URL (S3) wordt doorverwezen. De
+    frontend laadt 'm lazy (alleen zichtbare rijen) via fetch + objectURL.
+    """
+    melding = db.query(Melding.photo_url).filter(
+        Melding.id == melding_id,
+        Melding.organization_id == current_user.organization_id,
+    ).first()
+    if not melding or not melding.photo_url:
+        raise HTTPException(status_code=404, detail="Geen foto")
+    url = melding.photo_url
+    if not url.startswith("data:"):
+        # Externe URL (S3) — doorverwijzen; browser haalt 'm direct op
+        return RedirectResponse(url)
+    try:
+        from PIL import Image
+        b64 = url.split(",", 1)[1]
+        img = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+        img.thumbnail((96, 96))
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=70)
+        return Response(content=out.getvalue(), media_type="image/jpeg",
+                        headers={"Cache-Control": "private, max-age=3600"})
+    except Exception:
+        raise HTTPException(status_code=404, detail="Foto niet leesbaar")
 
 
 @router.api_route("/{melding_id}", methods=["PUT", "PATCH"], response_model=MeldingResponse)
