@@ -47,13 +47,21 @@ def test_list_includes_asset_and_gps_and_photo(client, org, admin_user):
     assert m["asset_id"] == a.id
     assert m["asset_code"] == "PUT-042"
     assert m["asset_type"] == "put"
-    # GPS + foto waren er al, maar borgen dat ze meekomen
     assert m["lat"] == 52.37 and m["lng"] == 4.89
-    assert m["photo_url"].startswith("data:image/")
+    # Lijst is light (perf): geen base64-foto, wél has_photo-vlag.
+    assert m["photo_url"] is None
+    assert m["has_photo"] is True
     # CROW/NEN-classificatie voor CROW-conform document
     assert m["crow_klasse"] == "M2"
     assert m["nen_2767_conditie"] == 3
     assert m["onderhoud_categorie"] == "KO"
+
+    # with_photos=1 levert de volledige base64 (voor kleine gefilterde lijsten)
+    r = client.get("/api/meldingen/?with_photos=1", headers=auth(admin_user))
+    assert r.json()[0]["photo_url"].startswith("data:image/")
+    # Single-GET geeft altijd de volledige foto (voor document + lazy-load)
+    r = client.get(f"/api/meldingen/{r.json()[0]['id']}", headers=auth(admin_user))
+    assert r.json()["photo_url"].startswith("data:image/")
 
 
 def test_get_one_includes_asset_fields(client, org, admin_user):

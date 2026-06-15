@@ -31,7 +31,7 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db
 from models import (
@@ -510,7 +510,13 @@ def list_inspections(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Inspection).filter(Inspection.organization_id == current_user.organization_id)
+    # Eager-load asset/project + elementen zodat _inspection_dict (asset.code,
+    # project.name, len(elementen)) geen N+1 over max 500 inspecties triggert (perf).
+    q = (db.query(Inspection)
+           .options(joinedload(Inspection.asset),
+                    joinedload(Inspection.project),
+                    selectinload(Inspection.elementen))
+           .filter(Inspection.organization_id == current_user.organization_id))
     if asset_id:        q = q.filter(Inspection.asset_id == asset_id)
     if project_id:      q = q.filter(Inspection.project_id == project_id)
     if status:          q = q.filter(Inspection.status == status)

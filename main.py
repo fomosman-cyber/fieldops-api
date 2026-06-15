@@ -153,6 +153,14 @@ def _run_migrations():
                     conn.execute(text("ALTER TABLE meldingen ADD COLUMN norm_data_json TEXT"))
                 print("[migration] meldingen.norm_data_json toegevoegd.")
 
+            # Performance-indexen (perf): meldingen was de enige hoog-volume tabel
+            # zonder org-index, terwijl elke lijst filtert op organization_id +
+            # optioneel project_id en sorteert op created_at. Idempotent.
+            with engine.begin() as conn:
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_org ON meldingen(organization_id)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_org_proj_created ON meldingen(organization_id, project_id, created_at)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_created ON meldingen(created_at)"))
+
         # NWB-Wegvakken architectuur — assets uitgebreid met geometry + WVK_ID (v3.4)
         if "assets" in insp.get_table_names():
             acols = [c["name"] for c in insp.get_columns("assets")]

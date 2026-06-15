@@ -241,6 +241,8 @@ class MeldingResponse(BaseModel):
     lng: Optional[float]
     photo_url: Optional[str] = None
     photo_after_url: Optional[str] = None
+    has_photo: Optional[bool] = None        # lijst-light: foto aanwezig zonder de base64 mee te sturen
+    has_photo_after: Optional[bool] = None
     project_id: Optional[str]
     asset_id: Optional[str] = None
     asset_code: Optional[str] = None        # voor melding-document + modal-koppeling (#12)

@@ -149,8 +149,15 @@ def _clean_norm_data(norm_data) -> Optional[str]:
     return json.dumps(cleaned, ensure_ascii=False) if cleaned else None
 
 
-def _melding_to_response(melding: Melding) -> dict:
-    """Converteer Melding naar response dict met creator_name + asset-koppeling."""
+def _melding_to_response(melding: Melding, light: bool = False) -> dict:
+    """Converteer Melding naar response dict met creator_name + asset-koppeling.
+
+    light=True laat de (vaak grote base64-)foto's WEG en geeft alleen
+    has_photo/has_photo_after-vlaggen terug. Gebruikt door lijst-/kaart-
+    endpoints om de payload klein te houden (performance — foto's worden lazy
+    per melding geladen via GET /{id}). De detail-/create-/update-responses
+    gebruiken light=False en bevatten de volledige foto's.
+    """
     creator = melding.creator
     creator_name = f"{creator.first_name} {creator.last_name}" if creator else None
     # Asset-koppeling meegeven — nodig voor melding-document (#12) en de
@@ -172,8 +179,10 @@ def _melding_to_response(melding: Melding) -> dict:
         "status": melding.status,
         "lat": melding.lat,
         "lng": melding.lng,
-        "photo_url": melding.photo_url,
-        "photo_after_url": melding.photo_after_url,
+        "photo_url": None if light else melding.photo_url,
+        "photo_after_url": None if light else melding.photo_after_url,
+        "has_photo": bool(melding.photo_url),
+        "has_photo_after": bool(melding.photo_after_url),
         "project_id": melding.project_id,
         "asset_id": melding.asset_id,
         "asset_code": asset.code if asset else None,
@@ -197,19 +206,26 @@ def _melding_to_response(melding: Melding) -> dict:
 def list_meldingen(
     project_id: Optional[str] = Query(None),
     asset_id: Optional[str] = Query(None, description="Filter op asset — gebruikt o.a. door Voorspeller-drilldown (#13)"),
+    with_photos: bool = Query(False, description="Inline foto's (base64) meesturen. Default uit voor performance; alleen aanzetten voor kleine, gefilterde lijsten (bv. asset-drilldown)."),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Alle meldingen van de organisatie ophalen, optioneel gefilterd op project en/of asset."""
-    query = db.query(Melding).options(joinedload(Melding.asset)).filter(
-        Melding.organization_id == current_user.organization_id,
-    )
+    """Alle meldingen van de organisatie ophalen, optioneel gefilterd op project en/of asset.
+
+    Standaard worden de (zware base64-)foto's NIET meegestuurd (alleen
+    has_photo-vlaggen) — dat hield de lijst traag bij meerdere projecten.
+    Zet with_photos=true alleen aan voor kleine, gefilterde lijsten.
+    """
+    query = (db.query(Melding)
+               .options(joinedload(Melding.asset), joinedload(Melding.creator))
+               .filter(Melding.organization_id == current_user.organization_id))
     if project_id:
         query = query.filter(Melding.project_id == project_id)
     if asset_id:
         query = query.filter(Melding.asset_id == asset_id)
     meldingen = query.order_by(Melding.created_at.desc()).all()
-    return [_melding_to_response(m) for m in meldingen]
+    light = not with_photos
+    return [_melding_to_response(m, light=light) for m in meldingen]
 
 
 @router.post("/", response_model=MeldingResponse)
