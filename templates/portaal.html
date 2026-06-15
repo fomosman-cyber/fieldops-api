@@ -2667,6 +2667,14 @@
         </div>
       </div>
 
+      <!-- Sub-tabs: CROW-inspectie vs Klein onderhoud (#9) -->
+      <div style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:18px;">
+        <button id="inspSubtabCrowBtn" onclick="switchInspectieTab('crow')" class="insp-subtab" style="background:none;border:none;border-bottom:2px solid var(--accent);color:var(--text);font-weight:600;font-size:14px;padding:10px 14px;cursor:pointer;">🏗️ CROW-inspectie</button>
+        <button id="inspSubtabKoBtn" onclick="switchInspectieTab('ko')" class="insp-subtab" style="background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);font-weight:600;font-size:14px;padding:10px 14px;cursor:pointer;">🔧 Klein onderhoud</button>
+      </div>
+
+      <!-- TAB: CROW-inspectie (formele NEN 2767-2 / CROW-inspecties) -->
+      <div id="inspTabCrow">
       <!-- Categorie-tegels -->
       <div id="kwCategoryTiles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;"></div>
 
@@ -2704,11 +2712,43 @@
                 <th data-i18n="kw_col_datum">Datum</th>
                 <th style="text-align:center;" data-i18n="kw_col_conditie">Conditie</th>
                 <th data-i18n="kw_col_status">Status</th>
+                <th style="text-align:center;">Meldingen</th>
                 <th style="width:120px;text-align:right;"></th>
               </tr>
             </thead>
             <tbody id="kunstwerkenBody"></tbody>
           </table>
+        </div>
+      </div>
+      </div><!-- /inspTabCrow -->
+
+      <!-- TAB: Klein onderhoud (meldingen met categorie KO) -->
+      <div id="inspTabKO" style="display:none;">
+        <div style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">
+          Meldingen die als <strong>klein onderhoud</strong> zijn geclassificeerd (CROW-categorie KO). Klik door naar de melding.
+        </div>
+        <div id="inspKoSamenvatting" style="color:var(--text-muted);font-size:13px;margin-bottom:10px;"></div>
+        <div id="inspKoEmpty" class="empty-state" style="display:none;">
+          <div class="empty-icon">🔧</div>
+          <h3>Nog geen klein-onderhoud-meldingen</h3>
+          <p>Meldingen krijgen de categorie KO via hun CROW-classificatie (klasse M1/M2).</p>
+        </div>
+        <div id="inspKoList" style="display:none;">
+          <div class="card" style="overflow-x:auto;padding:0;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Titel</th>
+                  <th>Asset</th>
+                  <th>Maatregel</th>
+                  <th>Prioriteit</th>
+                  <th>Status</th>
+                  <th>Datum</th>
+                </tr>
+              </thead>
+              <tbody id="inspKoBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -8019,7 +8059,7 @@
       if (page === 'predictive') loadPredictive();
       if (page === 'clusters') loadClusters();
       if (page === 'opleveren') loadOpleveringen();
-      if (page === 'kunstwerken') loadKunstwerkInspecties();
+      if (page === 'kunstwerken') { if (typeof switchInspectieTab === 'function') switchInspectieTab('crow'); loadKunstwerkInspecties(); }
       if (page === 'mijn-dag') loadMijnDag();
       // B3: ook de hoofd-stats verversen (niet alleen de predictive-widget), zodat
       // meldingen die in Mijn Dag zijn afgerond meteen kloppen op het Dashboard.
@@ -15054,7 +15094,7 @@
       var list = document.getElementById('kunstwerkenList');
       var tbody = document.getElementById('kunstwerkenBody');
       var sum = document.getElementById('kwSamenvatting');
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-dim);">Laden...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text-dim);">Laden...</td></tr>';
       // Render tegels direct met huidige data (lege array bij eerste laad — counts = 0)
       renderKunstwerkCategoryTiles();
 
@@ -15106,13 +15146,103 @@
             + '<td>' + date + '</td>'
             + '<td style="text-align:center;">' + _kwBadge(i.conditiescore_overall) + '</td>'
             + '<td><span style="background:' + st.bg + ';color:' + st.color + ';font-size:10px;padding:2px 8px;border-radius:100px;font-weight:700;letter-spacing:.05em;">' + st.label.toUpperCase() + '</span></td>'
+            + '<td style="text-align:center;">' + (i.meldingen_count > 0
+                ? '<button class="btn-secondary" style="font-size:11px;padding:3px 9px;white-space:nowrap;" onclick="event.stopPropagation();openInspectieMeldingen(\'' + i.id + '\')" title="Bekijk gekoppelde meldingen">🔔 ' + i.meldingen_count + '</button>'
+                : '<span style="color:var(--text-dim);">—</span>') + '</td>'
             + '<td style="text-align:right;">'
             +   '<button class="btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="event.stopPropagation();openKunstwerkDetail(\'' + i.id + '\')">' + (t('kw_btn_open') || 'Open') + '</button>'
             + '</td>'
             + '</tr>';
         }).join('');
       }).catch(function(err){
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#dc2626;">Laden mislukt: ' + escapeHtml(err.message || 'onbekend') + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#dc2626;">Laden mislukt: ' + escapeHtml(err.message || 'onbekend') + '</td></tr>';
+      });
+    }
+
+    // ── Inspecties sub-tabs: CROW-inspectie vs Klein onderhoud (#9) ──────────
+    function switchInspectieTab(which) {
+      var crow = document.getElementById('inspTabCrow');
+      var ko = document.getElementById('inspTabKO');
+      var crowBtn = document.getElementById('inspSubtabCrowBtn');
+      var koBtn = document.getElementById('inspSubtabKoBtn');
+      var isKo = which === 'ko';
+      if (crow) crow.style.display = isKo ? 'none' : '';
+      if (ko) ko.style.display = isKo ? '' : 'none';
+      if (crowBtn) { crowBtn.style.borderBottomColor = isKo ? 'transparent' : 'var(--accent)'; crowBtn.style.color = isKo ? 'var(--text-dim)' : 'var(--text)'; }
+      if (koBtn) { koBtn.style.borderBottomColor = isKo ? 'var(--accent)' : 'transparent'; koBtn.style.color = isKo ? 'var(--text)' : 'var(--text-dim)'; }
+      if (isKo) loadKleinOnderhoud();
+    }
+
+    // 'klein onderhoud' kent twee schrijfwijzen in de codebase: CROW-advies 'KO'
+    // (frontend) vs enrich 'klein onderhoud' (backend). Beide matchen.
+    function _isKleinOnderhoud(cat) {
+      if (!cat) return false;
+      var c = String(cat).toLowerCase().trim();
+      return c === 'ko' || c === 'klein onderhoud' || c === 'klein_onderhoud';
+    }
+
+    function loadKleinOnderhoud() {
+      var empty = document.getElementById('inspKoEmpty');
+      var list = document.getElementById('inspKoList');
+      var body = document.getElementById('inspKoBody');
+      var sum = document.getElementById('inspKoSamenvatting');
+      body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-dim);">Laden...</td></tr>';
+      list.style.display = 'block';
+      empty.style.display = 'none';
+      api('GET', '/api/meldingen/').then(function(items){
+        var ko = (items || []).filter(function(m){ return _isKleinOnderhoud(m.onderhoud_categorie); });
+        if (sum) sum.textContent = ko.length + ' klein-onderhoud-melding' + (ko.length === 1 ? '' : 'en');
+        if (!ko.length) { empty.style.display = 'flex'; list.style.display = 'none'; return; }
+        var prioColors = { kritiek:'red', hoog:'orange', normaal:'blue', laag:'' };
+        var statusLabels = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
+        body.innerHTML = ko.map(function(m){
+          var date = m.created_at ? new Date(m.created_at).toLocaleDateString('nl-NL', {day:'numeric', month:'short', year:'numeric'}) : '—';
+          var asset = m.asset_code ? (m.asset_code + (m.asset_type ? ' (' + m.asset_type + ')' : '')) : '—';
+          return '<tr style="cursor:pointer;" onclick="openMeldingDetail(\'' + m.id + '\')">'
+            + '<td style="font-weight:600;">' + escapeHtml(m.title || '(zonder titel)') + '</td>'
+            + '<td>' + escapeHtml(asset) + '</td>'
+            + '<td>' + escapeHtml(m.gw_maatregel || '—') + '</td>'
+            + '<td><span class="status-badge ' + (prioColors[m.priority] || '') + '">' + escapeHtml(m.priority || 'normaal') + '</span></td>'
+            + '<td>' + escapeHtml(statusLabels[m.status] || m.status || '') + '</td>'
+            + '<td style="color:var(--text-dim);">' + date + '</td>'
+            + '</tr>';
+        }).join('');
+      }).catch(function(err){
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#dc2626;">Laden mislukt: ' + escapeHtml(err.message || 'onbekend') + '</td></tr>';
+      });
+    }
+
+    // Drilldown: meldingen gekoppeld aan een CROW-inspectie (via defect.melding_id).
+    // Hergebruikt de assetMeldingenModal (#13).
+    function openInspectieMeldingen(inspectionId) {
+      var insp = (_kunstwerkInspecties || []).find(function(x){ return x.id === inspectionId; });
+      var ids = (insp && insp.melding_ids) || [];
+      if (!ids.length) { showToast('Geen gekoppelde meldingen', 'info'); return; }
+      var modal = document.getElementById('assetMeldingenModal');
+      if (!modal) return;
+      document.getElementById('assetMeldingenModalTitle').textContent = '🔔 Meldingen uit inspectie';
+      document.getElementById('assetMeldingenModalSub').textContent = insp.title || '';
+      var listEl = document.getElementById('assetMeldingenList');
+      listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Laden...</div>';
+      var openBtn = document.getElementById('assetMeldingenOpenAssetBtn');
+      if (openBtn) {
+        openBtn.style.display = '';
+        openBtn.textContent = 'Open inspectie →';
+        openBtn.onclick = function(){ closeAssetMeldingenModal(); openKunstwerkDetail(inspectionId); };
+      }
+      modal.classList.add('active');
+      Promise.all(ids.map(function(id){ return api('GET', '/api/meldingen/' + id).catch(function(){ return null; }); })).then(function(items){
+        var meldingen = items.filter(Boolean);
+        if (!meldingen.length) { listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim);">Meldingen niet gevonden.</div>'; return; }
+        var statusColor = { open:'#dc2626', in_behandeling:'#f59e0b', opgelost:'#16a34a', afgerond:'#64748b' };
+        listEl.innerHTML = meldingen.map(function(m){
+          var sc = statusColor[m.status] || '#64748b';
+          return '<div style="border:1px solid var(--border);border-left:3px solid ' + sc + ';border-radius:10px;padding:10px 12px;cursor:pointer;" onclick="closeAssetMeldingenModal();openMeldingDetail(\'' + m.id + '\')">'
+            + '<div style="font-weight:700;">' + escapeHtml(m.title || '(zonder titel)') + '</div>'
+            + '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;"><span style="color:' + sc + ';font-weight:700;text-transform:uppercase;">' + escapeHtml(m.status || '') + '</span>'
+              + (m.gw_maatregel ? ' · ' + escapeHtml(m.gw_maatregel) : '') + '</div>'
+            + '</div>';
+        }).join('');
       });
     }
 
@@ -16890,8 +17020,11 @@
       document.getElementById('assetMeldingenModalSub').textContent = type ? ('Asset-type: ' + type) : '';
       var listEl = document.getElementById('assetMeldingenList');
       listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Laden...</div>';
-      // "Open asset" knop koppelen
+      // "Open asset" knop koppelen (modal wordt gedeeld met de inspectie-drilldown,
+      // dus tekst/zichtbaarheid expliciet resetten).
       var openBtn = document.getElementById('assetMeldingenOpenAssetBtn');
+      openBtn.style.display = '';
+      openBtn.textContent = 'Open asset →';
       openBtn.onclick = function(){
         closeAssetMeldingenModal();
         navigateTo('assets');
