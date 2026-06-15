@@ -4667,7 +4667,7 @@
           <p id="placeSearchHint" style="font-size:11px;color:var(--text-dim);margin-top:4px;">Tik 'GPS' voor je huidige locatie of zoek hierboven een adres.</p>
         </div>
         <div class="form-group">
-          <label>Foto (optioneel) — laat AI de schade beoordelen</label>
+          <label>📷 Foto bij inspectie (vóór) <span style="color:var(--red);">*</span> <span style="font-weight:400;color:var(--text-dim);">— verplicht; laat AI de schade beoordelen</span></label>
           <div id="meldingPhotoZone" style="width:100%;min-height:120px;border:2px dashed var(--border);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--card-bg-hover);cursor:pointer;position:relative;padding:16px;" onclick="document.getElementById('meldingPhotoInput').click()">
             <span id="meldingPhotoLabel" style="color:var(--text-dim);font-size:13px;">📷 Klik om een foto te kiezen</span>
             <img id="meldingPhotoPreview" style="max-width:100%;max-height:200px;border-radius:8px;display:none;" />
@@ -4736,6 +4736,17 @@
             </div>
           </div>
         </div>
+        <!-- Foto na uitvoering — bewijs dat het werk is uitgevoerd. Verplicht
+             vóór afronden (backend dwingt dit af bij status opgelost/afgerond). -->
+        <div class="form-group" id="meldingPhotoAfterGroup">
+          <label>✅ Foto na uitvoering <span style="font-weight:400;color:var(--text-dim);">— bewijs van uitvoering (verplicht vóór afronden)</span></label>
+          <div id="meldingPhotoAfterZone" style="width:100%;min-height:120px;border:2px dashed var(--border);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--card-bg-hover);cursor:pointer;position:relative;padding:16px;" onclick="document.getElementById('meldingPhotoAfterInput').click()">
+            <span id="meldingPhotoAfterLabel" style="color:var(--text-dim);font-size:13px;">📷 Klik om de na-foto te kiezen</span>
+            <img id="meldingPhotoAfterPreview" style="max-width:100%;max-height:200px;border-radius:8px;display:none;" />
+          </div>
+          <input type="file" id="meldingPhotoAfterInput" accept="image/*" capture="environment" style="display:none;" onchange="onMeldingPhotoAfterChange(event)">
+        </div>
+
         <!-- Dynamisch norm-formulier per asset-type (#16) -->
         <div class="form-group" id="meldingNormSection" style="display:none;border:1px solid var(--border);border-radius:10px;padding:14px;background:rgba(124,58,237,0.04);">
           <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px;" id="meldingNormTitle">Norm-specifieke velden</div>
@@ -10206,6 +10217,10 @@
       // Document-knop alleen bij een bestaande (opgeslagen) melding (#12)
       var docBtn = document.getElementById('meldingDocumentBtn');
       if (docBtn) docBtn.style.display = isEdit ? '' : 'none';
+      // Na-uitvoering-foto alleen tonen bij bewerken (bij aanmaken is het werk
+      // nog niet uitgevoerd). De inspectie-foto (vóór) is verplicht bij aanmaken.
+      var afterGroup = document.getElementById('meldingPhotoAfterGroup');
+      if (afterGroup) afterGroup.style.display = isEdit ? '' : 'none';
       // Norm-sectie resetten; edit-mode vult 'm zo opnieuw met data (#16)
       renderMeldingNormForm(null);
       // Foto-state altijd resetten (ook bij edit) zodat een achtergebleven
@@ -10238,23 +10253,28 @@
           if (m.project_id) loadAssetsForMelding(m.asset_id);
           // Norm-specifieke velden herstellen op basis van asset-type (#16)
           renderMeldingNormForm(m.asset_type, m.norm_data);
-          // Bestaande foto tonen bij bewerken. De lijst-cache is light (geen
-          // base64), dus bij has_photo de foto lazy via single-GET ophalen.
-          if (m.photo_url || m.has_photo) {
-            var _setPrev = function(url) {
-              if (!url) return;
-              var _pp = document.getElementById('meldingPhotoPreview');
-              var _pl = document.getElementById('meldingPhotoLabel');
-              if (_pp) { _pp.src = url; _pp.style.display = 'block'; }
-              if (_pl) _pl.style.display = 'none';
-            };
-            if (m.photo_url) {
-              _setPrev(m.photo_url);
-            } else {
-              api('GET', '/api/meldingen/' + m.id).then(function(full) {
-                if (full) _setPrev(full.photo_url);
-              }).catch(function(){});
-            }
+          // Bestaande foto's tonen bij bewerken (vóór + na). De lijst-cache is
+          // light (geen base64); bij has_photo(_after) lazy via single-GET.
+          var _setPrevBefore = function(url) {
+            if (!url) return;
+            var _pp = document.getElementById('meldingPhotoPreview');
+            var _pl = document.getElementById('meldingPhotoLabel');
+            if (_pp) { _pp.src = url; _pp.style.display = 'block'; }
+            if (_pl) _pl.style.display = 'none';
+          };
+          var _setPrevAfter = function(url) {
+            if (!url) return;
+            var _pa = document.getElementById('meldingPhotoAfterPreview');
+            var _la = document.getElementById('meldingPhotoAfterLabel');
+            if (_pa) { _pa.src = url; _pa.style.display = 'block'; }
+            if (_la) _la.style.display = 'none';
+          };
+          if (m.photo_url) _setPrevBefore(m.photo_url);
+          if (m.photo_after_url) _setPrevAfter(m.photo_after_url);
+          if ((m.has_photo && !m.photo_url) || (m.has_photo_after && !m.photo_after_url)) {
+            api('GET', '/api/meldingen/' + m.id).then(function(full) {
+              if (full) { _setPrevBefore(full.photo_url); _setPrevAfter(full.photo_after_url); }
+            }).catch(function(){});
           }
           // CROW/NEN herstellen
           var crowFields = {
@@ -11447,6 +11467,12 @@
 
     function createMelding(e) {
       e.preventDefault();
+      // Foto bij inspectie is verplicht bij een NIEUWE melding (must). Bij bewerken
+      // blijft de bestaande foto staan, dus daar geen nieuwe foto vereist.
+      if (!editingMeldingId && !meldingPhotoFile) {
+        showToast('Foto bij inspectie is verplicht bij een nieuwe melding', 'error');
+        return;
+      }
       var btn = document.getElementById('meldingSubmitBtn');
       btn.textContent = t('bezig');
       btn.disabled = true;
@@ -11549,16 +11575,19 @@
         }).finally(_finishBtn);
       }
 
-      // Foto meesturen (bug: foto's laden niet) — de gekozen foto zat alleen in
-      // meldingPhotoFile en werd nooit verstuurd. Omzetten naar data-URL en als
-      // photo_url in de payload. Bij edit zonder NIEUWE foto blijft photo_url weg
-      // → bestaande foto behouden (backend exclude_unset). FileReader is async,
-      // dus het hele verzenden gebeurt in de .then().
-      var _photoReady = meldingPhotoFile
+      // Beide foto's meesturen — vóór (inspectie) + na (uitvoering). De gekozen
+      // foto's zaten alleen in de file-variabelen en werden niet verstuurd.
+      // Omzetten naar data-URL. Bij edit zonder NIEUWE foto blijft het veld weg
+      // → bestaande foto behouden (backend exclude_unset). FileReader is async.
+      var _beforeReady = meldingPhotoFile
         ? _photoToDataUrl(meldingPhotoFile).catch(function(){ return null; })
         : Promise.resolve(null);
-      _photoReady.then(function(photoDataUrl) {
-        if (photoDataUrl) payload.photo_url = photoDataUrl;
+      var _afterReady = meldingPhotoAfterFile
+        ? _photoToDataUrl(meldingPhotoAfterFile).catch(function(){ return null; })
+        : Promise.resolve(null);
+      Promise.all([_beforeReady, _afterReady]).then(function(res) {
+        if (res[0]) payload.photo_url = res[0];
+        if (res[1]) payload.photo_after_url = res[1];
         _sendMelding();
       });
     }
@@ -20126,7 +20155,8 @@
     // ══════════════════════════════════════
 
     var meldingAssets = [];          // assets geladen voor het huidige project
-    var meldingPhotoFile = null;     // File object van uploaded foto
+    var meldingPhotoFile = null;     // File object van uploaded foto (vóór/inspectie)
+    var meldingPhotoAfterFile = null; // File object van na-uitvoering-foto
     var meldingAILastResult = null;  // resultaat van laatste AI-analyse
 
     function onMeldingProjectChange() {
@@ -20261,6 +20291,26 @@
         }
       });
       return Object.keys(out).length ? out : null;
+    }
+
+    // Na-uitvoering-foto kiezen (geen AI-analyse — puur bewijs van uitvoering)
+    function onMeldingPhotoAfterChange(event) {
+      var f = event.target.files && event.target.files[0];
+      if (!f) return;
+      if (f.size > 10 * 1024 * 1024) {
+        showToast('Foto te groot (max 10 MB)', 'error');
+        event.target.value = '';
+        return;
+      }
+      meldingPhotoAfterFile = f;
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = document.getElementById('meldingPhotoAfterPreview');
+        if (img) { img.src = e.target.result; img.style.display = 'block'; }
+        var lbl = document.getElementById('meldingPhotoAfterLabel');
+        if (lbl) lbl.style.display = 'none';
+      };
+      reader.readAsDataURL(f);
     }
 
     function onMeldingPhotoChange(event) {
@@ -20827,6 +20877,11 @@
       var lbl = document.getElementById('meldingPhotoLabel'); if (lbl) lbl.style.display = 'block';
       var box = document.getElementById('meldingAIBox'); if (box) box.style.display = 'none';
       var res = document.getElementById('meldingAIResult'); if (res) res.style.display = 'none';
+      // Na-uitvoering-foto ook resetten
+      meldingPhotoAfterFile = null;
+      var inpA = document.getElementById('meldingPhotoAfterInput'); if (inpA) inpA.value = '';
+      var prevA = document.getElementById('meldingPhotoAfterPreview'); if (prevA) { prevA.src = ''; prevA.style.display = 'none'; }
+      var lblA = document.getElementById('meldingPhotoAfterLabel'); if (lblA) lblA.style.display = 'block';
     }
 
     // ══════════════════════════════════════
