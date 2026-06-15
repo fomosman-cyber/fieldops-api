@@ -10050,6 +10050,60 @@
         .catch(function(){ /* placeholder 📷 laten staan */ });
     }
 
+    // Render-chunking voor de meldingen-lijst (performance — niet alle 1000en
+    // rijen tegelijk in de DOM). allMeldingen blijft compleet voor export/filters.
+    var MELDING_PAGE_SIZE = 100;
+    var _meldingenRendered = 0;
+
+    function _meldingRowHtml(m) {
+      var prioColors = { kritiek:'red', hoog:'orange', normaal:'blue', laag:'' };
+      var statusLabels = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
+      var date = new Date(m.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short' });
+      var projectName = '-';
+      if (m.project_id) {
+        var proj = (allProjects || []).find(function(p){return p.id===m.project_id;});
+        if (proj) projectName = proj.name;
+      }
+      return '<tr style="cursor:pointer;">' +
+        '<td onclick="event.stopPropagation()"><input type="checkbox" class="melding-checkbox" value="'+m.id+'"></td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')" style="padding:4px 8px;">' + (m.has_photo
+            ? '<div class="melding-thumb" data-thumb-mid="'+m.id+'" style="width:40px;height:40px;border-radius:6px;background:var(--card-bg-hover);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text-dim);overflow:hidden;">📷</div>'
+            : '<div style="width:40px;height:40px;border-radius:6px;background:var(--card-bg-hover);opacity:0.35;"></div>') + '</td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')"><strong>'+m.title+'</strong></td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')">'+(m.category||'-')+'</td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')"><span class="status-badge '+(prioColors[m.priority]||'')+'">'+(m.priority||'normaal')+'</span></td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')"><span class="status-badge '+(m.status==='open'?'trial':m.status==='afgerond'?'active':'')+'">'+
+          (statusLabels[m.status]||m.status)+'</span></td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')">'+projectName+'</td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')" style="color:var(--text-dim);">'+date+'</td>' +
+        '<td onclick="event.stopPropagation()" style="text-align:right;">'
+          + '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fee2e2;" onclick="event.stopPropagation();deleteMeldingFromList(\''+m.id+'\',\''+(m.title||'').replace(/\'/g,"\\'")+'\')" title="Permanent verwijderen">🗑️</button>'
+        + '</td>' +
+        '</tr>';
+    }
+
+    function _appendMeldingChunk() {
+      var tbody = document.getElementById('meldingenBody');
+      if (!tbody) return;
+      var moreRow = document.getElementById('meldingMoreRow');
+      if (moreRow) moreRow.remove();
+      var next = allMeldingen.slice(_meldingenRendered, _meldingenRendered + MELDING_PAGE_SIZE);
+      tbody.insertAdjacentHTML('beforeend', next.map(_meldingRowHtml).join(''));
+      _meldingenRendered += next.length;
+      if (_meldingenRendered < allMeldingen.length) {
+        var rest = allMeldingen.length - _meldingenRendered;
+        tbody.insertAdjacentHTML('beforeend',
+          '<tr id="meldingMoreRow"><td colspan="9" style="text-align:center;padding:16px;background:var(--card-bg-hover);">'
+          + '<button class="btn-secondary" onclick="_appendMeldingChunk()">Toon meer — ' + rest + ' van ' + allMeldingen.length + ' resterend</button>'
+          + '</td></tr>');
+      }
+      // Nieuwe checkboxes binden (alleen ongebonden) + thumbnails lazy laden
+      document.querySelectorAll('.melding-checkbox').forEach(function(cb){
+        if (!cb._bound) { cb.addEventListener('change', updateBulkBar); cb._bound = true; }
+      });
+      _lazyLoadMeldingThumbs();
+    }
+
     function loadMeldingen() {
       var empty = document.getElementById('meldingenEmpty');
       var list = document.getElementById('meldingenList');
@@ -10066,38 +10120,13 @@
         }
         empty.style.display = 'none';
         list.style.display = 'block';
-        var prioColors = { kritiek:'red', hoog:'orange', normaal:'blue', laag:'' };
-        var statusLabels = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
-        tbody.innerHTML = allMeldingen.map(function(m) {
-          var date = new Date(m.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short' });
-          var projectName = '-';
-          if (m.project_id) {
-            var proj = allProjects.find(function(p){return p.id===m.project_id;});
-            if (proj) projectName = proj.name;
-          }
-          return '<tr style="cursor:pointer;">' +
-            '<td onclick="event.stopPropagation()"><input type="checkbox" class="melding-checkbox" value="'+m.id+'"></td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')" style="padding:4px 8px;">' + (m.has_photo
-                ? '<div class="melding-thumb" data-thumb-mid="'+m.id+'" style="width:40px;height:40px;border-radius:6px;background:var(--card-bg-hover);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text-dim);overflow:hidden;">📷</div>'
-                : '<div style="width:40px;height:40px;border-radius:6px;background:var(--card-bg-hover);opacity:0.35;"></div>') + '</td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')"><strong>'+m.title+'</strong></td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')">'+(m.category||'-')+'</td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')"><span class="status-badge '+(prioColors[m.priority]||'')+'">'+(m.priority||'normaal')+'</span></td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')"><span class="status-badge '+(m.status==='open'?'trial':m.status==='afgerond'?'active':'')+'">'+
-              (statusLabels[m.status]||m.status)+'</span></td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')">'+projectName+'</td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')" style="color:var(--text-dim);">'+date+'</td>' +
-            '<td onclick="event.stopPropagation()" style="text-align:right;">'
-              + '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fee2e2;" onclick="event.stopPropagation();deleteMeldingFromList(\''+m.id+'\',\''+(m.title||'').replace(/\'/g,"\\'")+'\')" title="Permanent verwijderen">🗑️</button>'
-            + '</td>' +
-            '</tr>';
-        }).join('');
+        // Render-chunking: render de eerste rijen + "Toon meer" zodat we niet
+        // duizenden DOM-rijen tegelijk bouwen (traag). allMeldingen blijft
+        // compleet → export/filters/tellingen ongewijzigd.
+        _meldingenRendered = 0;
+        tbody.innerHTML = '';
+        _appendMeldingChunk();
         document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
-        _lazyLoadMeldingThumbs();  // foto-thumbnails lazy laden (alleen zichtbare rijen)
-        // Bind change-events op nieuwe checkboxes voor bulk-bar
-        document.querySelectorAll('.melding-checkbox').forEach(function(cb){
-          cb.addEventListener('change', updateBulkBar);
-        });
         // Bind bulk-select dropdowns (één keer per laad — selects worden niet vervangen)
         var bulkStatus = document.getElementById('bulkStatusSelect');
         if (bulkStatus && !bulkStatus._bound) {
