@@ -32,7 +32,7 @@ from orchestration import (
     my_clusters,
     cluster_summary,
 )
-from crow_kosten import SKILL_CODES, MAATREGEL_TO_SKILL
+from crow_kosten import SKILL_CODES, MAATREGEL_TO_SKILL, SKILL_DOMAIN
 
 router = APIRouter(prefix="/api", tags=["Job Orchestration"])
 
@@ -396,10 +396,11 @@ def set_user_skills(
 
 @router.get("/skills/catalog")
 def skills_catalog():
-    """Alle beschikbare skill-codes + omschrijvingen + welke maatregel ze afdekken."""
+    """Alle beschikbare skill-codes + omschrijvingen + domein + welke maatregel ze afdekken."""
     return [{
         "code": code,
         "name": name,
+        "domein": SKILL_DOMAIN.get(code, "Overig"),
         "covers_maatregelen": [m for m, s in MAATREGEL_TO_SKILL.items() if s == code],
     } for code, name in SKILL_CODES.items()]
 

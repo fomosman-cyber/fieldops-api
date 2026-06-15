@@ -16580,7 +16580,8 @@
         _mySkills = results[1];
         var mySkillsByCode = {};
         _mySkills.forEach(function(s){ mySkillsByCode[s.skill_code] = s.proficiency; });
-        var html = _skillsCatalog.map(function(s){
+
+        function skillRow(s){
           var proficiency = mySkillsByCode[s.code] || 0;
           var checked = proficiency > 0 ? 'checked' : '';
           return '<label style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;">'
@@ -16593,6 +16594,22 @@
               + [1,2,3,4,5].map(function(p){ return '<option value="'+p+'" ' + (p===proficiency?'selected':'') + '>★'.repeat(p) + '☆'.repeat(5-p) + '</option>'; }).join('')
             + '</select>'
           + '</label>';
+        }
+
+        // Groepeer per domein; behoud de volgorde waarin domeinen voorkomen.
+        var domainOrder = [];
+        var byDomain = {};
+        _skillsCatalog.forEach(function(s){
+          var d = s.domein || 'Overig';
+          if (!byDomain[d]) { byDomain[d] = []; domainOrder.push(d); }
+          byDomain[d].push(s);
+        });
+        var html = domainOrder.map(function(d){
+          var rows = byDomain[d].map(skillRow).join('');
+          return '<div style="margin-bottom:6px;">'
+            + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin:12px 2px 8px;">' + escapeHtml(d) + '</div>'
+            + '<div style="display:flex;flex-direction:column;gap:8px;">' + rows + '</div>'
+          + '</div>';
         }).join('');
         document.getElementById('skillsCatalogList').innerHTML = html;
         document.getElementById('skillsModal').classList.add('active');
