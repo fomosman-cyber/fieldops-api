@@ -10130,6 +10130,10 @@
       if (docBtn) docBtn.style.display = isEdit ? '' : 'none';
       // Norm-sectie resetten; edit-mode vult 'm zo opnieuw met data (#16)
       renderMeldingNormForm(null);
+      // Foto-state altijd resetten (ook bij edit) zodat een achtergebleven
+      // meldingPhotoFile uit een vorige sessie niet per ongeluk een bestaande
+      // foto overschrijft. Edit-mode herstelt de preview hieronder uit m.photo_url.
+      if (typeof resetMeldingPhotoState === 'function') resetMeldingPhotoState();
 
       document.getElementById('meldingModal').classList.add('active');
       setupExternalLinkSection(isEdit, editingMeldingId);
@@ -10156,6 +10160,13 @@
           if (m.project_id) loadAssetsForMelding(m.asset_id);
           // Norm-specifieke velden herstellen op basis van asset-type (#16)
           renderMeldingNormForm(m.asset_type, m.norm_data);
+          // Bestaande foto tonen bij bewerken (preview werd niet hersteld)
+          if (m.photo_url) {
+            var _pp = document.getElementById('meldingPhotoPreview');
+            var _pl = document.getElementById('meldingPhotoLabel');
+            if (_pp) { _pp.src = m.photo_url; _pp.style.display = 'block'; }
+            if (_pl) _pl.style.display = 'none';
+          }
           // CROW/NEN herstellen
           var crowFields = {
             crowSchadegroep: m.crow_schadegroep,
@@ -10182,7 +10193,6 @@
       }).catch(function(){});
 
       if (!isEdit) {
-        if (typeof resetMeldingPhotoState === 'function') resetMeldingPhotoState();
         autoFillGPS();
       }
     }
@@ -11402,39 +11412,59 @@
       var method = isEdit ? 'PATCH' : 'POST';
       var url = isEdit ? ('/api/meldingen/' + editingMeldingId) : '/api/meldingen/';
 
-      // Offline? → direct in IndexedDB-queue, sync zodra online
-      if (!navigator.onLine) {
-        queueRequest(method, url, payload).then(function() {
-          showToast('📥 Offline — wijziging bewaard, syncen zodra je online bent', 'warning');
-          resetForm();
-        }).catch(function(err) {
-          showToast('Queue-fout: '+err.message, 'error');
-        }).finally(function() {
-          btn.textContent = isEdit ? 'Wijzigingen opslaan' : t('melding_aanmaken');
-          btn.disabled = false;
-        });
-        return;
+      // Veiligheid (bug asset-koppeling): bij bewerken geen asset_id:null
+      // meesturen als de asset-dropdown nog niet geladen is — dat zou de
+      // bestaande koppeling wissen. Weglaten = backend behoudt 'm (exclude_unset).
+      if (isEdit && !meldingAssetsLoaded) {
+        delete payload.asset_id;
       }
 
-      api(method, url, payload).then(function(melding) {
-        showToast(isEdit ? 'Melding bijgewerkt' : t('melding_aangemaakt'), 'success');
-        resetForm();
-        loadMeldingen();
-        loadDashboardStats();
-        if (map) loadMapData();
-      }).catch(function(err) {
-        // Network-error → fallback queue (alleen voor POST; PATCH is per-id risky)
-        if (err.message && /network|fetch|failed/i.test(err.message) && !isEdit) {
-          queueRequest('POST', '/api/meldingen/', payload).then(function() {
-            showToast('📥 Verbinding verloren — melding bewaard voor latere sync', 'warning');
-            resetForm();
-          });
-        } else {
-          showToast(err.message, 'error');
-        }
-      }).finally(function() {
+      function _finishBtn() {
         btn.textContent = isEdit ? 'Wijzigingen opslaan' : t('melding_aanmaken');
         btn.disabled = false;
+      }
+
+      function _sendMelding() {
+        // Offline? → direct in IndexedDB-queue, sync zodra online
+        if (!navigator.onLine) {
+          queueRequest(method, url, payload).then(function() {
+            showToast('📥 Offline — wijziging bewaard, syncen zodra je online bent', 'warning');
+            resetForm();
+          }).catch(function(err) {
+            showToast('Queue-fout: '+err.message, 'error');
+          }).finally(_finishBtn);
+          return;
+        }
+        api(method, url, payload).then(function(melding) {
+          showToast(isEdit ? 'Melding bijgewerkt' : t('melding_aangemaakt'), 'success');
+          resetForm();
+          loadMeldingen();
+          loadDashboardStats();
+          if (map) loadMapData();
+        }).catch(function(err) {
+          // Network-error → fallback queue (alleen voor POST; PATCH is per-id risky)
+          if (err.message && /network|fetch|failed/i.test(err.message) && !isEdit) {
+            queueRequest('POST', '/api/meldingen/', payload).then(function() {
+              showToast('📥 Verbinding verloren — melding bewaard voor latere sync', 'warning');
+              resetForm();
+            });
+          } else {
+            showToast(err.message, 'error');
+          }
+        }).finally(_finishBtn);
+      }
+
+      // Foto meesturen (bug: foto's laden niet) — de gekozen foto zat alleen in
+      // meldingPhotoFile en werd nooit verstuurd. Omzetten naar data-URL en als
+      // photo_url in de payload. Bij edit zonder NIEUWE foto blijft photo_url weg
+      // → bestaande foto behouden (backend exclude_unset). FileReader is async,
+      // dus het hele verzenden gebeurt in de .then().
+      var _photoReady = meldingPhotoFile
+        ? _photoToDataUrl(meldingPhotoFile).catch(function(){ return null; })
+        : Promise.resolve(null);
+      _photoReady.then(function(photoDataUrl) {
+        if (photoDataUrl) payload.photo_url = photoDataUrl;
+        _sendMelding();
       });
     }
 
@@ -19918,12 +19948,14 @@
       loadAssetsForMelding();
     }
 
-    function loadAssetsForMelding() {
+    var meldingAssetsLoaded = false;  // true zodra de asset-dropdown gevuld is (bug asset-koppeling)
+    function loadAssetsForMelding(preselectAssetId) {
       var projId = document.getElementById('meldingProject').value;
       var sel = document.getElementById('meldingAsset');
       var hint = document.getElementById('meldingAssetHint');
       sel.innerHTML = '<option value="">— Geen asset gekoppeld —</option>';
       meldingAssets = [];
+      meldingAssetsLoaded = false;
       if (!projId) {
         if (hint) hint.textContent = 'Selecteer eerst een project om assets te zien.';
         return;
@@ -19932,10 +19964,6 @@
       api('GET', '/api/assets/?project_id=' + encodeURIComponent(projId) + '&limit=500')
         .then(function(items) {
           meldingAssets = items || [];
-          if (meldingAssets.length === 0) {
-            if (hint) hint.textContent = t('es_geen_assets_project');
-            return;
-          }
           meldingAssets.forEach(function(a) {
             var opt = document.createElement('option');
             opt.value = a.id;
@@ -19943,7 +19971,15 @@
             opt.textContent = a.code + (a.name ? ' — ' + a.name : '') + ' (' + a.asset_type + ')' + open;
             sel.appendChild(opt);
           });
-          if (hint) hint.textContent = meldingAssets.length + ' assets beschikbaar';
+          meldingAssetsLoaded = true;
+          // Bestaande/gekozen asset herstellen in de dropdown (bug: edit wiste de
+          // koppeling omdat de dropdown leeg bleef → PATCH stuurde asset_id:null).
+          // ALLEEN sel.value zetten — NIET onMeldingAssetChange aanroepen, want dat
+          // overschrijft de melding-GPS met de asset-coördinaten.
+          if (preselectAssetId) sel.value = preselectAssetId;
+          if (hint) hint.textContent = meldingAssets.length
+            ? (meldingAssets.length + ' assets beschikbaar')
+            : t('es_geen_assets_project');
         })
         .catch(function(err) {
           if (hint) hint.textContent = 'Assets laden mislukt: ' + (err.message || 'onbekend');

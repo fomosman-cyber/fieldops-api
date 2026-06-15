@@ -256,6 +256,20 @@ def create_melding(
         norm_data_json=_clean_norm_data(getattr(data, "norm_data", None)),
     )
     db.add(melding)
+    # Auto-koppel aan dichtstbijzijnde asset als er geen handmatig gekozen is.
+    # (Bug: nieuwe meldingen werden server-side nooit aan een asset gekoppeld —
+    # _auto_link_nearest_asset draaide alleen bij CSV-import/enrich.) Begrensde
+    # bounding-box query i.p.v. alle org-assets, voor performance bij grote orgs.
+    if melding.asset_id is None and melding.lat is not None and melding.lng is not None:
+        box = 0.004  # ~280m lng / ~440m lat marge rond de 200m-drempel (haversine filtert exact)
+        nearby = (db.query(Asset)
+                    .filter(Asset.organization_id == current_user.organization_id,
+                            Asset.archived_at.is_(None),
+                            Asset.lat.isnot(None), Asset.lng.isnot(None),
+                            Asset.lat.between(melding.lat - box, melding.lat + box),
+                            Asset.lng.between(melding.lng - box, melding.lng + box))
+                    .all())
+        _auto_link_nearest_asset(melding, nearby, max_m=200.0)
     db.commit()
     db.refresh(melding)
     log_action(db, request, current_user,
