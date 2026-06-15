@@ -7,7 +7,7 @@ import zipfile
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 from pydantic import BaseModel, Field
 from database import get_db
@@ -134,9 +134,12 @@ router = APIRouter(prefix="/api/meldingen", tags=["Meldingen"])
 
 
 def _melding_to_response(melding: Melding) -> dict:
-    """Converteer Melding naar response dict met creator_name."""
+    """Converteer Melding naar response dict met creator_name + asset-koppeling."""
     creator = melding.creator
     creator_name = f"{creator.first_name} {creator.last_name}" if creator else None
+    # Asset-koppeling meegeven — nodig voor melding-document (#12) en de
+    # asset-koppeling in de melding-modal.
+    asset = melding.asset if melding.asset_id else None
     return {
         "id": melding.id,
         "title": melding.title,
@@ -149,6 +152,17 @@ def _melding_to_response(melding: Melding) -> dict:
         "photo_url": melding.photo_url,
         "photo_after_url": melding.photo_after_url,
         "project_id": melding.project_id,
+        "asset_id": melding.asset_id,
+        "asset_code": asset.code if asset else None,
+        "asset_type": asset.asset_type if asset else None,
+        "crow_schadegroep": melding.crow_schadegroep,
+        "crow_schadebeeld": melding.crow_schadebeeld,
+        "crow_ernst": melding.crow_ernst,
+        "crow_omvang": melding.crow_omvang,
+        "crow_klasse": melding.crow_klasse,
+        "nen_2767_conditie": melding.nen_2767_conditie,
+        "onderhoud_categorie": melding.onderhoud_categorie,
+        "gw_maatregel": melding.gw_maatregel,
         "created_by": melding.created_by,
         "created_at": melding.created_at,
         "creator_name": creator_name,
@@ -163,7 +177,7 @@ def list_meldingen(
     db: Session = Depends(get_db),
 ):
     """Alle meldingen van de organisatie ophalen, optioneel gefilterd op project en/of asset."""
-    query = db.query(Melding).filter(
+    query = db.query(Melding).options(joinedload(Melding.asset)).filter(
         Melding.organization_id == current_user.organization_id,
     )
     if project_id:

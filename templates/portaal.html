@@ -4714,8 +4714,9 @@
           <p id="extlinkHint" style="font-size:11px;color:var(--text-dim);margin:6px 0 0;"></p>
         </div>
 
-        <div class="form-actions">
+        <div class="form-actions" style="display:flex;gap:10px;flex-wrap:wrap;">
           <button type="submit" class="btn-primary" id="meldingSubmitBtn">Melding aanmaken</button>
+          <button type="button" class="btn-secondary" id="meldingDocumentBtn" onclick="generateMeldingDocument()" style="display:none;" title="Download deze melding als PDF-document (CROW-conform, met GPS, foto en asset-codering)">📄 Document (PDF)</button>
         </div>
       </form>
     </div>
@@ -10117,6 +10118,9 @@
       var isEdit = !!editingMeldingId;
       if (titleEl) titleEl.textContent = isEdit ? 'Melding bewerken' : 'Nieuwe Melding';
       if (submitBtn) submitBtn.textContent = isEdit ? 'Wijzigingen opslaan' : 'Melding aanmaken';
+      // Document-knop alleen bij een bestaande (opgeslagen) melding (#12)
+      var docBtn = document.getElementById('meldingDocumentBtn');
+      if (docBtn) docBtn.style.display = isEdit ? '' : 'none';
 
       document.getElementById('meldingModal').classList.add('active');
       setupExternalLinkSection(isEdit, editingMeldingId);
@@ -10602,6 +10606,210 @@
         var url = URL.createObjectURL(blob);
         window.open(url, 'FieldOps_Preview', 'width=900,height=700,scrollbars=yes');
       });
+    }
+
+    // ── Eén-melding PDF-document (#12) ─────────────────────────────────
+    // Mo's bug: het document uit een melding miste GPS, de foto zelf en de
+    // asset-codering. Deze functie bouwt een CROW-conform document van één
+    // melding mét al die onderdelen.
+    function generateMeldingDocument(meldingId) {
+      var id = meldingId || editingMeldingId;
+      if (!id) { showToast('Geen melding geselecteerd', 'error'); return; }
+      var m = (allMeldingen || []).find(function(x){ return x.id === id; });
+      if (!m) { showToast(t('melding_niet_gevonden') || 'Melding niet gevonden', 'error'); return; }
+      if (!window.jspdf || !window.jspdf.jsPDF) { showToast('PDF-bibliotheek niet geladen', 'error'); return; }
+      showToast('Document genereren...', 'info');
+
+      // Foto's vooraf laden (base64 → afmetingen). loadImageAsBase64 werkt voor
+      // zowel inline base64 als externe URL's.
+      var photoJobs = [];
+      if (m.photo_url) photoJobs.push(loadImageAsBase64(m.photo_url).then(function(r){ return {key:'before', img:r}; }));
+      if (m.photo_after_url) photoJobs.push(loadImageAsBase64(m.photo_after_url).then(function(r){ return {key:'after', img:r}; }));
+
+      Promise.all(photoJobs).then(function(loaded){
+        var imgs = {};
+        loaded.forEach(function(o){ imgs[o.key] = o.img; });
+        try {
+          _buildMeldingDocPdf(m, imgs);
+        } catch (e) {
+          console.error('Melding-document fout:', e);
+          showToast('Document genereren mislukt: ' + (e.message || ''), 'error');
+        }
+      });
+    }
+
+    function _buildMeldingDocPdf(m, imgs) {
+      var jsPDF = window.jspdf.jsPDF;
+      var doc = new jsPDF('p','mm','a4');
+      var W = 210, H = 297, M = 20;
+      var bold = function(){ doc.setFont('helvetica','bold'); };
+      var normal = function(){ doc.setFont('helvetica','normal'); };
+      var statusLabels = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
+
+      // ── Branded header ──
+      var _branding = orgBrandingCache || {};
+      var _brandRgb = hexToRgb(_branding.brand_color);
+      doc.setFillColor(_brandRgb[0], _brandRgb[1], _brandRgb[2]);
+      doc.rect(0,0,W,42,'F');
+      if (_branding.logo_data_url && _branding.logo_data_url.indexOf('image/svg') === -1) {
+        try {
+          var _fmt = (_branding.logo_data_url.indexOf('image/jpeg') !== -1) ? 'JPEG' : 'PNG';
+          doc.addImage(_branding.logo_data_url, _fmt, M, 10, 30, 15, undefined, 'FAST');
+        } catch (e) { /* logo overslaan bij fout */ }
+      }
+      var _orgName = _branding.name || (currentOrg && currentOrg.name) || 'FieldOps';
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(16); bold();
+      doc.text(_orgName, _branding.logo_data_url ? M + 36 : M, 20);
+      doc.setFontSize(10); normal();
+      doc.text('Meldingsdocument · CROW 146 / NEN 2767-2', _branding.logo_data_url ? M + 36 : M, 30);
+
+      var y = 54;
+      doc.setTextColor(30,41,59);
+
+      // ── Titel ──
+      doc.setFontSize(18); bold();
+      var titleLines = doc.splitTextToSize(m.title || t('zonder_titel') || 'Zonder titel', W-2*M);
+      doc.text(titleLines, M, y); y += titleLines.length * 8 + 2;
+
+      // ── Meta (datum in Europe/Amsterdam, consistent met #11) ──
+      doc.setFontSize(10); normal(); doc.setTextColor(100,116,139);
+      var dt = m.created_at ? new Date(m.created_at) : null;
+      var datum = (dt && !isNaN(dt.getTime()))
+        ? dt.toLocaleDateString('nl-NL',{day:'2-digit',month:'long',year:'numeric'}) + ' ' +
+          dt.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Amsterdam'})
+        : '-';
+      doc.text('Aangemaakt: ' + datum + '   |   Door: ' + (m.creator_name || t('onbekend') || 'Onbekend'), M, y);
+      y += 5;
+      doc.text('Melding-ID: ' + m.id, M, y); y += 8;
+
+      // ── Info-blok (status, prioriteit, categorie, project, ASSET) ──
+      var projName = '-';
+      if (m.project_id) { var pr = (allProjects||[]).find(function(p){return p.id===m.project_id;}); if (pr) projName = pr.name; }
+      // Asset-codering — kern van #12. Komt nu uit de API (asset_code/type),
+      // met fallback naar de lokale assets-cache.
+      var assetTxt = '—';
+      if (m.asset_code || m.asset_type) {
+        assetTxt = (m.asset_code || '?') + (m.asset_type ? ' (' + m.asset_type + ')' : '');
+      } else if (m.asset_id) {
+        var a = (allAssets||[]).find(function(x){return x.id===m.asset_id;});
+        if (a) assetTxt = a.code + (a.asset_type ? ' (' + a.asset_type + ')' : '');
+      }
+      var fields = [
+        ['Status', statusLabels[m.status] || m.status || '-'],
+        ['Prioriteit', (m.priority||'normaal').charAt(0).toUpperCase()+(m.priority||'normaal').slice(1)],
+        ['Categorie', m.category || '-'],
+        ['Project', projName],
+        ['Asset', assetTxt],
+      ];
+      var rowH = 15;
+      var blockH = Math.ceil(fields.length/2) * rowH + 6;
+      doc.setFillColor(245,247,250);
+      doc.rect(M, y-2, W-2*M, blockH, 'F');
+      doc.setDrawColor(226,232,240);
+      doc.rect(M, y-2, W-2*M, blockH, 'S');
+      var cw = (W-2*M)/2;
+      fields.forEach(function(f, fi){
+        var fx = M+6+(fi%2)*cw;
+        var fy = y + 4 + Math.floor(fi/2)*rowH;
+        doc.setFontSize(8); bold(); doc.setTextColor(100,116,139);
+        doc.text(f[0].toUpperCase(), fx, fy);
+        doc.setFontSize(11); normal(); doc.setTextColor(30,41,59);
+        doc.text(doc.splitTextToSize(String(f[1]), cw-10), fx, fy+5);
+      });
+      y += blockH + 6;
+
+      // ── GPS-locatie (kern van #12) ──
+      doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+      doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+      doc.text('GPS-LOCATIE', M, y); y += 6;
+      normal(); doc.setTextColor(30,41,59); doc.setFontSize(11);
+      if (m.lat != null && m.lng != null) {
+        doc.text('Coördinaten: ' + Number(m.lat).toFixed(6) + ', ' + Number(m.lng).toFixed(6), M, y); y += 5;
+        doc.setFontSize(9); doc.setTextColor(100,116,139);
+        doc.textWithLink('https://maps.google.com/?q='+m.lat+','+m.lng, M, y, { url: 'https://maps.google.com/?q='+m.lat+','+m.lng }); y += 9;
+      } else {
+        doc.setTextColor(148,163,184);
+        doc.text('Geen locatie vastgelegd.', M, y); y += 9;
+      }
+
+      // ── CROW / NEN classificatie (indien aanwezig) ──
+      var crowBits = [];
+      if (m.crow_klasse) crowBits.push(['CROW-klasse', m.crow_klasse]);
+      if (m.crow_schadegroep) crowBits.push(['Schadegroep', m.crow_schadegroep]);
+      if (m.crow_schadebeeld) crowBits.push(['Schadebeeld', m.crow_schadebeeld]);
+      if (m.crow_ernst || m.crow_omvang) crowBits.push(['Ernst / omvang', (m.crow_ernst||'-') + ' / ' + (m.crow_omvang||'-')]);
+      if (m.nen_2767_conditie != null) crowBits.push(['NEN 2767-conditie', String(m.nen_2767_conditie)]);
+      if (m.onderhoud_categorie) crowBits.push(['Onderhoudscategorie', m.onderhoud_categorie]);
+      if (m.gw_maatregel) crowBits.push(['Maatregel', m.gw_maatregel]);
+      if (crowBits.length) {
+        doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+        doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+        doc.text('CROW 146 / NEN 2767 CLASSIFICATIE', M, y); y += 6;
+        normal(); doc.setTextColor(30,41,59); doc.setFontSize(10);
+        crowBits.forEach(function(b){
+          bold(); doc.text(b[0] + ':', M, y);
+          normal(); doc.text(doc.splitTextToSize(String(b[1]), W-2*M-50), M+50, y);
+          y += 6;
+        });
+        y += 3;
+      }
+
+      // ── Omschrijving ──
+      doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+      doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+      doc.text('OMSCHRIJVING', M, y); y += 6;
+      normal(); doc.setTextColor(30,41,59); doc.setFontSize(11);
+      var descLines = doc.splitTextToSize(m.description || 'Geen omschrijving.', W-2*M);
+      doc.text(descLines, M, y); y += descLines.length * 5.5 + 6;
+
+      // ── Foto's (de foto zelf — kern van #12) ──
+      var photoList = [];
+      if (m.photo_url) photoList.push(['Foto (voor)', imgs.before, m.photo_url]);
+      if (m.photo_after_url) photoList.push(['Foto (na)', imgs.after, m.photo_after_url]);
+      if (photoList.length) {
+        doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+        doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+        doc.text('FOTO\'S', M, y); y += 6;
+        photoList.forEach(function(p){
+          if (y > H - 30) { doc.addPage(); y = M; }
+          doc.setFontSize(9); bold(); doc.setTextColor(30,41,59);
+          doc.text(p[0], M, y); y += 3;
+          var img = p[1];
+          if (img && img.data) {
+            var iw = 80, ih = (img.h / img.w) * iw;
+            if (ih > 70) { iw = iw * (70/ih); ih = 70; }
+            if (y + ih > H - 18) { doc.addPage(); y = M; }
+            doc.addImage(img.data, 'JPEG', M, y, iw, ih);
+            y += ih + 6;
+          } else {
+            // Foto kon niet ingeladen worden — toon tenminste de bron-link
+            normal(); doc.setFontSize(8); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+            doc.textWithLink('Foto openen', M, y+3, { url: p[2] }); y += 9;
+          }
+        });
+      }
+
+      // ── Footer op elke pagina ──
+      var pageCount = doc.internal.getNumberOfPages();
+      for (var pi = 1; pi <= pageCount; pi++) {
+        doc.setPage(pi);
+        doc.setFontSize(8); normal(); doc.setTextColor(148,163,184);
+        doc.text('FieldOps · fieldopsapp.nl · ' + _orgName, M, H-10);
+        doc.text('Pagina ' + pi + ' / ' + pageCount, W-M-20, H-10);
+      }
+
+      // ── Opslaan / openen ──
+      var safeTitle = (m.title || 'melding').replace(/[^a-z0-9]+/gi,'_').slice(0,40);
+      var fname = 'Melding_' + safeTitle + '_' + new Date().toISOString().slice(0,10) + '.pdf';
+      var blob = doc.output('blob');
+      var url = URL.createObjectURL(blob);
+      var win = window.open(url, '_blank');
+      if (!win || win.closed || typeof win.closed === 'undefined') {
+        var a = document.createElement('a');
+        a.href = url; a.download = fname; a.click();
+      }
+      showToast('Meldingsdocument gegenereerd', 'success');
     }
 
     function generateRapportage(type) {
