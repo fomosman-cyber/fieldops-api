@@ -25,6 +25,7 @@ from schemas import AssetCreate, AssetUpdate, AssetResponse
 from auth import get_current_user
 from permissions import can_manage_assets, require_org_admin
 from audit import log_action, ACTION
+from asset_lifespan import default_lifespan_for, conditie_from_crow_klasse
 
 router = APIRouter(prefix="/api/assets", tags=["Assets"])
 
@@ -414,6 +415,127 @@ def find_nearest_asset(
         "found": True,
         "distance_m": round(best_dist, 1),
         "asset": _to_response(best_asset, open_meldingen=open_count),
+    }
+
+
+def _estimate_conditions_by_asset(db: Session, organization_id: str) -> dict:
+    """Bulk: schat per asset een conditiescore (1-5) uit gekoppelde meldingen.
+
+    Voorkeur: de zwaarste vastgelegde NEN-conditie van gekoppelde meldingen;
+    anders afgeleid uit de zwaarste CROW-klasse. Eén query (geen N+1).
+    """
+    rows = (db.query(Melding.asset_id, Melding.nen_2767_conditie, Melding.crow_klasse)
+              .filter(Melding.organization_id == organization_id,
+                      Melding.asset_id.isnot(None)).all())
+    by_asset: dict = {}
+    for aid, cond, klasse in rows:
+        by_asset.setdefault(aid, []).append((cond, klasse))
+    out: dict = {}
+    for aid, items in by_asset.items():
+        conds = [c for c, k in items if c]
+        if conds:
+            out[aid] = min(5, max(conds))   # hoogste conditie = slechtste
+            continue
+        klassen = [conditie_from_crow_klasse(k) for c, k in items]
+        klassen = [x for x in klassen if x]
+        if klassen:
+            out[aid] = max(klassen)
+    return out
+
+
+@router.get("/predictive-readiness")
+def predictive_readiness(
+    project_id: Optional[str] = Query(None, description="Optioneel: alleen dit project"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Hoe 'predictive-ready' is de asset-portefeuille? De Voorspeller voorspelt
+    pas scherp zodra assets installatiedatum + levensduur + NEN-conditiescore
+    hebben. Telt per veld hoeveel assets compleet zijn (Voorspeller-dekking)."""
+    q = db.query(Asset).filter(
+        Asset.organization_id == current_user.organization_id,
+        Asset.archived_at.is_(None),
+    )
+    if project_id:
+        q = q.filter(Asset.project_id == project_id)
+    assets = q.all()
+    total = len(assets)
+    with_install = sum(1 for a in assets if a.installed_at is not None)
+    with_life = sum(1 for a in assets if a.expected_lifespan_years)
+    with_cond = sum(1 for a in assets if a.condition_score is not None)
+    fully = sum(1 for a in assets
+                if a.installed_at is not None and a.expected_lifespan_years and a.condition_score is not None)
+    return {
+        "total": total,
+        "with_installed_at": with_install,
+        "with_lifespan": with_life,
+        "with_condition": with_cond,
+        "fully_ready": fully,
+        "missing_installed_at": total - with_install,
+        "missing_lifespan": total - with_life,
+        "missing_condition": total - with_cond,
+    }
+
+
+@router.post("/predictive-backfill")
+def predictive_backfill(
+    request: Request,
+    set_lifespan_defaults: bool = Query(True, description="Vul ontbrekende levensduur met de type-richtwaarde"),
+    estimate_condition: bool = Query(False, description="Schat ontbrekende conditie uit gekoppelde meldingen"),
+    project_id: Optional[str] = Query(None),
+    dry_run: bool = Query(True, description="True = alleen tellen (preview), niet opslaan"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Maak assets fleet-wide 'predictive-ready' ZONDER data te verzinnen:
+    - levensduur: vul ontbrekende expected_lifespan_years met de type-richtwaarde;
+    - conditie (optioneel): SCHAT ontbrekende condition_score uit de gekoppelde
+      meldingen (zwaarste NEN-conditie of CROW-klasse) en markeer als schatting
+      (properties.condition_estimated=true), te vervangen door een echte inspectie.
+    Installatiedatum wordt NIET geraden — die vereist echte brondata (import).
+    """
+    if not can_manage_assets(current_user):
+        raise HTTPException(status_code=403, detail="Geen rechten voor deze actie")
+
+    q = db.query(Asset).filter(
+        Asset.organization_id == current_user.organization_id,
+        Asset.archived_at.is_(None),
+    )
+    if project_id:
+        q = q.filter(Asset.project_id == project_id)
+    assets = q.all()
+
+    cond_estimates = (_estimate_conditions_by_asset(db, current_user.organization_id)
+                      if estimate_condition else {})
+
+    lifespan_set = condition_estimated = 0
+    for a in assets:
+        if set_lifespan_defaults and not a.expected_lifespan_years:
+            yrs = default_lifespan_for(a.asset_type)
+            if yrs:
+                a.expected_lifespan_years = yrs
+                lifespan_set += 1
+        if estimate_condition and a.condition_score is None and a.id in cond_estimates:
+            a.condition_score = cond_estimates[a.id]
+            props = _properties_out(a.properties_json) or {}
+            props["condition_estimated"] = True
+            a.properties_json = _properties_in(props)
+            condition_estimated += 1
+
+    if dry_run:
+        db.rollback()
+    else:
+        db.commit()
+        log_action(db, request, current_user,
+                   action=ACTION.ASSET_BULK_IMPORT, entity_type="asset",
+                   extra={"predictive_backfill": True, "lifespan_set": lifespan_set,
+                          "condition_estimated": condition_estimated})
+
+    return {
+        "dry_run": dry_run,
+        "total": len(assets),
+        "lifespan_set": lifespan_set,
+        "condition_estimated": condition_estimated,
     }
 
 

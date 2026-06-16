@@ -9,7 +9,8 @@
 import io
 from tests.conftest import auth
 from database import SessionLocal
-from models import AIAnalysis
+from models import AIAnalysis, Asset, Melding
+import asset_lifespan
 
 
 def _import_csv(client, user, content):
@@ -86,3 +87,63 @@ def test_accept_ai_inspection_writes_condition_to_asset(client, admin_user):
 
     after = client.get(f"/api/assets/{a['id']}", headers=auth(admin_user)).json()
     assert after["condition_score"] == 4
+
+
+# ── PR-D: fleet-wide predictive-readiness ──
+
+def test_default_lifespan_for_richtwaarden():
+    assert asset_lifespan.default_lifespan_for("brug") == 80
+    assert asset_lifespan.default_lifespan_for("Wegvak (asfalt)") == 30
+    assert asset_lifespan.default_lifespan_for("speeltoestel") == 15
+    assert asset_lifespan.default_lifespan_for("iets onbekends") == 30
+    assert asset_lifespan.default_lifespan_for(None) is None
+
+
+def test_predictive_readiness_telt_per_veld(client, admin_user):
+    client.post("/api/assets/", json={"code": "R-1", "asset_type": "brug"}, headers=auth(admin_user))
+    client.post("/api/assets/", json={"code": "R-2", "asset_type": "wegvak", "condition_score": 3},
+                headers=auth(admin_user))
+    data = client.get("/api/assets/predictive-readiness", headers=auth(admin_user)).json()
+    assert data["total"] == 2
+    assert data["with_condition"] == 1
+    assert data["missing_condition"] == 1
+
+
+def test_predictive_backfill_lifespan_dry_run_then_commit(client, admin_user):
+    a = client.post("/api/assets/", json={"code": "BF-1", "asset_type": "brug"},
+                    headers=auth(admin_user)).json()
+    # dry-run telt maar wijzigt niet
+    r = client.post("/api/assets/predictive-backfill?set_lifespan_defaults=true&dry_run=true",
+                    headers=auth(admin_user))
+    assert r.status_code == 200, r.text
+    assert r.json()["lifespan_set"] == 1
+    assert client.get(f"/api/assets/{a['id']}", headers=auth(admin_user)).json()["expected_lifespan_years"] is None
+    # commit zet de levensduur (brug → 80)
+    r2 = client.post("/api/assets/predictive-backfill?set_lifespan_defaults=true&dry_run=false",
+                     headers=auth(admin_user))
+    assert r2.json()["lifespan_set"] == 1
+    assert client.get(f"/api/assets/{a['id']}", headers=auth(admin_user)).json()["expected_lifespan_years"] == 80
+
+
+def test_predictive_backfill_estimate_condition_from_melding(client, admin_user):
+    a = client.post("/api/assets/", json={"code": "BF-2", "asset_type": "wegvak"},
+                    headers=auth(admin_user)).json()
+    db = SessionLocal()
+    try:
+        m = Melding(title="schade", organization_id=admin_user.organization_id,
+                    created_by=admin_user.id, asset_id=a["id"], crow_klasse="M2")
+        db.add(m)
+        db.commit()
+    finally:
+        db.close()
+    r = client.post("/api/assets/predictive-backfill?estimate_condition=true&set_lifespan_defaults=false&dry_run=false",
+                    headers=auth(admin_user))
+    assert r.status_code == 200, r.text
+    assert r.json()["condition_estimated"] == 1
+    # M2 → geschatte conditie 4
+    assert client.get(f"/api/assets/{a['id']}", headers=auth(admin_user)).json()["condition_score"] == 4
+
+
+def test_viewer_cannot_backfill(client, viewer_user):
+    r = client.post("/api/assets/predictive-backfill?dry_run=false", headers=auth(viewer_user))
+    assert r.status_code == 403

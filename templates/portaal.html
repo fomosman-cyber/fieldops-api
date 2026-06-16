@@ -1725,6 +1725,18 @@
         <button class="btn-primary" onclick="navigateTo('assets')" data-i18n="naar_assets">Naar Assets — voeg eerste data toe</button>
       </div>
       <div id="predictiveContent" style="display:none;">
+        <!-- Predictive-readiness: hoe compleet is de data die de Voorspeller voedt -->
+        <div id="predReadinessPanel" class="card" style="margin-bottom:20px;padding:18px;border-left:3px solid #0284c7;">
+          <div style="font-size:14px;color:var(--text);line-height:1.55;">
+            <strong>Zodra assets installatiedatum, levensduur en NEN-conditiescore hebben</strong>, voorspelt FieldOps welke wegen het eerst van NEN 3 → 4 zakken — vaak <strong>8-24 maanden vóór de schade zichtbaar is</strong>. Dat bespaart <strong>3-5×</strong> t.o.v. noodreparatie.
+          </div>
+          <div id="predReadinessStats" style="margin-top:14px;display:flex;gap:18px;flex-wrap:wrap;font-size:13px;"></div>
+          <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn-secondary" onclick="runPredictiveBackfill('lifespan')" title="Vul ontbrekende levensduur met de typische waarde per asset-type">⏳ Vul levensduur per type</button>
+            <button class="btn-secondary" onclick="runPredictiveBackfill('condition')" title="Schat ontbrekende conditie uit de meldingen-historie (markeert als schatting)">🔮 Schat conditie uit meldingen</button>
+          </div>
+          <div style="font-size:11px;color:var(--text-dim);margin-top:8px;">Installatiedatum + echte conditie komen uit een GBI/inspectie-import of inspecties; schattingen zijn een startpunt, geen vervanging.</div>
+        </div>
         <div class="stats-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));margin-bottom:24px;">
           <div class="stat-card" style="border-left:3px solid #16a34a;">
             <div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.5px;">Laag risico</div>
@@ -17170,6 +17182,7 @@
         }
         emptyEl.style.display = 'none'; content.style.display = '';
         _fillPredProjectFilter();
+        loadPredictiveReadiness();
         document.getElementById('predTotal').textContent = s.total_assets;
         document.getElementById('predBandLaag').textContent = s.bands.laag;
         document.getElementById('predBandMatig').textContent = s.bands.matig;
@@ -17186,6 +17199,49 @@
       }).catch(function(err){
         emptyEl.style.display = ''; content.style.display = 'none';
       });
+    }
+
+    // Predictive-readiness: toont per veld (installatiedatum/levensduur/conditie)
+    // hoeveel assets compleet zijn — de dekking van de Voorspeller.
+    function loadPredictiveReadiness() {
+      var statsEl = document.getElementById('predReadinessStats');
+      if (!statsEl) return;
+      api('GET', '/api/assets/predictive-readiness').then(function(d){
+        if (!d.total) { statsEl.innerHTML = '<span style="color:var(--text-dim);">Nog geen assets.</span>'; return; }
+        function item(label, n){
+          var p = Math.round(n / d.total * 100);
+          var col = p >= 80 ? '#16a34a' : (p >= 40 ? '#f59e0b' : '#dc2626');
+          return '<div><div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;">' + label + '</div>'
+            + '<div style="font-weight:700;color:' + col + ';">' + n + ' / ' + d.total + ' (' + p + '%)</div></div>';
+        }
+        statsEl.innerHTML = item('Installatiedatum', d.with_installed_at)
+          + item('Levensduur', d.with_lifespan)
+          + item('NEN-conditie', d.with_condition)
+          + item('Volledig predictive-ready', d.fully_ready);
+      }).catch(function(){ statsEl.innerHTML = ''; });
+    }
+
+    // Backfill: eerst dry-run voor de telling, dan bevestigen + opslaan.
+    function runPredictiveBackfill(kind) {
+      var params = (kind === 'condition')
+        ? 'set_lifespan_defaults=false&estimate_condition=true'
+        : 'set_lifespan_defaults=true&estimate_condition=false';
+      var base = API_URL + '/api/assets/predictive-backfill?' + params;
+      fetch(base + '&dry_run=true', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          var n = (kind === 'condition') ? d.condition_estimated : d.lifespan_set;
+          if (!n) { showToast('Niets te vullen — alle assets hebben dit al.', 'info'); return; }
+          var what = (kind === 'condition')
+            ? n + ' assets krijgen een GESCHATTE conditie uit hun meldingen (gemarkeerd als schatting, vervangbaar door een echte inspectie).'
+            : n + ' assets krijgen de typische levensduur per asset-type.';
+          if (!confirm(what + '\n\nDoorvoeren?')) return;
+          fetch(base + '&dry_run=false', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+            .then(function(r){ return r.json(); })
+            .then(function(){ showToast('Bijgewerkt ✓', 'success'); allAssets = null; loadPredictive(); })
+            .catch(function(e){ showToast('Mislukt: ' + (e.message || 'onbekend'), 'error'); });
+        })
+        .catch(function(e){ showToast('Mislukt: ' + (e.message || 'onbekend'), 'error'); });
     }
 
     var predAtRiskCache = [];  // laatste at-risk items — voor meldingen-drilldown (#13)
