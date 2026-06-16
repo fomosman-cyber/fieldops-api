@@ -1747,6 +1747,7 @@
           </div>
           <div id="predReadinessStats" style="margin-top:14px;display:flex;gap:18px;flex-wrap:wrap;font-size:13px;"></div>
           <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn-secondary" onclick="runMeldingLinkBackfill()" title="Koppel losse meldingen aan het dichtstbijzijnde asset — óók aan wegvakken (lijn). Doe dit vóór 'Schat conditie' voor maximale dekking.">🔗 Koppel meldingen aan assets</button>
             <button class="btn-secondary" onclick="runPredictiveBackfill('lifespan')" title="Vul ontbrekende levensduur met de typische waarde per asset-type">⏳ Vul levensduur per type</button>
             <button class="btn-secondary" onclick="runPredictiveBackfill('condition')" title="Schat ontbrekende conditie uit de meldingen-historie (markeert als schatting)">🔮 Schat conditie uit meldingen</button>
           </div>
@@ -17254,6 +17255,32 @@
           + item('NEN-conditie', d.with_condition)
           + item('Volledig predictive-ready', d.fully_ready);
       }).catch(function(){ statsEl.innerHTML = ''; });
+    }
+
+    // Asset-koppeling backfill: koppel losse meldingen aan het dichtstbijzijnde
+    // asset — punt-asset OF wegvak (lijn-geometrie). Dry-run voor de telling, dan
+    // bevestigen + opslaan. Maakt 'Schat conditie uit meldingen' veel effectiever.
+    function runMeldingLinkBackfill() {
+      var base = API_URL + '/api/meldingen/backfill-asset-links?';
+      fetch(base + 'dry_run=true', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          var n = d.newly_linked || 0;
+          if (!n) {
+            var hint = d.skipped_no_gps ? (' (' + d.skipped_no_gps + ' meldingen zonder GPS)') : '';
+            showToast('Niets te koppelen — alle meldingen met GPS hebben al een asset.' + hint, 'info');
+            return;
+          }
+          var msg = n + ' meldingen worden gekoppeld (' + (d.linked_via_wegvak_line || 0)
+            + ' aan wegvakken, ' + (d.linked_via_point_asset || 0) + ' aan punt-assets) — '
+            + d.distinct_assets_touched + ' assets krijgen daardoor meldingen.';
+          if (!confirm(msg + '\n\nDoorvoeren?')) return;
+          fetch(base + 'dry_run=false', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } })
+            .then(function(r){ return r.json(); })
+            .then(function(res){ showToast((res.newly_linked || 0) + ' meldingen gekoppeld ✓ — draai nu "Schat conditie uit meldingen".', 'success'); allAssets = null; loadPredictive(); })
+            .catch(function(e){ showToast('Mislukt: ' + (e.message || 'onbekend'), 'error'); });
+        })
+        .catch(function(e){ showToast('Mislukt: ' + (e.message || 'onbekend'), 'error'); });
     }
 
     // Backfill: eerst dry-run voor de telling, dan bevestigen + opslaan.
