@@ -1610,15 +1610,17 @@
             <button type="button" onclick="clearBulkSelection()" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.4);background:transparent;color:#fff;font-size:13px;font-weight:500;cursor:pointer;">✕ Selectie wissen</button>
           </div>
         </div>
-        <!-- Filter: project + soort (Klein onderhoud / CROW grote ronde / Alle) -->
+        <!-- Filter: project + soort. Standaard = Klein onderhoud (operationeel werk).
+             Inspectie = alle niet-KO meldingen (observatie/GO/acuut) — inspectie-input
+             voor de asset, geen operationeel werk. -->
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
           <select id="meldingProjectFilter" onchange="_renderMeldingenList()" style="padding:7px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;background:var(--card-bg);color:var(--text);">
             <option value="">Alle projecten</option>
           </select>
           <div style="display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
-            <button type="button" id="meldingSoortAlle" onclick="setMeldingSoort('alle')" style="padding:7px 12px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Alle</button>
-            <button type="button" id="meldingSoortKo" onclick="setMeldingSoort('ko')" style="padding:7px 12px;border:none;border-left:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">Klein onderhoud</button>
-            <button type="button" id="meldingSoortCrow" onclick="setMeldingSoort('crow')" style="padding:7px 12px;border:none;border-left:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">CROW grote ronde</button>
+            <button type="button" id="meldingSoortKo" onclick="setMeldingSoort('ko')" style="padding:7px 12px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Klein onderhoud</button>
+            <button type="button" id="meldingSoortInspectie" onclick="setMeldingSoort('inspectie')" style="padding:7px 12px;border:none;border-left:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">Inspectie</button>
+            <button type="button" id="meldingSoortAlle" onclick="setMeldingSoort('alle')" style="padding:7px 12px;border:none;border-left:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">Alle</button>
           </div>
           <span id="meldingFilterCount" style="font-size:12px;color:var(--text-muted);margin-left:auto;"></span>
         </div>
@@ -10154,7 +10156,7 @@
 
     // ─── Filter + sortering van de meldingen-lijst (client-side op allMeldingen) ───
     var _meldingSort = { key: 'created_at', dir: 'desc' };
-    var _meldingSoortFilter = 'alle';   // 'alle' | 'ko' | 'crow'
+    var _meldingSoortFilter = 'ko';   // 'ko' (default, operationeel werk) | 'inspectie' (niet-KO) | 'alle'
     var _meldingView = [];              // gefilterde + gesorteerde subset die gerenderd wordt
     var _MELDING_PRIO_RANK = { kritiek:4, hoog:3, normaal:2, laag:1 };
     var _MELDING_STATUS_RANK = { open:1, in_behandeling:2, in_uitvoering:3, gereed_uitvoering:4, opgelost:5, afgerond:6 };
@@ -10194,14 +10196,15 @@
 
     // Sorteert allMeldingen volgens de huidige sort-state en herrendert de lijst
     // via hetzelfde chunk-mechanisme (eerste 100 + "Toon meer").
-    // Filter-predicaat: project-keuze + soort (alle / klein onderhoud / CROW grote ronde).
-    // KO via de bestaande helper (vangt 'KO' én 'klein onderhoud'); CROW via de
-    // from_inspection-vlag (melding gekoppeld aan een formele inspectie-defect).
+    // Filter-predicaat: project-keuze + soort.
+    // 'ko' = klein onderhoud (operationeel werk) via _isKleinOnderhoud (vangt 'KO'
+    // én 'klein onderhoud'); 'inspectie' = alle niet-KO meldingen (observatie/GO/
+    // acuut) — inspectie-input voor de asset, geen operationeel werk; 'alle' = alles.
     function _meldingPassesFilter(m) {
       var pid = (document.getElementById('meldingProjectFilter') || {}).value || '';
       if (pid && m.project_id !== pid) return false;
       if (_meldingSoortFilter === 'ko') return _isKleinOnderhoud(m.onderhoud_categorie);
-      if (_meldingSoortFilter === 'crow') return !!m.from_inspection;
+      if (_meldingSoortFilter === 'inspectie') return !_isKleinOnderhoud(m.onderhoud_categorie);
       return true;
     }
 
@@ -10235,10 +10238,10 @@
 
     function setMeldingSoort(soort) {
       _meldingSoortFilter = soort;
-      ['Alle', 'Ko', 'Crow'].forEach(function(label) {
+      ['Ko', 'Inspectie', 'Alle'].forEach(function(label) {
         var btn = document.getElementById('meldingSoort' + label);
         if (!btn) return;
-        var active = (label.toLowerCase() === soort) || (label === 'Alle' && soort === 'alle');
+        var active = label.toLowerCase() === soort;
         btn.style.background = active ? 'var(--accent)' : 'transparent';
         btn.style.color = active ? '#fff' : 'var(--text)';
       });
