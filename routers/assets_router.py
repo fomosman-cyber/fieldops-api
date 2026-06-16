@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -26,6 +27,12 @@ from permissions import can_manage_assets, require_org_admin
 from audit import log_action, ACTION
 
 router = APIRouter(prefix="/api/assets", tags=["Assets"])
+
+# Meldingen met deze status zijn afgehandeld en tellen NIET mee als "nog te doen".
+# 'opgelost' én 'afgerond' zijn beide terminaal (zie meldingen_router: beide
+# vereisen een foto-na en sluiten de melding). De per-asset "Open"-teller moet
+# dus allebei uitsluiten — voorheen telde 'opgelost' ten onrechte mee.
+CLOSED_MELDING_STATUSSES = ("afgerond", "opgelost")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -145,7 +152,7 @@ def list_assets(
     ids = [a.id for a in assets]
     open_counts = dict(
         db.query(Melding.asset_id, func.count(Melding.id))
-          .filter(Melding.asset_id.in_(ids), Melding.status != "afgerond")
+          .filter(Melding.asset_id.in_(ids), Melding.status.notin_(CLOSED_MELDING_STATUSSES))
           .group_by(Melding.asset_id).all()
     )
     child_counts = dict(
@@ -205,7 +212,7 @@ def list_assets_for_map(
     ids = [a.id for a in assets]
     open_counts = dict(
         db.query(Melding.asset_id, func.count(Melding.id))
-          .filter(Melding.asset_id.in_(ids), Melding.status != "afgerond")
+          .filter(Melding.asset_id.in_(ids), Melding.status.notin_(CLOSED_MELDING_STATUSSES))
           .group_by(Melding.asset_id).all()
     )
 
@@ -399,7 +406,7 @@ def find_nearest_asset(
     # Open-meldingen count voor de gekozen asset
     open_count = (
         db.query(func.count(Melding.id))
-          .filter(Melding.asset_id == best_asset.id, Melding.status != "afgerond")
+          .filter(Melding.asset_id == best_asset.id, Melding.status.notin_(CLOSED_MELDING_STATUSSES))
           .scalar()
     ) or 0
 
@@ -425,7 +432,7 @@ def get_asset(
 
     open_meldingen = (
         db.query(func.count(Melding.id))
-          .filter(Melding.asset_id == asset_id, Melding.status != "afgerond").scalar() or 0
+          .filter(Melding.asset_id == asset_id, Melding.status.notin_(CLOSED_MELDING_STATUSSES)).scalar() or 0
     )
     children = (
         db.query(func.count(Asset.id))
@@ -1021,6 +1028,38 @@ def _parse_coords(row: dict, mapping: dict[str, list[str]]) -> tuple[Optional[fl
     if lat is not None and lng is not None:
         return lat, lng, None
     return None, None, None
+
+
+@router.get("/import/template.csv")
+def import_assets_template_csv(
+    current_user: User = Depends(get_current_user),
+):
+    """Download een lege asset-CSV-template met de verwachte kolommen + 2 voorbeeldrijen.
+
+    De import detecteert ook NL-synoniemen (objectnummer, objecttype, RD x/y, ...),
+    maar deze koppen werken altijd. Alleen `code` en `asset_type` zijn verplicht.
+    """
+    buf = io.StringIO()
+    buf.write("﻿")  # BOM zodat Excel UTF-8 herkent
+    writer = csv.writer(buf, delimiter=";", quoting=csv.QUOTE_MINIMAL)
+    writer.writerow([
+        "code", "asset_type", "name", "lat", "lng",
+        "location_description", "parent_code", "project_id",
+    ])
+    writer.writerow([
+        "WV-Dijkweg-001", "wegvak", "Dijkweg (rijbaan)", "51.992", "4.211",
+        "Dijkweg t.h.v. nr. 12", "", "",
+    ])
+    writer.writerow([
+        "LM-Naaldwijk-042", "lichtmast", "Lichtmast Galgeweg", "52.008", "4.183",
+        "Galgeweg hoek Dijkweg", "WV-Dijkweg-001", "",
+    ])
+    buf.seek(0)
+    return StreamingResponse(
+        iter([buf.read()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="assets-template.csv"'},
+    )
 
 
 @router.post("/import/csv")
