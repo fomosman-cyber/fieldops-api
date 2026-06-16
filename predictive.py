@@ -462,14 +462,21 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
 
 def list_at_risk(db: Session, organization_id: str, *,
                  min_score: int = 60, asset_type: Optional[str] = None,
+                 project_id: Optional[str] = None,
                  limit: int = 100) -> list[dict]:
-    """Geef assets terug met risk_score >= min_score. Berekent on-demand."""
+    """Geef assets terug met risk_score >= min_score. Berekent on-demand.
+
+    project_id filtert op assets van één project — gebruikt door de
+    Voorspeller om per project te filteren (#13).
+    """
     q = db.query(Asset).filter(
         Asset.organization_id == organization_id,
         Asset.archived_at.is_(None),
     )
     if asset_type:
         q = q.filter(Asset.asset_type == asset_type)
+    if project_id:
+        q = q.filter(Asset.project_id == project_id)
     assets = q.all()
 
     results = [compute_asset_risk(db, a) for a in assets]

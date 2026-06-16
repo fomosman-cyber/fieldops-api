@@ -251,6 +251,11 @@ class Melding(Base):
     gw_maatregel = Column(String(120), nullable=True)            # bv "Vullen polymeer"
     gw_term = Column(String(160), nullable=True)                 # CROW-RAW formele term voor bestek
     gw_kosten_orde = Column(String(40), nullable=True)           # "€5–15 / m¹"
+    # Norm-specifieke invulvelden per asset-type (#16) — vrije JSON-string,
+    # bv. {"vta_risicoklasse": 4, "vta_holte_pct": 35} voor een boom of
+    # {"en1176_categorie": "C"} voor een speeltoestel. Velddefinitie staat in
+    # melding_norm_forms.py; opslag JSON-string zoals Asset.properties_json.
+    norm_data_json = Column(Text, nullable=True)
 
     # Job Orchestration Engine — sinds v3.0
     assigned_to = Column(String, ForeignKey("users.id"), nullable=True, index=True)  # specifieke uitvoerder

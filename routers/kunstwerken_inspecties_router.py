@@ -31,7 +31,8 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from database import get_db
 from models import (
@@ -137,10 +138,15 @@ def _element_dict(e: InspectionElement, *, include_defects: bool = True,
     return out
 
 
-def _inspection_dict(i: Inspection, *, include_elements: bool = False) -> dict:
+def _inspection_dict(i: Inspection, *, include_elements: bool = False,
+                     meldingen_count: int = 0, melding_ids: Optional[list] = None) -> dict:
     advies = scoring.maatregel_advies(i.conditiescore_overall)
     out = {
         "id": i.id,
+        # Gekoppelde meldingen (via defect_to_melding → InspectionDefect.melding_id).
+        # Voor de Inspecties-tab: telling + doorklik naar de meldingen.
+        "meldingen_count": meldingen_count,
+        "melding_ids": melding_ids or [],
         "asset_id": i.asset_id,
         "asset_code": i.asset.code if i.asset else None,
         "asset_name": i.asset.name if i.asset else None,
@@ -510,13 +516,35 @@ def list_inspections(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Inspection).filter(Inspection.organization_id == current_user.organization_id)
+    # Eager-load asset/project + elementen zodat _inspection_dict (asset.code,
+    # project.name, len(elementen)) geen N+1 over max 500 inspecties triggert (perf).
+    q = (db.query(Inspection)
+           .options(joinedload(Inspection.asset),
+                    joinedload(Inspection.project),
+                    selectinload(Inspection.elementen))
+           .filter(Inspection.organization_id == current_user.organization_id))
     if asset_id:        q = q.filter(Inspection.asset_id == asset_id)
     if project_id:      q = q.filter(Inspection.project_id == project_id)
     if status:          q = q.filter(Inspection.status == status)
     if kunstwerk_type:  q = q.filter(Inspection.kunstwerk_type == kunstwerk_type)
     items = q.order_by(Inspection.created_at.desc()).limit(500).all()
-    return [_inspection_dict(i) for i in items]
+
+    # Gekoppelde meldingen per inspectie in één bulk-query (geen N+1). Koppeling
+    # loopt via InspectionDefect.melding_id (defect → element → inspectie).
+    insp_ids = [i.id for i in items]
+    melding_map: dict[str, list] = {}
+    if insp_ids:
+        rows = (db.query(InspectionElement.inspection_id, InspectionDefect.melding_id)
+                  .join(InspectionDefect, InspectionDefect.element_id == InspectionElement.id)
+                  .filter(InspectionElement.inspection_id.in_(insp_ids),
+                          InspectionDefect.melding_id.isnot(None))
+                  .all())
+        for insp_id, melding_id in rows:
+            melding_map.setdefault(insp_id, []).append(melding_id)
+
+    return [_inspection_dict(i, meldingen_count=len(melding_map.get(i.id, [])),
+                             melding_ids=melding_map.get(i.id, []))
+            for i in items]
 
 
 @router.post("/")

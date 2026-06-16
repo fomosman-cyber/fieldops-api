@@ -226,6 +226,8 @@ class MeldingCreate(BaseModel):
     gw_maatregel: Optional[str] = None
     gw_term: Optional[str] = None
     gw_kosten_orde: Optional[str] = None
+    # Norm-specifieke invulvelden per asset-type (#16) — vrije dict
+    norm_data: Optional[dict] = None
 
 
 class MeldingResponse(BaseModel):
@@ -239,7 +241,24 @@ class MeldingResponse(BaseModel):
     lng: Optional[float]
     photo_url: Optional[str] = None
     photo_after_url: Optional[str] = None
+    has_photo: Optional[bool] = None        # lijst-light: foto aanwezig zonder de base64 mee te sturen
+    has_photo_after: Optional[bool] = None
     project_id: Optional[str]
+    asset_id: Optional[str] = None
+    asset_code: Optional[str] = None        # voor melding-document + modal-koppeling (#12)
+    asset_type: Optional[str] = None
+    # CROW 146 + NEN 2767 classificatie — nodig voor een CROW-conform
+    # melding-document (#12) en om de classificatie te herstellen in de
+    # bewerk-modal (die las deze velden al maar kreeg ze niet van de API).
+    crow_schadegroep: Optional[str] = None
+    crow_schadebeeld: Optional[str] = None
+    crow_ernst: Optional[str] = None
+    crow_omvang: Optional[str] = None
+    crow_klasse: Optional[str] = None
+    nen_2767_conditie: Optional[int] = None
+    onderhoud_categorie: Optional[str] = None
+    gw_maatregel: Optional[str] = None
+    norm_data: Optional[dict] = None        # norm-specifieke velden per asset-type (#16)
     created_by: str
     created_at: datetime
     creator_name: Optional[str] = None
@@ -257,6 +276,7 @@ class MeldingUpdate(BaseModel):
     photo_after_url: Optional[str] = None
     asset_id: Optional[str] = None
     project_id: Optional[str] = None      # null = ontkoppel project
+    norm_data: Optional[dict] = None      # norm-specifieke velden per asset-type (#16)
 
 
 # Asset

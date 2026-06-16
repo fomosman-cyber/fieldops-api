@@ -1,18 +1,20 @@
 import base64
 import csv
 import io
+import json
 import math
 import os
 import zipfile
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
+from fastapi.responses import StreamingResponse, Response, RedirectResponse
+from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 from pydantic import BaseModel, Field
 from database import get_db
 from models import Melding, Project, Asset, User
 from schemas import MeldingCreate, MeldingResponse, MeldingUpdate
+from melding_norm_forms import norm_form_voor, alle_norm_velden_keys
 from auth import get_current_user
 from permissions import (
     can_create_meldingen, can_change_status, can_edit_melding_full,
@@ -133,10 +135,41 @@ def _enrich_classification(melding: Melding) -> bool:
 router = APIRouter(prefix="/api/meldingen", tags=["Meldingen"])
 
 
-def _melding_to_response(melding: Melding) -> dict:
-    """Converteer Melding naar response dict met creator_name."""
+def _clean_norm_data(norm_data) -> Optional[str]:
+    """Sanitize norm_data (#16) → JSON-string, of None.
+
+    Behoudt alleen bekende norm-veld-keys en niet-lege waarden, zodat de
+    opslag niet vervuild raakt met willekeurige client-velden.
+    """
+    if not norm_data or not isinstance(norm_data, dict):
+        return None
+    allowed = alle_norm_velden_keys()
+    cleaned = {k: v for k, v in norm_data.items()
+               if k in allowed and v not in (None, "", [])}
+    return json.dumps(cleaned, ensure_ascii=False) if cleaned else None
+
+
+def _melding_to_response(melding: Melding, light: bool = False) -> dict:
+    """Converteer Melding naar response dict met creator_name + asset-koppeling.
+
+    light=True laat de (vaak grote base64-)foto's WEG en geeft alleen
+    has_photo/has_photo_after-vlaggen terug. Gebruikt door lijst-/kaart-
+    endpoints om de payload klein te houden (performance — foto's worden lazy
+    per melding geladen via GET /{id}). De detail-/create-/update-responses
+    gebruiken light=False en bevatten de volledige foto's.
+    """
     creator = melding.creator
     creator_name = f"{creator.first_name} {creator.last_name}" if creator else None
+    # Asset-koppeling meegeven — nodig voor melding-document (#12) en de
+    # asset-koppeling in de melding-modal.
+    asset = melding.asset if melding.asset_id else None
+    # Norm-specifieke velden (#16) — opgeslagen als JSON-string
+    norm_data = None
+    if melding.norm_data_json:
+        try:
+            norm_data = json.loads(melding.norm_data_json)
+        except (ValueError, TypeError):
+            norm_data = None
     return {
         "id": melding.id,
         "title": melding.title,
@@ -146,9 +179,23 @@ def _melding_to_response(melding: Melding) -> dict:
         "status": melding.status,
         "lat": melding.lat,
         "lng": melding.lng,
-        "photo_url": melding.photo_url,
-        "photo_after_url": melding.photo_after_url,
+        "photo_url": None if light else melding.photo_url,
+        "photo_after_url": None if light else melding.photo_after_url,
+        "has_photo": bool(melding.photo_url),
+        "has_photo_after": bool(melding.photo_after_url),
         "project_id": melding.project_id,
+        "asset_id": melding.asset_id,
+        "asset_code": asset.code if asset else None,
+        "asset_type": asset.asset_type if asset else None,
+        "crow_schadegroep": melding.crow_schadegroep,
+        "crow_schadebeeld": melding.crow_schadebeeld,
+        "crow_ernst": melding.crow_ernst,
+        "crow_omvang": melding.crow_omvang,
+        "crow_klasse": melding.crow_klasse,
+        "nen_2767_conditie": melding.nen_2767_conditie,
+        "onderhoud_categorie": melding.onderhoud_categorie,
+        "gw_maatregel": melding.gw_maatregel,
+        "norm_data": norm_data,
         "created_by": melding.created_by,
         "created_at": melding.created_at,
         "creator_name": creator_name,
@@ -158,17 +205,27 @@ def _melding_to_response(melding: Melding) -> dict:
 @router.get("/", response_model=list[MeldingResponse])
 def list_meldingen(
     project_id: Optional[str] = Query(None),
+    asset_id: Optional[str] = Query(None, description="Filter op asset — gebruikt o.a. door Voorspeller-drilldown (#13)"),
+    with_photos: bool = Query(False, description="Inline foto's (base64) meesturen. Default uit voor performance; alleen aanzetten voor kleine, gefilterde lijsten (bv. asset-drilldown)."),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Alle meldingen van de organisatie ophalen, optioneel gefilterd op project."""
-    query = db.query(Melding).filter(
-        Melding.organization_id == current_user.organization_id,
-    )
+    """Alle meldingen van de organisatie ophalen, optioneel gefilterd op project en/of asset.
+
+    Standaard worden de (zware base64-)foto's NIET meegestuurd (alleen
+    has_photo-vlaggen) — dat hield de lijst traag bij meerdere projecten.
+    Zet with_photos=true alleen aan voor kleine, gefilterde lijsten.
+    """
+    query = (db.query(Melding)
+               .options(joinedload(Melding.asset), joinedload(Melding.creator))
+               .filter(Melding.organization_id == current_user.organization_id))
     if project_id:
         query = query.filter(Melding.project_id == project_id)
+    if asset_id:
+        query = query.filter(Melding.asset_id == asset_id)
     meldingen = query.order_by(Melding.created_at.desc()).all()
-    return [_melding_to_response(m) for m in meldingen]
+    light = not with_photos
+    return [_melding_to_response(m, light=light) for m in meldingen]
 
 
 @router.post("/", response_model=MeldingResponse)
@@ -212,8 +269,23 @@ def create_melding(
         gw_maatregel=getattr(data, "gw_maatregel", None),
         gw_term=getattr(data, "gw_term", None),
         gw_kosten_orde=getattr(data, "gw_kosten_orde", None),
+        norm_data_json=_clean_norm_data(getattr(data, "norm_data", None)),
     )
     db.add(melding)
+    # Auto-koppel aan dichtstbijzijnde asset als er geen handmatig gekozen is.
+    # (Bug: nieuwe meldingen werden server-side nooit aan een asset gekoppeld —
+    # _auto_link_nearest_asset draaide alleen bij CSV-import/enrich.) Begrensde
+    # bounding-box query i.p.v. alle org-assets, voor performance bij grote orgs.
+    if melding.asset_id is None and melding.lat is not None and melding.lng is not None:
+        box = 0.004  # ~280m lng / ~440m lat marge rond de 200m-drempel (haversine filtert exact)
+        nearby = (db.query(Asset)
+                    .filter(Asset.organization_id == current_user.organization_id,
+                            Asset.archived_at.is_(None),
+                            Asset.lat.isnot(None), Asset.lng.isnot(None),
+                            Asset.lat.between(melding.lat - box, melding.lat + box),
+                            Asset.lng.between(melding.lng - box, melding.lng + box))
+                    .all())
+        _auto_link_nearest_asset(melding, nearby, max_m=200.0)
     db.commit()
     db.refresh(melding)
     log_action(db, request, current_user,
@@ -759,6 +831,23 @@ def enrich_all_classifications(
     }
 
 
+@router.get("/form-schema")
+def melding_form_schema(
+    asset_type: Optional[str] = Query(None, description="Asset-type (vrij/alias); leeg = geen norm-velden"),
+    current_user: User = Depends(get_current_user),
+):
+    """Norm-specifieke invulvelden voor een asset-type (#16).
+
+    Gebruikt door de melding-modal om dynamisch de juiste NEN/CROW-velden te
+    tonen per asset/categorie. Verharding (CROW 146) heeft een eigen sectie en
+    geeft hier een lege veldenlijst terug.
+
+    NB: deze route staat bewust vóór /{melding_id} zodat 'form-schema' niet als
+    melding-id wordt opgevat.
+    """
+    return norm_form_voor(asset_type)
+
+
 @router.get("/{melding_id}", response_model=MeldingResponse)
 def get_melding(
     melding_id: str,
@@ -773,6 +862,42 @@ def get_melding(
     if not melding:
         raise HTTPException(status_code=404, detail="Melding niet gevonden")
     return _melding_to_response(melding)
+
+
+@router.get("/{melding_id}/thumbnail")
+def melding_thumbnail(
+    melding_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Kleine thumbnail van de melding-foto — voor de lijst-weergave.
+
+    De lijst stuurt geen base64 meer mee (perf); deze endpoint decodeert de
+    base64-foto en schaalt 'm naar ~96px JPEG zodat de lijst snel kleine
+    thumbnails kan tonen. Bij een externe URL (S3) wordt doorverwezen. De
+    frontend laadt 'm lazy (alleen zichtbare rijen) via fetch + objectURL.
+    """
+    melding = db.query(Melding.photo_url).filter(
+        Melding.id == melding_id,
+        Melding.organization_id == current_user.organization_id,
+    ).first()
+    if not melding or not melding.photo_url:
+        raise HTTPException(status_code=404, detail="Geen foto")
+    url = melding.photo_url
+    if not url.startswith("data:"):
+        # Externe URL (S3) — doorverwijzen; browser haalt 'm direct op
+        return RedirectResponse(url)
+    try:
+        from PIL import Image
+        b64 = url.split(",", 1)[1]
+        img = Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+        img.thumbnail((96, 96))
+        out = io.BytesIO()
+        img.save(out, format="JPEG", quality=70)
+        return Response(content=out.getvalue(), media_type="image/jpeg",
+                        headers={"Cache-Control": "private, max-age=3600"})
+    except Exception:
+        raise HTTPException(status_code=404, detail="Foto niet leesbaar")
 
 
 @router.api_route("/{melding_id}", methods=["PUT", "PATCH"], response_model=MeldingResponse)
@@ -813,6 +938,12 @@ def update_melding(
             raise HTTPException(status_code=403, detail="Je rol mag alleen de status wijzigen")
     else:
         raise HTTPException(status_code=403, detail="Geen rechten om meldingen te wijzigen")
+
+    # Norm-data (#16) apart afhandelen: het model-veld heet norm_data_json en
+    # wordt als JSON-string opgeslagen. Uit update_data halen vóór de generieke
+    # before-snapshot + setattr-loop (het model heeft geen 'norm_data'-attribuut).
+    norm_data_present = "norm_data" in update_data
+    norm_data_value = update_data.pop("norm_data", None)
 
     before = {k: getattr(melding, k) for k in update_data.keys()}
     status_change = has_status_field and update_data["status"] != melding.status
@@ -863,6 +994,8 @@ def update_melding(
 
     for field, value in update_data.items():
         setattr(melding, field, value)
+    if norm_data_present:
+        melding.norm_data_json = _clean_norm_data(norm_data_value)
     db.commit()
     db.refresh(melding)
 

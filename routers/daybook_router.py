@@ -98,6 +98,23 @@ def _can_view_user_entries(current_user: User, target_user_id: str) -> bool:
     return False
 
 
+def _iso_utc(dt: Optional[datetime]) -> Optional[str]:
+    """Serialiseer een datetime als ISO-8601 met expliciete UTC-offset.
+
+    occurred_at/created_at worden als naïeve UTC opgeslagen (DateTime-kolom
+    zonder timezone, gevuld via datetime.now(timezone.utc)). Een naïeve
+    isoformat() levert "2026-06-15T15:26:00" zónder offset; de browser
+    interpreteert dat als lokale tijd → werkdagboek toont 2 uur te vroeg
+    (bug #11). Door de tz expliciet op UTC te zetten wordt het
+    "2026-06-15T15:26:00+00:00" en converteert new Date() correct naar lokaal.
+    """
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.isoformat()
+
+
 def _serialize(e: DaybookEntry, user_map: dict, project_map: dict) -> dict:
     return {
         "id": e.id,
@@ -107,7 +124,7 @@ def _serialize(e: DaybookEntry, user_map: dict, project_map: dict) -> dict:
         "source": e.source,
         "source_type": e.source_type,
         "source_id": e.source_id,
-        "occurred_at": e.occurred_at.isoformat() if e.occurred_at else None,
+        "occurred_at": _iso_utc(e.occurred_at),
         "title": e.title,
         "description": e.description,
         "lat": e.lat,
@@ -115,7 +132,7 @@ def _serialize(e: DaybookEntry, user_map: dict, project_map: dict) -> dict:
         "duration_minutes": e.duration_minutes,
         "project_id": e.project_id,
         "project_name": project_map.get(e.project_id) if e.project_id else None,
-        "created_at": e.created_at.isoformat() if e.created_at else None,
+        "created_at": _iso_utc(e.created_at),
     }
 
 
@@ -576,7 +593,7 @@ def team_overview(
             "user_role": u.role.value if u and u.role else None,
             "entry_count": r.entry_count,
             "total_minutes": int(r.total_minutes or 0),
-            "last_activity": r.last_activity.isoformat() if r.last_activity else None,
+            "last_activity": _iso_utc(r.last_activity),
         })
     out.sort(key=lambda x: -x["entry_count"])
     return {

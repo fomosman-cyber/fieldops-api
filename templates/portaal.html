@@ -1613,7 +1613,7 @@
         <div class="card" style="overflow-x:auto;">
           <table class="data-table">
             <thead>
-              <tr><th style="width:32px;"><input type="checkbox" id="selectAllMeldingen" onchange="toggleAllMeldingen(this)"></th><th>Titel</th><th>Categorie</th><th>Prioriteit</th><th>Status</th><th>Project</th><th>Datum</th><th style="width:48px;text-align:right;"></th></tr>
+              <tr><th style="width:32px;"><input type="checkbox" id="selectAllMeldingen" onchange="toggleAllMeldingen(this)"></th><th style="width:52px;">Foto</th><th>Titel</th><th>Categorie</th><th>Prioriteit</th><th>Status</th><th>Project</th><th>Datum</th><th style="width:48px;text-align:right;"></th></tr>
             </thead>
             <tbody id="meldingenBody"></tbody>
           </table>
@@ -1750,16 +1750,34 @@
           </div>
         </div>
         <div class="card">
-          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
+          <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
             <h3 data-i18n="top_assets_aandacht">Top assets met aandachtspunt</h3>
-            <select id="predMinScore" onchange="loadPredictiveList()" style="padding:5px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;">
-              <option value="60" selected>Score &ge; 60</option>
-              <option value="40">Score &ge; 40</option>
-              <option value="20">Score &ge; 20</option>
-              <option value="0">Alle</option>
-            </select>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <select id="predProjectFilter" onchange="loadPredictiveList()" style="padding:5px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;max-width:200px;">
+                <option value="" selected>📁 Alle projecten</option>
+              </select>
+              <select id="predMinScore" onchange="loadPredictiveList()" style="padding:5px 10px;border:1px solid var(--border);border-radius:8px;font-size:12px;">
+                <option value="60" selected>Score &ge; 60</option>
+                <option value="40">Score &ge; 40</option>
+                <option value="20">Score &ge; 20</option>
+                <option value="0">Alle</option>
+              </select>
+            </div>
           </div>
           <div id="predList" style="display:flex;flex-direction:column;gap:10px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ VOORSPELLER → MELDINGEN DRILL-DOWN (#13) ═══════ -->
+    <div class="modal-overlay" id="assetMeldingenModal">
+      <div class="modal" style="max-width:640px;">
+        <button class="modal-close" onclick="closeAssetMeldingenModal()">&times;</button>
+        <h2 id="assetMeldingenModalTitle">Meldingen op asset</h2>
+        <p class="subtitle" id="assetMeldingenModalSub" style="margin-bottom:14px;"></p>
+        <div id="assetMeldingenList" style="display:flex;flex-direction:column;gap:10px;max-height:60vh;overflow-y:auto;"></div>
+        <div style="margin-top:16px;display:flex;justify-content:flex-end;gap:8px;">
+          <button class="btn-secondary" id="assetMeldingenOpenAssetBtn" style="font-size:13px;">Open asset →</button>
         </div>
       </div>
     </div>
@@ -2649,6 +2667,14 @@
         </div>
       </div>
 
+      <!-- Sub-tabs: CROW-inspectie vs Klein onderhoud (#9) -->
+      <div style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:18px;">
+        <button id="inspSubtabCrowBtn" onclick="switchInspectieTab('crow')" class="insp-subtab" style="background:none;border:none;border-bottom:2px solid var(--accent);color:var(--text);font-weight:600;font-size:14px;padding:10px 14px;cursor:pointer;">🏗️ CROW-inspectie</button>
+        <button id="inspSubtabKoBtn" onclick="switchInspectieTab('ko')" class="insp-subtab" style="background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);font-weight:600;font-size:14px;padding:10px 14px;cursor:pointer;">🔧 Klein onderhoud</button>
+      </div>
+
+      <!-- TAB: CROW-inspectie (formele NEN 2767-2 / CROW-inspecties) -->
+      <div id="inspTabCrow">
       <!-- Categorie-tegels -->
       <div id="kwCategoryTiles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;"></div>
 
@@ -2686,11 +2712,43 @@
                 <th data-i18n="kw_col_datum">Datum</th>
                 <th style="text-align:center;" data-i18n="kw_col_conditie">Conditie</th>
                 <th data-i18n="kw_col_status">Status</th>
+                <th style="text-align:center;">Meldingen</th>
                 <th style="width:120px;text-align:right;"></th>
               </tr>
             </thead>
             <tbody id="kunstwerkenBody"></tbody>
           </table>
+        </div>
+      </div>
+      </div><!-- /inspTabCrow -->
+
+      <!-- TAB: Klein onderhoud (meldingen met categorie KO) -->
+      <div id="inspTabKO" style="display:none;">
+        <div style="color:var(--text-muted);font-size:13px;margin-bottom:14px;">
+          Meldingen die als <strong>klein onderhoud</strong> zijn geclassificeerd (CROW-categorie KO). Klik door naar de melding.
+        </div>
+        <div id="inspKoSamenvatting" style="color:var(--text-muted);font-size:13px;margin-bottom:10px;"></div>
+        <div id="inspKoEmpty" class="empty-state" style="display:none;">
+          <div class="empty-icon">🔧</div>
+          <h3>Nog geen klein-onderhoud-meldingen</h3>
+          <p>Meldingen krijgen de categorie KO via hun CROW-classificatie (klasse M1/M2).</p>
+        </div>
+        <div id="inspKoList" style="display:none;">
+          <div class="card" style="overflow-x:auto;padding:0;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Titel</th>
+                  <th>Asset</th>
+                  <th>Maatregel</th>
+                  <th>Prioriteit</th>
+                  <th>Status</th>
+                  <th>Datum</th>
+                </tr>
+              </thead>
+              <tbody id="inspKoBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -4609,7 +4667,7 @@
           <p id="placeSearchHint" style="font-size:11px;color:var(--text-dim);margin-top:4px;">Tik 'GPS' voor je huidige locatie of zoek hierboven een adres.</p>
         </div>
         <div class="form-group">
-          <label>Foto (optioneel) — laat AI de schade beoordelen</label>
+          <label>📷 Foto bij inspectie (vóór) <span style="color:var(--red);">*</span> <span style="font-weight:400;color:var(--text-dim);">— verplicht; laat AI de schade beoordelen</span></label>
           <div id="meldingPhotoZone" style="width:100%;min-height:120px;border:2px dashed var(--border);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--card-bg-hover);cursor:pointer;position:relative;padding:16px;" onclick="document.getElementById('meldingPhotoInput').click()">
             <span id="meldingPhotoLabel" style="color:var(--text-dim);font-size:13px;">📷 Klik om een foto te kiezen</span>
             <img id="meldingPhotoPreview" style="max-width:100%;max-height:200px;border-radius:8px;display:none;" />
@@ -4678,6 +4736,24 @@
             </div>
           </div>
         </div>
+        <!-- Foto na uitvoering — bewijs dat het werk is uitgevoerd. Verplicht
+             vóór afronden (backend dwingt dit af bij status opgelost/afgerond). -->
+        <div class="form-group" id="meldingPhotoAfterGroup">
+          <label>✅ Foto na uitvoering <span style="font-weight:400;color:var(--text-dim);">— bewijs van uitvoering (verplicht vóór afronden)</span></label>
+          <div id="meldingPhotoAfterZone" style="width:100%;min-height:120px;border:2px dashed var(--border);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--card-bg-hover);cursor:pointer;position:relative;padding:16px;" onclick="document.getElementById('meldingPhotoAfterInput').click()">
+            <span id="meldingPhotoAfterLabel" style="color:var(--text-dim);font-size:13px;">📷 Klik om de na-foto te kiezen</span>
+            <img id="meldingPhotoAfterPreview" style="max-width:100%;max-height:200px;border-radius:8px;display:none;" />
+          </div>
+          <input type="file" id="meldingPhotoAfterInput" accept="image/*" capture="environment" style="display:none;" onchange="onMeldingPhotoAfterChange(event)">
+        </div>
+
+        <!-- Dynamisch norm-formulier per asset-type (#16) -->
+        <div class="form-group" id="meldingNormSection" style="display:none;border:1px solid var(--border);border-radius:10px;padding:14px;background:rgba(124,58,237,0.04);">
+          <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:2px;" id="meldingNormTitle">Norm-specifieke velden</div>
+          <p style="font-size:11px;color:var(--text-dim);margin:0 0 10px;" id="meldingNormSub"></p>
+          <div id="meldingNormFields" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;"></div>
+        </div>
+
         <!-- Issue-tracker bridge (Linear/GitHub) — alleen in edit-mode -->
         <div class="form-group" id="meldingExternalLinkWrap" style="display:none;margin-top:18px;padding:14px;border-radius:10px;background:rgba(124,58,237,0.05);border:1px solid rgba(124,58,237,0.18);">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -4696,8 +4772,9 @@
           <p id="extlinkHint" style="font-size:11px;color:var(--text-dim);margin:6px 0 0;"></p>
         </div>
 
-        <div class="form-actions">
+        <div class="form-actions" style="display:flex;gap:10px;flex-wrap:wrap;">
           <button type="submit" class="btn-primary" id="meldingSubmitBtn">Melding aanmaken</button>
+          <button type="button" class="btn-secondary" id="meldingDocumentBtn" onclick="generateMeldingDocument()" style="display:none;" title="Download deze melding als PDF-document (CROW-conform, met GPS, foto en asset-codering)">📄 Document (PDF)</button>
         </div>
       </form>
     </div>
@@ -7993,7 +8070,7 @@
       if (page === 'predictive') loadPredictive();
       if (page === 'clusters') loadClusters();
       if (page === 'opleveren') loadOpleveringen();
-      if (page === 'kunstwerken') loadKunstwerkInspecties();
+      if (page === 'kunstwerken') { if (typeof switchInspectieTab === 'function') switchInspectieTab('crow'); loadKunstwerkInspecties(); }
       if (page === 'mijn-dag') loadMijnDag();
       // B3: ook de hoofd-stats verversen (niet alleen de predictive-widget), zodat
       // meldingen die in Mijn Dag zijn afgerond meteen kloppen op het Dashboard.
@@ -9939,12 +10016,100 @@
       document.body.insertAdjacentHTML('beforeend', html);
     }
 
+    // Lazy foto-thumbnails in de meldingen-lijst: alleen zichtbare rijen halen
+    // hun thumbnail op (via het /thumbnail-endpoint, authed fetch → objectURL),
+    // zodat de lijst licht/snel blijft (geen base64 in de lijst-payload).
+    var _meldingThumbObserver = null;
+    function _lazyLoadMeldingThumbs() {
+      var thumbs = document.querySelectorAll('.melding-thumb[data-thumb-mid]');
+      if (!('IntersectionObserver' in window)) {
+        thumbs.forEach(_loadMeldingThumb);
+        return;
+      }
+      if (_meldingThumbObserver) _meldingThumbObserver.disconnect();
+      _meldingThumbObserver = new IntersectionObserver(function(entries){
+        entries.forEach(function(en){
+          if (en.isIntersecting) {
+            _meldingThumbObserver.unobserve(en.target);
+            _loadMeldingThumb(en.target);
+          }
+        });
+      }, { rootMargin: '300px' });
+      thumbs.forEach(function(el){ _meldingThumbObserver.observe(el); });
+    }
+    function _loadMeldingThumb(el) {
+      var id = el.getAttribute('data-thumb-mid');
+      if (!id || el._loaded) return;
+      el._loaded = true;
+      fetch(API_URL + '/api/meldingen/' + id + '/thumbnail', { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function(res){ if (!res.ok) throw new Error('thumb'); return res.blob(); })
+        .then(function(blob){
+          var url = URL.createObjectURL(blob);
+          el.innerHTML = '<img src="' + url + '" alt="" style="width:100%;height:100%;object-fit:cover;" onload="URL.revokeObjectURL(this.src)">';
+        })
+        .catch(function(){ /* placeholder 📷 laten staan */ });
+    }
+
+    // Render-chunking voor de meldingen-lijst (performance — niet alle 1000en
+    // rijen tegelijk in de DOM). allMeldingen blijft compleet voor export/filters.
+    var MELDING_PAGE_SIZE = 100;
+    var _meldingenRendered = 0;
+
+    function _meldingRowHtml(m) {
+      var prioColors = { kritiek:'red', hoog:'orange', normaal:'blue', laag:'' };
+      var statusLabels = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
+      var date = new Date(m.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short' });
+      var projectName = '-';
+      if (m.project_id) {
+        var proj = (allProjects || []).find(function(p){return p.id===m.project_id;});
+        if (proj) projectName = proj.name;
+      }
+      return '<tr style="cursor:pointer;">' +
+        '<td onclick="event.stopPropagation()"><input type="checkbox" class="melding-checkbox" value="'+m.id+'"></td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')" style="padding:4px 8px;">' + (m.has_photo
+            ? '<div class="melding-thumb" data-thumb-mid="'+m.id+'" style="width:40px;height:40px;border-radius:6px;background:var(--card-bg-hover);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--text-dim);overflow:hidden;">📷</div>'
+            : '<div style="width:40px;height:40px;border-radius:6px;background:var(--card-bg-hover);opacity:0.35;"></div>') + '</td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')"><strong>'+m.title+'</strong></td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')">'+(m.category||'-')+'</td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')"><span class="status-badge '+(prioColors[m.priority]||'')+'">'+(m.priority||'normaal')+'</span></td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')"><span class="status-badge '+(m.status==='open'?'trial':m.status==='afgerond'?'active':'')+'">'+
+          (statusLabels[m.status]||m.status)+'</span></td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')">'+projectName+'</td>' +
+        '<td onclick="openMeldingDetail(\''+m.id+'\')" style="color:var(--text-dim);">'+date+'</td>' +
+        '<td onclick="event.stopPropagation()" style="text-align:right;">'
+          + '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fee2e2;" onclick="event.stopPropagation();deleteMeldingFromList(\''+m.id+'\',\''+(m.title||'').replace(/\'/g,"\\'")+'\')" title="Permanent verwijderen">🗑️</button>'
+        + '</td>' +
+        '</tr>';
+    }
+
+    function _appendMeldingChunk() {
+      var tbody = document.getElementById('meldingenBody');
+      if (!tbody) return;
+      var moreRow = document.getElementById('meldingMoreRow');
+      if (moreRow) moreRow.remove();
+      var next = allMeldingen.slice(_meldingenRendered, _meldingenRendered + MELDING_PAGE_SIZE);
+      tbody.insertAdjacentHTML('beforeend', next.map(_meldingRowHtml).join(''));
+      _meldingenRendered += next.length;
+      if (_meldingenRendered < allMeldingen.length) {
+        var rest = allMeldingen.length - _meldingenRendered;
+        tbody.insertAdjacentHTML('beforeend',
+          '<tr id="meldingMoreRow"><td colspan="9" style="text-align:center;padding:16px;background:var(--card-bg-hover);">'
+          + '<button class="btn-secondary" onclick="_appendMeldingChunk()">Toon meer — ' + rest + ' van ' + allMeldingen.length + ' resterend</button>'
+          + '</td></tr>');
+      }
+      // Nieuwe checkboxes binden (alleen ongebonden) + thumbnails lazy laden
+      document.querySelectorAll('.melding-checkbox').forEach(function(cb){
+        if (!cb._bound) { cb.addEventListener('change', updateBulkBar); cb._bound = true; }
+      });
+      _lazyLoadMeldingThumbs();
+    }
+
     function loadMeldingen() {
       var empty = document.getElementById('meldingenEmpty');
       var list = document.getElementById('meldingenList');
       empty.style.display = 'none';
       list.style.display = 'block';
-      document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="8"><div class="loading-spinner">'+t('meldingen_laden')+'</div></td></tr>';
+      document.getElementById('meldingenBody').innerHTML = '<tr><td colspan="9"><div class="loading-spinner">'+t('meldingen_laden')+'</div></td></tr>';
       api('GET', '/api/meldingen/').then(function(meldingen) {
         allMeldingen = meldingen || [];
         var tbody = document.getElementById('meldingenBody');
@@ -9955,34 +10120,13 @@
         }
         empty.style.display = 'none';
         list.style.display = 'block';
-        var prioColors = { kritiek:'red', hoog:'orange', normaal:'blue', laag:'' };
-        var statusLabels = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
-        tbody.innerHTML = allMeldingen.map(function(m) {
-          var date = new Date(m.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short' });
-          var projectName = '-';
-          if (m.project_id) {
-            var proj = allProjects.find(function(p){return p.id===m.project_id;});
-            if (proj) projectName = proj.name;
-          }
-          return '<tr style="cursor:pointer;">' +
-            '<td onclick="event.stopPropagation()"><input type="checkbox" class="melding-checkbox" value="'+m.id+'"></td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')"><strong>'+m.title+'</strong></td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')">'+(m.category||'-')+'</td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')"><span class="status-badge '+(prioColors[m.priority]||'')+'">'+(m.priority||'normaal')+'</span></td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')"><span class="status-badge '+(m.status==='open'?'trial':m.status==='afgerond'?'active':'')+'">'+
-              (statusLabels[m.status]||m.status)+'</span></td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')">'+projectName+'</td>' +
-            '<td onclick="openMeldingDetail(\''+m.id+'\')" style="color:var(--text-dim);">'+date+'</td>' +
-            '<td onclick="event.stopPropagation()" style="text-align:right;">'
-              + '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fee2e2;" onclick="event.stopPropagation();deleteMeldingFromList(\''+m.id+'\',\''+(m.title||'').replace(/\'/g,"\\'")+'\')" title="Permanent verwijderen">🗑️</button>'
-            + '</td>' +
-            '</tr>';
-        }).join('');
+        // Render-chunking: render de eerste rijen + "Toon meer" zodat we niet
+        // duizenden DOM-rijen tegelijk bouwen (traag). allMeldingen blijft
+        // compleet → export/filters/tellingen ongewijzigd.
+        _meldingenRendered = 0;
+        tbody.innerHTML = '';
+        _appendMeldingChunk();
         document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
-        // Bind change-events op nieuwe checkboxes voor bulk-bar
-        document.querySelectorAll('.melding-checkbox').forEach(function(cb){
-          cb.addEventListener('change', updateBulkBar);
-        });
         // Bind bulk-select dropdowns (één keer per laad — selects worden niet vervangen)
         var bulkStatus = document.getElementById('bulkStatusSelect');
         if (bulkStatus && !bulkStatus._bound) {
@@ -10099,6 +10243,19 @@
       var isEdit = !!editingMeldingId;
       if (titleEl) titleEl.textContent = isEdit ? 'Melding bewerken' : 'Nieuwe Melding';
       if (submitBtn) submitBtn.textContent = isEdit ? 'Wijzigingen opslaan' : 'Melding aanmaken';
+      // Document-knop alleen bij een bestaande (opgeslagen) melding (#12)
+      var docBtn = document.getElementById('meldingDocumentBtn');
+      if (docBtn) docBtn.style.display = isEdit ? '' : 'none';
+      // Na-uitvoering-foto alleen tonen bij bewerken (bij aanmaken is het werk
+      // nog niet uitgevoerd). De inspectie-foto (vóór) is verplicht bij aanmaken.
+      var afterGroup = document.getElementById('meldingPhotoAfterGroup');
+      if (afterGroup) afterGroup.style.display = isEdit ? '' : 'none';
+      // Norm-sectie resetten; edit-mode vult 'm zo opnieuw met data (#16)
+      renderMeldingNormForm(null);
+      // Foto-state altijd resetten (ook bij edit) zodat een achtergebleven
+      // meldingPhotoFile uit een vorige sessie niet per ongeluk een bestaande
+      // foto overschrijft. Edit-mode herstelt de preview hieronder uit m.photo_url.
+      if (typeof resetMeldingPhotoState === 'function') resetMeldingPhotoState();
 
       document.getElementById('meldingModal').classList.add('active');
       setupExternalLinkSection(isEdit, editingMeldingId);
@@ -10123,6 +10280,31 @@
             if (catSel && m.category) catSel.value = m.category;
           }, 50);
           if (m.project_id) loadAssetsForMelding(m.asset_id);
+          // Norm-specifieke velden herstellen op basis van asset-type (#16)
+          renderMeldingNormForm(m.asset_type, m.norm_data);
+          // Bestaande foto's tonen bij bewerken (vóór + na). De lijst-cache is
+          // light (geen base64); bij has_photo(_after) lazy via single-GET.
+          var _setPrevBefore = function(url) {
+            if (!url) return;
+            var _pp = document.getElementById('meldingPhotoPreview');
+            var _pl = document.getElementById('meldingPhotoLabel');
+            if (_pp) { _pp.src = url; _pp.style.display = 'block'; }
+            if (_pl) _pl.style.display = 'none';
+          };
+          var _setPrevAfter = function(url) {
+            if (!url) return;
+            var _pa = document.getElementById('meldingPhotoAfterPreview');
+            var _la = document.getElementById('meldingPhotoAfterLabel');
+            if (_pa) { _pa.src = url; _pa.style.display = 'block'; }
+            if (_la) _la.style.display = 'none';
+          };
+          if (m.photo_url) _setPrevBefore(m.photo_url);
+          if (m.photo_after_url) _setPrevAfter(m.photo_after_url);
+          if ((m.has_photo && !m.photo_url) || (m.has_photo_after && !m.photo_after_url)) {
+            api('GET', '/api/meldingen/' + m.id).then(function(full) {
+              if (full) { _setPrevBefore(full.photo_url); _setPrevAfter(full.photo_after_url); }
+            }).catch(function(){});
+          }
           // CROW/NEN herstellen
           var crowFields = {
             crowSchadegroep: m.crow_schadegroep,
@@ -10149,7 +10331,6 @@
       }).catch(function(){});
 
       if (!isEdit) {
-        if (typeof resetMeldingPhotoState === 'function') resetMeldingPhotoState();
         autoFillGPS();
       }
     }
@@ -10584,6 +10765,235 @@
         var url = URL.createObjectURL(blob);
         window.open(url, 'FieldOps_Preview', 'width=900,height=700,scrollbars=yes');
       });
+    }
+
+    // ── Eén-melding PDF-document (#12) ─────────────────────────────────
+    // Mo's bug: het document uit een melding miste GPS, de foto zelf en de
+    // asset-codering. Deze functie bouwt een CROW-conform document van één
+    // melding mét al die onderdelen.
+    function generateMeldingDocument(meldingId) {
+      var id = meldingId || editingMeldingId;
+      if (!id) { showToast('Geen melding geselecteerd', 'error'); return; }
+      if (!window.jspdf || !window.jspdf.jsPDF) { showToast('PDF-bibliotheek niet geladen', 'error'); return; }
+      showToast('Document genereren...', 'info');
+
+      // De lijst-cache (allMeldingen) bevat geen foto's meer (perf-light). Haal
+      // de volledige melding op via single-GET zodat het document de foto's,
+      // GPS en classificatie compleet heeft.
+      api('GET', '/api/meldingen/' + id).then(function(m) {
+        if (!m) { showToast(t('melding_niet_gevonden') || 'Melding niet gevonden', 'error'); return; }
+        // Foto's vooraf laden (base64 → afmetingen). loadImageAsBase64 werkt voor
+        // zowel inline base64 als externe URL's.
+        var photoJobs = [];
+        if (m.photo_url) photoJobs.push(loadImageAsBase64(m.photo_url).then(function(r){ return {key:'before', img:r}; }));
+        if (m.photo_after_url) photoJobs.push(loadImageAsBase64(m.photo_after_url).then(function(r){ return {key:'after', img:r}; }));
+
+        Promise.all(photoJobs).then(function(loaded){
+          var imgs = {};
+          loaded.forEach(function(o){ imgs[o.key] = o.img; });
+          try {
+            _buildMeldingDocPdf(m, imgs);
+          } catch (e) {
+            console.error('Melding-document fout:', e);
+            showToast('Document genereren mislukt: ' + (e.message || ''), 'error');
+          }
+        });
+      }).catch(function(err){
+        showToast('Melding laden mislukt: ' + (err.message || ''), 'error');
+      });
+    }
+
+    function _buildMeldingDocPdf(m, imgs) {
+      var jsPDF = window.jspdf.jsPDF;
+      var doc = new jsPDF('p','mm','a4');
+      var W = 210, H = 297, M = 20;
+      var bold = function(){ doc.setFont('helvetica','bold'); };
+      var normal = function(){ doc.setFont('helvetica','normal'); };
+      var statusLabels = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
+
+      // ── Branded header ──
+      var _branding = orgBrandingCache || {};
+      var _brandRgb = hexToRgb(_branding.brand_color);
+      doc.setFillColor(_brandRgb[0], _brandRgb[1], _brandRgb[2]);
+      doc.rect(0,0,W,42,'F');
+      if (_branding.logo_data_url && _branding.logo_data_url.indexOf('image/svg') === -1) {
+        try {
+          var _fmt = (_branding.logo_data_url.indexOf('image/jpeg') !== -1) ? 'JPEG' : 'PNG';
+          doc.addImage(_branding.logo_data_url, _fmt, M, 10, 30, 15, undefined, 'FAST');
+        } catch (e) { /* logo overslaan bij fout */ }
+      }
+      var _orgName = _branding.name || (currentOrg && currentOrg.name) || 'FieldOps';
+      doc.setTextColor(255,255,255);
+      doc.setFontSize(16); bold();
+      doc.text(_orgName, _branding.logo_data_url ? M + 36 : M, 20);
+      doc.setFontSize(10); normal();
+      doc.text('Meldingsdocument · CROW 146 / NEN 2767-2', _branding.logo_data_url ? M + 36 : M, 30);
+
+      var y = 54;
+      doc.setTextColor(30,41,59);
+
+      // ── Titel ──
+      doc.setFontSize(18); bold();
+      var titleLines = doc.splitTextToSize(m.title || t('zonder_titel') || 'Zonder titel', W-2*M);
+      doc.text(titleLines, M, y); y += titleLines.length * 8 + 2;
+
+      // ── Meta (datum in Europe/Amsterdam, consistent met #11) ──
+      doc.setFontSize(10); normal(); doc.setTextColor(100,116,139);
+      var dt = m.created_at ? new Date(m.created_at) : null;
+      var datum = (dt && !isNaN(dt.getTime()))
+        ? dt.toLocaleDateString('nl-NL',{day:'2-digit',month:'long',year:'numeric'}) + ' ' +
+          dt.toLocaleTimeString('nl-NL',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Amsterdam'})
+        : '-';
+      doc.text('Aangemaakt: ' + datum + '   |   Door: ' + (m.creator_name || t('onbekend') || 'Onbekend'), M, y);
+      y += 5;
+      doc.text('Melding-ID: ' + m.id, M, y); y += 8;
+
+      // ── Info-blok (status, prioriteit, categorie, project, ASSET) ──
+      var projName = '-';
+      if (m.project_id) { var pr = (allProjects||[]).find(function(p){return p.id===m.project_id;}); if (pr) projName = pr.name; }
+      // Asset-codering — kern van #12. Komt nu uit de API (asset_code/type),
+      // met fallback naar de lokale assets-cache.
+      var assetTxt = '—';
+      if (m.asset_code || m.asset_type) {
+        assetTxt = (m.asset_code || '?') + (m.asset_type ? ' (' + m.asset_type + ')' : '');
+      } else if (m.asset_id) {
+        var a = (allAssets||[]).find(function(x){return x.id===m.asset_id;});
+        if (a) assetTxt = a.code + (a.asset_type ? ' (' + a.asset_type + ')' : '');
+      }
+      var fields = [
+        ['Status', statusLabels[m.status] || m.status || '-'],
+        ['Prioriteit', (m.priority||'normaal').charAt(0).toUpperCase()+(m.priority||'normaal').slice(1)],
+        ['Categorie', m.category || '-'],
+        ['Project', projName],
+        ['Asset', assetTxt],
+      ];
+      var rowH = 15;
+      var blockH = Math.ceil(fields.length/2) * rowH + 6;
+      doc.setFillColor(245,247,250);
+      doc.rect(M, y-2, W-2*M, blockH, 'F');
+      doc.setDrawColor(226,232,240);
+      doc.rect(M, y-2, W-2*M, blockH, 'S');
+      var cw = (W-2*M)/2;
+      fields.forEach(function(f, fi){
+        var fx = M+6+(fi%2)*cw;
+        var fy = y + 4 + Math.floor(fi/2)*rowH;
+        doc.setFontSize(8); bold(); doc.setTextColor(100,116,139);
+        doc.text(f[0].toUpperCase(), fx, fy);
+        doc.setFontSize(11); normal(); doc.setTextColor(30,41,59);
+        doc.text(doc.splitTextToSize(String(f[1]), cw-10), fx, fy+5);
+      });
+      y += blockH + 6;
+
+      // ── GPS-locatie (kern van #12) ──
+      doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+      doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+      doc.text('GPS-LOCATIE', M, y); y += 6;
+      normal(); doc.setTextColor(30,41,59); doc.setFontSize(11);
+      if (m.lat != null && m.lng != null) {
+        doc.text('Coördinaten: ' + Number(m.lat).toFixed(6) + ', ' + Number(m.lng).toFixed(6), M, y); y += 5;
+        doc.setFontSize(9); doc.setTextColor(100,116,139);
+        doc.textWithLink('https://maps.google.com/?q='+m.lat+','+m.lng, M, y, { url: 'https://maps.google.com/?q='+m.lat+','+m.lng }); y += 9;
+      } else {
+        doc.setTextColor(148,163,184);
+        doc.text('Geen locatie vastgelegd.', M, y); y += 9;
+      }
+
+      // ── CROW / NEN classificatie (indien aanwezig) ──
+      var crowBits = [];
+      if (m.crow_klasse) crowBits.push(['CROW-klasse', m.crow_klasse]);
+      if (m.crow_schadegroep) crowBits.push(['Schadegroep', m.crow_schadegroep]);
+      if (m.crow_schadebeeld) crowBits.push(['Schadebeeld', m.crow_schadebeeld]);
+      if (m.crow_ernst || m.crow_omvang) crowBits.push(['Ernst / omvang', (m.crow_ernst||'-') + ' / ' + (m.crow_omvang||'-')]);
+      if (m.nen_2767_conditie != null) crowBits.push(['NEN 2767-conditie', String(m.nen_2767_conditie)]);
+      if (m.onderhoud_categorie) crowBits.push(['Onderhoudscategorie', m.onderhoud_categorie]);
+      if (m.gw_maatregel) crowBits.push(['Maatregel', m.gw_maatregel]);
+      if (crowBits.length) {
+        doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+        doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+        doc.text('CROW 146 / NEN 2767 CLASSIFICATIE', M, y); y += 6;
+        normal(); doc.setTextColor(30,41,59); doc.setFontSize(10);
+        crowBits.forEach(function(b){
+          bold(); doc.text(b[0] + ':', M, y);
+          normal(); doc.text(doc.splitTextToSize(String(b[1]), W-2*M-50), M+50, y);
+          y += 6;
+        });
+        y += 3;
+      }
+
+      // ── Norm-specifieke velden per asset-type (#16) ──
+      if (m.norm_data && Object.keys(m.norm_data).length) {
+        // Probeer leesbare labels uit het gecachte schema; val anders terug op de key.
+        var schema = _normFormCache[m.asset_type];
+        var labelFor = {};
+        if (schema && schema.velden) schema.velden.forEach(function(v){ labelFor[v.key] = v.label; });
+        doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+        doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+        doc.text('NORM-SPECIFIEKE METINGEN', M, y); y += 6;
+        normal(); doc.setTextColor(30,41,59); doc.setFontSize(10);
+        Object.keys(m.norm_data).forEach(function(k){
+          var label = labelFor[k] || k.replace(/_/g, ' ');
+          bold(); doc.text(doc.splitTextToSize(label + ':', 48), M, y);
+          normal(); doc.text(doc.splitTextToSize(String(m.norm_data[k]), W-2*M-50), M+50, y);
+          y += 6;
+        });
+        y += 3;
+      }
+
+      // ── Omschrijving ──
+      doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+      doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+      doc.text('OMSCHRIJVING', M, y); y += 6;
+      normal(); doc.setTextColor(30,41,59); doc.setFontSize(11);
+      var descLines = doc.splitTextToSize(m.description || 'Geen omschrijving.', W-2*M);
+      doc.text(descLines, M, y); y += descLines.length * 5.5 + 6;
+
+      // ── Foto's (de foto zelf — kern van #12) ──
+      var photoList = [];
+      if (m.photo_url) photoList.push(['Foto (voor)', imgs.before, m.photo_url]);
+      if (m.photo_after_url) photoList.push(['Foto (na)', imgs.after, m.photo_after_url]);
+      if (photoList.length) {
+        doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+        doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+        doc.text('FOTO\'S', M, y); y += 6;
+        photoList.forEach(function(p){
+          if (y > H - 30) { doc.addPage(); y = M; }
+          doc.setFontSize(9); bold(); doc.setTextColor(30,41,59);
+          doc.text(p[0], M, y); y += 3;
+          var img = p[1];
+          if (img && img.data) {
+            var iw = 80, ih = (img.h / img.w) * iw;
+            if (ih > 70) { iw = iw * (70/ih); ih = 70; }
+            if (y + ih > H - 18) { doc.addPage(); y = M; }
+            doc.addImage(img.data, 'JPEG', M, y, iw, ih);
+            y += ih + 6;
+          } else {
+            // Foto kon niet ingeladen worden — toon tenminste de bron-link
+            normal(); doc.setFontSize(8); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+            doc.textWithLink('Foto openen', M, y+3, { url: p[2] }); y += 9;
+          }
+        });
+      }
+
+      // ── Footer op elke pagina ──
+      var pageCount = doc.internal.getNumberOfPages();
+      for (var pi = 1; pi <= pageCount; pi++) {
+        doc.setPage(pi);
+        doc.setFontSize(8); normal(); doc.setTextColor(148,163,184);
+        doc.text('FieldOps · fieldopsapp.nl · ' + _orgName, M, H-10);
+        doc.text('Pagina ' + pi + ' / ' + pageCount, W-M-20, H-10);
+      }
+
+      // ── Opslaan / openen ──
+      var safeTitle = (m.title || 'melding').replace(/[^a-z0-9]+/gi,'_').slice(0,40);
+      var fname = 'Melding_' + safeTitle + '_' + new Date().toISOString().slice(0,10) + '.pdf';
+      var blob = doc.output('blob');
+      var url = URL.createObjectURL(blob);
+      var win = window.open(url, '_blank');
+      if (!win || win.closed || typeof win.closed === 'undefined') {
+        var a = document.createElement('a');
+        a.href = url; a.download = fname; a.click();
+      }
+      showToast('Meldingsdocument gegenereerd', 'success');
     }
 
     function generateRapportage(type) {
@@ -11086,6 +11496,12 @@
 
     function createMelding(e) {
       e.preventDefault();
+      // Foto bij inspectie is verplicht bij een NIEUWE melding (must). Bij bewerken
+      // blijft de bestaande foto staan, dus daar geen nieuwe foto vereist.
+      if (!editingMeldingId && !meldingPhotoFile) {
+        showToast('Foto bij inspectie is verplicht bij een nieuwe melding', 'error');
+        return;
+      }
       var btn = document.getElementById('meldingSubmitBtn');
       btn.textContent = t('bezig');
       btn.disabled = true;
@@ -11120,6 +11536,8 @@
         gw_maatregel: crowAdvies?.maatregel || null,
         gw_term: crowAdvies?.gw_term || null,
         gw_kosten_orde: crowAdvies?.kosten_orde || null,
+        // Norm-specifieke velden per asset-type (#16)
+        norm_data: collectMeldingNormData(),
       };
 
       function resetForm() {
@@ -11135,6 +11553,7 @@
           var el = document.getElementById(id); if (el) el.value = '';
         });
         var advies = document.getElementById('crowAdvies'); if (advies) advies.style.display = 'none';
+        renderMeldingNormForm(null);  // norm-velden verbergen/leegmaken (#16)
         resetMeldingPhotoState();
       }
 
@@ -11143,39 +11562,62 @@
       var method = isEdit ? 'PATCH' : 'POST';
       var url = isEdit ? ('/api/meldingen/' + editingMeldingId) : '/api/meldingen/';
 
-      // Offline? → direct in IndexedDB-queue, sync zodra online
-      if (!navigator.onLine) {
-        queueRequest(method, url, payload).then(function() {
-          showToast('📥 Offline — wijziging bewaard, syncen zodra je online bent', 'warning');
-          resetForm();
-        }).catch(function(err) {
-          showToast('Queue-fout: '+err.message, 'error');
-        }).finally(function() {
-          btn.textContent = isEdit ? 'Wijzigingen opslaan' : t('melding_aanmaken');
-          btn.disabled = false;
-        });
-        return;
+      // Veiligheid (bug asset-koppeling): bij bewerken geen asset_id:null
+      // meesturen als de asset-dropdown nog niet geladen is — dat zou de
+      // bestaande koppeling wissen. Weglaten = backend behoudt 'm (exclude_unset).
+      if (isEdit && !meldingAssetsLoaded) {
+        delete payload.asset_id;
       }
 
-      api(method, url, payload).then(function(melding) {
-        showToast(isEdit ? 'Melding bijgewerkt' : t('melding_aangemaakt'), 'success');
-        resetForm();
-        loadMeldingen();
-        loadDashboardStats();
-        if (map) loadMapData();
-      }).catch(function(err) {
-        // Network-error → fallback queue (alleen voor POST; PATCH is per-id risky)
-        if (err.message && /network|fetch|failed/i.test(err.message) && !isEdit) {
-          queueRequest('POST', '/api/meldingen/', payload).then(function() {
-            showToast('📥 Verbinding verloren — melding bewaard voor latere sync', 'warning');
-            resetForm();
-          });
-        } else {
-          showToast(err.message, 'error');
-        }
-      }).finally(function() {
+      function _finishBtn() {
         btn.textContent = isEdit ? 'Wijzigingen opslaan' : t('melding_aanmaken');
         btn.disabled = false;
+      }
+
+      function _sendMelding() {
+        // Offline? → direct in IndexedDB-queue, sync zodra online
+        if (!navigator.onLine) {
+          queueRequest(method, url, payload).then(function() {
+            showToast('📥 Offline — wijziging bewaard, syncen zodra je online bent', 'warning');
+            resetForm();
+          }).catch(function(err) {
+            showToast('Queue-fout: '+err.message, 'error');
+          }).finally(_finishBtn);
+          return;
+        }
+        api(method, url, payload).then(function(melding) {
+          showToast(isEdit ? 'Melding bijgewerkt' : t('melding_aangemaakt'), 'success');
+          resetForm();
+          loadMeldingen();
+          loadDashboardStats();
+          if (map) loadMapData();
+        }).catch(function(err) {
+          // Network-error → fallback queue (alleen voor POST; PATCH is per-id risky)
+          if (err.message && /network|fetch|failed/i.test(err.message) && !isEdit) {
+            queueRequest('POST', '/api/meldingen/', payload).then(function() {
+              showToast('📥 Verbinding verloren — melding bewaard voor latere sync', 'warning');
+              resetForm();
+            });
+          } else {
+            showToast(err.message, 'error');
+          }
+        }).finally(_finishBtn);
+      }
+
+      // Beide foto's meesturen — vóór (inspectie) + na (uitvoering). De gekozen
+      // foto's zaten alleen in de file-variabelen en werden niet verstuurd.
+      // Omzetten naar data-URL. Bij edit zonder NIEUWE foto blijft het veld weg
+      // → bestaande foto behouden (backend exclude_unset). FileReader is async.
+      var _beforeReady = meldingPhotoFile
+        ? _photoToDataUrl(meldingPhotoFile).catch(function(){ return null; })
+        : Promise.resolve(null);
+      var _afterReady = meldingPhotoAfterFile
+        ? _photoToDataUrl(meldingPhotoAfterFile).catch(function(){ return null; })
+        : Promise.resolve(null);
+      Promise.all([_beforeReady, _afterReady]).then(function(res) {
+        if (res[0]) payload.photo_url = res[0];
+        if (res[1]) payload.photo_after_url = res[1];
+        _sendMelding();
       });
     }
 
@@ -14748,7 +15190,7 @@
       var list = document.getElementById('kunstwerkenList');
       var tbody = document.getElementById('kunstwerkenBody');
       var sum = document.getElementById('kwSamenvatting');
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-dim);">Laden...</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text-dim);">Laden...</td></tr>';
       // Render tegels direct met huidige data (lege array bij eerste laad — counts = 0)
       renderKunstwerkCategoryTiles();
 
@@ -14800,13 +15242,103 @@
             + '<td>' + date + '</td>'
             + '<td style="text-align:center;">' + _kwBadge(i.conditiescore_overall) + '</td>'
             + '<td><span style="background:' + st.bg + ';color:' + st.color + ';font-size:10px;padding:2px 8px;border-radius:100px;font-weight:700;letter-spacing:.05em;">' + st.label.toUpperCase() + '</span></td>'
+            + '<td style="text-align:center;">' + (i.meldingen_count > 0
+                ? '<button class="btn-secondary" style="font-size:11px;padding:3px 9px;white-space:nowrap;" onclick="event.stopPropagation();openInspectieMeldingen(\'' + i.id + '\')" title="Bekijk gekoppelde meldingen">🔔 ' + i.meldingen_count + '</button>'
+                : '<span style="color:var(--text-dim);">—</span>') + '</td>'
             + '<td style="text-align:right;">'
             +   '<button class="btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="event.stopPropagation();openKunstwerkDetail(\'' + i.id + '\')">' + (t('kw_btn_open') || 'Open') + '</button>'
             + '</td>'
             + '</tr>';
         }).join('');
       }).catch(function(err){
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:#dc2626;">Laden mislukt: ' + escapeHtml(err.message || 'onbekend') + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:#dc2626;">Laden mislukt: ' + escapeHtml(err.message || 'onbekend') + '</td></tr>';
+      });
+    }
+
+    // ── Inspecties sub-tabs: CROW-inspectie vs Klein onderhoud (#9) ──────────
+    function switchInspectieTab(which) {
+      var crow = document.getElementById('inspTabCrow');
+      var ko = document.getElementById('inspTabKO');
+      var crowBtn = document.getElementById('inspSubtabCrowBtn');
+      var koBtn = document.getElementById('inspSubtabKoBtn');
+      var isKo = which === 'ko';
+      if (crow) crow.style.display = isKo ? 'none' : '';
+      if (ko) ko.style.display = isKo ? '' : 'none';
+      if (crowBtn) { crowBtn.style.borderBottomColor = isKo ? 'transparent' : 'var(--accent)'; crowBtn.style.color = isKo ? 'var(--text-dim)' : 'var(--text)'; }
+      if (koBtn) { koBtn.style.borderBottomColor = isKo ? 'var(--accent)' : 'transparent'; koBtn.style.color = isKo ? 'var(--text)' : 'var(--text-dim)'; }
+      if (isKo) loadKleinOnderhoud();
+    }
+
+    // 'klein onderhoud' kent twee schrijfwijzen in de codebase: CROW-advies 'KO'
+    // (frontend) vs enrich 'klein onderhoud' (backend). Beide matchen.
+    function _isKleinOnderhoud(cat) {
+      if (!cat) return false;
+      var c = String(cat).toLowerCase().trim();
+      return c === 'ko' || c === 'klein onderhoud' || c === 'klein_onderhoud';
+    }
+
+    function loadKleinOnderhoud() {
+      var empty = document.getElementById('inspKoEmpty');
+      var list = document.getElementById('inspKoList');
+      var body = document.getElementById('inspKoBody');
+      var sum = document.getElementById('inspKoSamenvatting');
+      body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-dim);">Laden...</td></tr>';
+      list.style.display = 'block';
+      empty.style.display = 'none';
+      api('GET', '/api/meldingen/').then(function(items){
+        var ko = (items || []).filter(function(m){ return _isKleinOnderhoud(m.onderhoud_categorie); });
+        if (sum) sum.textContent = ko.length + ' klein-onderhoud-melding' + (ko.length === 1 ? '' : 'en');
+        if (!ko.length) { empty.style.display = 'flex'; list.style.display = 'none'; return; }
+        var prioColors = { kritiek:'red', hoog:'orange', normaal:'blue', laag:'' };
+        var statusLabels = { open:t('open'), in_behandeling:t('in_behandeling_status'), gereed_uitvoering:t('gereed_uitvoering'), in_uitvoering:t('in_uitvoering'), opgelost:t('opgelost_status'), afgerond:t('afgerond') };
+        body.innerHTML = ko.map(function(m){
+          var date = m.created_at ? new Date(m.created_at).toLocaleDateString('nl-NL', {day:'numeric', month:'short', year:'numeric'}) : '—';
+          var asset = m.asset_code ? (m.asset_code + (m.asset_type ? ' (' + m.asset_type + ')' : '')) : '—';
+          return '<tr style="cursor:pointer;" onclick="openMeldingDetail(\'' + m.id + '\')">'
+            + '<td style="font-weight:600;">' + escapeHtml(m.title || '(zonder titel)') + '</td>'
+            + '<td>' + escapeHtml(asset) + '</td>'
+            + '<td>' + escapeHtml(m.gw_maatregel || '—') + '</td>'
+            + '<td><span class="status-badge ' + (prioColors[m.priority] || '') + '">' + escapeHtml(m.priority || 'normaal') + '</span></td>'
+            + '<td>' + escapeHtml(statusLabels[m.status] || m.status || '') + '</td>'
+            + '<td style="color:var(--text-dim);">' + date + '</td>'
+            + '</tr>';
+        }).join('');
+      }).catch(function(err){
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:#dc2626;">Laden mislukt: ' + escapeHtml(err.message || 'onbekend') + '</td></tr>';
+      });
+    }
+
+    // Drilldown: meldingen gekoppeld aan een CROW-inspectie (via defect.melding_id).
+    // Hergebruikt de assetMeldingenModal (#13).
+    function openInspectieMeldingen(inspectionId) {
+      var insp = (_kunstwerkInspecties || []).find(function(x){ return x.id === inspectionId; });
+      var ids = (insp && insp.melding_ids) || [];
+      if (!ids.length) { showToast('Geen gekoppelde meldingen', 'info'); return; }
+      var modal = document.getElementById('assetMeldingenModal');
+      if (!modal) return;
+      document.getElementById('assetMeldingenModalTitle').textContent = '🔔 Meldingen uit inspectie';
+      document.getElementById('assetMeldingenModalSub').textContent = insp.title || '';
+      var listEl = document.getElementById('assetMeldingenList');
+      listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Laden...</div>';
+      var openBtn = document.getElementById('assetMeldingenOpenAssetBtn');
+      if (openBtn) {
+        openBtn.style.display = '';
+        openBtn.textContent = 'Open inspectie →';
+        openBtn.onclick = function(){ closeAssetMeldingenModal(); openKunstwerkDetail(inspectionId); };
+      }
+      modal.classList.add('active');
+      Promise.all(ids.map(function(id){ return api('GET', '/api/meldingen/' + id).catch(function(){ return null; }); })).then(function(items){
+        var meldingen = items.filter(Boolean);
+        if (!meldingen.length) { listEl.innerHTML = '<div style="text-align:center;padding:20px;color:var(--text-dim);">Meldingen niet gevonden.</div>'; return; }
+        var statusColor = { open:'#dc2626', in_behandeling:'#f59e0b', opgelost:'#16a34a', afgerond:'#64748b' };
+        listEl.innerHTML = meldingen.map(function(m){
+          var sc = statusColor[m.status] || '#64748b';
+          return '<div style="border:1px solid var(--border);border-left:3px solid ' + sc + ';border-radius:10px;padding:10px 12px;cursor:pointer;" onclick="closeAssetMeldingenModal();openMeldingDetail(\'' + m.id + '\')">'
+            + '<div style="font-weight:700;">' + escapeHtml(m.title || '(zonder titel)') + '</div>'
+            + '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;"><span style="color:' + sc + ';font-weight:700;text-transform:uppercase;">' + escapeHtml(m.status || '') + '</span>'
+              + (m.gw_maatregel ? ' · ' + escapeHtml(m.gw_maatregel) : '') + '</div>'
+            + '</div>';
+        }).join('');
       });
     }
 
@@ -16354,7 +16886,8 @@
         _mySkills = results[1];
         var mySkillsByCode = {};
         _mySkills.forEach(function(s){ mySkillsByCode[s.skill_code] = s.proficiency; });
-        var html = _skillsCatalog.map(function(s){
+
+        function skillRow(s){
           var proficiency = mySkillsByCode[s.code] || 0;
           var checked = proficiency > 0 ? 'checked' : '';
           return '<label style="display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;">'
@@ -16367,6 +16900,22 @@
               + [1,2,3,4,5].map(function(p){ return '<option value="'+p+'" ' + (p===proficiency?'selected':'') + '>★'.repeat(p) + '☆'.repeat(5-p) + '</option>'; }).join('')
             + '</select>'
           + '</label>';
+        }
+
+        // Groepeer per domein; behoud de volgorde waarin domeinen voorkomen.
+        var domainOrder = [];
+        var byDomain = {};
+        _skillsCatalog.forEach(function(s){
+          var d = s.domein || 'Overig';
+          if (!byDomain[d]) { byDomain[d] = []; domainOrder.push(d); }
+          byDomain[d].push(s);
+        });
+        var html = domainOrder.map(function(d){
+          var rows = byDomain[d].map(skillRow).join('');
+          return '<div style="margin-bottom:6px;">'
+            + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-dim);margin:12px 2px 8px;">' + escapeHtml(d) + '</div>'
+            + '<div style="display:flex;flex-direction:column;gap:8px;">' + rows + '</div>'
+          + '</div>';
         }).join('');
         document.getElementById('skillsCatalogList').innerHTML = html;
         document.getElementById('skillsModal').classList.add('active');
@@ -16459,6 +17008,7 @@
           emptyEl.style.display = ''; content.style.display = 'none'; return;
         }
         emptyEl.style.display = 'none'; content.style.display = '';
+        _fillPredProjectFilter();
         document.getElementById('predTotal').textContent = s.total_assets;
         document.getElementById('predBandLaag').textContent = s.bands.laag;
         document.getElementById('predBandMatig').textContent = s.bands.matig;
@@ -16477,11 +17027,18 @@
       });
     }
 
+    var predAtRiskCache = [];  // laatste at-risk items — voor meldingen-drilldown (#13)
+
     function loadPredictiveList() {
       var min = document.getElementById('predMinScore').value;
+      var projEl = document.getElementById('predProjectFilter');
+      var proj = projEl ? projEl.value : '';
       var listEl = document.getElementById('predList');
       listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Laden...</div>';
-      api('GET', '/api/predictive/at-risk?min_score='+min+'&limit=20').then(function(items){
+      var url = '/api/predictive/at-risk?min_score='+min+'&limit=20';
+      if (proj) url += '&project_id=' + encodeURIComponent(proj);
+      api('GET', url).then(function(items){
+        predAtRiskCache = items || [];
         if (!items.length) {
           listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">' + t('es_geen_assets_drempel') + '</div>';
           return;
@@ -16511,12 +17068,108 @@
             '<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">leeftijd '+r.components.age+'pt · conditie '+r.components.condition+'pt · meldingen '+r.components.meldingen+'pt</div>' +
             degBadge +
             '</div>' +
-            '<button class="btn-secondary" style="font-size:11px;padding:5px 10px;" onclick="navigateTo(\'assets\');setTimeout(function(){openAssetEditModal(\''+r.asset_id+'\')},250)">Bekijken</button>' +
+            '<div style="display:flex;flex-direction:column;gap:6px;">' +
+              '<button class="btn-primary" style="font-size:11px;padding:5px 10px;white-space:nowrap;" onclick="openAssetMeldingenDrilldown(\''+r.asset_id+'\')">🔔 Meldingen</button>' +
+              '<button class="btn-secondary" style="font-size:11px;padding:5px 10px;white-space:nowrap;" onclick="navigateTo(\'assets\');setTimeout(function(){openAssetEditModal(\''+r.asset_id+'\')},250)">Asset →</button>' +
+            '</div>' +
             '</div>';
         }).join('');
       }).catch(function(err){
         listEl.innerHTML = '<div style="color:var(--red);padding:20px;">'+escapeHtml(err.message||'fout')+'</div>';
       });
+    }
+
+    // Vul de project-filter-dropdown van de Voorspeller (#13)
+    function _fillPredProjectFilter() {
+      var sel = document.getElementById('predProjectFilter');
+      if (!sel) return;
+      function render(projects) {
+        var current = sel.value;
+        sel.innerHTML = '<option value="">📁 ' + (t('alle_projecten') || 'Alle projecten') + '</option>';
+        (projects || []).forEach(function(p){
+          var opt = document.createElement('option');
+          opt.value = p.id; opt.textContent = p.name;
+          sel.appendChild(opt);
+        });
+        if (current) sel.value = current;  // keuze behouden bij refresh
+      }
+      if (allProjects && allProjects.length) {
+        render(allProjects);
+      } else {
+        api('GET', '/api/projects/').then(function(ps){
+          allProjects = ps || [];
+          render(allProjects);
+        }).catch(function(){ render([]); });
+      }
+    }
+
+    // Drill-down: toon de meldingen die op een asset zitten (#13 — Mo's bug:
+    // klikken gaf alleen de asset, niet de meldingen erop).
+    function openAssetMeldingenDrilldown(assetId) {
+      var modal = document.getElementById('assetMeldingenModal');
+      if (!modal) return;
+      var cached = predAtRiskCache.find(function(r){ return r.asset_id === assetId; });
+      var asset = (allAssets || []).find(function(a){ return a.id === assetId; });
+      var code = (cached && cached.asset_code) || (asset && asset.code) || assetId;
+      var type = (cached && cached.asset_type) || (asset && asset.asset_type) || '';
+      document.getElementById('assetMeldingenModalTitle').textContent = '🔔 Meldingen op ' + code;
+      document.getElementById('assetMeldingenModalSub').textContent = type ? ('Asset-type: ' + type) : '';
+      var listEl = document.getElementById('assetMeldingenList');
+      listEl.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:20px;">Laden...</div>';
+      // "Open asset" knop koppelen (modal wordt gedeeld met de inspectie-drilldown,
+      // dus tekst/zichtbaarheid expliciet resetten).
+      var openBtn = document.getElementById('assetMeldingenOpenAssetBtn');
+      openBtn.style.display = '';
+      openBtn.textContent = 'Open asset →';
+      openBtn.onclick = function(){
+        closeAssetMeldingenModal();
+        navigateTo('assets');
+        setTimeout(function(){ openAssetEditModal(assetId); }, 250);
+      };
+      modal.classList.add('active');
+
+      api('GET', '/api/meldingen/?with_photos=1&asset_id=' + encodeURIComponent(assetId)).then(function(items){
+        if (!items || !items.length) {
+          listEl.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-dim);">' +
+            '<div style="font-size:32px;margin-bottom:8px;">📭</div>' +
+            '<div style="font-weight:600;color:var(--text);margin-bottom:4px;">Geen meldingen op deze asset</div>' +
+            '<div style="font-size:12px;">Het risico komt uit leeftijd, conditiescore of buurt-signaal — niet uit losse meldingen.</div>' +
+            '</div>';
+          return;
+        }
+        var statusColor = { open:'#dc2626', in_behandeling:'#f59e0b', opgelost:'#16a34a', afgerond:'#64748b' };
+        listEl.innerHTML = items.map(function(m){
+          var sc = statusColor[m.status] || '#64748b';
+          var dt = m.created_at ? new Date(m.created_at) : null;
+          var when = dt && !isNaN(dt.getTime())
+            ? dt.toLocaleDateString('nl-NL', {day:'2-digit', month:'short', year:'numeric'}) + ' ' +
+              dt.toLocaleTimeString('nl-NL', {hour:'2-digit', minute:'2-digit', timeZone:'Europe/Amsterdam'})
+            : '';
+          var prio = m.priority ? '<span style="background:var(--card-bg-hover);padding:1px 7px;border-radius:6px;font-size:11px;">'+escapeHtml(m.priority)+'</span>' : '';
+          var thumb = m.photo_url
+            ? '<img src="'+m.photo_url+'" alt="" style="width:54px;height:54px;object-fit:cover;border-radius:8px;flex-shrink:0;cursor:pointer;" onclick="navigateTo(\'meldingen\');setTimeout(function(){openMeldingDetail&&openMeldingDetail(\''+m.id+'\')},250)">'
+            : '<div style="width:54px;height:54px;border-radius:8px;background:var(--card-bg-hover);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px;">🔔</div>';
+          var gps = (m.lat && m.lng) ? '<span title="GPS">📍 '+m.lat.toFixed(4)+', '+m.lng.toFixed(4)+'</span>' : '';
+          return '<div style="display:flex;gap:12px;align-items:flex-start;border:1px solid var(--border);border-left:3px solid '+sc+';border-radius:10px;padding:10px 12px;">' +
+            thumb +
+            '<div style="flex:1;min-width:0;">' +
+              '<div style="font-weight:700;word-wrap:break-word;">'+escapeHtml(m.title||'(zonder titel)')+'</div>' +
+              '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:5px;font-size:11px;color:var(--text-dim);">' +
+                '<span style="color:'+sc+';font-weight:700;text-transform:uppercase;">'+escapeHtml(m.status||'')+'</span>' + prio +
+                (when ? '<span>🕑 '+when+'</span>' : '') + gps +
+              '</div>' +
+              (m.description ? '<div style="font-size:12px;color:var(--text-muted);margin-top:5px;white-space:pre-wrap;word-wrap:break-word;">'+escapeHtml(m.description)+'</div>' : '') +
+            '</div>' +
+          '</div>';
+        }).join('');
+      }).catch(function(err){
+        listEl.innerHTML = '<div style="color:var(--red);padding:20px;">'+escapeHtml(err.message||'Fout bij laden')+'</div>';
+      });
+    }
+
+    function closeAssetMeldingenModal() {
+      var modal = document.getElementById('assetMeldingenModal');
+      if (modal) modal.classList.remove('active');
     }
 
     function loadDashboardPredictiveWidget() {
@@ -18406,7 +19059,9 @@
       }
       listEl.innerHTML = entries.map(function(e) {
         var dt = new Date(e.occurred_at);
-        var time = dt.getHours().toString().padStart(2, '0') + ':' + dt.getMinutes().toString().padStart(2, '0');
+        // Forceer Europe/Amsterdam: backend levert UTC met offset, browser-tz
+        // mag de werkdagboek-tijd niet verschuiven (bug #11).
+        var time = isNaN(dt.getTime()) ? '' : dt.toLocaleTimeString('nl-NL', {hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam'});
         var isAuto = e.source === 'auto';
         var iconClass = isAuto ? 'auto' : 'manual';
         var icon = _daybookIconFor(e.entry_type, e.source);
@@ -19529,7 +20184,8 @@
     // ══════════════════════════════════════
 
     var meldingAssets = [];          // assets geladen voor het huidige project
-    var meldingPhotoFile = null;     // File object van uploaded foto
+    var meldingPhotoFile = null;     // File object van uploaded foto (vóór/inspectie)
+    var meldingPhotoAfterFile = null; // File object van na-uitvoering-foto
     var meldingAILastResult = null;  // resultaat van laatste AI-analyse
 
     function onMeldingProjectChange() {
@@ -19539,12 +20195,14 @@
       loadAssetsForMelding();
     }
 
-    function loadAssetsForMelding() {
+    var meldingAssetsLoaded = false;  // true zodra de asset-dropdown gevuld is (bug asset-koppeling)
+    function loadAssetsForMelding(preselectAssetId) {
       var projId = document.getElementById('meldingProject').value;
       var sel = document.getElementById('meldingAsset');
       var hint = document.getElementById('meldingAssetHint');
       sel.innerHTML = '<option value="">— Geen asset gekoppeld —</option>';
       meldingAssets = [];
+      meldingAssetsLoaded = false;
       if (!projId) {
         if (hint) hint.textContent = 'Selecteer eerst een project om assets te zien.';
         return;
@@ -19553,10 +20211,6 @@
       api('GET', '/api/assets/?project_id=' + encodeURIComponent(projId) + '&limit=500')
         .then(function(items) {
           meldingAssets = items || [];
-          if (meldingAssets.length === 0) {
-            if (hint) hint.textContent = t('es_geen_assets_project');
-            return;
-          }
           meldingAssets.forEach(function(a) {
             var opt = document.createElement('option');
             opt.value = a.id;
@@ -19564,7 +20218,15 @@
             opt.textContent = a.code + (a.name ? ' — ' + a.name : '') + ' (' + a.asset_type + ')' + open;
             sel.appendChild(opt);
           });
-          if (hint) hint.textContent = meldingAssets.length + ' assets beschikbaar';
+          meldingAssetsLoaded = true;
+          // Bestaande/gekozen asset herstellen in de dropdown (bug: edit wiste de
+          // koppeling omdat de dropdown leeg bleef → PATCH stuurde asset_id:null).
+          // ALLEEN sel.value zetten — NIET onMeldingAssetChange aanroepen, want dat
+          // overschrijft de melding-GPS met de asset-coördinaten.
+          if (preselectAssetId) sel.value = preselectAssetId;
+          if (hint) hint.textContent = meldingAssets.length
+            ? (meldingAssets.length + ' assets beschikbaar')
+            : t('es_geen_assets_project');
         })
         .catch(function(err) {
           if (hint) hint.textContent = 'Assets laden mislukt: ' + (err.message || 'onbekend');
@@ -19573,7 +20235,11 @@
 
     function onMeldingAssetChange() {
       var assetId = document.getElementById('meldingAsset').value;
-      if (!assetId) return;
+      if (!assetId) {
+        // Asset losgekoppeld → norm-velden verbergen (#16)
+        renderMeldingNormForm(null);
+        return;
+      }
       var asset = meldingAssets.find(function(a){ return a.id === assetId; });
       if (!asset) return;
       // Vul GPS van de asset (alleen als de velden nog leeg/ouder zijn)
@@ -19588,6 +20254,92 @@
       if (!titleField.value && asset.location_description) {
         titleField.placeholder = 'bijv. Schade aan ' + asset.code + ' (' + asset.location_description + ')';
       }
+      // Dynamisch norm-formulier voor dit asset-type (#16)
+      renderMeldingNormForm(asset.asset_type);
+    }
+
+    // ── Dynamisch norm-formulier per asset-type (#16) ──────────────────────
+    var _normFormCache = {};      // asset_type -> schema (van /form-schema)
+    var _currentNormSchema = null;
+
+    function renderMeldingNormForm(assetType, existingData) {
+      var section = document.getElementById('meldingNormSection');
+      var fieldsEl = document.getElementById('meldingNormFields');
+      if (!section || !fieldsEl) return;
+      if (!assetType) {
+        section.style.display = 'none'; fieldsEl.innerHTML = ''; _currentNormSchema = null;
+        return;
+      }
+      function apply(schema) {
+        _currentNormSchema = schema;
+        if (!schema || !schema.velden || !schema.velden.length) {
+          section.style.display = 'none'; fieldsEl.innerHTML = ''; return;
+        }
+        document.getElementById('meldingNormTitle').textContent = '🇳🇱 ' + (schema.norm_label || 'Norm-specifieke velden');
+        document.getElementById('meldingNormSub').textContent = 'Invulvelden voor asset-type: ' + assetType;
+        var data = existingData || {};
+        fieldsEl.innerHTML = schema.velden.map(function(v){
+          var id = 'normfld_' + v.key;
+          var val = data[v.key] != null ? data[v.key] : '';
+          var label = '<label style="font-size:11px;color:var(--text-muted);">' + escapeHtml(v.label) + (v.suffix ? ' (' + escapeHtml(v.suffix) + ')' : '') + '</label>';
+          var input;
+          if (v.type === 'select') {
+            input = '<select id="' + id + '" data-normkey="' + v.key + '" style="width:100%;">'
+              + '<option value="">—</option>'
+              + (v.opties || []).map(function(o){ return '<option value="' + escapeHtml(o) + '"' + (String(val) === String(o) ? ' selected' : '') + '>' + escapeHtml(o) + '</option>'; }).join('')
+              + '</select>';
+          } else if (v.type === 'number') {
+            input = '<input type="number" id="' + id + '" data-normkey="' + v.key + '" value="' + escapeHtml(String(val)) + '"'
+              + (v.min != null ? ' min="' + v.min + '"' : '') + (v.max != null ? ' max="' + v.max + '"' : '') + (v.step != null ? ' step="' + v.step + '"' : '')
+              + ' style="width:100%;">';
+          } else {
+            input = '<input type="text" id="' + id + '" data-normkey="' + v.key + '" value="' + escapeHtml(String(val)) + '" style="width:100%;">';
+          }
+          var help = v.help ? '<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">' + escapeHtml(v.help) + '</div>' : '';
+          return '<div>' + label + input + help + '</div>';
+        }).join('');
+        section.style.display = '';
+      }
+      if (_normFormCache[assetType]) { apply(_normFormCache[assetType]); return; }
+      api('GET', '/api/meldingen/form-schema?asset_type=' + encodeURIComponent(assetType)).then(function(schema){
+        _normFormCache[assetType] = schema;
+        apply(schema);
+      }).catch(function(){ section.style.display = 'none'; });
+    }
+
+    function collectMeldingNormData() {
+      var section = document.getElementById('meldingNormSection');
+      var fieldsEl = document.getElementById('meldingNormFields');
+      if (!section || !fieldsEl || section.style.display === 'none') return null;
+      var out = {};
+      fieldsEl.querySelectorAll('[data-normkey]').forEach(function(el){
+        var k = el.getAttribute('data-normkey');
+        var v = el.value;
+        if (v !== '' && v != null) {
+          out[k] = (el.type === 'number') ? parseFloat(v) : v;
+        }
+      });
+      return Object.keys(out).length ? out : null;
+    }
+
+    // Na-uitvoering-foto kiezen (geen AI-analyse — puur bewijs van uitvoering)
+    function onMeldingPhotoAfterChange(event) {
+      var f = event.target.files && event.target.files[0];
+      if (!f) return;
+      if (f.size > 10 * 1024 * 1024) {
+        showToast('Foto te groot (max 10 MB)', 'error');
+        event.target.value = '';
+        return;
+      }
+      meldingPhotoAfterFile = f;
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var img = document.getElementById('meldingPhotoAfterPreview');
+        if (img) { img.src = e.target.result; img.style.display = 'block'; }
+        var lbl = document.getElementById('meldingPhotoAfterLabel');
+        if (lbl) lbl.style.display = 'none';
+      };
+      reader.readAsDataURL(f);
     }
 
     function onMeldingPhotoChange(event) {
@@ -20154,6 +20906,11 @@
       var lbl = document.getElementById('meldingPhotoLabel'); if (lbl) lbl.style.display = 'block';
       var box = document.getElementById('meldingAIBox'); if (box) box.style.display = 'none';
       var res = document.getElementById('meldingAIResult'); if (res) res.style.display = 'none';
+      // Na-uitvoering-foto ook resetten
+      meldingPhotoAfterFile = null;
+      var inpA = document.getElementById('meldingPhotoAfterInput'); if (inpA) inpA.value = '';
+      var prevA = document.getElementById('meldingPhotoAfterPreview'); if (prevA) { prevA.src = ''; prevA.style.display = 'none'; }
+      var lblA = document.getElementById('meldingPhotoAfterLabel'); if (lblA) lblA.style.display = 'block';
     }
 
     // ══════════════════════════════════════
@@ -20450,24 +21207,26 @@
               var proj = allProjects.find(function(p) { return p.id === m.project_id; });
               if (proj) projName = proj.name;
             }
-            // F7: foto-thumbnail op de marker (kleur-codering blijft via de ring).
-            var _photo = m.photo_url || '';
-            var _mSize = _photo ? 40 : 32;
-            var _iconHtml = _photo
-              ? '<div style="width:40px;height:40px;border-radius:50%;border:3px solid '+color+';box-shadow:0 2px 8px rgba(0,0,0,0.5);background:'+color+';overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:16px;">'
-                  + '<img src="'+_photo+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" onerror="this.style.display=\'none\';this.parentNode.innerHTML=\''+emoji+'\';">'
-                  + '</div>'
-              : '<div style="width:32px;height:32px;border-radius:50%;background:'+color+';border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;">'+emoji+'</div>';
+            // F7: marker toont kleur-codering + emoji; bij een foto een camera-
+            // badge. De foto zelf zit NIET meer op de marker/lijst (perf — base64
+            // uit de kaart-payload), maar wordt lazy in de popup geladen.
+            var _hasPhoto = !!m.has_photo;
+            var _iconHtml = '<div style="width:32px;height:32px;border-radius:50%;background:'+color+';border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;font-size:16px;position:relative;">'+emoji +
+              (_hasPhoto ? '<span style="position:absolute;bottom:-4px;right:-4px;width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:9px;">📷</span>' : '') +
+              '</div>';
             var icon = L.divIcon({
               className: '',
               html: _iconHtml,
-              iconSize: [_mSize, _mSize],
-              iconAnchor: [_mSize / 2, _mSize / 2]
+              iconSize: [32, 32],
+              iconAnchor: [16, 16]
             });
+            var _photoSlot = _hasPhoto
+              ? '<div class="mpopup-photo" data-mid="'+m.id+'" style="margin-bottom:6px;"><span style="color:#888;font-size:11px;">📷 foto laden…</span></div>'
+              : '';
             var marker = L.marker([m.lat, m.lng], { icon: icon })
               .bindPopup(
                 '<div style="min-width:200px;font-family:DM Sans,sans-serif;">' +
-                (_photo ? '<img src="'+_photo+'" alt="" style="width:100%;max-height:150px;object-fit:cover;border-radius:8px;margin-bottom:6px;display:block;" onerror="this.style.display=\'none\';">' : '') +
+                _photoSlot +
                 '<strong style="font-size:14px;">'+m.title+'</strong>' +
                 (projName ? '<br><span style="color:#00d4ff;font-size:11px;">📂 '+projName+'</span>' : '') +
                 '<br><span style="color:#888;font-size:12px;">'+emoji+' '+(m.category||t('geen_categorie'))+'</span><br>' +
@@ -20477,6 +21236,23 @@
                 '</div>'
               )
               .addTo(map);
+            // Foto lazy laden zodra de popup opent (één GET per geopende melding).
+            if (_hasPhoto) {
+              marker.on('popupopen', function(e) {
+                var el = e.popup.getElement();
+                var slot = el && el.querySelector('.mpopup-photo[data-mid="'+m.id+'"]');
+                if (!slot || slot._loaded) return;
+                slot._loaded = true;
+                api('GET', '/api/meldingen/' + m.id).then(function(full) {
+                  if (full && full.photo_url) {
+                    slot.innerHTML = '<img src="'+full.photo_url+'" alt="" style="width:100%;max-height:150px;object-fit:cover;border-radius:8px;display:block;" onerror="this.parentNode.style.display=\'none\';">';
+                    if (e.popup.update) e.popup.update();
+                  } else {
+                    slot.style.display = 'none';
+                  }
+                }).catch(function(){ slot.style.display = 'none'; });
+              });
+            }
             marker._meldingData = m;
             meldingMarkers.push(marker);
           }

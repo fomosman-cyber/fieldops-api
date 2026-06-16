@@ -273,8 +273,11 @@ def klasse_to_risk_points(klasse: str) -> int:
 # Job Orchestration: maatregel → skill mapping (v3.0)
 # ════════════════════════════════════════════════════════════
 
-# Skill-codes — uniek per techniek, gebruikt voor skill-based assignment
+# Skill-codes — uniek per techniek, gebruikt voor skill-based assignment.
+# Gegroepeerd per CROW/NEN-domein (zie SKILL_DOMAIN hieronder voor het label
+# dat de "Mijn skills"-lijst gebruikt om per domein te groeperen).
 SKILL_CODES = {
+    # ── Wegverharding — CROW 146 (asfalt + elementen) ──
     "VULLEN_POLYMEER":      "Vullen polymeer (cold-pour scheurvulling)",
     "SLEMBEHANDELING":      "Slembehandeling (slurry-seal)",
     "VOEGVULLING":          "Voegvulling (lassen tussen banen)",
@@ -288,8 +291,96 @@ SKILL_CODES = {
     "KLINKER_HERSTRATEN":   "Klinker-herstraten",
     "VOEGEN_INVEGEN":       "Voegen invegen elementen",
     "STENEN_VERVANGEN":     "Stenen vervangen / aanleggen",
+
+    # ── Kunstwerken — NEN 2767-2 + CROW 134 (bruggen, viaducten, kademuren) ──
+    "BETONREPARATIE":       "Betonreparatie (uitgehakt + mortel)",
+    "WAPENING_BEHANDELEN":  "Wapeningscorrosie behandelen / passiveren",
+    "SCHEURINJECTIE":       "Scheurinjectie beton (epoxy/PUR)",
+    "VOEGOVERGANG":         "Voegovergang vervangen/herstellen",
+    "CONSERVERING_STAAL":   "Conservering staal (stralen + coating)",
+    "OPLEGGING_VERVANGEN":  "Lager/oplegging vervangen",
+    "LEUNING_HEKWERK":      "Leuning/hekwerk herstel",
+    "BESCHOEIING":          "Beschoeiing / damwand herstel",
+
+    # ── Riolering — NEN 3399 / NEN-EN 13508 ──
+    "RIOOL_RELINING":       "Riool relining (kousmethode)",
+    "RIOOL_DEELREPARATIE":  "Riool deelreparatie (robot/freesput)",
+    "RIOOL_REINIGEN":       "Riool reinigen + camera-inspectie",
+    "PUT_KOLK_HERSTEL":     "Put/kolk herstel of vervangen",
+
+    # ── Groen — CROW groenstandaarden / VTA ──
+    "BOOM_SNOEI":           "Snoeien / boomverzorging (VTA)",
+    "BOOM_ROOIEN":          "Boom rooien + herplant",
+    "ONKRUID_VERHARDING":   "Onkruidbeheer op verharding",
+    "MAAIEN_BERM":          "Maaien bermen / gazon",
+
+    # ── Verlichting & elektra — NEN 3140 / NEN-EN 13201 ──
+    "LICHTMAST_VERVANGEN":  "Lichtmast vervangen",
+    "ARMATUUR_LED":         "Armatuur / LED vervangen",
+    "ELEKTRA_STORING":      "Elektra-storing verhelpen (NEN 3140)",
+    "SCHAKELKAST":          "Schakelkast / aansluiting herstel",
+
+    # ── Speeltoestellen — NEN-EN 1176/1177 ──
+    "SPEEL_REPARATIE":      "Speeltoestel repareren",
+    "SPEEL_VALDEMPING":     "Valdempende ondergrond herstel",
+    "SPEEL_VERVANGEN":      "Speeltoestel vervangen / verwijderen",
+
+    # ── Straatmeubilair & verkeer ──
+    "MEUBILAIR_HERSTEL":    "Straatmeubilair herstel (bank/paal/bak)",
+    "BEBORDING":            "Verkeersbord / bebording vervangen",
+    "WEGMARKERING":         "Wegmarkering aanbrengen/herstellen",
+    "GELEIDERAIL":          "Geleiderail / vangrail herstel",
+
+    # ── Water & civiel ──
+    "BAGGEREN":             "Baggeren watergang",
+    "DUIKER_HERSTEL":       "Duiker reinigen / herstel",
+
+    # ── Reiniging ──
+    "VEEGWERK":             "Veegwerk / straatreiniging",
+    "GRAFFITI":             "Graffiti verwijderen",
+
+    # ── Generiek ──
     "SPOED_REPARATIE":      "Spoed-reparatie veiligheidsmaatregel",
     "OBSERVATIE":           "Observatie / GVI (geen ingreep)",
+}
+
+# Domein-label per skill — voedt de groepering in de "Mijn skills"-lijst.
+# Volgorde van deze dict bepaalt de volgorde van de groepen in de UI.
+SKILL_DOMAIN = {
+    # Wegverharding (CROW 146)
+    "VULLEN_POLYMEER": "Wegverharding", "SLEMBEHANDELING": "Wegverharding",
+    "VOEGVULLING": "Wegverharding", "PLEKSGEWIJZE": "Wegverharding",
+    "ASFALT_DEKLAAG": "Wegverharding", "ASFALT_TUSSENDEKLAAG": "Wegverharding",
+    "ASFALT_PROFIELCORR": "Wegverharding", "ASFALT_PROFIEL_VOL": "Wegverharding",
+    "ASFALT_RECONSTRUCTIE": "Wegverharding", "OPPERVLAKTEBEHANDELING": "Wegverharding",
+    "KLINKER_HERSTRATEN": "Wegverharding", "VOEGEN_INVEGEN": "Wegverharding",
+    "STENEN_VERVANGEN": "Wegverharding",
+    # Kunstwerken (NEN 2767-2 / CROW 134)
+    "BETONREPARATIE": "Kunstwerken", "WAPENING_BEHANDELEN": "Kunstwerken",
+    "SCHEURINJECTIE": "Kunstwerken", "VOEGOVERGANG": "Kunstwerken",
+    "CONSERVERING_STAAL": "Kunstwerken", "OPLEGGING_VERVANGEN": "Kunstwerken",
+    "LEUNING_HEKWERK": "Kunstwerken", "BESCHOEIING": "Kunstwerken",
+    # Riolering (NEN 3399)
+    "RIOOL_RELINING": "Riolering", "RIOOL_DEELREPARATIE": "Riolering",
+    "RIOOL_REINIGEN": "Riolering", "PUT_KOLK_HERSTEL": "Riolering",
+    # Groen
+    "BOOM_SNOEI": "Groen", "BOOM_ROOIEN": "Groen",
+    "ONKRUID_VERHARDING": "Groen", "MAAIEN_BERM": "Groen",
+    # Verlichting & elektra (NEN 3140)
+    "LICHTMAST_VERVANGEN": "Verlichting & elektra", "ARMATUUR_LED": "Verlichting & elektra",
+    "ELEKTRA_STORING": "Verlichting & elektra", "SCHAKELKAST": "Verlichting & elektra",
+    # Speeltoestellen (NEN-EN 1176)
+    "SPEEL_REPARATIE": "Speeltoestellen", "SPEEL_VALDEMPING": "Speeltoestellen",
+    "SPEEL_VERVANGEN": "Speeltoestellen",
+    # Straatmeubilair & verkeer
+    "MEUBILAIR_HERSTEL": "Straatmeubilair & verkeer", "BEBORDING": "Straatmeubilair & verkeer",
+    "WEGMARKERING": "Straatmeubilair & verkeer", "GELEIDERAIL": "Straatmeubilair & verkeer",
+    # Water & civiel
+    "BAGGEREN": "Water & civiel", "DUIKER_HERSTEL": "Water & civiel",
+    # Reiniging
+    "VEEGWERK": "Reiniging", "GRAFFITI": "Reiniging",
+    # Generiek
+    "SPOED_REPARATIE": "Generiek", "OBSERVATIE": "Generiek",
 }
 
 # Maatregel-naam (zoals in MAATREGEL_LOOKUP) → skill-code
