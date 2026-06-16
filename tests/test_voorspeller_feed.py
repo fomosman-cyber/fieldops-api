@@ -9,7 +9,7 @@
 import io
 from tests.conftest import auth
 from database import SessionLocal
-from models import AIAnalysis, Asset, Melding
+from models import AIAnalysis, Melding
 import asset_lifespan
 
 
