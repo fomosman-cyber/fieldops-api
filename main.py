@@ -1231,13 +1231,11 @@ def contact_form(req: ContactRequest, request: Request):
 
 @app.get("/prijzen", response_class=HTMLResponse)
 def prijzen():
-    """Pricing-pagina met 3 tiers (Starter/Pro/Enterprise) + feature-matrix + FAQ.
+    """Prijzenpagina is op verzoek verwijderd (pre-launch — geen publieke prijzen).
 
-    Statische HTML — geen template-variabelen. Linkt naar /prijzen/offerte-template.docx
-    voor downloadable Word-offerte (Pro-tier prijsstructuur).
+    De template blijft op schijf staan zodat 'ie later terug kan; de route geeft 404.
     """
-    html = (TEMPLATES_DIR / "prijzen.html").read_text(encoding="utf-8")
-    return HTMLResponse(content=html)
+    raise HTTPException(status_code=404, detail="Niet gevonden")
 
 
 @app.get("/prijzen/offerte-template.docx")
@@ -1301,9 +1299,9 @@ def handleiding():
 
 @app.get("/releasenotes", response_class=HTMLResponse)
 def releasenotes():
-    """Publieke releasenotes ('Wat is nieuw?') — bereikbaar zonder login.
-    Linkt vanuit portaal-header (✨-knop). Curated changelog in klantentaal;
-    nieuwe release toevoegen = blok bovenaan templates/releasenotes.html."""
+    """Releasenotes ('Wat is nieuw?') — pagina blijft bestaan maar is tijdelijk
+    LEEG (pre-launch). Zodra we onze eerste klant hebben vullen we de releaseblokken
+    in templates/releasenotes.html weer aan (die staan daar verborgen klaar)."""
     html = (TEMPLATES_DIR / "releasenotes.html").read_text(encoding="utf-8")
     return HTMLResponse(content=html)
 

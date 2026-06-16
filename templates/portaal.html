@@ -2,8 +2,21 @@
 <html lang="nl">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>FieldOps — Portaal</title>
+
+  <!-- Zoom-lock: de portaal gedraagt zich als een vaste native-app op telefoon —
+       geen pinch- of dubbeltik-zoom op dashboard/hoofdpagina. iOS Safari negeert
+       user-scalable=no in een tab, dus pinch wordt ook via gesture-events geblokkeerd.
+       touch-action: manipulation schakelt dubbeltik-zoom uit maar laat scrollen intact. -->
+  <style>html, body { touch-action: manipulation; }</style>
+  <script>
+    (function () {
+      ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (ev) {
+        document.addEventListener(ev, function (e) { e.preventDefault(); }, { passive: false });
+      });
+    })();
+  </script>
   <meta name="robots" content="noindex, nofollow">
   <link rel="canonical" href="https://portaal.fieldopsapp.nl/portaal">
 
@@ -94,7 +107,7 @@
       --orange: #ea580c;
       --red: #dc2626;
       --sidebar-w: 260px;
-      --topbar-h: 64px;
+      --topbar-h: 68px;
     }
 
     /* Dark theme — Palantir/Linear-feel. Geactiveerd via [data-theme="dark"]
@@ -983,7 +996,7 @@
     }
 
     @media (max-width: 768px) {
-      :root { --topbar-h: 52px; }
+      :root { --topbar-h: 64px; }
       .hamburger { display: flex; padding: 10px; font-size: 24px; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
       .sidebar { transform: translateX(-100%); }
       .sidebar.open { transform: translateX(0); }
@@ -1079,7 +1092,7 @@
         <option value="tr">🇹🇷 TR</option>
       </select>
       <button class="notif-btn" id="helpBtn" aria-label="Handleiding" onclick="window.open('/handleiding', '_blank')" title="Open handleiding">❓</button>
-      <button class="notif-btn" id="releaseNotesBtn" aria-label="Wat is nieuw?" onclick="window.open('/releasenotes', '_blank')" title="Wat is nieuw? — releasenotes">✨</button>
+      <button class="notif-btn" id="releaseNotesBtn" aria-label="Wat is nieuw?" style="display:none;" onclick="window.open('/releasenotes', '_blank')" title="Wat is nieuw? — releasenotes">✨</button>
       <button class="notif-btn" id="themeBtn" aria-label="Donker thema" onclick="toggleTheme()" title="Donker/licht thema">🌓</button>
       <button class="notif-btn" id="pushBtn" aria-label="Push notificaties" onclick="togglePushNotifications()" title="Browser push notificaties aan/uit (separate van in-app bell)" style="display:none;">📱</button>
       <!-- PWA install-knop in topbar (alleen zichtbaar als installable + niet al standalone) -->
@@ -1703,7 +1716,7 @@
         <div class="card" style="overflow-x:auto;padding:0;">
           <table class="data-table">
             <thead>
-              <tr><th style="width:32px;"><input type="checkbox" id="selectAllAssets" onchange="toggleAllAssets(this)"></th><th>Code</th><th>Naam</th><th>Type</th><th>Project</th><th style="text-align:center;">NEN</th><th style="text-align:center;">Open</th><th style="text-align:center;">Risico</th><th></th></tr>
+              <tr><th style="width:32px;"><input type="checkbox" id="selectAllAssets" onchange="toggleAllAssets(this)"></th><th>Code</th><th>Naam</th><th>Type</th><th>Project</th><th style="text-align:center;cursor:help;" title="NEN 2767-2 conditiescore: 1 = uitstekend t/m 6 = zeer slecht. Bepaald uit de laatste inspectie.">NEN</th><th style="text-align:center;cursor:help;" title="Aantal openstaande meldingen op deze asset.">Open</th><th style="text-align:center;cursor:help;" title="Risicoscore voorspellend onderhoud: hoger = eerder ingrijpen (leeftijd x conditie x meldingenhistorie).">Risico</th><th></th></tr>
             </thead>
             <tbody id="assetsBody"></tbody>
           </table>
@@ -13316,6 +13329,23 @@
       if (m) m.classList.remove('active');
     }
 
+    // Vul het locatie-veld vast met de GPS-positie als suggestie (best-effort,
+    // niet-blokkerend). Alleen invullen als de gebruiker nog niets heeft getypt.
+    function _schouwPrefillGps() {
+      var el = document.getElementById('schouwLocatie');
+      if (!el || !navigator.geolocation) return;
+      var prevPh = el.placeholder;
+      el.placeholder = 'GPS bepalen…';
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        el.placeholder = prevPh;
+        if (!el.value.trim()) {
+          el.value = pos.coords.latitude.toFixed(6) + ', ' + pos.coords.longitude.toFixed(6);
+        }
+      }, function() {
+        el.placeholder = prevPh;  // geweigerd/niet beschikbaar — laat leeg, geen blokkade
+      }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 });
+    }
+
     function _schouwInit() {
       var amb = document.getElementById('schouwAmbitie');
       amb.innerHTML = _carCatalogus.klassen.map(function(k) {
@@ -13327,6 +13357,7 @@
         return '<option value="' + t.key + '">' + escapeHtml(t.naam) + '</option>';
       }).join('');
       document.getElementById('schouwLocatie').value = '';
+      _schouwPrefillGps();
       document.getElementById('schouwAspecten').innerHTML = '';
       document.getElementById('schouwOordeel').style.display = 'none';
       document.getElementById('schouwAddBtn').disabled = true;
@@ -13414,6 +13445,7 @@
       });
       document.getElementById('schouwType').value = '';
       document.getElementById('schouwLocatie').value = '';
+      _schouwPrefillGps();
       document.getElementById('schouwAspecten').innerHTML = '';
       document.getElementById('schouwOordeel').style.display = 'none';
       document.getElementById('schouwAddBtn').disabled = true;
