@@ -1891,7 +1891,11 @@
               <li><code>lat</code>/<code>lng</code> of <code>RD x/y</code> (auto-converted naar WGS84)</li>
               <li><code>locatie</code> / <code>straat</code> / <code>adres</code></li>
               <li><code>parent_code</code> / <code>hoofdobject</code> (voor hiërarchie)</li>
+              <li><code>conditie</code> (1-5) / <code>bouwjaar</code> / <code>levensduur</code> — voeden de Voorspeller</li>
             </ul>
+            <div style="margin-top:10px;">
+              <a href="javascript:void(0)" onclick="downloadAssetTemplateCsv()" style="color:var(--accent);text-decoration:none;font-weight:600;">📄 Download lege template-CSV</a>
+            </div>
           </div>
         </div>
 
@@ -9783,6 +9787,25 @@
         })
         .catch(function(err) {
           showToast('PDF mislukt: ' + (err.message || 'Onbekend'), 'error');
+        });
+    }
+
+    function downloadAssetTemplateCsv() {
+      // CSV-template met Bearer-token via fetch + blob (een gewone <a href download>
+      // kan geen Authorization-header meesturen; de endpoint vereist auth).
+      fetch(API_URL + '/api/assets/import/template.csv', { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function(res) {
+          if (!res.ok) return res.text().then(function(t) { throw new Error('Server fout ' + res.status + ': ' + t.substring(0, 120)); });
+          return res.blob().then(function(blob) {
+            var blobUrl = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = blobUrl; a.download = 'assets-template.csv';
+            document.body.appendChild(a); a.click();
+            setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(blobUrl); }, 100);
+          });
+        })
+        .catch(function(err) {
+          showToast('Template downloaden mislukt: ' + (err.message || 'Onbekend'), 'error');
         });
     }
 

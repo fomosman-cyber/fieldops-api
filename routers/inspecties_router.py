@@ -31,6 +31,7 @@ from auth import get_current_user
 from permissions import can_create_meldingen
 from audit import log_action, ACTION
 from inspections import analyze_image, detect_media_type, sha256_of, PROMPT_VERSION
+import inspection_cycle
 
 router = APIRouter(prefix="/api/inspecties", tags=["AI-inspecties"])
 
@@ -369,6 +370,23 @@ def accept_inspection(
                 bev = []
             if bev and not m.description:
                 m.description = "AI-bevindingen:\n- " + "\n- ".join(bev)
+
+    # Conditie terugschrijven naar de asset: een geaccepteerde foto-inspectie
+    # hoort de NEN 2767-conditiescore van de asset bij te werken, zodat de
+    # Voorspeller (W_CONDITION) én de inspectie-cyclus meebewegen. Voorheen
+    # bleef deze conditie in AIAnalysis hangen en bereikte de asset nooit.
+    if rec.asset_id and rec.nen_2767_conditie:
+        asset = db.query(Asset).filter(
+            Asset.id == rec.asset_id,
+            Asset.organization_id == current_user.organization_id,
+        ).first()
+        if asset and 1 <= int(rec.nen_2767_conditie) <= 6:
+            asset.condition_score = min(5, int(rec.nen_2767_conditie))
+            asset.last_inspection_at = rec.accepted_at
+            months = inspection_cycle.cycle_months_for(asset.asset_type, rec.nen_2767_conditie)
+            if months:
+                asset.inspection_cycle_months = months
+                asset.next_inspection_due = inspection_cycle.next_due_date(rec.accepted_at, months)
 
     db.commit(); db.refresh(rec)
     log_action(db, request, current_user,
