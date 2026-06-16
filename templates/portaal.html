@@ -1610,6 +1610,18 @@
             <button type="button" onclick="clearBulkSelection()" style="padding:6px 12px;border-radius:8px;border:1px solid rgba(255,255,255,0.4);background:transparent;color:#fff;font-size:13px;font-weight:500;cursor:pointer;">✕ Selectie wissen</button>
           </div>
         </div>
+        <!-- Filter: project + soort (Klein onderhoud / CROW grote ronde / Alle) -->
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+          <select id="meldingProjectFilter" onchange="_renderMeldingenList()" style="padding:7px 10px;border-radius:8px;border:1px solid var(--border);font-size:13px;background:var(--card-bg);color:var(--text);">
+            <option value="">Alle projecten</option>
+          </select>
+          <div style="display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+            <button type="button" id="meldingSoortAlle" onclick="setMeldingSoort('alle')" style="padding:7px 12px;border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Alle</button>
+            <button type="button" id="meldingSoortKo" onclick="setMeldingSoort('ko')" style="padding:7px 12px;border:none;border-left:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">Klein onderhoud</button>
+            <button type="button" id="meldingSoortCrow" onclick="setMeldingSoort('crow')" style="padding:7px 12px;border:none;border-left:1px solid var(--border);background:transparent;color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">CROW grote ronde</button>
+          </div>
+          <span id="meldingFilterCount" style="font-size:12px;color:var(--text-muted);margin-left:auto;"></span>
+        </div>
         <div class="card" style="overflow-x:auto;">
           <table class="data-table">
             <thead>
@@ -10111,14 +10123,14 @@
       if (!tbody) return;
       var moreRow = document.getElementById('meldingMoreRow');
       if (moreRow) moreRow.remove();
-      var next = allMeldingen.slice(_meldingenRendered, _meldingenRendered + MELDING_PAGE_SIZE);
+      var next = _meldingView.slice(_meldingenRendered, _meldingenRendered + MELDING_PAGE_SIZE);
       tbody.insertAdjacentHTML('beforeend', next.map(_meldingRowHtml).join(''));
       _meldingenRendered += next.length;
-      if (_meldingenRendered < allMeldingen.length) {
-        var rest = allMeldingen.length - _meldingenRendered;
+      if (_meldingenRendered < _meldingView.length) {
+        var rest = _meldingView.length - _meldingenRendered;
         tbody.insertAdjacentHTML('beforeend',
           '<tr id="meldingMoreRow"><td colspan="9" style="text-align:center;padding:16px;background:var(--card-bg-hover);">'
-          + '<button class="btn-secondary" onclick="_appendMeldingChunk()">Toon meer — ' + rest + ' van ' + allMeldingen.length + ' resterend</button>'
+          + '<button class="btn-secondary" onclick="_appendMeldingChunk()">Toon meer — ' + rest + ' van ' + _meldingView.length + ' resterend</button>'
           + '</td></tr>');
       }
       // Nieuwe checkboxes binden (alleen ongebonden) + thumbnails lazy laden
@@ -10128,8 +10140,10 @@
       _lazyLoadMeldingThumbs();
     }
 
-    // ─── Sortering van de meldingen-lijst (client-side op allMeldingen) ───
+    // ─── Filter + sortering van de meldingen-lijst (client-side op allMeldingen) ───
     var _meldingSort = { key: 'created_at', dir: 'desc' };
+    var _meldingSoortFilter = 'alle';   // 'alle' | 'ko' | 'crow'
+    var _meldingView = [];              // gefilterde + gesorteerde subset die gerenderd wordt
     var _MELDING_PRIO_RANK = { kritiek:4, hoog:3, normaal:2, laag:1 };
     var _MELDING_STATUS_RANK = { open:1, in_behandeling:2, in_uitvoering:3, gereed_uitvoering:4, opgelost:5, afgerond:6 };
 
@@ -10151,7 +10165,7 @@
 
     function _applyMeldingSort() {
       var key = _meldingSort.key, dir = (_meldingSort.dir === 'asc') ? 1 : -1;
-      allMeldingen.sort(function(a, b) {
+      _meldingView.sort(function(a, b) {
         var va = _meldingSortValue(a, key), vb = _meldingSortValue(b, key);
         if (va < vb) return -1 * dir;
         if (va > vb) return 1 * dir;
@@ -10168,14 +10182,32 @@
 
     // Sorteert allMeldingen volgens de huidige sort-state en herrendert de lijst
     // via hetzelfde chunk-mechanisme (eerste 100 + "Toon meer").
+    // Filter-predicaat: project-keuze + soort (alle / klein onderhoud / CROW grote ronde).
+    // KO via de bestaande helper (vangt 'KO' én 'klein onderhoud'); CROW via de
+    // from_inspection-vlag (melding gekoppeld aan een formele inspectie-defect).
+    function _meldingPassesFilter(m) {
+      var pid = (document.getElementById('meldingProjectFilter') || {}).value || '';
+      if (pid && m.project_id !== pid) return false;
+      if (_meldingSoortFilter === 'ko') return _isKleinOnderhoud(m.onderhoud_categorie);
+      if (_meldingSoortFilter === 'crow') return !!m.from_inspection;
+      return true;
+    }
+
     function _renderMeldingenList() {
       var tbody = document.getElementById('meldingenBody');
       if (!tbody) return;
+      _meldingView = (allMeldingen || []).filter(_meldingPassesFilter);
       _applyMeldingSort();
       _meldingenRendered = 0;
       tbody.innerHTML = '';
-      _appendMeldingChunk();
+      if (!_meldingView.length) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text-dim);">Geen meldingen in deze weergave.</td></tr>';
+      } else {
+        _appendMeldingChunk();
+      }
       _updateMeldingSortHeaders();
+      var cnt = document.getElementById('meldingFilterCount');
+      if (cnt) cnt.textContent = _meldingView.length + ' van ' + (allMeldingen ? allMeldingen.length : 0);
     }
 
     function sortMeldingen(key) {
@@ -10187,6 +10219,30 @@
         _meldingSort.dir = (key === 'title' || key === 'category' || key === 'project') ? 'asc' : 'desc';
       }
       _renderMeldingenList();
+    }
+
+    function setMeldingSoort(soort) {
+      _meldingSoortFilter = soort;
+      ['Alle', 'Ko', 'Crow'].forEach(function(label) {
+        var btn = document.getElementById('meldingSoort' + label);
+        if (!btn) return;
+        var active = (label.toLowerCase() === soort) || (label === 'Alle' && soort === 'alle');
+        btn.style.background = active ? 'var(--accent)' : 'transparent';
+        btn.style.color = active ? '#fff' : 'var(--text)';
+      });
+      _renderMeldingenList();
+    }
+
+    function _populateMeldingProjectFilter() {
+      var sel = document.getElementById('meldingProjectFilter');
+      if (!sel) return;
+      var current = sel.value;
+      var opts = '<option value="">Alle projecten</option>';
+      (allProjects || []).forEach(function(p) {
+        opts += '<option value="' + p.id + '">' + escapeHtml(p.name) + '</option>';
+      });
+      sel.innerHTML = opts;
+      sel.value = current;
     }
 
     function loadMeldingen() {
@@ -10208,6 +10264,7 @@
         // Render-chunking: render de eerste rijen + "Toon meer" zodat we niet
         // duizenden DOM-rijen tegelijk bouwen (traag). allMeldingen blijft
         // compleet → export/filters/tellingen ongewijzigd.
+        _populateMeldingProjectFilter();
         _renderMeldingenList();
         document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
         // Bind bulk-select dropdowns (één keer per laad — selects worden niet vervangen)
