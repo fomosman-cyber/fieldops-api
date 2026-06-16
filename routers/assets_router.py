@@ -915,6 +915,14 @@ _CSV_ALIASES: dict[str, list[str]] = {
     "parent_code":          ["parent_code", "parent", "parent_id", "hoofdobject", "hoofdcode",
                              "ouder", "ouder_code"],
     "project_id":           ["project_id", "project"],
+    # Levensduur/conditie — voeden de Voorspeller (W_CONDITION + W_AGE).
+    "condition_score":      ["condition_score", "conditiescore", "conditie", "conditie_score",
+                             "nen_conditie", "nen2767", "nen_2767", "nen2767_conditie", "staat"],
+    "installed_at":         ["installed_at", "aanlegjaar", "aanleg_jaar", "bouwjaar", "aanlegdatum",
+                             "installatiedatum", "installatie_datum", "plaatsingsdatum",
+                             "jaar_aanleg", "aanleg"],
+    "expected_lifespan_years": ["expected_lifespan_years", "levensduur", "verwachte_levensduur",
+                             "levensduur_jaren", "economische_levensduur", "technische_levensduur"],
 }
 
 # RD-coördinaten herkenning: X meestal 0-300.000 m, Y meestal 300.000-650.000 m
@@ -1030,6 +1038,37 @@ def _parse_coords(row: dict, mapping: dict[str, list[str]]) -> tuple[Optional[fl
     return None, None, None
 
 
+def _parse_int_in_range(raw: str, lo: int, hi: int) -> tuple[Optional[int], Optional[str]]:
+    """Parse een geheel getal binnen [lo, hi]. (None, None) bij leeg; (None, fout) bij ongeldig."""
+    if not raw:
+        return None, None
+    try:
+        v = int(float(raw.replace(",", ".")))
+    except (TypeError, ValueError):
+        return None, f"'{raw}' is geen geheel getal"
+    if v < lo or v > hi:
+        return None, f"waarde {v} buiten bereik {lo}-{hi}"
+    return v, None
+
+
+def _parse_installed_at(raw: str) -> tuple[Optional[datetime], Optional[str]]:
+    """Parse aanleg-datum óf -jaar → datetime (1 jan bij alleen een jaartal)."""
+    if not raw:
+        return None, None
+    s = raw.strip()
+    if re.fullmatch(r"\d{4}", s):
+        y = int(s)
+        if 1850 <= y <= 2100:
+            return datetime(y, 1, 1, tzinfo=timezone.utc), None
+        return None, f"jaartal {y} onwaarschijnlijk"
+    for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d", "%m-%Y", "%Y-%m"):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=timezone.utc), None
+        except ValueError:
+            continue
+    return None, f"'{raw}' is geen herkenbare datum/jaar"
+
+
 @router.get("/import/template.csv")
 def import_assets_template_csv(
     current_user: User = Depends(get_current_user),
@@ -1045,14 +1084,17 @@ def import_assets_template_csv(
     writer.writerow([
         "code", "asset_type", "name", "lat", "lng",
         "location_description", "parent_code", "project_id",
+        "condition_score", "installed_at", "expected_lifespan_years",
     ])
     writer.writerow([
         "WV-Dijkweg-001", "wegvak", "Dijkweg (rijbaan)", "51.992", "4.211",
         "Dijkweg t.h.v. nr. 12", "", "",
+        "3", "2008", "40",
     ])
     writer.writerow([
         "LM-Naaldwijk-042", "lichtmast", "Lichtmast Galgeweg", "52.008", "4.183",
         "Galgeweg hoek Dijkweg", "WV-Dijkweg-001", "",
+        "2", "2015", "25",
     ])
     buf.seek(0)
     return StreamingResponse(
@@ -1159,6 +1201,18 @@ async def import_assets_csv(
 
         proj_val = _get(row, mapping, "project_id") or None
 
+        # Conditie/levensduur — voeden de Voorspeller (W_CONDITION + W_AGE).
+        # Ongeldige waarden loggen als rij-fout maar blokkeren de rij niet.
+        cond_val, cond_err = _parse_int_in_range(_get(row, mapping, "condition_score"), 1, 5)
+        if cond_err:
+            errors.append({"row": i, "error": f"conditiescore: {cond_err}"})
+        life_val, life_err = _parse_int_in_range(_get(row, mapping, "expected_lifespan_years"), 1, 200)
+        if life_err:
+            errors.append({"row": i, "error": f"levensduur: {life_err}"})
+        inst_val, inst_err = _parse_installed_at(_get(row, mapping, "installed_at"))
+        if inst_err:
+            errors.append({"row": i, "error": f"aanlegdatum: {inst_err}"})
+
         existing = db.query(Asset).filter(
             Asset.organization_id == current_user.organization_id,
             Asset.code == code,
@@ -1171,6 +1225,12 @@ async def import_assets_csv(
             existing.lng = lng if lng is not None else existing.lng
             existing.location_description = loc_val or existing.location_description
             existing.project_id = proj_val or existing.project_id
+            if cond_val is not None:
+                existing.condition_score = cond_val
+            if life_val is not None:
+                existing.expected_lifespan_years = life_val
+            if inst_val is not None:
+                existing.installed_at = inst_val
             updated += 1
         else:
             new_asset = Asset(
@@ -1178,6 +1238,9 @@ async def import_assets_csv(
                 lat=lat, lng=lng,
                 location_description=loc_val,
                 project_id=proj_val,
+                condition_score=cond_val,
+                expected_lifespan_years=life_val,
+                installed_at=inst_val,
                 organization_id=current_user.organization_id,
                 created_by=current_user.id,
             )
@@ -1210,6 +1273,7 @@ async def import_assets_csv(
             "asset_type": _get(row, mapping, "asset_type"),
             "name": _get(row, mapping, "name"),
             "location_description": _get(row, mapping, "location_description"),
+            "condition_score": _get(row, mapping, "condition_score"),
         }
         try:
             la, ln, _ = _parse_coords(row, mapping)
