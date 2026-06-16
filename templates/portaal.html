@@ -1613,7 +1613,7 @@
         <div class="card" style="overflow-x:auto;">
           <table class="data-table">
             <thead>
-              <tr><th style="width:32px;"><input type="checkbox" id="selectAllMeldingen" onchange="toggleAllMeldingen(this)"></th><th style="width:52px;">Foto</th><th>Titel</th><th>Categorie</th><th>Prioriteit</th><th>Status</th><th>Project</th><th>Datum</th><th style="width:48px;text-align:right;"></th></tr>
+              <tr><th style="width:32px;"><input type="checkbox" id="selectAllMeldingen" onchange="toggleAllMeldingen(this)"></th><th style="width:52px;">Foto</th><th onclick="sortMeldingen('title')" style="cursor:pointer;user-select:none;">Titel <span class="sort-ind" data-sortcol="title"></span></th><th onclick="sortMeldingen('category')" style="cursor:pointer;user-select:none;">Categorie <span class="sort-ind" data-sortcol="category"></span></th><th onclick="sortMeldingen('priority')" style="cursor:pointer;user-select:none;">Prioriteit <span class="sort-ind" data-sortcol="priority"></span></th><th onclick="sortMeldingen('status')" style="cursor:pointer;user-select:none;">Status <span class="sort-ind" data-sortcol="status"></span></th><th onclick="sortMeldingen('project')" style="cursor:pointer;user-select:none;">Project <span class="sort-ind" data-sortcol="project"></span></th><th onclick="sortMeldingen('created_at')" style="cursor:pointer;user-select:none;">Datum <span class="sort-ind" data-sortcol="created_at"></span></th><th style="width:96px;text-align:right;"></th></tr>
             </thead>
             <tbody id="meldingenBody"></tbody>
           </table>
@@ -10076,7 +10076,8 @@
           (statusLabels[m.status]||m.status)+'</span></td>' +
         '<td onclick="openMeldingDetail(\''+m.id+'\')">'+projectName+'</td>' +
         '<td onclick="openMeldingDetail(\''+m.id+'\')" style="color:var(--text-dim);">'+date+'</td>' +
-        '<td onclick="event.stopPropagation()" style="text-align:right;">'
+        '<td onclick="event.stopPropagation()" style="text-align:right;white-space:nowrap;">'
+          + '<button class="btn-secondary" style="font-size:11px;padding:4px 7px;" onclick="event.stopPropagation();addPhotoAfterToMelding(\''+m.id+'\')" title="Foto na uitvoering toevoegen">📸</button> '
           + '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fee2e2;" onclick="event.stopPropagation();deleteMeldingFromList(\''+m.id+'\',\''+(m.title||'').replace(/\'/g,"\\'")+'\')" title="Permanent verwijderen">🗑️</button>'
         + '</td>' +
         '</tr>';
@@ -10104,6 +10105,67 @@
       _lazyLoadMeldingThumbs();
     }
 
+    // ─── Sortering van de meldingen-lijst (client-side op allMeldingen) ───
+    var _meldingSort = { key: 'created_at', dir: 'desc' };
+    var _MELDING_PRIO_RANK = { kritiek:4, hoog:3, normaal:2, laag:1 };
+    var _MELDING_STATUS_RANK = { open:1, in_behandeling:2, in_uitvoering:3, gereed_uitvoering:4, opgelost:5, afgerond:6 };
+
+    function _meldingProjectName(m) {
+      if (!m.project_id) return '';
+      var proj = (allProjects || []).find(function(p){return p.id===m.project_id;});
+      return proj ? proj.name : '';
+    }
+
+    function _meldingSortValue(m, key) {
+      if (key === 'priority') return _MELDING_PRIO_RANK[m.priority] || 0;
+      if (key === 'status') return _MELDING_STATUS_RANK[m.status] || 99;
+      if (key === 'created_at') return m.created_at || '';
+      if (key === 'project') return _meldingProjectName(m).toLowerCase();
+      if (key === 'title') return (m.title || '').toLowerCase();
+      if (key === 'category') return (m.category || '').toLowerCase();
+      return '';
+    }
+
+    function _applyMeldingSort() {
+      var key = _meldingSort.key, dir = (_meldingSort.dir === 'asc') ? 1 : -1;
+      allMeldingen.sort(function(a, b) {
+        var va = _meldingSortValue(a, key), vb = _meldingSortValue(b, key);
+        if (va < vb) return -1 * dir;
+        if (va > vb) return 1 * dir;
+        return 0;
+      });
+    }
+
+    function _updateMeldingSortHeaders() {
+      document.querySelectorAll('#meldingenList .sort-ind').forEach(function(s) {
+        var col = s.getAttribute('data-sortcol');
+        s.textContent = (col === _meldingSort.key) ? (_meldingSort.dir === 'asc' ? ' ▲' : ' ▼') : '';
+      });
+    }
+
+    // Sorteert allMeldingen volgens de huidige sort-state en herrendert de lijst
+    // via hetzelfde chunk-mechanisme (eerste 100 + "Toon meer").
+    function _renderMeldingenList() {
+      var tbody = document.getElementById('meldingenBody');
+      if (!tbody) return;
+      _applyMeldingSort();
+      _meldingenRendered = 0;
+      tbody.innerHTML = '';
+      _appendMeldingChunk();
+      _updateMeldingSortHeaders();
+    }
+
+    function sortMeldingen(key) {
+      if (_meldingSort.key === key) {
+        _meldingSort.dir = (_meldingSort.dir === 'asc') ? 'desc' : 'asc';
+      } else {
+        _meldingSort.key = key;
+        // tekstkolommen oplopend (A→Z), prioriteit/status/datum aflopend (urgentst/nieuwste eerst)
+        _meldingSort.dir = (key === 'title' || key === 'category' || key === 'project') ? 'asc' : 'desc';
+      }
+      _renderMeldingenList();
+    }
+
     function loadMeldingen() {
       var empty = document.getElementById('meldingenEmpty');
       var list = document.getElementById('meldingenList');
@@ -10123,9 +10185,7 @@
         // Render-chunking: render de eerste rijen + "Toon meer" zodat we niet
         // duizenden DOM-rijen tegelijk bouwen (traag). allMeldingen blijft
         // compleet → export/filters/tellingen ongewijzigd.
-        _meldingenRendered = 0;
-        tbody.innerHTML = '';
-        _appendMeldingChunk();
+        _renderMeldingenList();
         document.getElementById('statMeldingen').textContent = allMeldingen.filter(function(x){return x.status==='open';}).length;
         // Bind bulk-select dropdowns (één keer per laad — selects worden niet vervangen)
         var bulkStatus = document.getElementById('bulkStatusSelect');
@@ -13705,8 +13765,15 @@
     // Foto-na uploader voor Mijn-dag afronden-flow. Compact, mobile-first.
     // Roept onUploaded() pas aan nadat de foto succesvol is opgeslagen op
     // de melding (PUT met photo_after_url).
-    function openPhotoAfterModal(meldingId, onUploaded) {
-      // Bouw een ad-hoc modal — voorkomt extra HTML in template-body
+    function openPhotoAfterModal(meldingId, onUploaded, opts) {
+      // Bouw een ad-hoc modal — voorkomt extra HTML in template-body.
+      // opts laat de labels aanpassen zodat dezelfde modal dient voor
+      // (a) afronden (default) én (b) los een ná-foto toevoegen.
+      opts = opts || {};
+      var _ttl = opts.title || '📸 Foto na uitvoering';
+      var _sub = opts.subtitle || 'Verplicht voordat de melding afgesloten wordt. Even snel een foto maken of een bestaande kiezen.';
+      var _submitLabel = opts.submitLabel || 'Opslaan & afronden';
+      var _successMsg = opts.successMsg || 'Foto na opgeslagen — melding wordt afgesloten';
       var existing = document.getElementById('photoAfterModalDynamic');
       if (existing) existing.remove();
       var overlay = document.createElement('div');
@@ -13716,8 +13783,8 @@
       overlay.innerHTML =
         '<div class="modal" style="max-width:480px;">'
         + '<button class="modal-close" onclick="document.getElementById(\'photoAfterModalDynamic\').remove()" aria-label="Sluiten">&times;</button>'
-        + '<h2 style="margin:0 0 6px;">📸 Foto na uitvoering</h2>'
-        + '<p class="subtitle" style="margin:0 0 16px;">Verplicht voordat de melding afgesloten wordt. Even snel een foto maken of een bestaande kiezen.</p>'
+        + '<h2 style="margin:0 0 6px;">' + _ttl + '</h2>'
+        + '<p class="subtitle" style="margin:0 0 16px;">' + _sub + '</p>'
         + '<label for="photoAfterInputDyn" style="display:block;cursor:pointer;border:2px dashed #16a34a;border-radius:12px;padding:24px;text-align:center;background:rgba(22,163,74,0.05);">'
         +   '<img id="photoAfterPreviewDyn" style="max-width:100%;max-height:200px;display:none;border-radius:8px;margin:0 auto 10px;">'
         +   '<div id="photoAfterLabelDyn" style="font-size:14px;color:#166534;font-weight:600;">✅ Tik om foto te kiezen of te maken</div>'
@@ -13726,7 +13793,7 @@
         + '<input type="file" id="photoAfterInputDyn" accept="image/*" capture="environment" style="display:none;">'
         + '<div style="display:flex;gap:8px;margin-top:18px;">'
         +   '<button type="button" class="btn-secondary" style="flex:1;" onclick="document.getElementById(\'photoAfterModalDynamic\').remove()">Annuleer</button>'
-        +   '<button type="button" id="photoAfterSubmitDyn" class="btn-primary" style="flex:1;" disabled>Opslaan & afronden</button>'
+        +   '<button type="button" id="photoAfterSubmitDyn" class="btn-primary" style="flex:1;" disabled>' + _submitLabel + '</button>'
         + '</div>'
         + '</div>';
       document.body.appendChild(overlay);
@@ -13745,7 +13812,7 @@
           capturedDataUrl = ev.target.result;
           preview.src = capturedDataUrl;
           preview.style.display = 'block';
-          label.textContent = '✓ Foto klaar — tik op Opslaan & afronden';
+          label.textContent = '✓ Foto klaar — tik op ' + _submitLabel;
           submitBtn.disabled = false;
         };
         reader.readAsDataURL(f);
@@ -13758,14 +13825,28 @@
         api('PUT', '/api/meldingen/' + meldingId, { photo_after_url: capturedDataUrl })
           .then(function(){
             overlay.remove();
-            showToast('Foto na opgeslagen — melding wordt afgesloten', 'success');
+            showToast(_successMsg, 'success');
             if (typeof onUploaded === 'function') onUploaded();
           })
           .catch(function(err){
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Opslaan & afronden';
+            submitBtn.textContent = _submitLabel;
             showToast('Foto opslaan mislukt: ' + (err.message || 'onbekend'), 'error');
           });
+      });
+    }
+
+    // Snelle losse "voeg ná-foto toe" — opent dezelfde foto-modal maar zónder
+    // statuswijziging (handig in het veld direct na uitvoering/herstel).
+    function addPhotoAfterToMelding(meldingId) {
+      openPhotoAfterModal(meldingId, function() {
+        loadMeldingen();
+        if (typeof loadMapData === 'function' && typeof map !== 'undefined' && map) loadMapData();
+      }, {
+        title: '📸 Foto na uitvoering toevoegen',
+        subtitle: 'Voeg een foto toe ná de uitvoering/herstel. De status van de melding verandert hierdoor niet.',
+        submitLabel: 'Foto opslaan',
+        successMsg: 'Foto na uitvoering opgeslagen',
       });
     }
 

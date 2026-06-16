@@ -2,6 +2,8 @@
 
 import io
 from tests.conftest import auth
+from database import SessionLocal
+from models import Melding
 
 
 def _new_asset(client, user, **overrides):
@@ -117,3 +119,44 @@ def test_csv_import(client, admin_user):
     wv = next((n for n in tree if n["code"] == "WV-1"), None)
     assert wv is not None
     assert len(wv["children"]) == 2
+
+
+def _add_melding(org_id, user_id, asset_id, status):
+    """Plaats een melding direct in de DB (omzeilt de status-API-regels)."""
+    db = SessionLocal()
+    try:
+        m = Melding(title=f"M-{status}", status=status,
+                    organization_id=org_id, created_by=user_id, asset_id=asset_id)
+        db.add(m)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_open_meldingen_count_excludes_opgelost_en_afgerond(client, admin_user):
+    """De per-asset 'Open'-teller mag alleen nog-te-doen meldingen tellen:
+    'opgelost' én 'afgerond' zijn beide afgehandeld en tellen NIET mee."""
+    a = _new_asset(client, admin_user, code="CNT-1")
+    org_id, uid = admin_user.organization_id, admin_user.id
+    _add_melding(org_id, uid, a["id"], "open")
+    _add_melding(org_id, uid, a["id"], "open")
+    _add_melding(org_id, uid, a["id"], "in_behandeling")
+    _add_melding(org_id, uid, a["id"], "opgelost")   # mag NIET meetellen
+    _add_melding(org_id, uid, a["id"], "afgerond")   # mag NIET meetellen
+
+    row = next(i for i in client.get("/api/assets/", headers=auth(admin_user)).json()
+               if i["code"] == "CNT-1")
+    assert row["open_meldingen_count"] == 3
+
+    one = client.get(f"/api/assets/{a['id']}", headers=auth(admin_user)).json()
+    assert one["open_meldingen_count"] == 3
+
+
+def test_asset_import_template_csv(client, admin_user):
+    r = client.get("/api/assets/import/template.csv", headers=auth(admin_user))
+    assert r.status_code == 200, r.text
+    assert "text/csv" in r.headers["content-type"]
+    assert "assets-template.csv" in r.headers["content-disposition"]
+    header = r.text.splitlines()[0]
+    for col in ("code", "asset_type", "name", "lat", "lng", "parent_code"):
+        assert col in header
