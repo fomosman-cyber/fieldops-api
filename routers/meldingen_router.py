@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import Optional
 from pydantic import BaseModel, Field
 from database import get_db
-from models import Melding, Project, Asset, User
+from models import Melding, Project, Asset, User, InspectionDefect
 from schemas import MeldingCreate, MeldingResponse, MeldingUpdate
 from melding_norm_forms import norm_form_voor, alle_norm_velden_keys
 from auth import get_current_user
@@ -149,7 +149,7 @@ def _clean_norm_data(norm_data) -> Optional[str]:
     return json.dumps(cleaned, ensure_ascii=False) if cleaned else None
 
 
-def _melding_to_response(melding: Melding, light: bool = False) -> dict:
+def _melding_to_response(melding: Melding, light: bool = False, from_inspection: bool = False) -> dict:
     """Converteer Melding naar response dict met creator_name + asset-koppeling.
 
     light=True laat de (vaak grote base64-)foto's WEG en geeft alleen
@@ -187,6 +187,7 @@ def _melding_to_response(melding: Melding, light: bool = False) -> dict:
         "asset_id": melding.asset_id,
         "asset_code": asset.code if asset else None,
         "asset_type": asset.asset_type if asset else None,
+        "from_inspection": from_inspection,
         "crow_schadegroep": melding.crow_schadegroep,
         "crow_schadebeeld": melding.crow_schadebeeld,
         "crow_ernst": melding.crow_ernst,
@@ -225,7 +226,17 @@ def list_meldingen(
         query = query.filter(Melding.asset_id == asset_id)
     meldingen = query.order_by(Melding.created_at.desc()).all()
     light = not with_photos
-    return [_melding_to_response(m, light=light) for m in meldingen]
+    # Welke meldingen zijn gekoppeld aan een (formele CROW/NEN-)inspectie? Eén
+    # bulk-query op InspectionDefect.melding_id (geen N+1). De Meldingen-tab
+    # gebruikt deze vlag om te schakelen tussen Klein onderhoud en CROW grote ronde.
+    inspectie_ids = {
+        mid for (mid,) in db.query(InspectionDefect.melding_id).filter(
+            InspectionDefect.organization_id == current_user.organization_id,
+            InspectionDefect.melding_id.isnot(None),
+        ).all()
+    }
+    return [_melding_to_response(m, light=light, from_inspection=(m.id in inspectie_ids))
+            for m in meldingen]
 
 
 @router.post("/", response_model=MeldingResponse)

@@ -247,6 +247,7 @@ class MeldingResponse(BaseModel):
     asset_id: Optional[str] = None
     asset_code: Optional[str] = None        # voor melding-document + modal-koppeling (#12)
     asset_type: Optional[str] = None
+    from_inspection: Optional[bool] = None  # melding gekoppeld aan een formele CROW/NEN-inspectie (defect.melding_id)
     # CROW 146 + NEN 2767 classificatie — nodig voor een CROW-conform
     # melding-document (#12) en om de classificatie te herstellen in de
     # bewerk-modal (die las deze velden al maar kreeg ze niet van de API).
