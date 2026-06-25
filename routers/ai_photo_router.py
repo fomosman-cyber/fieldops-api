@@ -21,6 +21,8 @@ Endpoint:
   GET  /api/ai/status     Versie + capabilities
 """
 from __future__ import annotations
+import logging
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -36,6 +38,8 @@ import kunstwerken_taxonomy as kt
 import crow_146
 import nen_en_1176
 import nen_3140
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/ai", tags=["AI-foto-classificatie"])
 
@@ -236,6 +240,78 @@ class Crow146Request(BaseModel):
     photo_dominant_color: Optional[str] = Field(None, description="hex of 'r,g,b'")
 
 
+_CROW_KLASSEN = ["L1", "L2", "L3", "M1", "M2", "M3", "E1", "E2", "E3"]
+
+
+def _vision_crow146(photo_data_url: str, *, asset_type, properties_hint,
+                    element_context, vt, type_label) -> Optional[dict]:
+    """Echte foto-analyse via Claude vision (``inspections.analyze_image``).
+
+    Dit kijkt naar de werkelijke pixels (i.t.t. de heuristiek hieronder, die
+    alleen op metadata + taxonomy draait). Returnt de classify-crow146-respons,
+    of ``None`` als vision niet beschikbaar is of faalt → de caller valt dan
+    terug op de heuristiek (geen harde fout voor de inspecteur).
+    """
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+    try:
+        import inspections
+        raw, media = inspections.decode_data_url(photo_data_url)
+        ctx = " · ".join(p for p in (properties_hint, element_context) if p)
+        vres = inspections.analyze_image(
+            image_bytes=raw,
+            image_media_type=media,
+            asset_type="wegdek",  # CROW 146 = verharding → verharding-prompt
+            extra_context=ctx or None,
+        )
+    except Exception as e:  # noqa: BLE001 — alle vision-fouten → heuristiek-fallback
+        logger.warning("CROW146 vision-analyse mislukt, terugval op heuristiek: %s", e)
+        return None
+
+    schadebeeld = vres.get("crow_schadebeeld")
+    klasse = vres.get("crow_klasse")
+    conf = vres.get("confidence")
+    conf_pct = int(round(conf * 100)) if isinstance(conf, (int, float)) else None
+
+    suggestions = []
+    if vres.get("schade_aanwezig") and (schadebeeld or vres.get("schade_type")):
+        code = schadebeeld or vres.get("schade_type")
+        naam = (schadebeeld or code).replace("-", " ").replace("_", " ").capitalize()
+        suggestions.append({
+            "code": code,
+            "naam": naam,
+            "confidence_pct": conf_pct if conf_pct is not None else 80,
+            "klasse": klasse,
+            "schadegroep": vres.get("crow_schadegroep"),
+            "ernst": vres.get("crow_ernst"),
+            "omvang": vres.get("crow_omvang"),
+            "maatregel": vres.get("gw_maatregel") or vres.get("aanbevolen_actie"),
+            "gw_term": vres.get("gw_term"),
+            "nen_2767_conditie": vres.get("nen_2767_conditie"),
+            "onderhoud_categorie": vres.get("onderhoud_categorie"),
+            "method": "claude-vision",
+        })
+
+    return {
+        "verhardingstype": vt,
+        "verhardingstype_label": type_label,
+        "detection_method": "vision",
+        "suggestions": suggestions,
+        "klasse_advies": {k: crow_146.klasse_advies(k) for k in _CROW_KLASSEN},
+        "bevindingen": vres.get("bevindingen") or [],
+        "aanbevolen_actie": vres.get("aanbevolen_actie"),
+        "nen_2767_conditie": vres.get("nen_2767_conditie"),
+        "asset_zichtbaar": vres.get("asset_zichtbaar", True),
+        "version": AI_VERSION,
+        "method": "claude-vision-crow146",
+        "model_id": vres.get("_model_id"),
+        "note": "Analyse op basis van de werkelijke foto-pixels via Claude vision "
+                "(CROW 146 + NEN 2767). Suggestie voor de inspecteur — controleer vóór accepteren.",
+        "norm_reference": "CROW 146 (2010) + Standaard 2015 + NEN 2767",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.post("/classify-crow146")
 def classify_crow146_endpoint(
     req: Crow146Request,
@@ -243,11 +319,15 @@ def classify_crow146_endpoint(
 ):
     """CROW 146 verharding-inspectie classificatie.
 
+    Met foto + ``ANTHROPIC_API_KEY`` analyseert dit de werkelijke pixels via
+    Claude vision (CROW 146 + NEN 2767). Zonder foto/key valt het terug op een
+    deterministische heuristiek (verhardingstype + CROW 146-taxonomy).
+
     Identificeert verhardingstype (asfalt 146a vs elementen 146b) en geeft
-    top-5 waarschijnlijke schadebeelden met advies-maatregel + GW-term.
+    waarschijnlijke schadebeelden met advies-maatregel + GW-term.
 
     Geschikt voor:
-      - Inspecteurs in opleiding bij schouwronde wegen/trottoirs
+      - Inspecteurs bij schouwronde wegen/trottoirs
       - Snelle classificatie bij bulk-meldingen openbare ruimte
       - Suggestie-input bij Kunstwerken-inspectie BRUG.BRUGDEK element
 
@@ -265,6 +345,20 @@ def classify_crow146_endpoint(
             dominant_color_rgb=rgb_tuple,
         )
 
+    type_label = "Asfaltverharding (CROW 146a)" if vt == "a" else "Elementenverharding (CROW 146b)"
+
+    # Echte foto-analyse wanneer er een foto + API-key is; anders heuristiek.
+    if req.photo_data_url:
+        vision = _vision_crow146(
+            req.photo_data_url,
+            asset_type=req.asset_type,
+            properties_hint=req.properties_hint,
+            element_context=req.element_context,
+            vt=vt, type_label=type_label,
+        )
+        if vision is not None:
+            return vision
+
     suggestions = crow_146.classify_crow146(
         verhardingstype=vt,
         brightness=req.photo_mean_brightness,
@@ -272,19 +366,16 @@ def classify_crow146_endpoint(
         element_context=req.element_context,
     )
 
-    type_label = "Asfaltverharding (CROW 146a)" if vt == "a" else "Elementenverharding (CROW 146b)"
-
     return {
         "verhardingstype": vt,
         "verhardingstype_label": type_label,
         "detection_method": "explicit" if req.verhardingstype else "auto",
         "suggestions": suggestions,
-        "klasse_advies": {k: crow_146.klasse_advies(k) for k in
-                          ["L1", "L2", "L3", "M1", "M2", "M3", "E1", "E2", "E3"]},
+        "klasse_advies": {k: crow_146.klasse_advies(k) for k in _CROW_KLASSEN},
         "version": AI_VERSION,
         "method": "heuristic-crow146",
-        "note": "Heuristische top-5 — vervang door gecertificeerde inspectie voor formeel rapport. "
-                "Confidence is op basis van beeld-features + CROW 146-taxonomy, geen ML-model.",
+        "note": "Heuristische top-5 (geen foto-analyse beschikbaar) — vervang door gecertificeerde "
+                "inspectie voor formeel rapport. Confidence is op basis van CROW 146-taxonomy, geen ML-model.",
         "norm_reference": "CROW 146 (2010) + Standaard 2015",
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
