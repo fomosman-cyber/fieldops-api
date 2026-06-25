@@ -27,6 +27,7 @@ from sqlalchemy import func
 
 from models import Asset, Melding, Inspection, InspectionElement, InspectionDefect
 from crow_kosten import klasse_to_risk_points, KLASSE_RISK_POINTS
+from imbor_taxonomy import get_type_info
 
 
 SCORE_VERSION = "v2.2-norm-aware"
