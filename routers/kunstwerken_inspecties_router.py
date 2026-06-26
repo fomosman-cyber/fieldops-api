@@ -1153,8 +1153,22 @@ def export_inspection_pdf(
     BRAND = _hex_rgb(getattr(org, "brand_color", None) or "", (2, 132, 199))
     org_logo = getattr(org, "logo_data_url", None) if org else None
 
-    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    class _ReportPDF(FPDF):
+        """A4-rapport met voettekst (object/org links, paginanummer rechts)."""
+        footer_left = ""
+
+        def footer(self):
+            self.set_y(-12)
+            self.set_font("Helvetica", "I", 7)
+            self.set_text_color(120, 120, 120)
+            self.set_x(18)
+            self.cell(120, 5, self.footer_left)
+            self.cell(0, 5, f"Pagina {self.page_no()}/{{nb}}", align="R")
+            self.set_text_color(0, 0, 0)
+
+    pdf = _ReportPDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.alias_nb_pages()
 
     def _section_title(title: str) -> None:
         pdf.set_font("Helvetica", "B", 14)
@@ -1214,6 +1228,7 @@ def export_inspection_pdf(
     _info_row("Organisatie:", org_name)
     obj = (f"{asset.code} - " if asset and asset.code else "") + ((asset.name if asset else "") or "-")
     _info_row("Object:", obj)
+    pdf.footer_left = safe(f"{obj} - {org_name}")[:80]
 
     # Rijkere object-metadata (D) — uit asset.properties_json + kolommen, indien aanwezig
     _props = {}
