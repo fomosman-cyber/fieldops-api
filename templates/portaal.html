@@ -4071,6 +4071,15 @@
   </div>
 
   <!-- Defect toevoegen -->
+  <div class="modal-overlay" id="kwKritiekModal">
+    <div class="modal" style="max-width:640px;">
+      <button class="modal-close" onclick="closeKwKritiekModal()" aria-label="Sluiten">&times;</button>
+      <h2>⚠ Kritieke gebreken</h2>
+      <p class="subtitle">Alle gebreken met NEN 2767-2 defect-score 5 of 6 (slecht / zeer slecht) in deze inspectie, gesorteerd op ernst.</p>
+      <div id="kwKritiekBody" style="margin-top:16px;max-height:60vh;overflow-y:auto;"></div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="kwAddElementModal">
     <div class="modal" style="max-width:520px;">
       <button class="modal-close" onclick="closeKwAddElementModal()" aria-label="Sluiten">&times;</button>
@@ -15025,6 +15034,7 @@
     // ══════════════════════════════════════════════════════════════
     var _kunstwerkInspecties = [];
     var _currentKunstwerk = null;        // huidige inspectie-detail
+    var _kwElFilter = 'alle';            // bouwdelen-filter: alle|kritiek|defecten|tebeoordelen
     var _kunstwerkTaxonomy = {};         // cache per type
     var _kunstwerkTypes = null;          // labels per type-key
 
@@ -15054,11 +15064,87 @@
     var KW_CONDITIE_LABEL = new Proxy({}, { get: function(_, k){ return kwConditieLabel(parseInt(k,10)); } });
     var KW_STATUS_LABEL = new Proxy({}, { get: function(_, k){ return kwStatusLabel(k); } });
 
+    // ── Bouwdelen-filter (flow-overzicht) ──
+    function _kwIsKritiek(e) {
+      return (e.defecten || []).some(function(d){ return (d.defect_score || 0) >= 5; });
+    }
+    function _kwApplyFilter(elementen) {
+      if (_kwElFilter === 'kritiek') return elementen.filter(_kwIsKritiek);
+      if (_kwElFilter === 'defecten') return elementen.filter(function(e){ return (e.defecten || []).length > 0; });
+      if (_kwElFilter === 'tebeoordelen') return elementen.filter(function(e){ return !e.beoordeeld && !e.niet_inspecteerbaar_reden; });
+      return elementen;
+    }
+    function _kwFilterBar(elementen) {
+      var nKrit = elementen.filter(_kwIsKritiek).length;
+      var nDef = elementen.filter(function(e){ return (e.defecten || []).length > 0; }).length;
+      var nTodo = elementen.filter(function(e){ return !e.beoordeeld && !e.niet_inspecteerbaar_reden; }).length;
+      var chips = [
+        ['alle', 'Alle (' + elementen.length + ')', null],
+        ['kritiek', '⚠ Kritiek (' + nKrit + ')', '#dc2626'],
+        ['defecten', 'Met defecten (' + nDef + ')', null],
+        ['tebeoordelen', 'Te beoordelen (' + nTodo + ')', null],
+      ];
+      return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">' + chips.map(function(c){
+        var active = _kwElFilter === c[0];
+        var col = c[2] || 'var(--accent)';
+        return '<button onclick="setKwElFilter(\'' + c[0] + '\')" style="font-size:12px;padding:5px 12px;border-radius:100px;cursor:pointer;font-family:inherit;font-weight:600;border:1px solid ' + (active ? col : 'var(--border)') + ';background:' + (active ? col : 'var(--card-bg)') + ';color:' + (active ? '#fff' : 'var(--text-muted)') + ';">' + c[1] + '</button>';
+      }).join('') + '</div>';
+    }
+    function setKwElFilter(f) {
+      _kwElFilter = f;
+      if (_currentKunstwerk) renderKunstwerkDetail(_currentKunstwerk);
+    }
+
+    // ── Kritieke-gebreken-overzicht (klik op de 'kritiek'-KPI) ──
+    function showKwKritiek() {
+      if (!_currentKunstwerk) return;
+      var crit = [];
+      (_currentKunstwerk.elementen || []).forEach(function(e){
+        (e.defecten || []).forEach(function(d){
+          if ((d.defect_score || 0) >= 5) crit.push({ e: e, d: d });
+        });
+      });
+      crit.sort(function(a, b){ return (b.d.defect_score || 0) - (a.d.defect_score || 0); });
+      var body = document.getElementById('kwKritiekBody');
+      if (!crit.length) {
+        body.innerHTML = '<p style="color:var(--text-dim);padding:16px;text-align:center;">Geen kritieke gebreken (score 5-6) in deze inspectie.</p>';
+      } else {
+        body.innerHTML = crit.map(function(it){
+          var d = it.d, e = it.e;
+          var photo = d.photo_url ? '<img src="' + escapeHtml(d.photo_url) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">' : '';
+          var details = (typeof _kwDefectDetailsLine === 'function') ? _kwDefectDetailsLine(d) : '';
+          return '<div style="display:flex;gap:10px;padding:10px;border:1px solid #fecaca;background:#fef2f2;border-radius:8px;margin-bottom:8px;align-items:flex-start;">'
+            + photo
+            + '<div style="flex:1;min-width:0;">'
+            +   '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;">' + escapeHtml(e.element_naam || '') + '</div>'
+            +   '<div style="font-weight:700;font-size:14px;color:#991b1b;">' + escapeHtml(d.gebrek_naam || 'Gebrek') + ' ' + _kwBadge(d.defect_score) + '</div>'
+            +   '<div style="font-size:11px;color:var(--text-dim);">' + details + (d.locatie_beschrijving ? ' &middot; ' + escapeHtml(d.locatie_beschrijving) : '') + '</div>'
+            +   (d.omschrijving ? '<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">' + escapeHtml(d.omschrijving) + '</div>' : '')
+            + '</div>'
+            + '<button class="btn-secondary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="kwKritiekGaNaar(\'' + e.id + '\')">Naar bouwdeel</button>'
+            + '</div>';
+        }).join('');
+      }
+      document.getElementById('kwKritiekModal').classList.add('active');
+    }
+    function closeKwKritiekModal() { document.getElementById('kwKritiekModal').classList.remove('active'); }
+    function kwKritiekGaNaar(elId) {
+      closeKwKritiekModal();
+      _kwElFilter = 'alle';
+      if (_currentKunstwerk) renderKunstwerkDetail(_currentKunstwerk);
+      setTimeout(function(){
+        var box = document.getElementById('kwEl-' + elId);
+        if (box) { box.style.display = ''; box.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      }, 60);
+    }
+
     function _kwMetricsStrip(m) {
       if (!m || !m.elementen_totaal) return '';
-      var tile = function(label, val, color, sub) {
-        return '<div style="flex:1;min-width:120px;padding:10px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">'
-          + '<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600;">' + label + '</div>'
+      var tile = function(label, val, color, sub, onclick) {
+        var clickAttr = onclick ? ' onclick="' + onclick + '" title="Klik voor het overzicht"' : '';
+        var clickStyle = onclick ? 'cursor:pointer;box-shadow:0 0 0 1px ' + (color || 'var(--border)') + ' inset;' : '';
+        return '<div' + clickAttr + ' style="flex:1;min-width:120px;padding:10px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;' + clickStyle + '">'
+          + '<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600;">' + label + (onclick ? ' &rsaquo;' : '') + '</div>'
           + '<div style="font-size:22px;font-weight:700;color:' + (color || 'var(--text)') + ';margin-top:2px;line-height:1.1;">' + val + '</div>'
           + (sub ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + sub + '</div>' : '')
           + '</div>';
@@ -15091,7 +15177,7 @@
         +   tile(t('kw_kpi_voortgang'), m.voortgang_pct + '%', voortgangColor, m.elementen_beoordeeld + '/' + m.elementen_totaal + ' ' + t('kw_elementen'))
         +   tile(t('kw_kpi_vragen'), m.vragen_beantwoord + '/' + m.vragen_totaal, voortgangColor, m.vragen_voortgang_pct + '% ' + t('kw_pct_beantwoord'))
         +   tile(t('kw_kpi_aandacht'), m.vragen_aandacht, aandachtColor, t('kw_punten_risico'))
-        +   tile(t('kw_kpi_kritiek'), m.defecten_kritiek, kritiekColor, t('kw_defecten_kritiek_sub'))
+        +   tile(t('kw_kpi_kritiek'), m.defecten_kritiek, kritiekColor, t('kw_defecten_kritiek_sub'), (m.defecten_kritiek > 0 ? 'showKwKritiek()' : null))
         + '</div>'
         + (totaal > 0 ? '<div style="margin-top:10px;padding:10px 14px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">'
             + '<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:4px;">' + t('kw_conditie_verdeling') + '</div>'
@@ -15858,9 +15944,12 @@
         elementsEl.innerHTML = addElBtn + '<p style="color:var(--text-dim);text-align:center;padding:20px;">' + t('kw_geen_elementen') + '</p>';
         return;
       }
+      // Filterbalk + gefilterde subset (flow-overzicht)
+      var filterBar = _kwFilterBar(elementen);
+      var shown = _kwApplyFilter(elementen);
       // Groepeer per element_groep
       var groups = {};
-      elementen.forEach(function(e){
+      shown.forEach(function(e){
         var g = e.element_groep || 'overig';
         if (!groups[g]) groups[g] = [];
         groups[g].push(e);
@@ -15873,7 +15962,11 @@
         omgeving:     t('kw_omgeving'),
         overig:       t('kw_overig'),
       };
-      elementsEl.innerHTML = addElBtn + groupOrder.filter(function(g){ return groups[g]; }).map(function(g){
+      if (!shown.length) {
+        elementsEl.innerHTML = addElBtn + filterBar + '<p style="color:var(--text-dim);text-align:center;padding:16px;">Geen bouwdelen in dit filter.</p>';
+        return;
+      }
+      elementsEl.innerHTML = addElBtn + filterBar + groupOrder.filter(function(g){ return groups[g]; }).map(function(g){
         var items = groups[g];
         var groupHtml = '<div style="margin-bottom:18px;">'
           + '<h3 style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin:0 0 8px;">' + groupLabels[g] + '</h3>';
