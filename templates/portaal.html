@@ -4310,6 +4310,8 @@
           <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_foto">Foto (optioneel)</label>
           <input id="kwDefectPhoto" type="file" accept="image/*" capture="environment" onchange="kwDefectPhotoPreview()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
           <div id="kwDefectPhotoPreview"></div>
+          <button type="button" class="btn-secondary" id="kwDefectAiBtn" onclick="kwDefectAiClassify()" style="margin-top:8px;font-size:12px;background:linear-gradient(135deg,#ea580c,#b45309);color:#fff;border:none;" title="Analyseer de foto via CROW 146 (Claude vision) en vul de classificatie voor">🛣️ CROW 146-analyse (foto)</button>
+          <div id="kwDefectAiHint" style="display:none;margin-top:8px;padding:10px;border-radius:8px;background:rgba(234,88,12,0.06);border:1px solid rgba(234,88,12,0.2);font-size:12px;color:var(--text);line-height:1.5;"></div>
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end;">
@@ -15939,7 +15941,12 @@
 
       // Elementen-tree
       var elementen = insp.elementen || [];
-      var addElBtn = (!locked) ? '<div style="margin-bottom:14px;"><button class="btn-secondary" onclick="openKwAddElementModal()">+ Bouwdeel toevoegen</button></div>' : '';
+      var addElBtn = (!locked) ? '<div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">'
+        + '<button class="btn-secondary" onclick="openKwAddElementModal()">+ Bouwdeel toevoegen</button>'
+        + '<button class="btn-secondary" onclick="kwJumpNext()">&rarr; Volgende te beoordelen</button>'
+        + '<button class="btn-secondary" onclick="kwBulkGeenBijzonderheden()">&#10003; Markeer rest \'geen bijzonderheden\'</button>'
+        + '<button class="btn-secondary" onclick="kwSaveTemplate()" title="Bewaar deze bouwdelen-set voor dit object; een volgende inspectie hergebruikt deze">&#128190; Bewaar bouwdelen-set</button>'
+        + '</div>' : '';
       if (!elementen.length) {
         elementsEl.innerHTML = addElBtn + '<p style="color:var(--text-dim);text-align:center;padding:20px;">' + t('kw_geen_elementen') + '</p>';
         return;
@@ -16110,6 +16117,80 @@
         return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
       }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
         .catch(function(err){ showToast('Verwijderen mislukt: ' + (err.message || ''), 'error'); });
+    }
+
+    // ── Volgende te beoordelen-sprong ──
+    function kwJumpNext() {
+      if (!_currentKunstwerk) return;
+      var next = (_currentKunstwerk.elementen || []).find(function(e){
+        return !e.beoordeeld && !e.niet_inspecteerbaar_reden;
+      });
+      if (!next) { showToast('Alle bouwdelen zijn beoordeeld ✓', 'success'); return; }
+      if (_kwElFilter !== 'alle') { _kwElFilter = 'alle'; renderKunstwerkDetail(_currentKunstwerk); }
+      setTimeout(function(){
+        var box = document.getElementById('kwEl-' + next.id);
+        if (box) { box.style.display = ''; box.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      }, 60);
+    }
+
+    // ── Bulk: markeer resterende onbeoordeelde (zonder defecten) als 'geen bijzonderheden' ──
+    function kwBulkGeenBijzonderheden() {
+      if (!_currentKunstwerk) return;
+      var todo = (_currentKunstwerk.elementen || []).filter(function(e){
+        return !e.beoordeeld && !e.niet_inspecteerbaar_reden && (e.defecten || []).length === 0;
+      });
+      if (!todo.length) { showToast('Geen onbeoordeelde bouwdelen zonder defecten', 'info'); return; }
+      if (!confirm(todo.length + ' bouwdeel/bouwdelen markeren als \'geen bijzonderheden\'?')) return;
+      Promise.all(todo.map(function(e){
+        return api('PATCH', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + e.id, { beoordeeld: true });
+      })).then(function(){
+        showToast(todo.length + ' bouwdelen gemarkeerd', 'success');
+        return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+      }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
+        .catch(function(err){ showToast('Markeren mislukt: ' + (err.message || ''), 'error'); });
+    }
+
+    // ── CROW 146-foto-analyse in de defect-modal (prefill gebrek-naam + ernst) ──
+    function kwDefectAiClassify() {
+      var fileInput = document.getElementById('kwDefectPhoto');
+      var file = fileInput && fileInput.files && fileInput.files[0];
+      if (!file) { showToast('Kies eerst een foto in deze defect-modal', 'error'); return; }
+      var btn = document.getElementById('kwDefectAiBtn');
+      var orig = btn.textContent; btn.disabled = true; btn.textContent = '⏳ CROW 146 analyseert…';
+      var hint = _currentKunstwerk ? (_currentKunstwerk.kunstwerk_type || '') : '';
+      _photoToDataUrl(file).then(function(dataUrl){
+        return api('POST', '/api/ai/classify-crow146', { asset_type: hint, photo_data_url: dataUrl });
+      }).then(function(r){
+        var s = (r && r.suggestions && r.suggestions[0]) || null;
+        var hintEl = document.getElementById('kwDefectAiHint');
+        hintEl.style.display = 'block';
+        if (!s) { hintEl.innerHTML = 'Geen schadebeeld gedetecteerd op de foto.'; return; }
+        var naamEl = document.getElementById('kwDefectGebrekNaam');
+        if (naamEl && !naamEl.value) naamEl.value = s.naam || s.code || '';
+        var ernstMap = { 'L': '1', 'M': '2', 'E': '3' };
+        if (s.ernst && ernstMap[s.ernst]) document.getElementById('kwDefectErnst').value = ernstMap[s.ernst];
+        var bits = [];
+        if (s.naam) bits.push('<strong>' + escapeHtml(s.naam) + '</strong>');
+        if (s.klasse) bits.push('CROW-klasse ' + escapeHtml(s.klasse));
+        if (r.nen_2767_conditie != null) bits.push('NEN-conditie ' + r.nen_2767_conditie);
+        if (s.maatregel) bits.push('maatregel: ' + escapeHtml(s.maatregel));
+        var bevHtml = (r.bevindingen && r.bevindingen.length)
+          ? '<ul style="margin:6px 0 0 16px;padding:0;">' + r.bevindingen.map(function(b){ return '<li>' + escapeHtml(b) + '</li>'; }).join('') + '</ul>' : '';
+        var via = (r.detection_method === 'vision') ? '📷 AI-foto-analyse' : 'indicatief (geen foto-analyse beschikbaar)';
+        hintEl.innerHTML = '<div style="font-weight:600;margin-bottom:4px;">AI-suggestie (' + via + ') — controleer en pas aan:</div>'
+          + bits.join(' · ') + bevHtml;
+      }).catch(function(err){
+        showToast('CROW 146-analyse mislukt: ' + (err.message || ''), 'error');
+      }).finally(function(){ btn.disabled = false; btn.textContent = orig; });
+    }
+
+    // ── Per-object template: huidige bouwdelen-set bewaren op het object ──
+    function kwSaveTemplate() {
+      if (!_currentKunstwerk) return;
+      if (!confirm('De huidige bouwdelen-set opslaan als standaard voor dit object? Een volgende inspectie van dit object begint dan met deze set.')) return;
+      api('POST', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/save-elements-template', {}).then(function(r){
+        showToast('Bouwdelen-set opgeslagen voor dit object (' + ((r && r.saved) || 0) + ' bouwdelen)', 'success');
+      }).catch(function(err){ showToast('Opslaan mislukt: ' + (err.message || ''), 'error'); });
     }
 
     function saveKwElementBev(elId) {
