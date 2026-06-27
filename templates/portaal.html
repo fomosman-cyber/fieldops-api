@@ -4071,6 +4071,40 @@
   </div>
 
   <!-- Defect toevoegen -->
+  <div class="modal-overlay" id="kwAddElementModal">
+    <div class="modal" style="max-width:520px;">
+      <button class="modal-close" onclick="closeKwAddElementModal()" aria-label="Sluiten">&times;</button>
+      <h2>Bouwdeel toevoegen</h2>
+      <p class="subtitle">Kies een standaard-bouwdeel (NEN 2767-2 / CROW 134) of voeg een eigen bouwdeel toe. Elk bouwdeel krijgt automatisch de bijbehorende vragenlijst.</p>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Uit de standaard-bibliotheek</label>
+          <select id="kwAddElLib" onchange="kwAddElLibKies()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <option value="">— laden... —</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Naam bouwdeel</label>
+          <input id="kwAddElNaam" placeholder="bv. Remmingwerk / fender" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Groep</label>
+          <select id="kwAddElGroep" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <option value="constructief">Constructief</option>
+            <option value="afwerking">Afwerking</option>
+            <option value="installatie">Installatie</option>
+            <option value="omgeving">Omgeving</option>
+            <option value="overig">Overig</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
+          <button class="btn-secondary" onclick="closeKwAddElementModal()">Annuleren</button>
+          <button class="btn-primary" onclick="submitKwAddElement()">Toevoegen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="kwDefectModal">
     <div class="modal" style="max-width:560px;">
       <button class="modal-close" onclick="closeKwDefectModal()" aria-label="Sluiten">&times;</button>
@@ -15819,8 +15853,9 @@
 
       // Elementen-tree
       var elementen = insp.elementen || [];
+      var addElBtn = (!locked) ? '<div style="margin-bottom:14px;"><button class="btn-secondary" onclick="openKwAddElementModal()">+ Bouwdeel toevoegen</button></div>' : '';
       if (!elementen.length) {
-        elementsEl.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:20px;">' + t('kw_geen_elementen') + '</p>';
+        elementsEl.innerHTML = addElBtn + '<p style="color:var(--text-dim);text-align:center;padding:20px;">' + t('kw_geen_elementen') + '</p>';
         return;
       }
       // Groepeer per element_groep
@@ -15838,7 +15873,7 @@
         omgeving:     t('kw_omgeving'),
         overig:       t('kw_overig'),
       };
-      elementsEl.innerHTML = groupOrder.filter(function(g){ return groups[g]; }).map(function(g){
+      elementsEl.innerHTML = addElBtn + groupOrder.filter(function(g){ return groups[g]; }).map(function(g){
         var items = groups[g];
         var groupHtml = '<div style="margin-bottom:18px;">'
           + '<h3 style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin:0 0 8px;">' + groupLabels[g] + '</h3>';
@@ -15905,8 +15940,9 @@
             elementHtml += '<p style="color:var(--text-dim);font-size:13px;margin:8px 0;">Nog geen defecten geregistreerd.</p>';
           }
           if (!locked) {
-            elementHtml += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:12px;">'
+            elementHtml += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:12px;">'
               + '<label style="color:var(--text-muted);"><input type="checkbox" ' + (e.beoordeeld ? 'checked' : '') + ' onchange="toggleKwBeoordeeld(\'' + e.id + '\', this.checked)"> ' + t('kw_chk_beoordeeld_geen_bijzonderheden') + '</label>'
+              + '<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:#dc2626;border-color:#fee2e2;" onclick="deleteKwElement(\'' + e.id + '\', ' + JSON.stringify(e.element_naam || '') + ')">🗑️ Bouwdeel verwijderen</button>'
               + '</div>';
           }
           elementHtml += '</div></div>';
@@ -15921,6 +15957,66 @@
       var box = document.getElementById('kwEl-' + elId);
       if (!box) return;
       box.style.display = box.style.display === 'none' ? '' : 'none';
+    }
+
+    // ── Flexibele bouwdelen-editor: standaard-bibliotheek + eigen element + verwijderen ──
+    function openKwAddElementModal() {
+      if (!_currentKunstwerk) return;
+      document.getElementById('kwAddElNaam').value = '';
+      document.getElementById('kwAddElGroep').value = 'constructief';
+      var sel = document.getElementById('kwAddElLib');
+      sel.innerHTML = '<option value="">— laden... —</option>';
+      var aanwezig = {};
+      (_currentKunstwerk.elementen || []).forEach(function(e){ aanwezig[e.element_code] = true; });
+      api('GET', '/api/kunstwerken-inspecties/taxonomy/' + encodeURIComponent(_currentKunstwerk.kunstwerk_type || '')).then(function(tax){
+        var opts = ['<option value="">— kies een standaard-bouwdeel —</option>'];
+        (tax.elementen || []).forEach(function(el){
+          if (!aanwezig[el.code]) {
+            opts.push('<option value="' + escapeHtml(el.code) + '" data-naam="' + escapeHtml(el.naam) + '" data-groep="' + escapeHtml(el.groep || 'overig') + '">' + escapeHtml(el.naam) + '</option>');
+          }
+        });
+        if (opts.length === 1) opts.push('<option value="" disabled>(alle standaard-bouwdelen zitten al in deze inspectie)</option>');
+        sel.innerHTML = opts.join('');
+      }).catch(function(){ sel.innerHTML = '<option value="">(bibliotheek niet beschikbaar — gebruik een eigen bouwdeel)</option>'; });
+      document.getElementById('kwAddElementModal').classList.add('active');
+    }
+    function closeKwAddElementModal() {
+      document.getElementById('kwAddElementModal').classList.remove('active');
+    }
+    function kwAddElLibKies() {
+      var sel = document.getElementById('kwAddElLib');
+      var opt = sel.options[sel.selectedIndex];
+      if (opt && opt.value) {
+        document.getElementById('kwAddElNaam').value = opt.getAttribute('data-naam') || opt.text;
+        document.getElementById('kwAddElGroep').value = opt.getAttribute('data-groep') || 'overig';
+      }
+    }
+    function submitKwAddElement() {
+      if (!_currentKunstwerk) return;
+      var sel = document.getElementById('kwAddElLib');
+      var opt = sel.options[sel.selectedIndex];
+      var naam = (document.getElementById('kwAddElNaam').value || '').trim();
+      if (!naam) { showToast('Geef een naam voor het bouwdeel', 'error'); return; }
+      var groep = document.getElementById('kwAddElGroep').value || 'overig';
+      var code = (opt && opt.value) ? opt.value
+        : 'EIGEN.' + naam.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
+      api('POST', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen', {
+        element_code: code, element_naam: naam, element_groep: groep, order_index: 100,
+      }).then(function(){
+        showToast('Bouwdeel toegevoegd', 'success');
+        closeKwAddElementModal();
+        return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+      }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
+        .catch(function(err){ showToast('Toevoegen mislukt: ' + (err.message || ''), 'error'); });
+    }
+    function deleteKwElement(elId, naam) {
+      if (!_currentKunstwerk) return;
+      if (!confirm('Bouwdeel "' + (naam || '') + '" verwijderen uit deze inspectie? De bijbehorende vragen en defecten gaan ook weg.')) return;
+      api('DELETE', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + elId).then(function(){
+        showToast('Bouwdeel verwijderd', 'success');
+        return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+      }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
+        .catch(function(err){ showToast('Verwijderen mislukt: ' + (err.message || ''), 'error'); });
     }
 
     function saveKwElementBev(elId) {
