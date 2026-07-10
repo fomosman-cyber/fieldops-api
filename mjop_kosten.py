@@ -142,6 +142,60 @@ KOSTEN = {
         6: {"maatregel": "Volledige reconstructie wegvak", "min_eur": 150, "max_eur": 300, "unit": "per m2"},
     },
 
+    # ───────── ELEMENTENVERHARDING (CROW 146b) ─────────
+    # Herstraten (per m2) is duurder dan asfalt-slijtlaag door handwerk,
+    # maar volledige vervanging is goedkoper: elementen zijn herbruikbaar.
+    "wegvak_elementen": {
+        1: {"maatregel": "Periodieke visuele inspectie", "min_eur": 1, "max_eur": 3, "unit": "per m2"},
+        2: {"maatregel": "Onkruidbestrijding + voegen aanvullen", "min_eur": 5, "max_eur": 12, "unit": "per m2"},
+        3: {"maatregel": "Lokaal herstraten (verzakkingen)", "min_eur": 25, "max_eur": 45, "unit": "per m2"},
+        4: {"maatregel": "Herstraten met hergebruik elementen", "min_eur": 45, "max_eur": 90, "unit": "per m2"},
+        5: {"maatregel": "Herstraten + deelvervanging elementen + straatlaag", "min_eur": 70, "max_eur": 130, "unit": "per m2"},
+        6: {"maatregel": "Volledige reconstructie elementenverharding incl. fundering", "min_eur": 100, "max_eur": 220, "unit": "per m2"},
+    },
+    "fietspad": {
+        1: {"maatregel": "Periodieke visuele inspectie", "min_eur": 1, "max_eur": 2, "unit": "per m2"},
+        2: {"maatregel": "Onderhoudssnede + cosmetisch", "min_eur": 4, "max_eur": 10, "unit": "per m2"},
+        3: {"maatregel": "Slijtlaag fietspad", "min_eur": 15, "max_eur": 30, "unit": "per m2"},
+        4: {"maatregel": "Deklaag vervangen (incl. wortelopdruk-herstel)", "min_eur": 30, "max_eur": 60, "unit": "per m2"},
+        5: {"maatregel": "Tussenlaag + deklaag", "min_eur": 60, "max_eur": 110, "unit": "per m2"},
+        6: {"maatregel": "Volledige reconstructie fietspad", "min_eur": 100, "max_eur": 200, "unit": "per m2"},
+    },
+    "trottoir": {
+        1: {"maatregel": "Periodieke visuele inspectie", "min_eur": 1, "max_eur": 2, "unit": "per m2"},
+        2: {"maatregel": "Onkruidbestrijding + voegen aanvullen", "min_eur": 4, "max_eur": 10, "unit": "per m2"},
+        3: {"maatregel": "Lokaal herstraten (losliggende tegels)", "min_eur": 20, "max_eur": 40, "unit": "per m2"},
+        4: {"maatregel": "Herstraten trottoirdeel met hergebruik tegels", "min_eur": 35, "max_eur": 70, "unit": "per m2"},
+        5: {"maatregel": "Herstraten + deelvervanging tegels/banden", "min_eur": 55, "max_eur": 100, "unit": "per m2"},
+        6: {"maatregel": "Volledige reconstructie trottoir incl. fundering", "min_eur": 80, "max_eur": 160, "unit": "per m2"},
+    },
+
+    # ───────── PUTTEN & KOLKEN (NEN 3399) — stuksprijzen ─────────
+    "put": {
+        1: {"maatregel": "Periodieke inspectie put", "min_eur": 25, "max_eur": 60, "unit": "per put"},
+        2: {"maatregel": "Reiniging + lichte inspectie", "min_eur": 60, "max_eur": 150, "unit": "per put"},
+        3: {"maatregel": "Klein herstel (deksel stellen, voegwerk)", "min_eur": 250, "max_eur": 800, "unit": "per put"},
+        4: {"maatregel": "Renovatie put (coating / instortstuk)", "min_eur": 800, "max_eur": 2500, "unit": "per put"},
+        5: {"maatregel": "Deelvervanging putkegel / putrand", "min_eur": 1500, "max_eur": 4000, "unit": "per put"},
+        6: {"maatregel": "Vervanging complete put (open ontgraving)", "min_eur": 3000, "max_eur": 8000, "unit": "per put"},
+    },
+    "kolk": {
+        1: {"maatregel": "Periodieke inspectie kolk", "min_eur": 10, "max_eur": 25, "unit": "per kolk"},
+        2: {"maatregel": "Reinigen / kolkenzuigen", "min_eur": 25, "max_eur": 60, "unit": "per kolk"},
+        3: {"maatregel": "Herstel aansluiting / stankscherm", "min_eur": 150, "max_eur": 450, "unit": "per kolk"},
+        4: {"maatregel": "Herstel opzetstuk + kolkrand", "min_eur": 300, "max_eur": 900, "unit": "per kolk"},
+        5: {"maatregel": "Vervanging kolk", "min_eur": 600, "max_eur": 1500, "unit": "per kolk"},
+        6: {"maatregel": "Vervanging kolk + aansluitleiding + herstel verharding", "min_eur": 900, "max_eur": 2500, "unit": "per kolk"},
+    },
+    "drainage": {
+        1: {"maatregel": "Periodieke inspectie drainage", "min_eur": 2, "max_eur": 5, "unit": "per m"},
+        2: {"maatregel": "Doorspuiten drainageleiding", "min_eur": 5, "max_eur": 12, "unit": "per m"},
+        3: {"maatregel": "Doorspuiten + lokale reparatie", "min_eur": 15, "max_eur": 40, "unit": "per m"},
+        4: {"maatregel": "Deelvervanging drainageleiding", "min_eur": 40, "max_eur": 90, "unit": "per m"},
+        5: {"maatregel": "Vervanging drainageleiding", "min_eur": 60, "max_eur": 150, "unit": "per m"},
+        6: {"maatregel": "Acute vervanging + herstel verharding", "min_eur": 80, "max_eur": 200, "unit": "per m"},
+    },
+
     # ───────── NEN 2767-4 installaties + CROW 145 ─────────
     "fontein": {
         1: {"maatregel": "Periodieke inspectie", "min_eur": 500, "max_eur": 1200},
@@ -174,6 +228,31 @@ KOSTEN["lantaarnpaal"] = KOSTEN["verlichting"]
 KOSTEN["kunstwerk"] = KOSTEN["brug"]  # generieke kunstwerk → brug-default
 KOSTEN["wegdek"] = KOSTEN["wegvak"]
 KOSTEN["verharding"] = KOSTEN["wegvak"]
+# Wegen — IMBOR-codes (imbor_taxonomy) + gangbare synoniemen.
+# wegvak_asfalt = zelfde kosten als wegvak: de wegvak-entry beschrijft
+# asfaltmaatregelen (slijtlaag, deklaag) — alias, geen aparte tabel.
+KOSTEN["wegvak_asfalt"] = KOSTEN["wegvak"]
+KOSTEN["asfalt"] = KOSTEN["wegvak"]
+KOSTEN["rijbaan"] = KOSTEN["wegvak"]
+KOSTEN["elementenverharding"] = KOSTEN["wegvak_elementen"]
+KOSTEN["bestrating"] = KOSTEN["wegvak_elementen"]
+KOSTEN["klinker"] = KOSTEN["wegvak_elementen"]
+KOSTEN["voetpad"] = KOSTEN["trottoir"]
+# Riolering — IMBOR-codes + synoniemen
+KOSTEN["put_riool"] = KOSTEN["put"]
+KOSTEN["rioolput"] = KOSTEN["put"]
+KOSTEN["inspectieput"] = KOSTEN["put"]
+KOSTEN["straatkolk"] = KOSTEN["kolk"]
+KOSTEN["riool_vrijverval"] = KOSTEN["riolering"]
+KOSTEN["riool"] = KOSTEN["riolering"]
+KOSTEN["gemaal_riool"] = KOSTEN["gemaal"]
+# Kunstwerken + verlichting + groen — IMBOR-codes
+KOSTEN["brug_vast"] = KOSTEN["brug"]
+KOSTEN["brug_beweegbaar"] = KOSTEN["brug"]
+KOSTEN["lichtmast"] = KOSTEN["verlichting"]
+KOSTEN["boom_laan"] = KOSTEN["boom"]
+KOSTEN["boom_park"] = KOSTEN["boom"]
+KOSTEN["laanboom"] = KOSTEN["boom"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -247,4 +326,4 @@ def is_actionable(score: Optional[int]) -> bool:
     return int(score) >= 3
 
 
-KOSTEN_VERSION = "mjop-kosten.v1.0-2026-05"
+KOSTEN_VERSION = "mjop-kosten.v1.1-2026-07"
