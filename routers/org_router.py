@@ -5,7 +5,7 @@ from database import get_db
 from models import User, Organization, AuditLog
 from schemas import OrganizationResponse, OrganizationUpdate
 from auth import get_current_user
-from permissions import require_org_admin
+from permissions import require_org_admin, is_platform_owner
 from audit import log_action, ACTION
 
 router = APIRouter(prefix="/api/organization", tags=["Organisatie"])
@@ -67,6 +67,18 @@ def update_my_organization(
     data = update.model_dump(exclude_unset=True)
     if not data:
         raise HTTPException(status_code=400, detail="Geen velden om te wijzigen")
+
+    # SECURITY: de naam "FieldOps" is gereserveerd — is_platform_owner() en
+    # require_owner() checken op deze org-naam, dus een rename hierheen zou
+    # een gewone org-admin stilletjes platform-eigenaar maken.
+    # Case-insensitive + whitespace-gestript vergelijken; alleen toegestaan
+    # als de aanvrager zelf al platform-owner is.
+    if "name" in data and data["name"] is not None:
+        genormaliseerd = "".join(str(data["name"]).split()).lower()
+        if genormaliseerd == "fieldops" and not is_platform_owner(current_user):
+            raise HTTPException(
+                status_code=400,
+                detail="Deze organisatienaam is gereserveerd voor het platform")
 
     # Logo-validatie: data-URL, max 500KB om DB-bloat te voorkomen
     if "logo_data_url" in data and data["logo_data_url"]:

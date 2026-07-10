@@ -1409,9 +1409,11 @@ def detailed_status_check():
     - Sentry-config aanwezig
     - Backup-service config aanwezig
     - Resend (email) config aanwezig
-    - Render commit/release info
 
-    Geen auth — public endpoint voor monitoring. Geen credentials lekken.
+    Geen auth — public endpoint voor monitoring. SECURITY: alleen per-component
+    statusvlaggen naar buiten; géén release-hash, regio, of interne
+    config-opmerkingen (welke env-vars wel/niet gezet zijn) — dat is
+    reconnaissance-materiaal voor aanvallers.
     """
     checks = {}
     overall = "ok"
@@ -1421,49 +1423,26 @@ def detailed_status_check():
         from sqlalchemy import text
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        checks["database"] = {"status": "ok", "message": "Connection OK"}
-    except Exception as e:
-        checks["database"] = {"status": "down", "message": f"DB error: {type(e).__name__}"}
+        checks["database"] = {"status": "ok"}
+    except Exception:
+        checks["database"] = {"status": "down"}
         overall = "degraded"
 
     # Sentry-check
     sentry_dsn = bool(os.getenv("SENTRY_DSN", "").strip())
-    checks["error_tracking"] = {
-        "status": "ok" if sentry_dsn else "not_configured",
-        "message": "Sentry configured" if sentry_dsn else "SENTRY_DSN not set (errors only in logs)",
-    }
+    checks["error_tracking"] = {"status": "ok" if sentry_dsn else "not_configured"}
 
     # Backup-check
     backup_configured = bool(os.getenv("S3_BUCKET") and os.getenv("AWS_ACCESS_KEY_ID"))
-    last_backup = None
-    try:
-        import backup_service
-        st = backup_service.get_status()
-        last_backup = st.get("last_success_at")
-    except Exception:
-        pass
-    checks["backup"] = {
-        "status": "ok" if backup_configured else "not_configured",
-        "message": ("Configured" + (f", last success: {last_backup}" if last_backup else "")) if backup_configured else "S3 env-vars not set",
-    }
+    checks["backup"] = {"status": "ok" if backup_configured else "not_configured"}
 
     # Email-service
     resend_configured = bool(os.getenv("RESEND_API_KEY", "").strip())
-    checks["email"] = {
-        "status": "ok" if resend_configured else "not_configured",
-        "message": "Resend API key configured" if resend_configured else "RESEND_API_KEY not set",
-    }
-
-    # Release info
-    release = os.getenv("RENDER_GIT_COMMIT", "unknown")[:12]
-    deployed_at = os.getenv("RENDER_DEPLOY_AT", "")
+    checks["email"] = {"status": "ok" if resend_configured else "not_configured"}
 
     return {
         "status": overall,
         "checks": checks,
-        "release": release,
-        "deployed_at": deployed_at,
-        "region": os.getenv("RENDER_REGION", "frankfurt"),
         "timestamp": datetime.now(timezone.utc).isoformat() if "datetime" in globals() else None,
     }
 
@@ -1516,8 +1495,6 @@ def status_page():
 <div id="overallBox" class="overall ok"><div class="dot"></div><div>Status laden…</div></div>
 <div id="checksList"></div>
 <div class="meta">
-  <strong>Hosting:</strong> Render Frankfurt (eu-central) · <strong>Release:</strong> <code id="release">—</code>
-  <br><br>
   <a href="/portaal">→ Naar portaal</a> · <a href="/handleiding">Handleiding</a> · <a href="https://www.fieldopsapp.nl">Marketing-site</a>
 </div>
 <script>
@@ -1530,12 +1507,11 @@ async function loadStatus() {
     overall.innerHTML = '<div class="dot"></div><div>' +
       (d.status === 'ok' ? 'Alle systemen werken normaal' :
        d.status === 'degraded' ? 'Verminderde service' : 'Storing actief') + '</div>';
-    document.getElementById('release').textContent = d.release || 'unknown';
     const list = document.getElementById('checksList');
     const labels = { database: '🗄️ Database', error_tracking: '🐛 Error Tracking', backup: '💾 Backup', email: '📧 Email Service' };
     list.innerHTML = Object.keys(d.checks).map(k => {
       const c = d.checks[k];
-      return '<div class="check"><div><div class="check-name">' + (labels[k] || k) + '</div><div class="check-msg">' + (c.message || '') + '</div></div><span class="badge ' + c.status + '">' + (c.status === 'ok' ? 'Operationeel' : c.status === 'not_configured' ? 'Niet ingesteld' : 'Storing') + '</span></div>';
+      return '<div class="check"><div><div class="check-name">' + (labels[k] || k) + '</div></div><span class="badge ' + c.status + '">' + (c.status === 'ok' ? 'Operationeel' : c.status === 'not_configured' ? 'Niet ingesteld' : 'Storing') + '</span></div>';
     }).join('');
   } catch(e) {
     document.getElementById('overallBox').innerHTML = '<div class="dot"></div><div>API onbereikbaar</div>';
