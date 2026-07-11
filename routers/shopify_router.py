@@ -17,17 +17,26 @@ router = APIRouter(prefix="/api/shopify", tags=["Shopify Integratie"])
 SHOPIFY_API_SECRET = os.getenv("SHOPIFY_API_SECRET", "")
 
 
+def _is_production() -> bool:
+    return bool(os.getenv("RENDER") or os.getenv("ENV") == "production")
+
+
 def verify_shopify_webhook(body: bytes, hmac_header: str) -> bool:
-    """Verify dat de webhook echt van Shopify komt."""
+    """Verify dat de webhook echt van Shopify komt (HMAC-SHA256).
+
+    Zonder geconfigureerd secret faalt dit in productie HARD (False): anders kan
+    iedereen ongeauthenticeerd orgs + admin-accounts aanmaken. Lokaal (geen
+    ENV/RENDER) mag het wel door, voor development.
+    """
     if not SHOPIFY_API_SECRET:
-        return True  # Skip verificatie in development
+        return not _is_production()
     digest = hmac.new(
         SHOPIFY_API_SECRET.encode("utf-8"),
         body,
         hashlib.sha256,
     ).digest()
     computed_hmac = base64.b64encode(digest).decode("utf-8")
-    return hmac.compare_digest(computed_hmac, hmac_header)
+    return hmac.compare_digest(computed_hmac, hmac_header or "")
 
 
 @router.post("/webhook/order-paid")
@@ -42,8 +51,8 @@ async def order_paid_webhook(
     """
     body = await request.body()
 
-    if SHOPIFY_API_SECRET and not verify_shopify_webhook(body, x_shopify_hmac_sha256):
-        raise HTTPException(status_code=401, detail="Ongeldige webhook signature")
+    if not verify_shopify_webhook(body, x_shopify_hmac_sha256):
+        raise HTTPException(status_code=401, detail="Ongeldige of ontbrekende webhook signature")
 
     data = await request.json()
 
@@ -105,12 +114,13 @@ async def order_paid_webhook(
     db.add(user)
     db.commit()
 
-    # TODO: Stuur welkomst email met inlog gegevens
+    # TODO: stuur welkomst-email met inlog-gegevens (of trigger password-reset).
+    # temp_password NIET teruggeven: de response gaat server-to-server naar
+    # Shopify (niet naar de gebruiker) en zou anders in webhook-logs lekken.
     return {
         "status": "created",
         "organization_id": org.id,
         "email": email,
-        "temp_password": temp_password,
     }
 
 
@@ -122,8 +132,8 @@ async def subscription_cancelled_webhook(
 ):
     """Shopify webhook: abonnement opgezegd."""
     body = await request.body()
-    if SHOPIFY_API_SECRET and not verify_shopify_webhook(body, x_shopify_hmac_sha256):
-        raise HTTPException(status_code=401, detail="Ongeldige webhook signature")
+    if not verify_shopify_webhook(body, x_shopify_hmac_sha256):
+        raise HTTPException(status_code=401, detail="Ongeldige of ontbrekende webhook signature")
 
     data = await request.json()
     email = data.get("email", "")

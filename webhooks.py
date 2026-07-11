@@ -19,9 +19,12 @@ Veiligheid:
 from __future__ import annotations
 import hashlib
 import hmac
+import ipaddress
 import json
+import socket
 import time
 from typing import Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -153,6 +156,44 @@ def sign_payload(secret: str, body: bytes, timestamp: str) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# SSRF-guard — uitgaande webhook-URLs mogen geen interne hosts raken
+# ─────────────────────────────────────────────────────────────────────────────
+
+def is_safe_webhook_url(url: str) -> tuple[bool, str]:
+    """Sta alleen https naar publieke hosts toe (SSRF-bescherming).
+
+    Een org-admin kan een willekeurige webhook-URL registreren; zonder check kan
+    die naar interne services of de cloud-metadata-endpoint (169.254.169.254)
+    wijzen. We blokkeren niet-https en hosts die naar een private/loopback/
+    link-local/reserved IP resolven. Een niet-resolvebare host blokkeren we niet:
+    die is sowieso onbereikbaar (geen SSRF-doelwit) en httpx faalt dan vanzelf.
+    """
+    try:
+        parsed = urlparse(url or "")
+    except ValueError:
+        return False, "ongeldige URL"
+    if parsed.scheme != "https":
+        return False, "alleen https-webhooks zijn toegestaan"
+    host = parsed.hostname
+    if not host:
+        return False, "geen host in URL"
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or 443,
+                                   proto=socket.IPPROTO_TCP)
+    except socket.gaierror:
+        return True, ""  # onresolveerbaar = onbereikbaar → geen SSRF-doelwit
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_multicast or ip.is_unspecified):
+            return False, f"interne host geblokkeerd ({ip})"
+    return True, ""
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Dispatcher — synchroon, kort timeout, log altijd
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -166,6 +207,17 @@ def deliver(endpoint, action: str, payload: dict) -> dict:
         headers["X-FieldOps-Timestamp"] = ts
         headers["X-FieldOps-Signature"] = sign_payload(endpoint.secret, body_bytes, ts)
         headers["X-FieldOps-Action"] = action
+
+    safe, reason = is_safe_webhook_url(endpoint.url)
+    if not safe:
+        return {
+            "status_code": None,
+            "response_snippet": None,
+            "error": f"geblokkeerd door SSRF-guard: {reason}",
+            "succeeded": False,
+            "duration_ms": 0,
+            "payload_json": body_bytes.decode("utf-8")[:PAYLOAD_PREVIEW_LEN],
+        }
 
     started = time.time()
     status = None
