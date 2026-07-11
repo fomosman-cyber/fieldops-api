@@ -17,10 +17,17 @@ ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
 if not SECRET_KEY or SECRET_KEY in ("fieldops-secret-key", "fieldops-secret-key-change-in-production-2024"):
-    if os.getenv("RENDER") or os.getenv("ENV") == "production":
-        raise RuntimeError("SECRET_KEY env variabele moet gezet zijn in productie")
-    SECRET_KEY = "dev-only-not-for-production"
-    print("[WARN] SECRET_KEY niet gezet — dev fallback actief")
+    # Geen stille dev-fallback: een voorspelbare key liet token-forgery toe op
+    # elke host waar ENV/RENDER toevallig niet gezet was. Productie faalde al
+    # hard; nu faalt élke host hard tenzij de dev het bewust opt-in zet.
+    if os.getenv("ALLOW_INSECURE_DEV_KEY") == "1":
+        SECRET_KEY = "dev-only-not-for-production"
+        print("[WARN] SECRET_KEY niet gezet — ONVEILIGE dev-fallback actief (ALLOW_INSECURE_DEV_KEY=1)")
+    else:
+        raise RuntimeError(
+            "SECRET_KEY env variabele moet gezet zijn. "
+            "Voor lokale dev: zet ALLOW_INSECURE_DEV_KEY=1 of een eigen SECRET_KEY."
+        )
 
 security = HTTPBearer()
 

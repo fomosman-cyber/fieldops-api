@@ -213,6 +213,32 @@ def sha256_of(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def decode_data_url(data_url: str) -> tuple[bytes, str]:
+    """Parse een 'data:image/...;base64,....' data-URL → (raw_bytes, media_type).
+
+    Gebruikt door endpoints die een foto als data-URL ontvangen (bv. de
+    AI-foto-knoppen in de melding-modal) en die door `analyze_image` willen
+    halen. Raised ValueError als het geen geldige base64-image-data-URL is.
+    """
+    if not data_url or not data_url.startswith("data:"):
+        raise ValueError("Geen geldige data-URL")
+    header, _, b64 = data_url.partition(",")
+    if not b64:
+        raise ValueError("Data-URL bevat geen payload")
+    # header = 'data:image/jpeg;base64'
+    media_type = "image/jpeg"
+    meta = header[len("data:"):].split(";", 1)[0].strip()
+    if meta in _ALLOWED_MEDIA:
+        media_type = meta
+    try:
+        raw = base64.b64decode(b64, validate=False)
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Kan base64 niet decoderen: {e}")
+    if not raw:
+        raise ValueError("Lege foto")
+    return raw, media_type
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Resultaat-validatie
 # ─────────────────────────────────────────────────────────────────────────────

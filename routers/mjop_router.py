@@ -36,6 +36,7 @@ from auth import get_current_user
 
 import mjop_kosten as mjop
 import inspection_cycle as cycle
+import mjop_rapport as rapport
 from collections import Counter
 
 router = APIRouter(prefix="/api/mjop", tags=["MJOP"])
@@ -351,29 +352,68 @@ def export_mjop_pdf(
     meld_per_type = Counter(m.category for m in open_meldingen if m.category)
     meld_per_asset = Counter(m.asset_id for m in open_meldingen if m.asset_id)
 
-    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    def _hex_rgb(hexstr, default=(2, 132, 199)):
+        try:
+            h = (hexstr or "").lstrip("#")
+            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+        except Exception:
+            return default
+
+    # White-label: huisstijlkleur + logo van de organisatie (fallback FieldOps-blauw)
+    BRAND = _hex_rgb(getattr(org, "brand_color", None) or "")
+    org_logo = getattr(org, "logo_data_url", None) if org else None
+
+    def _safe(v) -> str:
+        s = "" if v is None else str(v)
+        for k, rep in (("€", "EUR "), ("–", "-"), ("—", "-"), ("•", "-"),
+                       ("’", "'"), ("‘", "'"), ("“", '"'), ("”", '"'),
+                       ("…", "..."), ("→", "->"), ("×", "x"), ("·", "-")):
+            s = s.replace(k, rep)
+        return s.encode("latin-1", "replace").decode("latin-1")
+
+    class _ReportPDF(FPDF):
+        """A4-rapport met voettekst (scope links, paginanummer rechts)."""
+        footer_left = ""
+
+        def footer(self):
+            self.set_y(-12)
+            self.set_font("Helvetica", "I", 7)
+            self.set_text_color(120, 120, 120)
+            self.set_x(18)
+            self.cell(120, 5, self.footer_left)
+            self.cell(0, 5, f"Pagina {self.page_no()}/{{nb}}", align="R")
+            self.set_text_color(0, 0, 0)
+
+    pdf = _ReportPDF(orientation="P", unit="mm", format="A4")
     pdf.alias_nb_pages()
     pdf.set_auto_page_break(auto=True, margin=18)
 
     def _section_title(title: str) -> None:
         pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(2, 132, 199)
-        pdf.cell(0, 8, title, new_x="LMARGIN", new_y="NEXT", border="B")
+        pdf.set_text_color(*BRAND)
+        pdf.cell(0, 8, _safe(title), new_x="LMARGIN", new_y="NEXT", border="B")
         pdf.set_text_color(0, 0, 0)
         pdf.ln(3)
 
     def _info_row(label: str, value: str) -> None:
         pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(55, 7, label)
+        pdf.cell(55, 7, _safe(label))
         pdf.set_font("Helvetica", "", 11)
-        pdf.cell(0, 7, value, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 7, _safe(value), new_x="LMARGIN", new_y="NEXT")
 
     # ═════════════════════════════════════════════════════════════════
     # PAGINA 1 — COVER + KERNCIJFERS
     # ═════════════════════════════════════════════════════════════════
     pdf.add_page()
-    pdf.set_fill_color(2, 132, 199)
+    pdf.set_fill_color(*BRAND)
     pdf.rect(0, 0, 210, 50, "F")
+    # White-label logo rechtsboven op de band (best-effort)
+    if org_logo and isinstance(org_logo, str) and org_logo.startswith("data:image"):
+        try:
+            import base64 as _b64
+            pdf.image(io.BytesIO(_b64.b64decode(org_logo.split(",", 1)[1])), w=42, x=150, y=10)
+        except Exception:
+            pass
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 24)
     pdf.set_xy(18, 16)
@@ -423,6 +463,42 @@ def export_mjop_pdf(
         pdf.cell(kpi_w, 5, lbl, align="C")
     pdf.set_text_color(0, 0, 0)
     pdf.set_y(kpi_y + kpi_h + 6)
+
+    scope_naam = project_name or f"{org_name} (organisatie-breed)"
+    pdf.footer_left = _safe(f"MJOP {scope_naam}")[:80]
+
+    # ═════════════════════════════════════════════════════════════════
+    # INHOUDSOPGAVE
+    # ═════════════════════════════════════════════════════════════════
+    pdf.add_page()
+    _section_title("Inhoudsopgave")
+    pdf.set_font("Helvetica", "", 11)
+    for label in ("Managementsamenvatting", "1. Methodologie", "2. Asset-overzicht",
+                  "3. Meldingen-context", "4. Kosten per jaar",
+                  "5. Volledige MJOP-tabel", "6. Voorbeeld-berekening",
+                  "7. Bronnen en disclaimers"):
+        pdf.multi_cell(0, 7, label, new_x="LMARGIN", new_y="NEXT")
+
+    # ═════════════════════════════════════════════════════════════════
+    # MANAGEMENTSAMENVATTING (inleiding + de 'so what' in proza)
+    # ═════════════════════════════════════════════════════════════════
+    pdf.add_page()
+    _section_title("Managementsamenvatting")
+    prioriteit_count = sum(c for s, c in cond_counts.items() if s is not None and s >= 4)
+    _by_year_max: dict[int, float] = {}
+    for r in rows:
+        _by_year_max[r["year"]] = _by_year_max.get(r["year"], 0.0) + r["max_total"]
+    piekjaar = max(_by_year_max, key=_by_year_max.get) if _by_year_max else None
+    piekjaar_max = _by_year_max.get(piekjaar, 0.0) if piekjaar is not None else 0.0
+    pdf.set_font("Helvetica", "", 10)
+    pdf.multi_cell(0, 5, _safe(rapport.inleiding(
+        scope_naam=scope_naam, years=years, assets_in_scope=len(all_assets),
+        include_score_2=include_score_2)))
+    pdf.ln(2)
+    pdf.multi_cell(0, 5, _safe(rapport.managementsamenvatting(
+        total_min=total_min, total_max=total_max, years=years, mjop_regels=len(rows),
+        assets_count=assets_count, assets_zonder_score=assets_zonder_score,
+        prioriteit_count=prioriteit_count, piekjaar=piekjaar, piekjaar_max=piekjaar_max)))
 
     # ═════════════════════════════════════════════════════════════════
     # PAGINA 2 — METHODOLOGIE (FORMULE + NORMEN)

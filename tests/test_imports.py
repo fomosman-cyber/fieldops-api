@@ -259,3 +259,77 @@ def test_shapefile_viewer_forbidden(client, viewer_user):
     zb = _make_shp_zip([([[4.20, 51.99], [4.21, 51.99]], ("x", "asfalt"))], fields=_SHP_FIELDS)
     r = _post_shp(client, viewer_user, zb)
     assert r.status_code == 403
+
+
+# ── Regressietests: import-robuustheid (bug-hunt 2026-06-25) ──────────────
+
+def _single_point_shp(name, *, encoding=None, null=False):
+    """Bouw een 1-punt shapefile-zip (data.*). null=True voegt een NULL-shape toe."""
+    import shapefile
+    shp_b, shx_b, dbf_b = io.BytesIO(), io.BytesIO(), io.BytesIO()
+    kw = {"encoding": encoding} if encoding else {}
+    w = shapefile.Writer(shp=shp_b, shx=shx_b, dbf=dbf_b, shapeType=shapefile.POINT, **kw)
+    w.field("naam", "C", 50)
+    w.point(4.21, 51.99); w.record(name)
+    if null:
+        w.null(); w.record("Leeg record")
+    w.close()
+    zb = io.BytesIO()
+    with zipfile.ZipFile(zb, "w") as zf:
+        zf.writestr("data.shp", shp_b.getvalue())
+        zf.writestr("data.shx", shx_b.getvalue())
+        zf.writestr("data.dbf", dbf_b.getvalue())
+    return zb.getvalue()
+
+
+def test_shapefile_multiple_stems_rejected(client, admin_user):
+    """ZIP met 2 shapefile-stems mag niet stil records droppen → 400."""
+    import shapefile
+    zb = io.BytesIO()
+    with zipfile.ZipFile(zb, "w") as zf:
+        for stem in ("roads", "points"):
+            sb, xb, db_ = io.BytesIO(), io.BytesIO(), io.BytesIO()
+            w = shapefile.Writer(shp=sb, shx=xb, dbf=db_, shapeType=shapefile.POINT)
+            w.field("naam", "C", 40); w.point(4.21, 51.99); w.record(stem); w.close()
+            zf.writestr(f"{stem}.shp", sb.getvalue())
+            zf.writestr(f"{stem}.shx", xb.getvalue())
+            zf.writestr(f"{stem}.dbf", db_.getvalue())
+    r = _post_shp(client, admin_user, zb.getvalue())
+    assert r.status_code == 400
+    assert "meerdere shapefiles" in r.json()["detail"].lower()
+
+
+def test_shapefile_null_shape_does_not_kill_batch(client, admin_user):
+    """Eén NULL-shape mag de geldige features niet meesleuren (geen batch-400)."""
+    r = _post_shp(client, admin_user, _single_point_shp("Geldig punt", null=True))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["total_features"] == 2
+    assert body["created"] == 1          # het geldige punt komt binnen
+    assert len(body["errors"]) == 1      # de NULL-shape is een feature-fout, geen abort
+
+
+def test_shapefile_cp1252_diacritics_imports(client, admin_user):
+    """cp1252/latin1 .dbf met diacriet (NL-export) mag de import niet laten falen."""
+    r = _post_shp(client, admin_user, _single_point_shp("Café Plein", encoding="cp1252"))
+    assert r.status_code == 200, r.text   # vóór de fix: 400 (UnicodeDecodeError)
+    assert r.json()["created"] == 1
+
+
+def test_geojson_codeless_reimport_not_silently_skipped(client, admin_user):
+    """Code-loze features bij her-import mogen niet stil worden geskipt (data loss)."""
+    feats = [_feat("Point", [4.21, 51.99]), _feat("Point", [4.22, 51.98])]
+    assert _post(client, admin_user, feats).json()["created"] == 2
+    second = _post(client, admin_user, feats).json()
+    assert second["created"] == 2        # vóór de fix: 0 (auto-codes botsten → skip)
+    assert second["skipped"] == 0
+
+
+def test_geojson_long_code_truncated_not_500(client, admin_user):
+    """Te lange extern-id (>64) mag geen import-brede 500 op commit geven."""
+    long_code = "X" * 70
+    r = _post(client, admin_user, [_feat("Point", [4.21, 51.99], {"code": long_code})])
+    assert r.status_code == 200, r.text
+    assert r.json()["created"] == 1
+    a = _get_asset(admin_user.organization_id, code=long_code[:64])
+    assert a is not None and len(a.code) == 64

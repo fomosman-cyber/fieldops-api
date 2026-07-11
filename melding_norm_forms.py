@@ -19,7 +19,7 @@ generiek kan renderen en het document (#12) ze generiek kan tonen:
 """
 from typing import Optional
 
-from kunstwerken_taxonomy import normalize_type, KUNSTWERK_TYPES
+from kunstwerken_taxonomy import normalize_type
 
 
 # Norm-label per genormaliseerd type (voor de sectie-titel in de modal).

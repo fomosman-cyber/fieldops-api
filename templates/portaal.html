@@ -98,7 +98,7 @@
       --border-hover: #cbd5e1;
       --text: #1e293b;
       --text-muted: #64748b;
-      --text-dim: #94a3b8;
+      --text-dim: #5f6b7a;   /* L5: AA-contrast (was #94a3b8, faalde WCAG ~2.6:1) */
       --accent: #0284c7;
       --accent-dark: #0369a1;
       --gradient: linear-gradient(135deg, #0284c7, #0369a1);
@@ -121,7 +121,7 @@
       --border-hover: #3a414c;
       --text: #e6edf3;
       --text-muted: #9ba6b3;
-      --text-dim: #6e7787;
+      --text-dim: #9aa5b3;   /* L5: AA-contrast op donkere bg (was #6e7787) */
       --accent: #38bdf8;
       --accent-dark: #0ea5e9;
       --gradient: linear-gradient(135deg, #38bdf8, #0284c7);
@@ -952,6 +952,12 @@
     .toast.show { transform: translateY(0); opacity: 1; }
     .toast.success { background: rgba(0,230,118,0.15); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
     .toast.error { background: rgba(255,82,82,0.15); color: var(--red); border: 1px solid rgba(255,82,82,0.3); }
+    /* L3: info/warning hadden geen achtergrond -> offline-sync-toasts waren onzichtbaar */
+    .toast.info { background: rgba(2,132,199,0.15); color: var(--accent); border: 1px solid rgba(2,132,199,0.35); }
+    .toast.warning { background: rgba(234,88,12,0.15); color: var(--orange); border: 1px solid rgba(234,88,12,0.35); }
+
+    /* ───── A11Y — zichtbare focus voor toetsenbord/veld-navigatie (L15) ───── */
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
     /* ───── LOADING SPINNER ───── */
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -1034,6 +1040,8 @@
       .btn-logout { font-size: 11px; padding: 6px 10px; }
       .user-pill { padding: 4px 8px; }
       .lang-switcher, #langSwitcher { font-size: 11px; padding: 4px 6px; }
+      /* L14: 44px tap-targets voor veldgebruik (handschoenen) */
+      .notif-btn { min-width: 44px; min-height: 44px; font-size: 20px; }
     }
 
     /* ───── SCROLLBAR ───── */
@@ -4071,6 +4079,40 @@
   </div>
 
   <!-- Defect toevoegen -->
+  <div class="modal-overlay" id="kwAddElementModal">
+    <div class="modal" style="max-width:520px;">
+      <button class="modal-close" onclick="closeKwAddElementModal()" aria-label="Sluiten">&times;</button>
+      <h2>Bouwdeel toevoegen</h2>
+      <p class="subtitle">Kies een standaard-bouwdeel (NEN 2767-2 / CROW 134) of voeg een eigen bouwdeel toe. Elk bouwdeel krijgt automatisch de bijbehorende vragenlijst.</p>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Uit de standaard-bibliotheek</label>
+          <select id="kwAddElLib" onchange="kwAddElLibKies()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <option value="">— laden... —</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Naam bouwdeel</label>
+          <input id="kwAddElNaam" placeholder="bv. Remmingwerk / fender" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Groep</label>
+          <select id="kwAddElGroep" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <option value="constructief">Constructief</option>
+            <option value="afwerking">Afwerking</option>
+            <option value="installatie">Installatie</option>
+            <option value="omgeving">Omgeving</option>
+            <option value="overig">Overig</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
+          <button class="btn-secondary" onclick="closeKwAddElementModal()">Annuleren</button>
+          <button class="btn-primary" onclick="submitKwAddElement()">Toevoegen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="kwDefectModal">
     <div class="modal" style="max-width:560px;">
       <button class="modal-close" onclick="closeKwDefectModal()" aria-label="Sluiten">&times;</button>
@@ -4900,7 +4942,7 @@
   </div>
 
   <!-- ═══════ TOAST ═══════ -->
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- ═══════ LEAFLET JS ═══════ -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -8855,6 +8897,8 @@
       var t = document.getElementById('toast');
       t.textContent = msg;
       t.className = 'toast ' + (type || 'success');
+      // L4: urgente meldingen (fout/waarschuwing) assertief aankondigen voor screenreaders
+      t.setAttribute('aria-live', (type === 'error' || type === 'warning') ? 'assertive' : 'polite');
       setTimeout(function() { t.classList.add('show'); }, 10);
       setTimeout(function() { t.classList.remove('show'); }, 3500);
     }
@@ -10985,6 +11029,32 @@
     // Mo's bug: het document uit een melding miste GPS, de foto zelf en de
     // asset-codering. Deze functie bouwt een CROW-conform document van één
     // melding mét al die onderdelen.
+    // Narratieve samenvatting/advies-alinea uit de melding-data (volzinnen).
+    function _meldingNarratief(m, assetTxt, datum, statusLabels) {
+      var parts = [];
+      var cat = (m.category || 'een melding');
+      var waar = (assetTxt && assetTxt !== '—') ? (' ter plaatse van ' + assetTxt) : '';
+      parts.push('Deze melding betreft ' + cat + waar + ', aangemaakt op ' + datum +
+        ' door ' + (m.creator_name || 'onbekend') + '.');
+      if (m.crow_klasse || m.crow_schadebeeld || m.nen_2767_conditie != null) {
+        var cls = 'De waarneming is geclassificeerd';
+        if (m.crow_schadebeeld) cls += ' volgens CROW 146 als ' + m.crow_schadebeeld;
+        if (m.crow_klasse) cls += ' (klasse ' + m.crow_klasse + ')';
+        if (m.nen_2767_conditie != null) cls += ', wat overeenkomt met NEN 2767-conditie ' + m.nen_2767_conditie;
+        parts.push(cls + '.');
+      }
+      var statusLabel = (statusLabels && statusLabels[m.status]) || m.status || 'open';
+      var prio = (m.priority || 'normaal');
+      parts.push('De huidige status is "' + statusLabel + '" met prioriteit ' + prio + '.');
+      if (m.onderhoud_categorie || m.gw_maatregel) {
+        var adv = 'Geadviseerde afhandeling';
+        if (m.onderhoud_categorie) adv += ' (' + m.onderhoud_categorie + ')';
+        adv += ': ' + (m.gw_maatregel || 'conform de geldende onderhoudsrichtlijn') + '.';
+        parts.push(adv);
+      }
+      return parts.join(' ');
+    }
+
     function generateMeldingDocument(meldingId) {
       var id = meldingId || editingMeldingId;
       if (!id) { showToast('Geen melding geselecteerd', 'error'); return; }
@@ -11097,6 +11167,14 @@
         doc.text(doc.splitTextToSize(String(f[1]), cw-10), fx, fy+5);
       });
       y += blockH + 6;
+
+      // ── Samenvatting & advies (narratief) ──
+      doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+      doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+      doc.text('SAMENVATTING & ADVIES', M, y); y += 6;
+      normal(); doc.setTextColor(30,41,59); doc.setFontSize(11);
+      var _narrLines = doc.splitTextToSize(_meldingNarratief(m, assetTxt, datum, statusLabels), W-2*M);
+      doc.text(_narrLines, M, y); y += _narrLines.length * 5.5 + 6;
 
       // ── GPS-locatie (kern van #12) ──
       doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
@@ -15865,8 +15943,9 @@
 
       // Elementen-tree
       var elementen = insp.elementen || [];
+      var addElBtn = (!locked) ? '<div style="margin-bottom:14px;"><button class="btn-secondary" onclick="openKwAddElementModal()">+ Bouwdeel toevoegen</button></div>' : '';
       if (!elementen.length) {
-        elementsEl.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:20px;">' + t('kw_geen_elementen') + '</p>';
+        elementsEl.innerHTML = addElBtn + '<p style="color:var(--text-dim);text-align:center;padding:20px;">' + t('kw_geen_elementen') + '</p>';
         return;
       }
       // Groepeer per element_groep
@@ -15884,7 +15963,7 @@
         omgeving:     t('kw_omgeving'),
         overig:       t('kw_overig'),
       };
-      elementsEl.innerHTML = groupOrder.filter(function(g){ return groups[g]; }).map(function(g){
+      elementsEl.innerHTML = addElBtn + groupOrder.filter(function(g){ return groups[g]; }).map(function(g){
         var items = groups[g];
         var groupHtml = '<div style="margin-bottom:18px;">'
           + '<h3 style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin:0 0 8px;">' + groupLabels[g] + '</h3>';
@@ -15951,8 +16030,9 @@
             elementHtml += '<p style="color:var(--text-dim);font-size:13px;margin:8px 0;">Nog geen defecten geregistreerd.</p>';
           }
           if (!locked) {
-            elementHtml += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:12px;">'
+            elementHtml += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:12px;">'
               + '<label style="color:var(--text-muted);"><input type="checkbox" ' + (e.beoordeeld ? 'checked' : '') + ' onchange="toggleKwBeoordeeld(\'' + e.id + '\', this.checked)"> ' + t('kw_chk_beoordeeld_geen_bijzonderheden') + '</label>'
+              + '<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:#dc2626;border-color:#fee2e2;" onclick="deleteKwElement(\'' + e.id + '\', ' + JSON.stringify(e.element_naam || '') + ')">🗑️ Bouwdeel verwijderen</button>'
               + '</div>';
           }
           elementHtml += '</div></div>';
@@ -15967,6 +16047,66 @@
       var box = document.getElementById('kwEl-' + elId);
       if (!box) return;
       box.style.display = box.style.display === 'none' ? '' : 'none';
+    }
+
+    // ── Flexibele bouwdelen-editor: standaard-bibliotheek + eigen element + verwijderen ──
+    function openKwAddElementModal() {
+      if (!_currentKunstwerk) return;
+      document.getElementById('kwAddElNaam').value = '';
+      document.getElementById('kwAddElGroep').value = 'constructief';
+      var sel = document.getElementById('kwAddElLib');
+      sel.innerHTML = '<option value="">— laden... —</option>';
+      var aanwezig = {};
+      (_currentKunstwerk.elementen || []).forEach(function(e){ aanwezig[e.element_code] = true; });
+      api('GET', '/api/kunstwerken-inspecties/taxonomy/' + encodeURIComponent(_currentKunstwerk.kunstwerk_type || '')).then(function(tax){
+        var opts = ['<option value="">— kies een standaard-bouwdeel —</option>'];
+        (tax.elementen || []).forEach(function(el){
+          if (!aanwezig[el.code]) {
+            opts.push('<option value="' + escapeHtml(el.code) + '" data-naam="' + escapeHtml(el.naam) + '" data-groep="' + escapeHtml(el.groep || 'overig') + '">' + escapeHtml(el.naam) + '</option>');
+          }
+        });
+        if (opts.length === 1) opts.push('<option value="" disabled>(alle standaard-bouwdelen zitten al in deze inspectie)</option>');
+        sel.innerHTML = opts.join('');
+      }).catch(function(){ sel.innerHTML = '<option value="">(bibliotheek niet beschikbaar — gebruik een eigen bouwdeel)</option>'; });
+      document.getElementById('kwAddElementModal').classList.add('active');
+    }
+    function closeKwAddElementModal() {
+      document.getElementById('kwAddElementModal').classList.remove('active');
+    }
+    function kwAddElLibKies() {
+      var sel = document.getElementById('kwAddElLib');
+      var opt = sel.options[sel.selectedIndex];
+      if (opt && opt.value) {
+        document.getElementById('kwAddElNaam').value = opt.getAttribute('data-naam') || opt.text;
+        document.getElementById('kwAddElGroep').value = opt.getAttribute('data-groep') || 'overig';
+      }
+    }
+    function submitKwAddElement() {
+      if (!_currentKunstwerk) return;
+      var sel = document.getElementById('kwAddElLib');
+      var opt = sel.options[sel.selectedIndex];
+      var naam = (document.getElementById('kwAddElNaam').value || '').trim();
+      if (!naam) { showToast('Geef een naam voor het bouwdeel', 'error'); return; }
+      var groep = document.getElementById('kwAddElGroep').value || 'overig';
+      var code = (opt && opt.value) ? opt.value
+        : 'EIGEN.' + naam.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
+      api('POST', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen', {
+        element_code: code, element_naam: naam, element_groep: groep, order_index: 100,
+      }).then(function(){
+        showToast('Bouwdeel toegevoegd', 'success');
+        closeKwAddElementModal();
+        return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+      }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
+        .catch(function(err){ showToast('Toevoegen mislukt: ' + (err.message || ''), 'error'); });
+    }
+    function deleteKwElement(elId, naam) {
+      if (!_currentKunstwerk) return;
+      if (!confirm('Bouwdeel "' + (naam || '') + '" verwijderen uit deze inspectie? De bijbehorende vragen en defecten gaan ook weg.')) return;
+      api('DELETE', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + elId).then(function(){
+        showToast('Bouwdeel verwijderd', 'success');
+        return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+      }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
+        .catch(function(err){ showToast('Verwijderen mislukt: ' + (err.message || ''), 'error'); });
     }
 
     function saveKwElementBev(elId) {
@@ -20804,12 +20944,12 @@
       var typeEl = document.getElementById('meldingCrow146Type');
       if (!box || !summary || !r) return;
 
-      if (typeEl) typeEl.textContent = (r.verhardingstype_label || '') + ' · ' + (r.detection_method === 'auto' ? 'auto-detect' : 'expliciet');
+      if (typeEl) typeEl.textContent = (r.verhardingstype_label || '') + ' · ' + (r.detection_method === 'vision' ? '📷 AI-foto-analyse' : (r.detection_method === 'auto' ? 'auto-detect' : 'expliciet'));
 
       var lines = [];
       var sugg = r.suggestions || [];
       if (sugg.length === 0) {
-        lines.push('<em>Geen schadebeelden gedetecteerd in de heuristiek.</em>');
+        lines.push('<em>Geen schadebeelden gedetecteerd op de foto.</em>');
       } else {
         lines.push('<div style="font-weight:600;margin-bottom:6px;">Top schadebeelden:</div>');
         lines.push('<ul style="margin:0 0 8px 18px;padding:0;">');
@@ -20830,6 +20970,13 @@
           '</li>');
         });
         lines.push('</ul>');
+      }
+      if (r.bevindingen && r.bevindingen.length) {
+        lines.push('<div style="margin-top:6px;font-size:12px;"><strong>AI-bevindingen op de foto:</strong><ul style="margin:4px 0 0 18px;padding:0;color:var(--text-muted);">' +
+          r.bevindingen.map(function(b){ return '<li>' + escapeHtml(b) + '</li>'; }).join('') + '</ul></div>');
+      }
+      if (r.nen_2767_conditie != null) {
+        lines.push('<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">NEN 2767-conditie: <strong>' + escapeHtml(String(r.nen_2767_conditie)) + '</strong>/5</div>');
       }
       if (r.norm_reference) {
         lines.push('<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Norm: ' + escapeHtml(r.norm_reference) + '</div>');

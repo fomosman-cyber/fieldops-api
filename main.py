@@ -160,6 +160,9 @@ def _run_migrations():
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_org ON meldingen(organization_id)"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_org_proj_created ON meldingen(organization_id, project_id, created_at)"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_created ON meldingen(created_at)"))
+                # Meldingen-tab + dashboard filteren continu op status (open/
+                # afgerond/observatie/KO) binnen een org → composite-index (V3).
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_org_status ON meldingen(organization_id, status)"))
 
         # NWB-Wegvakken architectuur — assets uitgebreid met geometry + WVK_ID (v3.4)
         if "assets" in insp.get_table_names():
@@ -213,6 +216,13 @@ def _run_migrations():
                     if "next_inspection_due" in insp_missing:
                         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_next_inspection_due ON assets(next_inspection_due)"))
                 print("[migration] assets inspectie-kolommen toegevoegd.")
+
+            # Soft-delete: élke asset-lijst filtert op archived_at IS NULL →
+            # zonder index een full-scan bij groeiende portefeuilles (V3).
+            # Idempotent.
+            with engine.begin() as conn:
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_archived_at ON assets(archived_at)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_org_archived ON assets(organization_id, archived_at)"))
 
         # Organisations — self-service contact-velden voor org-admin (v3.7)
         if "organizations" in insp.get_table_names():
