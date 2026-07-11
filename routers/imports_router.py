@@ -221,33 +221,64 @@ def _shapefile_to_features(raw: bytes, filename: str) -> list[dict]:
     shp = dbf = shx = None
     if zipfile.is_zipfile(io.BytesIO(raw)):
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-            for n in zf.namelist():
+            names = [n for n in zf.namelist() if not n.endswith("/")]
+            # Groepeer .shp/.dbf/.shx per stem (basisnaam zonder extensie). Anders
+            # zou een ZIP met meerdere shapefiles stil records droppen of de .dbf
+            # van laag A aan de .shp van laag B koppelen (attribuut-verwisseling).
+            stems: dict[str, dict[str, str]] = {}
+            for n in names:
                 low = n.lower()
-                if low.endswith(".shp"):
-                    shp = io.BytesIO(zf.read(n))
-                elif low.endswith(".dbf"):
-                    dbf = io.BytesIO(zf.read(n))
-                elif low.endswith(".shx"):
-                    shx = io.BytesIO(zf.read(n))
-        if shp is None:
-            raise HTTPException(status_code=400, detail="ZIP bevat geen .shp-bestand")
+                for ext in (".shp", ".dbf", ".shx"):
+                    if low.endswith(ext):
+                        stem = n[: -len(ext)].lower()
+                        stems.setdefault(stem, {})[ext] = n
+            shp_stems = [s for s, parts in stems.items() if ".shp" in parts]
+            if not shp_stems:
+                raise HTTPException(status_code=400, detail="ZIP bevat geen .shp-bestand")
+            if len(shp_stems) > 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"ZIP bevat meerdere shapefiles ({len(shp_stems)}); upload er één per keer")
+            parts = stems[shp_stems[0]]
+            shp = io.BytesIO(zf.read(parts[".shp"]))
+            dbf = io.BytesIO(zf.read(parts[".dbf"])) if ".dbf" in parts else None
+            shx = io.BytesIO(zf.read(parts[".shx"])) if ".shx" in parts else None
     else:
         shp = io.BytesIO(raw)
 
+    # NL-shapefiles (ArcGIS/QGIS) hebben vaak een cp1252/latin1 .dbf; pyshp default
+    # 'utf-8'/'strict' → één diacriet (café/ë) laat anders de hele import falen.
     try:
-        reader = shapefile.Reader(shp=shp, dbf=dbf, shx=shx)
-        features: list[dict] = []
+        reader = shapefile.Reader(shp=shp, dbf=dbf, shx=shx,
+                                  encoding="cp1252", encodingErrors="replace")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Kan shapefile niet lezen: {e}")
+
+    def _geo(shape):
+        # NULL-shapes (shapeType 0, records zonder geometrie) zijn geldig in de
+        # spec; pyshp gooit dan op __geo_interface__. Per shape vangen zodat één
+        # leeg record niet duizenden geldige features meesleurt — _convert_geometry
+        # rapporteert geometry=None netjes als feature-fout.
+        try:
+            return shape.__geo_interface__
+        except Exception:
+            return None
+
+    features: list[dict] = []
+    try:
         if dbf is not None:
             for sr in reader.shapeRecords():
                 rec = sr.record.as_dict() if sr.record is not None else {}
                 props = {k: _jsonsafe(v) for k, v in rec.items()}
                 features.append({"type": "Feature",
-                                 "geometry": sr.shape.__geo_interface__,
+                                 "geometry": _geo(sr.shape),
                                  "properties": props})
         else:
             for shape in reader.shapes():
                 features.append({"type": "Feature",
-                                 "geometry": shape.__geo_interface__,
+                                 "geometry": _geo(shape),
                                  "properties": {}})
     except HTTPException:
         raise
@@ -304,11 +335,21 @@ def _process_features(db: Session, current_user: User, request: Request, feature
         asset_type, herkomst = classify_imbor(props, conv["type"], default_type)
 
         code = _first_prop(props, _CODE_KEYS)
+        if code:
+            # Asset.code = String(64); lange extern-id's (BAG/CROW/gemeente) zouden
+            # anders een StringDataRightTruncation → import-brede 500 op commit geven.
+            code = code[:64]
         if not code:
+            # Auto-code: schuif seq door tot een vrije code. Voorkomt dat code-loze
+            # features bij her-import (of shapefiles zonder .dbf) stil worden geskipt
+            # omdat de gegenereerde code al in de DB zit.
             seq += 1
             code = f"{code_prefix}-{seq:04d}"
-
-        if code in existing_codes or code in seen_codes:
+            while code in existing_codes or code in seen_codes:
+                seq += 1
+                code = f"{code_prefix}-{seq:04d}"
+        elif code in existing_codes or code in seen_codes:
+            # Expliciete code uit de bron die al bestaat → bewust overslaan (dedup).
             skipped += 1
             continue
         seen_codes.add(code)
