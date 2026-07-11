@@ -56,7 +56,8 @@ def _signed_body(payload: dict) -> tuple[bytes, str]:
 
 
 def test_shopify_order_paid_omits_temp_password(client, monkeypatch):
-    monkeypatch.setattr("routers.shopify_router.SHOPIFY_API_SECRET", _SECRET)
+    # Secret wordt op request-tijd uit de env gelezen (geen module-constante)
+    monkeypatch.setenv("SHOPIFY_API_SECRET", _SECRET)
     body, sig = _signed_body({
         "email": "shopify-buyer@new-org.nl",
         "customer": {"id": 1, "first_name": "Koen", "last_name": "Koper"},
@@ -73,7 +74,7 @@ def test_shopify_order_paid_omits_temp_password(client, monkeypatch):
 
 
 def test_shopify_webhook_rejects_bad_hmac(client, monkeypatch):
-    monkeypatch.setattr("routers.shopify_router.SHOPIFY_API_SECRET", _SECRET)
+    monkeypatch.setenv("SHOPIFY_API_SECRET", _SECRET)
     body = json.dumps({"email": "x@y.nl"}).encode("utf-8")
     r = client.post("/api/shopify/webhook/order-paid", content=body,
                     headers={"X-Shopify-Hmac-Sha256": "ongeldig",
@@ -82,13 +83,13 @@ def test_shopify_webhook_rejects_bad_hmac(client, monkeypatch):
 
 
 def test_shopify_webhook_blocks_when_no_secret_in_production(client, monkeypatch):
-    # Geen secret + 'productie' → fail closed (anders open org+admin-creatie)
-    monkeypatch.setattr("routers.shopify_router.SHOPIFY_API_SECRET", "")
-    monkeypatch.setattr("routers.shopify_router._is_production", lambda: True)
+    # Geen secret → fail closed, in élke omgeving (503: integratie staat uit).
+    # Strikter dan de oude variant die alleen in productie blokkeerde.
+    monkeypatch.delenv("SHOPIFY_API_SECRET", raising=False)
     body = json.dumps({"email": "x@y.nl"}).encode("utf-8")
     r = client.post("/api/shopify/webhook/order-paid", content=body,
                     headers={"Content-Type": "application/json"})
-    assert r.status_code == 401
+    assert r.status_code == 503
 
 
 # ─── I21: SSRF-guard op uitgaande webhook-URLs ─────────────────────────────────
