@@ -55,6 +55,7 @@ import nen2767_scoring as scoring
 import inspection_cycle as cycle
 import kunstwerken_i18n as kw_i18n
 import crow_kosten as ck
+import inspectie_rapport as rapport
 
 router = APIRouter(prefix="/api/kunstwerken-inspecties", tags=["Kunstwerken-inspecties"])
 
@@ -1183,6 +1184,12 @@ def export_inspection_pdf(
         pdf.set_font("Helvetica", "", 11)
         pdf.multi_cell(0, 7, safe(value), new_x="LMARGIN", new_y="NEXT")
 
+    def _paragraph(text: str) -> None:
+        """Bodytekst-alinea (prozatekst) — gebruikt voor de narratieve hoofdstukken."""
+        pdf.set_font("Helvetica", "", 10)
+        pdf.multi_cell(0, 5, safe(text), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(1)
+
     def _embed_image(data_url, w=55, x=None, y=None) -> bool:
         """Bed een afbeelding in: base64 data-URL OF https-URL. Best-effort.
 
@@ -1308,115 +1315,135 @@ def export_inspection_pdf(
         + (f" (binnen {termijn} jaar)" if termijn else "")
     ))
 
-    # ═══ PAGINA 2 — SAMENVATTING + LOCATIE ═══
+    # ═══ PAGINA 2 — INHOUDSOPGAVE ═══
     pdf.add_page()
-    _section_title("1. Samenvatting en advies")
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 6, "Samenvatting", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 10)
-    pdf.multi_cell(0, 5, safe(insp.samenvatting or "Geen samenvatting ingevuld."))
-    pdf.ln(2)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 6, "Aanbevolen acties", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 10)
-    pdf.multi_cell(0, 5, safe(insp.aanbevolen_acties or advies.get("actie", "-")))
-    pdf.ln(2)
-    if insp.volgende_inspectie_op:
-        _info_row("Volgende inspectie:", insp.volgende_inspectie_op.strftime("%d-%m-%Y"))
-    if insp.bijzonderheden:
-        pdf.ln(1)
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(0, 6, "Bijzonderheden", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_font("Helvetica", "", 10)
-        pdf.multi_cell(0, 5, safe(insp.bijzonderheden))
+    _section_title("Inhoudsopgave")
+    pdf.set_font("Helvetica", "", 11)
+    for nr, titel in (
+        ("1", "Inleiding en aanleiding"),
+        ("2", "Objectbeschrijving"),
+        ("3", "Werkwijze en normkader"),
+        ("4", "Bevindingen per bouwdeel"),
+        ("5", "Conditiebeoordeling en analyse"),
+        ("6", "Conclusie en advies"),
+        ("7", "Verantwoording en ondertekening"),
+    ):
+        pdf.cell(12, 7, nr)
+        pdf.multi_cell(0, 7, safe(titel), new_x="LMARGIN", new_y="NEXT")
 
-    pdf.ln(3)
-    _section_title("2. Locatie")
-    if asset and asset.lat is not None and asset.lng is not None:
-        _info_row("Coordinaten:", f"{asset.lat:.6f}, {asset.lng:.6f}")
-    _info_row("Omschrijving:", (asset.location_description if asset else None) or "-")
+    datum_str = insp.datum_inspectie.strftime("%d-%m-%Y") if insp.datum_inspectie else "-"
+    coords = (f"{asset.lat:.6f}, {asset.lng:.6f}"
+              if asset and asset.lat is not None and asset.lng is not None else None)
 
-    # ═══ PAGINA 3 — ELEMENTEN-OVERZICHT ═══
+    # ═══ HOOFDSTUK 1 — INLEIDING ═══
     pdf.add_page()
-    _section_title("3. Elementen-overzicht")
+    _section_title("1. Inleiding en aanleiding")
+    _paragraph(rapport.inleiding(
+        kw_label=kw_label, obj_naam=obj, inspectie_type=insp.inspectie_type,
+        datum_str=datum_str, inspecteur=insp.inspecteur_naam,
+        norm_ref=insp.norm_referenties or "NEN 2767-2 en CROW 134"))
+
+    # ═══ HOOFDSTUK 2 — OBJECTBESCHRIJVING ═══
+    _section_title("2. Objectbeschrijving")
+    _paragraph(rapport.objectbeschrijving(
+        kw_label=kw_label, obj_naam=obj, bouwjaar=_bouwjaar, beheerder=_beheerder,
+        wegnr=_wegnr, locatie_oms=(asset.location_description if asset else None),
+        coords=coords))
+
+    # ═══ HOOFDSTUK 3 — WERKWIJZE ═══
+    _section_title("3. Werkwijze en normkader")
+    _paragraph(rapport.werkwijze())
+
+    # ═══ HOOFDSTUK 4 — BEVINDINGEN PER BOUWDEEL ═══
+    pdf.add_page()
+    _section_title("4. Bevindingen per bouwdeel")
+    # Overzichtstabel
     pdf.set_font("Helvetica", "B", 9)
     pdf.set_fill_color(230, 230, 230)
-    pdf.cell(30, 6, "Code", border=1, fill=True)
-    pdf.cell(60, 6, "Element", border=1, fill=True)
-    pdf.cell(38, 6, "Conditie", border=1, fill=True)
-    pdf.cell(22, 6, "Defecten", border=1, fill=True, align="R")
+    pdf.cell(28, 6, "Code", border=1, fill=True)
+    pdf.cell(58, 6, "Bouwdeel", border=1, fill=True)
+    pdf.cell(40, 6, "Conditie", border=1, fill=True)
+    pdf.cell(20, 6, "Gebreken", border=1, fill=True, align="R")
     pdf.cell(0, 6, "Beoordeeld", border=1, fill=True)
     pdf.ln()
     pdf.set_font("Helvetica", "", 9)
     for e in (insp.elementen or []):
-        pdf.cell(30, 5, safe(e.element_code)[:16], border=1)
-        pdf.cell(60, 5, safe(e.element_naam)[:34], border=1)
-        pdf.cell(38, 5, safe(f"{e.conditiescore or '-'} {scoring.conditie_label(e.conditiescore)}")[:20], border=1)
-        pdf.cell(22, 5, safe(len(e.defecten or [])), border=1, align="R")
+        pdf.cell(28, 5, safe(e.element_code)[:15], border=1)
+        pdf.cell(58, 5, safe(e.element_naam)[:33], border=1)
+        pdf.cell(40, 5, safe(f"{e.conditiescore or '-'} {scoring.conditie_label(e.conditiescore)}")[:22], border=1)
+        pdf.cell(20, 5, safe(len(e.defecten or [])), border=1, align="R")
         pdf.cell(0, 5, "ja" if (e.beoordeeld or e.niet_inspecteerbaar_reden) else "nee", border=1)
         pdf.ln()
+    pdf.ln(3)
 
-    # ═══ PAGINA 4 — DEFECTEN-DETAIL + FOTO-BEWIJS ═══
-    has_defects = any((e.defecten for e in (insp.elementen or [])))
-    if has_defects:
-        pdf.add_page()
-        _section_title("4. Defecten-detail (NEN 2767-2)")
-        photo_budget = 60  # cap foto-inbedding om bestandsgrootte te beperken
-        truncated = False
-        for e in (insp.elementen or []):
-            for d in (e.defecten or []):
-                pdf.set_font("Helvetica", "B", 10)
-                pdf.multi_cell(0, 6, safe(f"{e.element_naam} - {d.gebrek_naam or 'gebrek'}"),
-                               new_x="LMARGIN", new_y="NEXT")
-                pdf.set_font("Helvetica", "", 9)
-                cls = []
-                if d.ernst:
-                    cls.append(f"ernst {d.ernst}")
-                if d.intensiteit:
-                    cls.append(f"intensiteit {d.intensiteit}")
-                if d.omvang_klasse:
-                    cls.append(f"omvang-klasse {d.omvang_klasse}")
-                score_txt = (f"defect-score {d.defect_score} ({scoring.conditie_label(d.defect_score)})"
-                             if d.defect_score else "geen score")
-                pdf.multi_cell(0, 5, safe(
-                    "NEN 2767-2: " + (", ".join(cls) if cls else "n.v.t.") + " | " + score_txt),
-                    new_x="LMARGIN", new_y="NEXT")
-                if d.locatie_beschrijving:
-                    pdf.multi_cell(0, 5, safe(f"Locatie: {d.locatie_beschrijving}"),
-                                   new_x="LMARGIN", new_y="NEXT")
-                if d.omschrijving:
-                    pdf.multi_cell(0, 5, safe(f"Observatie: {d.omschrijving}"),
-                                   new_x="LMARGIN", new_y="NEXT")
-                # CROW-maatregel + GWWkosten (verharding op kunstwerk, bv brugdek-asfalt)
-                if d.crow_klasse:
-                    try:
-                        m = ck.lookup_maatregel(d.gebrek_code or d.gebrek_naam or "", d.crow_klasse)
-                        pdf.multi_cell(0, 5, safe(
-                            f"CROW-klasse {d.crow_klasse} ({m.get('categorie', '')}): "
-                            f"{m.get('maatregel', '')} - {m.get('kosten_orde', '')} "
-                            f"({m.get('gw_term', '')})"),
-                            new_x="LMARGIN", new_y="NEXT")
-                    except Exception:
-                        if d.gw_maatregel:
-                            pdf.multi_cell(0, 5, safe(f"Maatregel: {d.gw_maatregel}"),
-                                           new_x="LMARGIN", new_y="NEXT")
-                elif d.gw_maatregel:
-                    pdf.multi_cell(0, 5, safe(f"Maatregel: {d.gw_maatregel}"),
-                                   new_x="LMARGIN", new_y="NEXT")
-                # Foto-bewijs
-                if photo_budget > 0:
-                    if _embed_image(d.photo_url, w=55):
-                        photo_budget -= 1
-                elif d.photo_url:
-                    truncated = True
-                pdf.ln(3)
-        if truncated:
-            pdf.set_font("Helvetica", "I", 8)
-            pdf.multi_cell(0, 4, "(Niet alle foto's zijn ingesloten om de bestandsgrootte te beperken.)")
+    # Narratief per bouwdeel + gebreken + foto-bewijs
+    photo_budget = 60  # cap foto-inbedding om bestandsgrootte te beperken
+    truncated = False
+    for e in (insp.elementen or []):
+        defs = e.defecten or []
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.multi_cell(0, 6, safe(e.element_naam or "Bouwdeel"), new_x="LMARGIN", new_y="NEXT")
+        _paragraph(rapport.element_alinea(
+            naam=e.element_naam, code=e.element_code,
+            score=e.conditiescore, defect_count=len(defs)))
+        if e.niet_inspecteerbaar_reden and not defs:
+            _paragraph(f"Niet (volledig) inspecteerbaar: {e.niet_inspecteerbaar_reden}")
+        for d in defs:
+            maatregel_txt = None
+            if d.crow_klasse:
+                try:
+                    m = ck.lookup_maatregel(d.gebrek_code or d.gebrek_naam or "", d.crow_klasse)
+                    maatregel_txt = (f"{m.get('maatregel', '')} ({m.get('kosten_orde', '')})").strip()
+                except Exception:
+                    maatregel_txt = d.gw_maatregel
+            elif d.gw_maatregel:
+                maatregel_txt = d.gw_maatregel
+            pdf.set_font("Helvetica", "", 10)
+            pdf.set_x(22)
+            pdf.multi_cell(0, 5, safe("- " + rapport.defect_zin(
+                gebrek_naam=d.gebrek_naam, ernst=d.ernst, intensiteit=d.intensiteit,
+                omvang=d.omvang_klasse, defect_score=d.defect_score,
+                crow_klasse=d.crow_klasse, locatie=d.locatie_beschrijving,
+                omschrijving=d.omschrijving, maatregel=maatregel_txt)),
+                new_x="LMARGIN", new_y="NEXT")
+            if photo_budget > 0:
+                if _embed_image(d.photo_url, w=50):
+                    photo_budget -= 1
+            elif d.photo_url:
+                truncated = True
+        pdf.ln(2)
+    if truncated:
+        pdf.set_font("Helvetica", "I", 8)
+        pdf.multi_cell(0, 4, "(Niet alle foto's zijn ingesloten om de bestandsgrootte te beperken.)")
 
-    # ═══ PAGINA 5 — ONDERTEKENING + VERANTWOORDING ═══
+    # ═══ HOOFDSTUK 5 — CONDITIEBEOORDELING ═══
     pdf.add_page()
-    _section_title("5. Ondertekening en verantwoording")
+    _section_title("5. Conditiebeoordeling en analyse")
+    _slechtste, _max_score = None, -1
+    for e in (insp.elementen or []):
+        if e.conditiescore is not None and e.conditiescore > _max_score:
+            _max_score, _slechtste = e.conditiescore, e.element_naam
+    _paragraph(rapport.conditie_analyse(
+        eind=eind, defecten_totaal=metrics["defecten_totaal"],
+        defecten_kritiek=metrics["defecten_kritiek"],
+        elementen_beoordeeld=metrics["elementen_beoordeeld"],
+        elementen_totaal=metrics["elementen_totaal"], slechtste_naam=_slechtste))
+
+    # ═══ HOOFDSTUK 6 — CONCLUSIE EN ADVIES ═══
+    _section_title("6. Conclusie en advies")
+    _paragraph(rapport.conclusie(
+        eind=eind, advies=advies,
+        samenvatting_vrij=insp.samenvatting, aanbevolen_vrij=insp.aanbevolen_acties,
+        volgende_str=(insp.volgende_inspectie_op.strftime("%d-%m-%Y")
+                      if insp.volgende_inspectie_op else None)))
+    if insp.bijzonderheden:
+        pdf.set_font("Helvetica", "B", 11)
+        pdf.cell(0, 6, "Bijzonderheden", new_x="LMARGIN", new_y="NEXT")
+        _paragraph(insp.bijzonderheden)
+
+    # ═══ HOOFDSTUK 7 — VERANTWOORDING + ONDERTEKENING ═══
+    pdf.add_page()
+    _section_title("7. Verantwoording en ondertekening")
     if insp.status in ("signed", "delivered") and insp.signature_data_url:
         pdf.set_font("Helvetica", "", 10)
         pdf.cell(0, 6, safe(f"Ondertekend door: {insp.inspecteur_naam or '-'}"),
@@ -1431,13 +1458,11 @@ def export_inspection_pdf(
         pdf.multi_cell(0, 5, "Deze inspectie is nog niet ondertekend. Een ondertekend "
                              "rapport is pas rechtsgeldig na status 'signed'.")
     pdf.ln(4)
-    pdf.set_font("Helvetica", "", 9)
-    pdf.multi_cell(0, 5, safe(
-        "Methodiek: conditiescores zijn bepaald volgens NEN 2767-2 (worst-defect-rule per "
-        "element; het slechtste element bepaalt de objectconditie). Maatregel-categorieen "
-        "volgen de CROW 134 maatregelmatrix. Kosten-ordes zijn indicatief (GWWkosten 2024); "
-        "voor aanbesteding is een RAW-besteksraming per project vereist."))
-    pdf.ln(2)
+    _paragraph(
+        "Methodiek: conditiescores zijn bepaald volgens NEN 2767-2 (worst-defect-regel per "
+        "bouwdeel; het slechtste bouwdeel bepaalt de objectconditie). Maatregel-categorieen "
+        "volgen de CROW 134-maatregelmatrix. Kosten-ordes zijn indicatief (GWWkosten 2024); "
+        "voor aanbesteding is een RAW-besteksraming per project vereist.")
     pdf.set_font("Helvetica", "I", 8)
     pdf.multi_cell(0, 4, safe(
         f"Gegenereerd door FieldOps op {datetime.now(timezone.utc).strftime('%d-%m-%Y %H:%M UTC')} "
