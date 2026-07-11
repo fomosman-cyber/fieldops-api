@@ -394,6 +394,77 @@ class En1176Request(BaseModel):
     photo_dominant_color: Optional[str] = Field(None, description="hex of 'r,g,b'")
 
 
+_EN1176_CAT_LABEL = {
+    "A": "A - Visuele inspectie (wekelijks)",
+    "B": "B - Operationele inspectie (1-3 maand)",
+    "C": "C - Hoofdinspectie (jaarlijks)",
+    "D": "D - Acuut afsluiten (direct)",
+}
+
+_EN1176_PROMPT = """Je bent een NEN-EN 1176-inspecteur van speeltoestellen. Bekijk de foto en beoordeel de veiligheid.
+
+Reageer ALLEEN met geldige JSON (geen uitleg eromheen):
+{
+  "asset_zichtbaar": true/false,
+  "categorie": "A" | "B" | "C" | "D",
+  "faaltypes": [
+    {"naam": "<kort>", "ernst": "acuut"|"hoog"|"middel"|"laag", "maatregel": "<kort advies>", "confidence_pct": 0-100}
+  ],
+  "bevindingen": ["<korte feitelijke observatie>"]
+}
+Categorie: A=visueel/wekelijks, B=operationeel, C=hoofdinspectie, D=acuut afsluiten.
+Regels: 'acuut' alleen bij direct gevaar (val/beknelling/scherpe delen/instabiliteit). Speculeer niet over wat niet zichtbaar is. Max 5 faaltypes."""
+
+
+def _vision_en1176(photo_data_url, *, asset_type, properties_hint) -> Optional[dict]:
+    """Echte foto-analyse via Claude vision voor NEN-EN 1176. None → heuristiek-fallback."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return None
+    try:
+        import inspections
+        raw, media = inspections.decode_data_url(photo_data_url)
+        ctx = " - ".join(p for p in (asset_type, properties_hint) if p)
+        vres = inspections.analyze_photo_json(
+            image_bytes=raw, image_media_type=media,
+            system_prompt=_EN1176_PROMPT, extra_context=ctx or None)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("EN1176 vision-analyse mislukt, terugval op heuristiek: %s", e)
+        return None
+    if not isinstance(vres, dict):
+        return None
+
+    cat = vres.get("categorie") if vres.get("categorie") in ("A", "B", "C", "D") else "B"
+    suggestions = []
+    for f in (vres.get("faaltypes") or [])[:5]:
+        if not isinstance(f, dict) or not f.get("naam"):
+            continue
+        conf = f.get("confidence_pct")
+        suggestions.append({
+            "naam": f.get("naam"),
+            "categorie": cat,
+            "klasse_advies": f.get("ernst"),
+            "maatregel": f.get("maatregel"),
+            "confidence_pct": int(conf) if isinstance(conf, (int, float)) else 75,
+            "method": "claude-vision",
+        })
+    return {
+        "categorie": cat,
+        "categorie_label": _EN1176_CAT_LABEL.get(cat, _EN1176_CAT_LABEL["B"]),
+        "detection_method": "vision",
+        "suggestions": suggestions,
+        "klasse_advies": {k: nen_en_1176.klasse_advies(k) for k in ["acuut", "hoog", "middel", "laag"]},
+        "bevindingen": vres.get("bevindingen") or [],
+        "asset_zichtbaar": vres.get("asset_zichtbaar", True),
+        "version": AI_VERSION,
+        "method": "claude-vision-nen-en-1176",
+        "model_id": vres.get("_model_id"),
+        "note": "Analyse op basis van de foto-pixels via Claude vision. Pre-screening - geen "
+                "vervanging voor een gecertificeerde NEN-EN 1176 hoofdinspectie.",
+        "norm_reference": "NEN-EN 1176-1:2017 (nationale aanvulling 2025)",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.post("/classify-en1176")
 def classify_en1176_endpoint(
     req: En1176Request,
@@ -409,6 +480,13 @@ def classify_en1176_endpoint(
 
     Niet bedoeld als vervanging voor gecertificeerde NEN-EN 1176 hoofdinspectie.
     """
+    # Echte foto-analyse wanneer er een foto + API-key is; anders heuristiek.
+    if req.photo_data_url:
+        vision = _vision_en1176(req.photo_data_url, asset_type=req.asset_type,
+                                properties_hint=req.properties_hint)
+        if vision is not None:
+            return vision
+
     rgb = _color_to_rgb(req.photo_dominant_color or "")
     rgb_tuple = (rgb[0], rgb[1], rgb[2]) if rgb else None
 
@@ -460,6 +538,59 @@ class Nen3140Request(BaseModel):
     photo_dominant_color: Optional[str] = Field(None, description="hex of 'r,g,b'")
 
 
+_NEN3140_PROMPT = """Je bent een NEN 3140-inspecteur van elektrische laagspannings-installaties in de openbare ruimte (lichtmast, verkeerslicht, schakelkast, armatuur). Beoordeel ZICHTBARE defecten op de foto.
+
+Reageer ALLEEN met geldige JSON:
+{
+  "asset_zichtbaar": true/false,
+  "defects": [
+    {"naam": "<kort>", "ernst": "kritiek"|"hoog"|"middel"|"laag", "maatregel": "<kort advies>", "confidence_pct": 0-100}
+  ],
+  "bevindingen": ["<korte observatie>"]
+}
+Let op: corrosie aan voet/mast, loshangende of blootliggende kabels, beschadigde/open behuizing, ontbrekende afdekking, waterintreding, scheefstand.
+Regels: 'kritiek' alleen bij direct gevaar (aanraakbare spanning, blootliggende geleiders). Meetwaarden (isolatie/aarding/aardlek) kun je NIET uit een foto bepalen - laat die buiten beschouwing. Max 5 defects."""
+
+
+def _vision_nen3140_suggestions(photo_data_url, *, asset_type, properties_hint):
+    """Echte foto-defect-detectie via Claude vision. Returnt (suggestions, meta)
+    of (None, None) → caller valt terug op de heuristiek. De meetwaarde-
+    grenswaarden blijven sowieso los hiervan (die komen niet uit een foto)."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return None, None
+    try:
+        import inspections
+        raw, media = inspections.decode_data_url(photo_data_url)
+        ctx = " - ".join(p for p in (asset_type, properties_hint) if p)
+        vres = inspections.analyze_photo_json(
+            image_bytes=raw, image_media_type=media,
+            system_prompt=_NEN3140_PROMPT, extra_context=ctx or None)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("NEN3140 vision-analyse mislukt, terugval op heuristiek: %s", e)
+        return None, None
+    if not isinstance(vres, dict):
+        return None, None
+
+    suggestions = []
+    for d in (vres.get("defects") or [])[:5]:
+        if not isinstance(d, dict) or not d.get("naam"):
+            continue
+        conf = d.get("confidence_pct")
+        suggestions.append({
+            "naam": d.get("naam"),
+            "klasse_advies": d.get("ernst"),
+            "maatregel": d.get("maatregel"),
+            "confidence_pct": int(conf) if isinstance(conf, (int, float)) else 75,
+            "method": "claude-vision",
+        })
+    meta = {
+        "bevindingen": vres.get("bevindingen") or [],
+        "asset_zichtbaar": vres.get("asset_zichtbaar", True),
+        "model_id": vres.get("_model_id"),
+    }
+    return suggestions, meta
+
+
 @router.post("/classify-nen3140")
 def classify_nen3140_endpoint(
     req: Nen3140Request,
@@ -476,20 +607,7 @@ def classify_nen3140_endpoint(
       - 5-jaarlijkse meet-ronde met multimeter/aardingsmeter
       - Acute melding 'lamp brandt niet' → quick triage
     """
-    rgb = _color_to_rgb(req.photo_dominant_color or "")
-    rgb_tuple = (rgb[0], rgb[1], rgb[2]) if rgb else None
-
-    suggestions = nen_3140.classify_nen3140(
-        asset_type=req.asset_type,
-        properties_hint=req.properties_hint,
-        isolatie_megaohm=req.isolatie_megaohm,
-        aarding_ohm=req.aarding_ohm,
-        aardlek_ms=req.aardlek_ms,
-        aardlek_ma=req.aardlek_ma,
-        brightness=req.photo_mean_brightness,
-        dominant_color_rgb=rgb_tuple,
-    )
-
+    # Grens-checks op gemeten waarden — altijd, los van de foto.
     grens_breaches = nen_3140.check_grenswaarden(
         isolatie_megaohm=req.isolatie_megaohm,
         aarding_ohm=req.aarding_ohm,
@@ -497,14 +615,48 @@ def classify_nen3140_endpoint(
         aardlek_ma=req.aardlek_ma,
     )
 
-    return {
+    # Visuele defecten: echte foto-analyse wanneer foto + key, anders heuristiek.
+    vision_sugg, vision_meta = (None, None)
+    if req.photo_data_url:
+        vision_sugg, vision_meta = _vision_nen3140_suggestions(
+            req.photo_data_url, asset_type=req.asset_type,
+            properties_hint=req.properties_hint)
+
+    if vision_sugg is not None:
+        suggestions = vision_sugg
+        method = "grens-check + claude-vision-nen-3140"
+        detection_method = "vision"
+    else:
+        rgb = _color_to_rgb(req.photo_dominant_color or "")
+        rgb_tuple = (rgb[0], rgb[1], rgb[2]) if rgb else None
+        suggestions = nen_3140.classify_nen3140(
+            asset_type=req.asset_type,
+            properties_hint=req.properties_hint,
+            isolatie_megaohm=req.isolatie_megaohm,
+            aarding_ohm=req.aarding_ohm,
+            aardlek_ms=req.aardlek_ms,
+            aardlek_ma=req.aardlek_ma,
+            brightness=req.photo_mean_brightness,
+            dominant_color_rgb=rgb_tuple,
+        )
+        method = "grens-check + heuristic-nen-3140"
+        detection_method = "heuristic"
+
+    result = {
         "suggestions": suggestions,
         "grens_breaches": grens_breaches,
         "grens_breach_count": len(grens_breaches),
+        "detection_method": detection_method,
         "klasse_advies": {k: nen_3140.klasse_advies(k) for k in ["kritiek", "hoog", "middel", "laag"]},
         "version": AI_VERSION,
-        "method": "grens-check + heuristic-nen-3140",
-        "note": "Grens-checks volgen NEN 3140 strikt. Foto-heuristieken zijn pre-screening — formele meting blijft vereist.",
+        "method": method,
+        "note": "Grens-checks volgen NEN 3140 strikt. Foto-defectdetectie is pre-screening - "
+                "formele meting blijft vereist.",
         "norm_reference": "NEN 3140:2011 + supplement A2:2019",
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+    if vision_meta:
+        result["bevindingen"] = vision_meta["bevindingen"]
+        result["asset_zichtbaar"] = vision_meta["asset_zichtbaar"]
+        result["model_id"] = vision_meta["model_id"]
+    return result
