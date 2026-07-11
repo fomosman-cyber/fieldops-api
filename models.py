@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, Float
 from sqlalchemy.orm import relationship
 from database import Base
+from crypto_fields import EncryptedText
 from datetime import datetime, timezone
 import enum
 import uuid
@@ -483,8 +484,8 @@ class GoogleOAuthToken(Base):
     user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False, index=True)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
 
-    access_token = Column(Text, nullable=False)
-    refresh_token = Column(Text, nullable=True)
+    access_token = Column(EncryptedText, nullable=False)   # I7: app-level versleuteld (Fernet)
+    refresh_token = Column(EncryptedText, nullable=True)   # I7: app-level versleuteld (Fernet)
     expires_at = Column(DateTime, nullable=True)
     scope = Column(Text, nullable=True)            # space-separated lijst van scopes
     google_email = Column(String(255), nullable=True)
@@ -531,8 +532,8 @@ class MicrosoftOAuthToken(Base):
     user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False, index=True)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
 
-    access_token = Column(Text, nullable=False)
-    refresh_token = Column(Text, nullable=True)
+    access_token = Column(EncryptedText, nullable=False)   # I7: app-level versleuteld (Fernet)
+    refresh_token = Column(EncryptedText, nullable=True)   # I7: app-level versleuteld (Fernet)
     expires_at = Column(DateTime, nullable=True)
     scope = Column(Text, nullable=True)
     ms_email = Column(String(255), nullable=True)
