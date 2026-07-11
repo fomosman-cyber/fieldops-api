@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from database import get_db
-from models import User, Organization, AuditLog
+from models import User, Organization, AuditLog, is_reserved_org_name
 from schemas import OrganizationResponse, OrganizationUpdate
 from auth import get_current_user
 from permissions import require_org_admin, is_platform_owner
@@ -71,14 +71,15 @@ def update_my_organization(
     # SECURITY: de naam "FieldOps" is gereserveerd — is_platform_owner() en
     # require_owner() checken op deze org-naam, dus een rename hierheen zou
     # een gewone org-admin stilletjes platform-eigenaar maken.
-    # Case-insensitive + whitespace-gestript vergelijken; alleen toegestaan
-    # als de aanvrager zelf al platform-owner is.
-    if "name" in data and data["name"] is not None:
-        genormaliseerd = "".join(str(data["name"]).split()).lower()
-        if genormaliseerd == "fieldops" and not is_platform_owner(current_user):
+    # De centrale guard zit op het Organization-model (@validates("name"));
+    # hier vertalen we dat naar een nette 400 en geven we de platform-owner
+    # expliciet opt-in om z'n eigen org (opnieuw) "FieldOps" te noemen.
+    if "name" in data and data["name"] is not None and is_reserved_org_name(data["name"]):
+        if not is_platform_owner(current_user):
             raise HTTPException(
                 status_code=400,
                 detail="Deze organisatienaam is gereserveerd voor het platform")
+        org.allow_reserved_name = True
 
     # Logo-validatie: data-URL, max 500KB om DB-bloat te voorkomen
     if "logo_data_url" in data and data["logo_data_url"]:

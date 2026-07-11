@@ -413,12 +413,15 @@ async def lifespan(app: FastAPI):
             existing = db.query(User).filter(User.email == owner_email).first()
             if not existing:
                 org = Organization(
-                    name="FieldOps",
                     plan=SubscriptionPlan.PROFESSIONAL,
                     status=AccountStatus.ACTIVE,
                     max_users=999,
                     trial_ends_at=None,
                 )
+                # Platform-bootstrap: enige legitieme plek waar de
+                # gereserveerde naam "FieldOps" gezet mag worden.
+                org.allow_reserved_name = True
+                org.name = "FieldOps"
                 db.add(org)
                 db.flush()
                 user = User(

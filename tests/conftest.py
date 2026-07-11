@@ -161,8 +161,12 @@ def platform_owner():
     """Een gebruiker die admin is binnen de FieldOps-org (= platform owner)."""
     db = SessionLocal()
     try:
-        org = Organization(name="FieldOps", plan=SubscriptionPlan.PROFESSIONAL,
+        org = Organization(plan=SubscriptionPlan.PROFESSIONAL,
                            status=AccountStatus.ACTIVE, max_users=999)
+        # Test-bootstrap van de platform-org: expliciete opt-in voor de
+        # gereserveerde naam (zelfde patroon als main.py lifespan).
+        org.allow_reserved_name = True
+        org.name = "FieldOps"
         db.add(org); db.flush()
         u = _make_user(db, "owner@fieldopsapp.nl", org=org,
                        role=UserRole.ADMIN, is_org_admin=True)
