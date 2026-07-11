@@ -284,9 +284,11 @@ def get_maatregel(asset_type: Optional[str],
         return None
     catalog = KOSTEN[key]
     score_clipped = max(1, min(int(conditie_score), 6))
-    # NEN 3399 = 1-5 only
-    if key == "riolering" and score_clipped > 5:
-        score_clipped = 5
+    # Sommige catalogi lopen niet tot 6 (bv. riolering: NEN 3399 = 1-5).
+    # Clamp op catalogus-INHOUD i.p.v. op key-naam, zodat aliassen
+    # (riool, riool_vrijverval, ...) hetzelfde gedrag krijgen.
+    if score_clipped not in catalog:
+        score_clipped = max(catalog)
     entry = catalog.get(score_clipped)
     if not entry:
         return None

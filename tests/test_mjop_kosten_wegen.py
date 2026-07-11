@@ -95,6 +95,20 @@ def test_imbor_aliassen_resolven():
         assert mjop.get_maatregel(alias, 4) is not None, f"alias {alias}"
 
 
+def test_riool_aliassen_clampen_score_6_naar_5():
+    """Regressie: de NEN 3399-clamp (1-5) moet op catalogus-INHOUD werken,
+    niet op de letterlijke key 'riolering' — anders vallen assets met type
+    riool/riool_vrijverval en score 6 geluidloos uit preview/summary/CSV/PDF."""
+    referentie = mjop.get_maatregel("riolering", 5)
+    for atype in ("riolering", "riool", "riool_vrijverval"):
+        m = mjop.get_maatregel(atype, 6)
+        assert m is not None, f"{atype} score 6 → None"
+        assert m["score"] == 5, f"{atype}: score niet geclampt naar 5"
+        assert m["maatregel"] == referentie["maatregel"]
+        assert m["min_eur"] == referentie["min_eur"]
+        assert m["max_eur"] == referentie["max_eur"]
+
+
 def test_bestaande_types_onveranderd():
     """Regressie: bestaande entries mogen niet wijzigen door de nieuwe."""
     assert mjop.get_maatregel("brug", 4)["min_eur"] == 50000
