@@ -1501,6 +1501,40 @@ def add_element(
     return _element_dict(e)
 
 
+@router.delete("/{inspection_id}/elementen/{element_id}")
+def delete_element(
+    inspection_id: str,
+    element_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Verwijder een bouwdeel uit de inspectie — incl. zijn vragen en defecten.
+
+    Voor bouwdelen die niet van toepassing zijn op dit specifieke object (elk
+    kunstwerk is anders; de standaard-decompositie is een vertrekpunt dat je
+    toespitst). Niet toegestaan op afgesloten inspecties. Herberekent daarna de
+    objectconditie (worst-element).
+    """
+    insp = _get_inspection_or_404(db, inspection_id, current_user)
+    if insp.status in ("signed", "delivered"):
+        raise HTTPException(status_code=409, detail="Inspectie is afgesloten")
+    el = _get_element_or_404(db, insp, element_id)
+    code = el.element_code
+    # cascade="all, delete-orphan" op InspectionElement.defecten/antwoorden ruimt
+    # de bijbehorende vragen + defecten automatisch mee op.
+    db.delete(el)
+    db.flush()
+    _recompute_inspection_score(db, insp)
+    db.commit()
+    log_action(db, request, current_user,
+               action=ACTION.INSPECTION_ELEMENT_UPDATE,
+               entity_type="inspection_element", entity_id=element_id,
+               extra={"inspection_id": insp.id, "action_sub": "delete",
+                      "element_code": code})
+    return {"deleted": element_id, "conditiescore_overall": insp.conditiescore_overall}
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Vragenlijst per element
 # ─────────────────────────────────────────────────────────────────────────────
