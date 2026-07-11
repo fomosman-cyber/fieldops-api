@@ -300,6 +300,31 @@ def _recompute_inspection_score(db: Session, inspection: Inspection) -> None:
     inspection.conditiescore_methode = "worst-element"
 
 
+def _asset_element_template(asset):
+    """Per-object bouwdelen-template uit asset.properties_json['inspectie_bouwdelen'].
+
+    Returnt een lijst van {code, naam, groep} of None als er geen (geldige)
+    template is. Hiermee herbruikt een volgende inspectie van hetzelfde object de
+    eerder getailorde decompositie i.p.v. de generieke type-standaard.
+    """
+    raw = getattr(asset, "properties_json", None) if asset else None
+    if not raw:
+        return None
+    import json
+    try:
+        props = json.loads(raw)
+    except (ValueError, TypeError):
+        return None
+    tmpl = props.get("inspectie_bouwdelen") if isinstance(props, dict) else None
+    if not isinstance(tmpl, list) or not tmpl:
+        return None
+    out = []
+    for e in tmpl:
+        if isinstance(e, dict) and e.get("code") and e.get("naam"):
+            out.append({"code": e["code"], "naam": e["naam"], "groep": e.get("groep")})
+    return out or None
+
+
 def _normalize_defect_inputs(payload: dict) -> None:
     """Map omvang_percentage → omvang_klasse als alleen percentage is gegeven."""
     if payload.get("omvang_klasse") is None and payload.get("omvang_percentage") is not None:
@@ -642,10 +667,16 @@ def create_inspection(
     db.add(insp)
     db.flush()  # zodat we insp.id hebben voor elementen
 
-    # Auto-elementen vanuit taxonomy + vragenlijst per element
+    # Auto-elementen + vragenlijst per element. Per-object template gaat vóór de
+    # generieke type-standaard: heeft dit object eerder een getailorde bouwdelen-
+    # set opgeslagen, dan herbruiken we die (NEN 2767-4: object-decompositie).
     total_answers = 0
     if payload.auto_elements:
-        for idx, e in enumerate(kt.elementen_voor(kunstwerk_type)):
+        seed_elements = _asset_element_template(asset) or [
+            {"code": e["code"], "naam": e["naam"], "groep": e.get("groep")}
+            for e in kt.elementen_voor(kunstwerk_type)
+        ]
+        for idx, e in enumerate(seed_elements):
             el = InspectionElement(
                 inspection_id=insp.id,
                 organization_id=current_user.organization_id,
@@ -1468,6 +1499,43 @@ def delete_element(
                extra={"inspection_id": insp.id, "action_sub": "delete",
                       "element_code": code})
     return {"deleted": element_id, "conditiescore_overall": insp.conditiescore_overall}
+
+
+@router.post("/{inspection_id}/save-elements-template")
+def save_elements_template(
+    inspection_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Bewaar de huidige bouwdelen-set op het object (asset.properties_json).
+
+    Zo begint een volgende inspectie van dít object met de getailorde decompositie
+    i.p.v. de generieke type-standaard (NEN 2767-4: object-decompositie).
+    """
+    insp = _get_inspection_or_404(db, inspection_id, current_user)
+    asset = insp.asset
+    if not asset:
+        raise HTTPException(status_code=404,
+                            detail="Geen gekoppeld object om de template op te bewaren")
+    import json
+    try:
+        props = json.loads(asset.properties_json) if asset.properties_json else {}
+        if not isinstance(props, dict):
+            props = {}
+    except (ValueError, TypeError):
+        props = {}
+    tmpl = [{"code": e.element_code, "naam": e.element_naam, "groep": e.element_groep}
+            for e in (insp.elementen or [])]
+    props["inspectie_bouwdelen"] = tmpl
+    asset.properties_json = json.dumps(props, ensure_ascii=False)
+    db.commit()
+    log_action(db, request, current_user,
+               action=ACTION.INSPECTION_ELEMENT_UPDATE,
+               entity_type="asset", entity_id=asset.id,
+               extra={"inspection_id": insp.id,
+                      "action_sub": "save_elements_template", "count": len(tmpl)})
+    return {"saved": len(tmpl), "asset_id": asset.id}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
