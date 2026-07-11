@@ -1147,12 +1147,32 @@ def export_inspection_pdf(
         except Exception:
             return default
 
-    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    # White-label (A): huisstijlkleur + logo van de organisatie. Zo is het
+    # rapport het deliverable van de inspecteur, niet van FieldOps. Fallback =
+    # FieldOps-blauw als de org geen huisstijl heeft ingesteld.
+    BRAND = _hex_rgb(getattr(org, "brand_color", None) or "", (2, 132, 199))
+    org_logo = getattr(org, "logo_data_url", None) if org else None
+
+    class _ReportPDF(FPDF):
+        """A4-rapport met voettekst (object/org links, paginanummer rechts)."""
+        footer_left = ""
+
+        def footer(self):
+            self.set_y(-12)
+            self.set_font("Helvetica", "I", 7)
+            self.set_text_color(120, 120, 120)
+            self.set_x(18)
+            self.cell(120, 5, self.footer_left)
+            self.cell(0, 5, f"Pagina {self.page_no()}/{{nb}}", align="R")
+            self.set_text_color(0, 0, 0)
+
+    pdf = _ReportPDF(orientation="P", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.alias_nb_pages()
 
     def _section_title(title: str) -> None:
         pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(2, 132, 199)
+        pdf.set_text_color(*BRAND)
         pdf.cell(0, 8, safe(title), new_x="LMARGIN", new_y="NEXT", border="B")
         pdf.set_text_color(0, 0, 0)
         pdf.ln(3)
@@ -1163,23 +1183,37 @@ def export_inspection_pdf(
         pdf.set_font("Helvetica", "", 11)
         pdf.multi_cell(0, 7, safe(value), new_x="LMARGIN", new_y="NEXT")
 
-    def _embed_image(data_url, w=55) -> bool:
-        """Bed base64 data-URL-afbeelding in. Best-effort: faalt nooit hard."""
+    def _embed_image(data_url, w=55, x=None, y=None) -> bool:
+        """Bed een afbeelding in: base64 data-URL OF https-URL. Best-effort.
+
+        Sinds de R2-offload (V5) kunnen foto's https-URLs zijn i.p.v. base64;
+        beide worden hier ondersteund zodat het foto-bewijs in het rapport blijft
+        staan. Faalt nooit hard (een onbereikbare foto laat het rapport door).
+        """
         try:
             if not data_url or not isinstance(data_url, str):
                 return False
-            if not data_url.startswith("data:image"):
+            if data_url.startswith("data:image"):
+                raw = base64.b64decode(data_url.split(",", 1)[1])
+            elif data_url.startswith(("https://", "http://")):
+                import httpx
+                resp = httpx.get(data_url, timeout=10.0, follow_redirects=True)
+                resp.raise_for_status()
+                raw = resp.content
+            else:
                 return False
-            raw = base64.b64decode(data_url.split(",", 1)[1])
-            pdf.image(io.BytesIO(raw), w=w)
+            pdf.image(io.BytesIO(raw), w=w, x=x, y=y)
             return True
         except Exception:
             return False
 
     # ═══ PAGINA 1 — COVER + KERNCIJFERS ═══
     pdf.add_page()
-    pdf.set_fill_color(2, 132, 199)
+    pdf.set_fill_color(*BRAND)
     pdf.rect(0, 0, 210, 50, "F")
+    # White-label logo rechtsboven op de band (best-effort; org stelt 'm in)
+    if org_logo:
+        _embed_image(org_logo, w=42, x=150, y=10)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font("Helvetica", "B", 22)
     pdf.set_xy(18, 14)
@@ -1194,6 +1228,37 @@ def export_inspection_pdf(
     _info_row("Organisatie:", org_name)
     obj = (f"{asset.code} - " if asset and asset.code else "") + ((asset.name if asset else "") or "-")
     _info_row("Object:", obj)
+    pdf.footer_left = safe(f"{obj} - {org_name}")[:80]
+
+    # Rijkere object-metadata (D) — uit asset.properties_json + kolommen, indien aanwezig
+    _props = {}
+    if asset and getattr(asset, "properties_json", None):
+        try:
+            import json as _json_d
+            _props = _json_d.loads(asset.properties_json) or {}
+        except (ValueError, TypeError):
+            _props = {}
+    _low = {str(k).lower(): v for k, v in _props.items()} if isinstance(_props, dict) else {}
+
+    def _prop(*keys):
+        for k in keys:
+            v = _low.get(k)
+            if v not in (None, "", []):
+                return str(v)
+        return None
+
+    _bouwjaar = _prop("bouwjaar", "construction_year", "bouwjaar_aanleg") or (
+        asset.installed_at.strftime("%Y") if asset and getattr(asset, "installed_at", None) else None)
+    _beheerder = _prop("beheerder", "eigenaar", "owner", "wegbeheerder")
+    _wegnr = _prop("wegnummer", "wegnr", "road_number", "straatnaam") or (
+        getattr(asset, "nwb_wvk_id", None) if asset else None)
+    if _bouwjaar:
+        _info_row("Bouwjaar:", _bouwjaar)
+    if _beheerder:
+        _info_row("Beheerder:", _beheerder)
+    if _wegnr:
+        _info_row("Wegnummer/WVK:", _wegnr)
+
     _info_row("Titel:", insp.title or "-")
     _info_row("Inspectie-type:", insp.inspectie_type or "-")
     _info_row("Datum inspectie:",
@@ -1217,7 +1282,7 @@ def export_inspection_pdf(
         (f"{metrics['defecten_totaal']} ({metrics['defecten_kritiek']} kritiek)",
          "defecten", (234, 88, 12)),
         (f"{metrics['elementen_beoordeeld']}/{metrics['elementen_totaal']}",
-         "elementen beoordeeld", (2, 132, 199)),
+         "elementen beoordeeld", BRAND),
     ]
     for i, (val, lbl, rgb) in enumerate(kpis):
         x = 18 + i * (kpi_w + kpi_gap)
