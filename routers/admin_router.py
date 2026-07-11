@@ -8,7 +8,10 @@ import random
 import secrets
 import string
 from database import get_db
-from models import User, Organization, DemoRequest, Project, Melding, Asset, SubscriptionPlan, AccountStatus
+from models import (
+    User, Organization, DemoRequest, Project, Melding, Asset,
+    SubscriptionPlan, AccountStatus, is_reserved_org_name,
+)
 from auth import get_current_user, hash_password, validate_password_strength
 from audit import log_action, ACTION
 from routers.users_router import ANONYMIZED_EMAIL_DOMAIN
@@ -151,6 +154,11 @@ def create_organization(
     db: Session = Depends(get_db),
 ):
     """Nieuwe organisatie aanmaken met een beheerder (alleen platform eigenaar)."""
+    # SECURITY: nooit een tweede "FieldOps"-org — admins daarvan zouden
+    # platform-eigenaar worden (is_platform_owner checkt op org-naam).
+    if is_reserved_org_name(data.name):
+        raise HTTPException(status_code=400,
+                            detail="Deze organisatienaam is gereserveerd voor het platform")
     validate_password_strength(data.admin_password)
     # Check of email al bestaat
     existing = db.query(User).filter(User.email == data.admin_email).first()
@@ -229,6 +237,13 @@ def update_organization(
     if not org:
         raise HTTPException(status_code=404, detail="Organisatie niet gevonden")
     if name:
+        # SECURITY: rename naar de gereserveerde platform-naam blokkeren,
+        # behalve voor de echte FieldOps-org zelf (idempotente rename).
+        if is_reserved_org_name(name) and org.name != "FieldOps":
+            raise HTTPException(status_code=400,
+                                detail="Deze organisatienaam is gereserveerd voor het platform")
+        if is_reserved_org_name(name):
+            org.allow_reserved_name = True
         org.name = name
     if plan:
         org.plan = SubscriptionPlan.PROFESSIONAL if plan == "professional" else SubscriptionPlan.STARTER
@@ -329,6 +344,13 @@ def approve_demo_request(
     existing_user = db.query(User).filter(User.email == demo.email).first()
     if existing_user:
         raise HTTPException(status_code=400, detail=f"Er bestaat al een account met {demo.email}")
+
+    # SECURITY: company_name komt uit het publieke demo-formulier — een
+    # gereserveerde naam ("FieldOps") zou de nieuwe org-admin platform-
+    # eigenaar maken.
+    if is_reserved_org_name(demo.company_name):
+        raise HTTPException(status_code=400,
+                            detail="Deze organisatienaam is gereserveerd voor het platform")
 
     org = Organization(
         name=demo.company_name,

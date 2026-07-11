@@ -9860,10 +9860,13 @@
       });
     }
 
+    var _mjopProjectId = '';  // huidige projectfilter van de MJOP-modal ('' = alle projecten)
+
     function downloadMjopPdf(years) {
       // PDF-download met Bearer-token via fetch + blob (een gewone <a href>
       // kan geen Authorization-header meesturen, dus fetch + objectURL).
       var url = '/api/mjop/export.pdf?years=' + (years || 10);
+      if (_mjopProjectId) url += '&project_id=' + encodeURIComponent(_mjopProjectId);
       fetch(API_URL + url, { headers: { 'Authorization': 'Bearer ' + token } })
         .then(function(res) {
           if (!res.ok) return res.text().then(function(t) { throw new Error('Server fout ' + res.status + ': ' + t.substring(0, 120)); });
@@ -9881,6 +9884,31 @@
         })
         .catch(function(err) {
           showToast('PDF mislukt: ' + (err.message || 'Onbekend'), 'error');
+        });
+    }
+
+    function downloadMjopCsv(years) {
+      // CSV-download met Bearer-token via fetch + blob (zelfde patroon als
+      // downloadMjopPdf — een kale <a href> geeft 401 zonder Authorization).
+      var url = '/api/mjop/export.csv?years=' + (years || 10);
+      if (_mjopProjectId) url += '&project_id=' + encodeURIComponent(_mjopProjectId);
+      fetch(API_URL + url, { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function(res) {
+          if (!res.ok) return res.text().then(function(t) { throw new Error('Server fout ' + res.status + ': ' + t.substring(0, 120)); });
+          return res.blob().then(function(blob) {
+            var disp = res.headers.get('Content-Disposition') || '';
+            var m = disp.match(/filename="?([^";]+)"?/);
+            var fname = m ? m[1] : ('mjop-' + new Date().toISOString().slice(0,10) + '.csv');
+            var blobUrl = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = blobUrl; a.download = fname;
+            document.body.appendChild(a); a.click();
+            setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(blobUrl); }, 100);
+            showToast('MJOP-CSV gedownload', 'success');
+          });
+        })
+        .catch(function(err) {
+          showToast('CSV mislukt: ' + (err.message || 'Onbekend'), 'error');
         });
     }
 
@@ -9903,11 +9931,15 @@
         });
     }
 
-    function showMjopModal() {
+    function showMjopModal(projectId) {
       // MJOP-modal — Meerjaren Onderhoudsplan op basis van conditie-scores
-      // + cyclus + kosten-katalogus (CROW 145 / GWW-kostengids 2024)
+      // + cyclus + kosten-katalogus (CROW 145 / GWW-kostengids 2024).
+      // Optioneel gefilterd op één project (projectId leeg = alle projecten).
       var defaultYears = 10;
-      api('GET', '/api/mjop/summary?years=' + defaultYears).then(function(r){
+      _mjopProjectId = projectId || '';
+      var summaryUrl = '/api/mjop/summary?years=' + defaultYears +
+        (_mjopProjectId ? '&project_id=' + encodeURIComponent(_mjopProjectId) : '');
+      api('GET', summaryUrl).then(function(r){
         var s = r;
         // Bouw "per jaar"-rijen
         var yearRows = (s.by_year || []).map(function(y){
@@ -9930,6 +9962,13 @@
         }).join('');
         var totMin = (s.grand_total && s.grand_total.min) || 0;
         var totMax = (s.grand_total && s.grand_total.max) || 0;
+        // Projectselectie — gevuld uit allProjects; wisselen herlaadt de modal
+        var projectOptions = '<option value="">Alle projecten</option>' +
+          (allProjects || []).map(function(p){
+            return '<option value="' + escapeHtml(p.id) + '"' +
+              (_mjopProjectId === p.id ? ' selected' : '') + '>' +
+              escapeHtml(p.name || p.id) + '</option>';
+          }).join('');
         var html = '<div style="background:rgba(0,0,0,0.5);position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;" onclick="if(event.target===this)this.remove()">' +
           '<div style="background:#fff;border-radius:14px;width:100%;max-width:960px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">' +
@@ -9937,12 +9976,19 @@
           '<p style="margin:0;font-size:13px;color:var(--text-muted);">Horizon: 10 jaar · Conform NEN 2767-2 + CROW 145 + GWW-kostengids 2024 · ' + s.total_assets + ' assets meegenomen</p></div>' +
           '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-muted);">×</button>' +
           '</div>' +
+          // Projectfilter
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text-muted);">Project:</label>' +
+          '<select onchange="var v=this.value;this.closest(\'div[style*=fixed]\').remove();showMjopModal(v)" ' +
+          'style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#1e293b;min-width:220px;">' +
+          projectOptions + '</select>' +
+          '</div>' +
           // Grand total
           '<div style="background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;border-radius:12px;padding:16px 22px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;">' +
           '<div><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.85;">Totale begroting 10 jaar</div>' +
           '<div style="font-size:28px;font-weight:800;line-height:1.2;">€ ' + totMin.toLocaleString('nl-NL') + ' — € ' + totMax.toLocaleString('nl-NL') + '</div></div>' +
           '<div style="display:flex;gap:8px;flex-shrink:0;">' +
-          '<a href="/api/mjop/export.csv?years=10" style="background:#fff;color:#0369a1;padding:10px 18px;border-radius:8px;font-weight:700;text-decoration:none;font-size:13px;">📥 CSV</a>' +
+          '<button onclick="downloadMjopCsv(10)" style="background:#fff;color:#0369a1;padding:10px 18px;border-radius:8px;font-weight:700;border:none;cursor:pointer;font-size:13px;font-family:inherit;">📥 CSV</button>' +
           '<button onclick="downloadMjopPdf(10)" style="background:#fff;color:#0369a1;padding:10px 18px;border-radius:8px;font-weight:700;border:none;cursor:pointer;font-size:13px;font-family:inherit;">📄 PDF</button>' +
           '</div>' +
           '</div>' +
@@ -15760,7 +15806,7 @@
       }
 
       // Laad assets — filter op kunstwerk-types (asset_type kan al matchen)
-      api('GET', '/api/assets/').then(function(items){
+      api('GET', '/api/assets/?limit=1000').then(function(items){
         var sel = document.getElementById('kwNewAsset');
         sel.innerHTML = '<option value="">— Kies kunstwerk —</option>';
         (items || []).forEach(function(a){
@@ -17519,7 +17565,7 @@
       // het predictive-summary endpoint).
       var assetsPromise = (allAssets && allAssets.length > 0)
         ? Promise.resolve(allAssets)
-        : api('GET', '/api/assets/').then(function(a){ allAssets = a || []; return allAssets; });
+        : api('GET', '/api/assets/?limit=1000').then(function(a){ allAssets = a || []; return allAssets; });
 
       Promise.all([
         assetsPromise,

@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, Float
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from database import Base
 from crypto_fields import EncryptedText
 from datetime import datetime, timezone
@@ -9,6 +9,34 @@ import uuid
 
 def generate_uuid():
     return str(uuid.uuid4())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gereserveerde organisatienamen — centrale privilege-escalatie-guard
+#
+# is_platform_owner() / require_owner() kennen platform-rechten toe op basis
+# van org.name == "FieldOps". ELK code-pad dat een Organization aanmaakt of
+# hernoemt (org-PATCH, Shopify-webhook, admin-API, demo-approve, imports)
+# loopt via de @validates-hook op Organization.name hieronder, zodat er
+# nooit een tweede "FieldOps"-org kan ontstaan — ongeacht via welke route.
+#
+# Legitieme bootstrap-code (main.py lifespan, test-fixtures) moet expliciet
+# opt-in'en door VÓÓR het zetten van de naam `org.allow_reserved_name = True`
+# te zetten.
+# ─────────────────────────────────────────────────────────────────────────────
+
+RESERVED_ORG_NAMES = frozenset({"fieldops"})
+
+
+class ReservedOrgNameError(ValueError):
+    """Poging om een gereserveerde organisatienaam te gebruiken."""
+
+
+def is_reserved_org_name(name) -> bool:
+    """True als de naam (case-insensitive, whitespace-gestript) gereserveerd is."""
+    if not name:
+        return False
+    return "".join(str(name).split()).lower() in RESERVED_ORG_NAMES
 
 
 class UserRole(str, enum.Enum):
@@ -35,8 +63,25 @@ class SubscriptionPlan(str, enum.Enum):
 class Organization(Base):
     __tablename__ = "organizations"
 
+    # Geen Column — puur Python-vlag. Alleen platform-bootstrap (main.py
+    # lifespan / test-fixtures) zet dit op True om de naam "FieldOps" te
+    # mogen gebruiken. Wordt niet gepersisteerd.
+    allow_reserved_name = False
+
     id = Column(String, primary_key=True, default=generate_uuid)
     name = Column(String(255), nullable=False)
+
+    @validates("name")
+    def _validate_reserved_name(self, key, value):
+        """SECURITY: blokkeer gereserveerde namen op model-niveau.
+
+        Dit vuurt bij ELKE toewijzing aan .name (constructor én rename),
+        maar niet bij het laden van bestaande rijen uit de database.
+        """
+        if is_reserved_org_name(value) and not getattr(self, "allow_reserved_name", False):
+            raise ReservedOrgNameError(
+                "Deze organisatienaam is gereserveerd voor het platform")
+        return value
     plan = Column(SQLEnum(SubscriptionPlan), default=SubscriptionPlan.STARTER)
     status = Column(SQLEnum(AccountStatus), default=AccountStatus.TRIAL)
     max_users = Column(Integer, default=10)
