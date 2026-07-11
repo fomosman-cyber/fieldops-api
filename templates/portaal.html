@@ -10939,6 +10939,32 @@
     // Mo's bug: het document uit een melding miste GPS, de foto zelf en de
     // asset-codering. Deze functie bouwt een CROW-conform document van één
     // melding mét al die onderdelen.
+    // Narratieve samenvatting/advies-alinea uit de melding-data (volzinnen).
+    function _meldingNarratief(m, assetTxt, datum, statusLabels) {
+      var parts = [];
+      var cat = (m.category || 'een melding');
+      var waar = (assetTxt && assetTxt !== '—') ? (' ter plaatse van ' + assetTxt) : '';
+      parts.push('Deze melding betreft ' + cat + waar + ', aangemaakt op ' + datum +
+        ' door ' + (m.creator_name || 'onbekend') + '.');
+      if (m.crow_klasse || m.crow_schadebeeld || m.nen_2767_conditie != null) {
+        var cls = 'De waarneming is geclassificeerd';
+        if (m.crow_schadebeeld) cls += ' volgens CROW 146 als ' + m.crow_schadebeeld;
+        if (m.crow_klasse) cls += ' (klasse ' + m.crow_klasse + ')';
+        if (m.nen_2767_conditie != null) cls += ', wat overeenkomt met NEN 2767-conditie ' + m.nen_2767_conditie;
+        parts.push(cls + '.');
+      }
+      var statusLabel = (statusLabels && statusLabels[m.status]) || m.status || 'open';
+      var prio = (m.priority || 'normaal');
+      parts.push('De huidige status is "' + statusLabel + '" met prioriteit ' + prio + '.');
+      if (m.onderhoud_categorie || m.gw_maatregel) {
+        var adv = 'Geadviseerde afhandeling';
+        if (m.onderhoud_categorie) adv += ' (' + m.onderhoud_categorie + ')';
+        adv += ': ' + (m.gw_maatregel || 'conform de geldende onderhoudsrichtlijn') + '.';
+        parts.push(adv);
+      }
+      return parts.join(' ');
+    }
+
     function generateMeldingDocument(meldingId) {
       var id = meldingId || editingMeldingId;
       if (!id) { showToast('Geen melding geselecteerd', 'error'); return; }
@@ -11051,6 +11077,14 @@
         doc.text(doc.splitTextToSize(String(f[1]), cw-10), fx, fy+5);
       });
       y += blockH + 6;
+
+      // ── Samenvatting & advies (narratief) ──
+      doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+      doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+      doc.text('SAMENVATTING & ADVIES', M, y); y += 6;
+      normal(); doc.setTextColor(30,41,59); doc.setFontSize(11);
+      var _narrLines = doc.splitTextToSize(_meldingNarratief(m, assetTxt, datum, statusLabels), W-2*M);
+      doc.text(_narrLines, M, y); y += _narrLines.length * 5.5 + 6;
 
       // ── GPS-locatie (kern van #12) ──
       doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
