@@ -20758,12 +20758,12 @@
       var typeEl = document.getElementById('meldingCrow146Type');
       if (!box || !summary || !r) return;
 
-      if (typeEl) typeEl.textContent = (r.verhardingstype_label || '') + ' · ' + (r.detection_method === 'auto' ? 'auto-detect' : 'expliciet');
+      if (typeEl) typeEl.textContent = (r.verhardingstype_label || '') + ' · ' + (r.detection_method === 'vision' ? '📷 AI-foto-analyse' : (r.detection_method === 'auto' ? 'auto-detect' : 'expliciet'));
 
       var lines = [];
       var sugg = r.suggestions || [];
       if (sugg.length === 0) {
-        lines.push('<em>Geen schadebeelden gedetecteerd in de heuristiek.</em>');
+        lines.push('<em>Geen schadebeelden gedetecteerd op de foto.</em>');
       } else {
         lines.push('<div style="font-weight:600;margin-bottom:6px;">Top schadebeelden:</div>');
         lines.push('<ul style="margin:0 0 8px 18px;padding:0;">');
@@ -20784,6 +20784,13 @@
           '</li>');
         });
         lines.push('</ul>');
+      }
+      if (r.bevindingen && r.bevindingen.length) {
+        lines.push('<div style="margin-top:6px;font-size:12px;"><strong>AI-bevindingen op de foto:</strong><ul style="margin:4px 0 0 18px;padding:0;color:var(--text-muted);">' +
+          r.bevindingen.map(function(b){ return '<li>' + escapeHtml(b) + '</li>'; }).join('') + '</ul></div>');
+      }
+      if (r.nen_2767_conditie != null) {
+        lines.push('<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">NEN 2767-conditie: <strong>' + escapeHtml(String(r.nen_2767_conditie)) + '</strong>/5</div>');
       }
       if (r.norm_reference) {
         lines.push('<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Norm: ' + escapeHtml(r.norm_reference) + '</div>');
