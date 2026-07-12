@@ -271,6 +271,12 @@ def _recompute_element_score(db: Session, element: InspectionElement) -> None:
                      .filter(InspectionAnswer.element_id == element.id,
                              InspectionAnswer.answer_type == "score_1_6")
                      .all())
+    # NB: defect-score gebruikt nu de correcte NEN 2767 I/O-matrices. De
+    # element-aggregatie blijft voorlopig worst-defect; de omvang-gewogen
+    # correctiefactor-aggregatie (scoring.element_score_from_defects) staat klaar
+    # maar wordt pas ingeschakeld na validatie met een inspecteur, omdat die een
+    # zone-/omvang-datamodel vereist (omvang zit al in de matrix — dubbeltelling
+    # vermijden). Zie INSPECTIEFORMULIER-SPEC-NEN2767-4.md.
     scores = [r[0] for r in defect_rows] + [r[0] for r in answer_rows]
     derived = scoring.element_score(scores)
     # Auto-mark beoordeeld zodra er bruikbare data is
