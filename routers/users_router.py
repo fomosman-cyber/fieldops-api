@@ -711,6 +711,10 @@ def accept_invitation(
     db: Session = Depends(get_db),
 ):
     """Uitnodiging accepteren en account aanmaken."""
+    # Server-side wachtwoordsterkte-gate (compliance-audit kijkt naar backend,
+    # niet naar HTML minlength). Zelfde eis als alle andere wachtwoord-flows.
+    validate_password_strength(request.password)
+
     inv = db.query(Invitation).filter(
         Invitation.token == request.token,
         Invitation.accepted == False,

@@ -85,6 +85,68 @@ def test_volledige_uitnodig_flow_invite_accept_login(client, admin_user):
     assert res.json().get("access_token")
 
 
+def test_accept_met_zwak_wachtwoord_geeft_400(client, admin_user):
+    """(e) accept met een geldige token maar zwak wachtwoord -> 400 server-side.
+
+    De HTML/JS-check is triviaal te omzeilen door direct te POSTen; de
+    compliance-audit (Rekenkamer/ISO27001) kijkt of de BACKEND de
+    wachtwoordsterkte afdwingt. Deze test bewijst dat een uitgenodigde geen
+    account met een 1-teken wachtwoord kan aanmaken.
+    """
+    zwak_email = "zwak@test.nl"
+
+    # Org-admin verstuurt uitnodiging
+    res = client.post(
+        "/api/users/invite",
+        json={"email": zwak_email, "role": "inspector"},
+        headers=auth(admin_user),
+    )
+    assert res.status_code == 200, res.text
+
+    token = _pak_token(zwak_email, admin_user.organization_id)
+    assert token, "Uitnodiging-token niet gevonden in de database"
+
+    # Direct POSTen met een 1-teken wachtwoord moet 400 geven (server-side gate)
+    res = client.post(
+        "/api/users/accept-invitation",
+        json={
+            "token": token,
+            "first_name": "Zwak",
+            "last_name": "Wachtwoord",
+            "password": "a",
+        },
+    )
+    assert res.status_code == 400, res.text
+
+    # Ook een wachtwoord dat lang genoeg is maar te weinig categorieën heeft
+    res = client.post(
+        "/api/users/accept-invitation",
+        json={
+            "token": token,
+            "first_name": "Zwak",
+            "last_name": "Wachtwoord",
+            "password": "allemaalkleineletters",
+        },
+    )
+    assert res.status_code == 400, res.text
+
+    # De uitnodiging mag NIET geaccepteerd zijn na de mislukte pogingen
+    db = SessionLocal()
+    try:
+        inv = (
+            db.query(Invitation)
+            .filter(
+                Invitation.email == zwak_email,
+                Invitation.organization_id == admin_user.organization_id,
+            )
+            .first()
+        )
+        assert inv is not None
+        assert inv.accepted is False, "Uitnodiging mag niet geaccepteerd zijn bij zwak wachtwoord"
+    finally:
+        db.close()
+
+
 def test_accept_met_ongeldige_token_geeft_404(client):
     """(c) accept met een niet-bestaande token -> 404."""
     res = client.post(
