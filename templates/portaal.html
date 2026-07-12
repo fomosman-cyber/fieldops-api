@@ -21068,6 +21068,34 @@
       });
     }
 
+    // Bouw een LEESBARE tekst-hint uit asset.properties. De AI-endpoints
+    // (classify-crow146 / -en1176 / -nen3140) verwachten properties_hint als
+    // STRING; asset.properties is bij geïmporteerde assets vaak een object
+    // (CROW GVI/GBI-velden). Object rechtstreeks doorsturen gaf een 422
+    // "Input should be a valid string". Hier maken we er een compacte,
+    // betekenisvolle string van (beter voor de AI dan een ruwe JSON-blob).
+    function _assetPropsHint(a) {
+      if (!a) return null;
+      var p = a.properties;
+      if (typeof p === 'string' && p.trim()) return p.trim();
+      if (p && typeof p === 'object') {
+        var voorkeur = ['onderdeeltype','objecttype','materiaal','wegtype',
+                        'markering','bermligging','omschrijving','type'];
+        var parts = [];
+        voorkeur.forEach(function(k){
+          if (p[k] != null && String(p[k]).trim()) parts.push(String(p[k]).trim());
+        });
+        if (parts.length) return parts.join(' · ');
+        try {
+          var flat = Object.keys(p)
+            .filter(function(k){ var v = p[k]; return v != null && typeof v !== 'object'; })
+            .map(function(k){ return k + '=' + p[k]; });
+          if (flat.length) return flat.join(' · ');
+        } catch (e) { /* val terug op location_description */ }
+      }
+      return (a.location_description || '') || null;
+    }
+
     function analyseFotoCrow146() {
       if (!meldingPhotoFile) { showToast('Kies eerst een foto', 'error'); return; }
       var btn = document.getElementById('meldingCrow146Btn');
@@ -21083,7 +21111,7 @@
         var a = meldingAssets.find(function(x){ return x.id === assetId; });
         if (a) {
           asset_type = a.type || null;
-          properties_hint = (a.properties || a.location_description || '') || null;
+          properties_hint = _assetPropsHint(a);
         }
       }
       // Categorie als asset_type-fallback (vooral 'Wegdek')
@@ -21219,7 +21247,7 @@
         var a = meldingAssets.find(function(x){ return x.id === assetId; });
         if (a) {
           asset_type = a.type || null;
-          properties_hint = (a.properties || a.location_description || '') || null;
+          properties_hint = _assetPropsHint(a);
         }
       }
       if (!asset_type) {
@@ -21337,7 +21365,7 @@
         var a = meldingAssets.find(function(x){ return x.id === assetId; });
         if (a) {
           asset_type = a.type || null;
-          properties_hint = (a.properties || a.location_description || '') || null;
+          properties_hint = _assetPropsHint(a);
         }
       }
       if (!asset_type) {
