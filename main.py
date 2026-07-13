@@ -1302,6 +1302,18 @@ def reset_wachtwoord():
     return HTMLResponse(content=html)
 
 
+@app.get("/uitnodiging", response_class=HTMLResponse)
+def uitnodiging():
+    """Serve de uitnodiging-accepteren pagina.
+
+    De uitnodig-mail (email_service.send_invitation_email) linkt hierheen met
+    ?token=... De pagina leest die token client-side en POST naar
+    /api/users/accept-invitation om het account te activeren.
+    """
+    html = (TEMPLATES_DIR / "uitnodiging.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
+
+
 @app.get("/handleiding", response_class=HTMLResponse)
 def handleiding():
     """Publieke handleiding — bereikbaar zonder login. Linkt vanuit portaal-
