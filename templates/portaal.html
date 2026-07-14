@@ -7946,9 +7946,30 @@
     var currentUser = null;
     var currentOrg = null;
 
-    // ── Init: check token from URL hash or localStorage ──
+    // ── Auth-opslag ──
+    // Standaard leeft de sessie alleen in sessionStorage (wachtwoord elke keer opnieuw
+    // invullen); alleen bij een expliciete "ingelogd blijven"-keuze op de loginpagina
+    // (hash-param remember=1) bewaren we het token in localStorage.
+    function _authGet(key) {
+      try { var v = sessionStorage.getItem(key); if (v) return v; } catch (e) {}
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+    function _authSet(key, value) {
+      // Volg de opslag waar het token al leeft (sessie tenzij "onthouden" gekozen is).
+      var useLocal = false;
+      try { useLocal = !sessionStorage.getItem('fieldops_token') && !!localStorage.getItem('fieldops_token'); } catch (e) {}
+      try { (useLocal ? localStorage : sessionStorage).setItem(key, value); } catch (e) {}
+    }
+    function _authClear() {
+      ['fieldops_token', 'fieldops_user'].forEach(function(k) {
+        try { sessionStorage.removeItem(k); } catch (e) {}
+        try { localStorage.removeItem(k); } catch (e) {}
+      });
+    }
+
+    // ── Init: check token from URL hash or storage ──
     (function init() {
-      // Check for token in URL hash (coming from Shopify login)
+      // Check for token in URL hash (coming from the fieldopsapp.nl login)
       var hash = window.location.hash;
       if (hash && hash.indexOf('token=') > -1) {
         var params = {};
@@ -7957,23 +7978,25 @@
           params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1] || '');
         });
         if (params.token) {
-          localStorage.setItem('fieldops_token', params.token);
-          if (params.user) {
-            localStorage.setItem('fieldops_user', params.user);
-          }
+          _authClear(); // nooit een oude sessie laten rondslingeren
+          var store = params.remember === '1' ? localStorage : sessionStorage;
+          try {
+            store.setItem('fieldops_token', params.token);
+            if (params.user) store.setItem('fieldops_user', params.user);
+          } catch (e) {}
           // Clear hash
           history.replaceState(null, '', window.location.pathname);
         }
       }
 
-      token = localStorage.getItem('fieldops_token');
+      token = _authGet('fieldops_token');
       if (!token) {
         window.location.href = 'https://fieldopsapp.nl';
         return;
       }
 
-      // Load user from localStorage
-      var stored = localStorage.getItem('fieldops_user');
+      // Load user from storage
+      var stored = _authGet('fieldops_user');
       if (stored) {
         try { currentUser = JSON.parse(stored); } catch(e) { currentUser = null; }
       }
@@ -8006,9 +8029,10 @@
       if (body) opts.body = JSON.stringify(body);
       return fetch(API_URL + path, opts).then(function(res) {
         if (res.status === 401) {
-          localStorage.removeItem('fieldops_token');
-          localStorage.removeItem('fieldops_user');
-          window.location.href = 'https://fieldopsapp.nl';
+          _authClear();
+          // Terug naar de loginpagina mét uitleg: die opent de login-modal
+          // en toont "sessie verlopen" i.p.v. een kale bounce naar de homepage.
+          window.location.href = 'https://fieldopsapp.nl/#sessie=verlopen';
           return;
         }
         // Robuuste body-parse — handelt zowel JSON als plain-text 5xx-responses af
@@ -8062,7 +8086,7 @@
       // Get current user
       api('GET', '/api/auth/me').then(function(user) {
         currentUser = user;
-        localStorage.setItem('fieldops_user', JSON.stringify(user));
+        _authSet('fieldops_user', JSON.stringify(user));
         setUserUI(user);
 
         // Branding prefetch (cached in orgBrandingCache) — voor PDF-generators
@@ -8883,8 +8907,7 @@
 
     // ── Uitloggen ──
     function uitloggen() {
-      localStorage.removeItem('fieldops_token');
-      localStorage.removeItem('fieldops_user');
+      _authClear();
       window.location.href = 'https://fieldopsapp.nl';
     }
 
@@ -13225,7 +13248,7 @@
       if (fromV) qs += '&from=' + encodeURIComponent(fromV);
       if (toV) qs += '&to=' + encodeURIComponent(toV);
 
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       showToast('CSV genereren...', 'info');
       fetch('/api/meldingen/export.csv?' + qs, {
         headers: token ? { 'Authorization': 'Bearer ' + token } : {},
@@ -13311,7 +13334,7 @@
       // Direct dry-run uitvoeren
       var fd = new FormData();
       fd.append('file', file);
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       showToast('CSV analyseren...', 'info');
       var commitBtn = document.getElementById('aiwCommitBtn');
       if (commitBtn) { commitBtn.disabled = true; commitBtn.textContent = '⏳ Analyseren...'; }
@@ -13415,7 +13438,7 @@
 
       var fd = new FormData();
       fd.append('file', _aiwFile);
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       // dry_run=false (default)
       fetch('/api/assets/import/csv', {
         method: 'POST',
@@ -13688,7 +13711,7 @@
         return;
       }
       _giwFile = file;
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       showToast('GeoJSON analyseren...', 'info');
       var btn = document.getElementById('giwCommitBtn');
       if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyseren...'; }
@@ -13768,7 +13791,7 @@
       if (!_giwFile) { showToast('Geen bestand geselecteerd', 'error'); return; }
       var btn = document.getElementById('giwCommitBtn');
       if (btn) { btn.disabled = true; btn.textContent = '⏳ Importeren...'; }
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       fetch(_giwEndpoint(_giwFile), {
         method: 'POST',
         headers: token ? { 'Authorization': 'Bearer ' + token } : {},
@@ -13793,7 +13816,7 @@
     function importAssetsCsv(event) {
       var f = event.target.files && event.target.files[0]; if (!f) return;
       var fd = new FormData(); fd.append('file', f);
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       showToast('CSV uploaden...', 'info');
       fetch('/api/assets/import/csv', {
         method:'POST',
@@ -18427,7 +18450,7 @@
       const tx = db.transaction(SYNC_STORE, 'readwrite');
       tx.objectStore(SYNC_STORE).add({
         method, path, body,
-        token: localStorage.getItem('fieldops_token') || '',
+        token: _authGet('fieldops_token') || '',
         created_at: new Date().toISOString(),
       });
       await new Promise((r, rj) => { tx.oncomplete = r; tx.onerror = () => rj(tx.error); });
@@ -20085,7 +20108,7 @@
       if (projId) qs += '&project_id=' + encodeURIComponent(projId);
       if (userId) qs += '&user_id=' + encodeURIComponent(userId);
 
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       showToast('CSV genereren...', 'info');
       fetch('/api/daybook/export.csv?' + qs, {
         headers: token ? { 'Authorization': 'Bearer ' + token } : {},
@@ -20524,7 +20547,7 @@
       api('PATCH', '/api/users/me/profile', payload).then(function(user){
         if (user) {
           currentUser = Object.assign({}, currentUser || {}, user);
-          localStorage.setItem('fieldops_user', JSON.stringify(currentUser));
+          _authSet('fieldops_user', JSON.stringify(currentUser));
           // Naam-weergave in topbar bijwerken
           var nm = document.getElementById('topUserName');
           if (nm && user.first_name) nm.textContent = (user.first_name + ' ' + (user.last_name || '')).trim();
@@ -20613,8 +20636,7 @@
       api('DELETE', '/api/users/me/anonymize').then(function() {
         showToast(t('erasure_done'), 'success');
         setTimeout(function() {
-          localStorage.removeItem('fieldops_token');
-          localStorage.removeItem('fieldops_user');
+          _authClear();
           window.location.href = 'https://fieldopsapp.nl';
         }, 2000);
       }).catch(function(err) {
@@ -21000,7 +21022,7 @@
       var desc = document.getElementById('meldingDesc').value;
       if (desc) fd.append('extra_context', desc);
 
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       fetch('/api/inspecties/analyse-foto', {
         method: 'POST',
         headers: token ? { 'Authorization': 'Bearer ' + token } : {},
