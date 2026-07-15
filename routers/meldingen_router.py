@@ -88,25 +88,146 @@ def _haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2 * R * math.asin(math.sqrt(a))
 
 
-def _auto_link_nearest_asset(melding: Melding, assets: list, max_m: float = 200.0) -> bool:
-    """Koppel melding aan dichtstbijzijnde asset binnen max_m meter.
+def _point_seg_dist_m(plat, plng, alat, alng, blat, blng) -> float:
+    """Afstand (m) van punt P tot lijnsegment A-B via lokale equirect-projectie.
 
-    Idempotent — als asset_id al gezet is, doe niks. Voorwaarde: melding
-    heeft lat/lng. Pakt asset met laagste afstand binnen drempel.
+    Voor de korte afstanden hier (<2 km) is equirectangular nauwkeurig genoeg en
+    veel goedkoper dan een echte geodetische segment-afstand. Cruciaal voor
+    wegvakken: een melding kan midden op een segment liggen, ver van elk vertex —
+    punt-tot-segment vindt die wél (punt-tot-vertex zou 'm missen).
+    """
+    lat0 = math.radians(plat)
+    m_lat = 111_320.0
+    m_lng = 111_320.0 * math.cos(lat0)
+    ax = (alng - plng) * m_lng; ay = (alat - plat) * m_lat
+    bx = (blng - plng) * m_lng; by = (blat - plat) * m_lat
+    dx = bx - ax; dy = by - ay
+    seg2 = dx * dx + dy * dy
+    if seg2 == 0.0:
+        return math.hypot(ax, ay)
+    t = -(ax * dx + ay * dy) / seg2
+    t = max(0.0, min(1.0, t))
+    cx = ax + t * dx; cy = ay + t * dy
+    return math.hypot(cx, cy)
+
+
+def _geometry_pieces(geojson_str, max_points: int = 200) -> list:
+    """Parse geometry_geojson → lijst van 'pieces' (elk een lijst (lat,lng)-vertices).
+
+    Point → één piece met één punt; LineString → één piece; MultiLineString →
+    meerdere pieces. Lange pieces worden licht gesampled (begin- + eindvertex
+    blijven behouden). Lege lijst bij ongeldige/onbekende geometrie.
+    """
+    if not geojson_str:
+        return []
+    try:
+        geo = json.loads(geojson_str) if isinstance(geojson_str, str) else geojson_str
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(geo, dict):
+        return []
+    gtype = geo.get("type")
+    coords = geo.get("coordinates") or []
+    if gtype == "Point":
+        return [[(coords[1], coords[0])]] if len(coords) >= 2 else []
+    if gtype == "LineString":
+        raw_pieces = [coords]
+    elif gtype == "MultiLineString":
+        raw_pieces = coords
+    else:
+        return []
+    pieces = []
+    for raw in raw_pieces:
+        if not raw:
+            continue
+        step = max(1, len(raw) // max_points)
+        pts = []
+        for i in range(0, len(raw), step):
+            pt = raw[i]
+            if isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                pts.append((pt[1], pt[0]))   # geojson = [lng, lat] → (lat, lng)
+        last = raw[-1]
+        if isinstance(last, (list, tuple)) and len(last) >= 2:
+            tail = (last[1], last[0])
+            if not pts or pts[-1] != tail:
+                pts.append(tail)
+        if pts:
+            pieces.append(pts)
+    return pieces
+
+
+def _build_asset_geo_index(assets: list) -> list:
+    """Pre-parse assets → linkbare index met geometrie-pieces + bbox.
+
+    Punt-assets gebruiken (lat,lng); lijn-assets (wegvakken) hun geometry-vertices.
+    Eén keer bouwen vóór een bulk-loop — vermijdt herhaald JSON-parsen per melding.
+    """
+    index = []
+    for a in assets:
+        if a.lat is not None and a.lng is not None:
+            pieces = [[(a.lat, a.lng)]]
+        else:
+            pieces = _geometry_pieces(a.geometry_geojson)
+        if not pieces:
+            continue
+        lats = [p[0] for piece in pieces for p in piece]
+        lngs = [p[1] for piece in pieces for p in piece]
+        index.append({
+            "id": a.id,
+            "is_point": a.lat is not None and a.lng is not None,
+            "pieces": pieces,
+            "min_lat": min(lats), "max_lat": max(lats),
+            "min_lng": min(lngs), "max_lng": max(lngs),
+        })
+    return index
+
+
+def _nearest_asset_in_index(lat: float, lng: float, index: list, max_m: float = 200.0):
+    """(asset_id, afstand_m) van het dichtstbijzijnde asset binnen max_m, of (None, None).
+
+    Werkt voor punt-assets (haversine — identiek aan het oude gedrag, geen regressie)
+    én wegvakken (punt-tot-segment over de lijn-geometrie).
+    """
+    # Bbox-marge = de drempel omgerekend naar graden (lat/lng apart — lng
+    # comprimeert met de breedtegraad), +20% buffer. De marge MOET met max_m
+    # meeschalen: het dichtstbijzijnde punt op een geometrie ligt altijd binnen
+    # de vertex-bbox, dus een melding binnen max_m valt binnen bbox±(max_m in graden).
+    margin_lat = max_m / 110_540.0 * 1.2
+    margin_lng = max_m / (111_320.0 * max(0.1, math.cos(math.radians(lat)))) * 1.2
+    best_id = None
+    best_d = max_m
+    for e in index:
+        if (lat < e["min_lat"] - margin_lat or lat > e["max_lat"] + margin_lat or
+                lng < e["min_lng"] - margin_lng or lng > e["max_lng"] + margin_lng):
+            continue
+        for piece in e["pieces"]:
+            if len(piece) == 1:
+                d = _haversine_m(lat, lng, piece[0][0], piece[0][1])
+                if d < best_d:
+                    best_d, best_id = d, e["id"]
+            else:
+                for i in range(len(piece) - 1):
+                    d = _point_seg_dist_m(lat, lng,
+                                          piece[i][0], piece[i][1],
+                                          piece[i + 1][0], piece[i + 1][1])
+                    if d < best_d:
+                        best_d, best_id = d, e["id"]
+    if best_id is None:
+        return None, None
+    return best_id, best_d
+
+
+def _auto_link_nearest_asset(melding: Melding, index: list, max_m: float = 200.0) -> bool:
+    """Koppel melding aan dichtstbijzijnde asset (punt OF wegvak-lijn) binnen max_m.
+
+    `index` = output van _build_asset_geo_index (pre-geparset). Idempotent — als
+    asset_id al gezet is, doe niks. Voorwaarde: melding heeft lat/lng.
     """
     if melding.asset_id or melding.lat is None or melding.lng is None:
         return False
-    best = None
-    best_d = max_m
-    for a in assets:
-        if a.lat is None or a.lng is None:
-            continue
-        d = _haversine_m(melding.lat, melding.lng, a.lat, a.lng)
-        if d < best_d:
-            best = a
-            best_d = d
-    if best:
-        melding.asset_id = best.id
+    best_id, _d = _nearest_asset_in_index(melding.lat, melding.lng, index, max_m)
+    if best_id:
+        melding.asset_id = best_id
         return True
     return False
 
@@ -401,7 +522,9 @@ def create_melding(
                             Asset.lat.between(melding.lat - box, melding.lat + box),
                             Asset.lng.between(melding.lng - box, melding.lng + box))
                     .all())
-        _auto_link_nearest_asset(melding, nearby, max_m=200.0)
+        # Hot-path bewust punt-only (snelle bbox-query). Wegvak-koppeling
+        # (lijn-geometrie) gebeurt via de bulk-backfill/enrich-paden.
+        _auto_link_nearest_asset(melding, _build_asset_geo_index(nearby), max_m=200.0)
     db.commit()
     db.refresh(melding)
     log_action(db, request, current_user,
@@ -786,8 +909,10 @@ async def import_meldingen_csv(
         Asset.archived_at.is_(None),
     ).all()
     asset_by_code = {a.code: a.id for a in assets if a.code}
-    # Geo-assets voor auto-linking (alleen die lat/lng hebben)
-    geo_assets = [a for a in assets if a.lat is not None and a.lng is not None]
+    # Geo-assets voor auto-linking: punt-assets (lat/lng) én wegvakken (lijn-geometrie).
+    geo_assets = [a for a in assets
+                  if (a.lat is not None and a.lng is not None) or a.geometry_geojson]
+    geo_index = _build_asset_geo_index(geo_assets)
 
     # F5: optionele foto-zip inladen (bestandsnaam → base64 data-URL)
     photo_map = _load_photos_zip(await photos.read()) if photos is not None else {}
@@ -863,7 +988,7 @@ async def import_meldingen_csv(
         _enrich_classification(melding)
         # Auto-link aan dichtstbijzijnde asset binnen 200m als geen expliciete asset_code
         if not melding.asset_id:
-            _auto_link_nearest_asset(melding, geo_assets, max_m=200.0)
+            _auto_link_nearest_asset(melding, geo_index, max_m=200.0)
         # F5: foto koppelen (directe URL in CSV, of bestandsnaam uit de zip)
         photo_val = _get_csv(row, mapping, "photo")
         resolved_photo = _resolve_photo(photo_val, photo_map)
@@ -903,12 +1028,15 @@ def enrich_all_classifications(
 
     Doet 2 dingen idempotent (kan veilig vaker draaien):
       1. Vul ontbrekende gw_term/crow_klasse op basis van category+priority
-      2. Koppel meldingen-zonder-asset aan dichtstbijzijnd asset binnen 200m
-         (op basis van lat/lng — werkt alleen voor meldingen met coordinaten)
+      2. Koppel meldingen-zonder-asset aan dichtstbijzijnd asset binnen 200m —
+         zowel punt-assets (lat/lng) ALS wegvakken (lijn-geometrie), zodat
+         wegdek-/scheur-meldingen ook aan hun wegvak koppelen. Werkt voor elke
+         melding met coordinaten.
 
     Onmisbaar nadat je een CSV-import hebt gedaan zonder classificatie of
     asset-codes in de CSV: zonder dit zien clusters, voorspeller en
-    dashboard die meldingen niet.
+    dashboard die meldingen niet. Voor alleen koppelen + impact-rapport (dry-run)
+    is er ook POST /backfill-asset-links.
     """
     if not can_edit_melding_full(current_user):
         raise HTTPException(status_code=403, detail="Geen rechten")
@@ -917,20 +1045,21 @@ def enrich_all_classifications(
         Melding.organization_id == current_user.organization_id,
     ).all()
 
-    # Pre-load geo-assets voor auto-linking
-    geo_assets = db.query(Asset).filter(
+    # Pre-load geo-assets voor auto-linking: punt-assets én wegvakken (lijn-geometrie).
+    all_assets = db.query(Asset).filter(
         Asset.organization_id == current_user.organization_id,
         Asset.archived_at.is_(None),
-        Asset.lat.isnot(None),
-        Asset.lng.isnot(None),
     ).all()
+    geo_assets = [a for a in all_assets
+                  if (a.lat is not None and a.lng is not None) or a.geometry_geojson]
+    geo_index = _build_asset_geo_index(geo_assets)
 
     enriched = 0
     linked = 0
     for m in items:
         if _enrich_classification(m):
             enriched += 1
-        if _auto_link_nearest_asset(m, geo_assets, max_m=200.0):
+        if _auto_link_nearest_asset(m, geo_index, max_m=200.0):
             linked += 1
     db.commit()
 
@@ -944,6 +1073,94 @@ def enrich_all_classifications(
         "linked_to_asset": linked,
         "total": len(items),
         "geo_assets_available": len(geo_assets),
+    }
+
+
+@router.post("/backfill-asset-links")
+def backfill_asset_links(
+    request: Request,
+    dry_run: bool = Query(True, description="True = alleen rapporteren, niets opslaan (veilig). Zet false om écht te koppelen."),
+    max_m: float = Query(200.0, ge=10, le=2000, description="Max. koppel-afstand in meters"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Koppel bestaande meldingen-zonder-asset aan het dichtstbijzijnde asset —
+    nu óók aan **wegvakken** (lijn-geometrie), niet alleen punt-assets.
+
+    Dit was de rem op de Voorspeller-conditie-schatting: wegdek-/scheur-meldingen
+    konden nooit aan hun wegvak koppelen (de oude linker keek alleen naar punt-
+    assets met lat/lng), dus bleven die assets zonder gekoppelde melding en zonder
+    conditie-schatting. Punt-tot-segment-afstand vindt nu de juiste wegvak.
+
+    Idempotent + **standaard dry-run**: draai eerst zonder opslaan om de impact +
+    de resterende gaten te zien, daarna met `dry_run=false` om te committen. Het
+    rapport splitst koppeling via punt-asset vs. wegvak-lijn en telt waarom
+    meldingen ongekoppeld blijven (geen GPS / geen asset binnen drempel).
+    """
+    if not can_edit_melding_full(current_user):
+        raise HTTPException(status_code=403, detail="Geen rechten")
+
+    all_assets = db.query(Asset).filter(
+        Asset.organization_id == current_user.organization_id,
+        Asset.archived_at.is_(None),
+    ).all()
+    geo_assets = [a for a in all_assets
+                  if (a.lat is not None and a.lng is not None) or a.geometry_geojson]
+    index = _build_asset_geo_index(geo_assets)
+    is_point_by_id = {e["id"]: e["is_point"] for e in index}
+    point_assets = sum(1 for e in index if e["is_point"])
+    line_assets = sum(1 for e in index if not e["is_point"])
+
+    meldingen = db.query(Melding).filter(
+        Melding.organization_id == current_user.organization_id,
+    ).all()
+
+    already = no_gps = newly = via_point = via_line = no_match = 0
+    touched_assets: set = set()
+    for m in meldingen:
+        if m.asset_id:
+            already += 1
+            continue
+        if m.lat is None or m.lng is None:
+            no_gps += 1
+            continue
+        best_id, _d = _nearest_asset_in_index(m.lat, m.lng, index, max_m)
+        if not best_id:
+            no_match += 1
+            continue
+        newly += 1
+        touched_assets.add(best_id)
+        if is_point_by_id.get(best_id):
+            via_point += 1
+        else:
+            via_line += 1
+        if not dry_run:
+            m.asset_id = best_id
+
+    if not dry_run and newly:
+        db.commit()
+        log_action(db, request, current_user,
+                   action=ACTION.MELDING_UPDATE, entity_type="melding-backfill-link",
+                   entity_id=None,
+                   after={"newly_linked": newly, "via_point": via_point,
+                          "via_line": via_line, "distinct_assets": len(touched_assets),
+                          "max_m": max_m})
+    else:
+        db.rollback()
+
+    return {
+        "dry_run": dry_run,
+        "max_m": max_m,
+        "total_meldingen": len(meldingen),
+        "already_linked": already,
+        "newly_linked": newly,
+        "linked_via_point_asset": via_point,
+        "linked_via_wegvak_line": via_line,
+        "distinct_assets_touched": len(touched_assets),
+        "skipped_no_gps": no_gps,
+        "skipped_no_asset_in_range": no_match,
+        "point_assets_available": point_assets,
+        "line_assets_available": line_assets,
     }
 
 
