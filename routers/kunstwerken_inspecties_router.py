@@ -157,6 +157,7 @@ def _inspection_dict(i: Inspection, *, include_elements: bool = False,
         "project_name": i.project.name if i.project else None,
         "title": i.title,
         "inspectie_type": i.inspectie_type,
+        "inspectie_soort": i.inspectie_soort or "crow_groot",
         "nen1176_inspectie_kind": i.nen1176_inspectie_kind,
         "norm_referenties": i.norm_referenties,
         "datum_inspectie": i.datum_inspectie.isoformat() if i.datum_inspectie else None,
@@ -659,6 +660,9 @@ def create_inspection(
         project_id=payload.project_id or asset.project_id,
         title=payload.title,
         inspectie_type=payload.inspectie_type or "visueel",
+        inspectie_soort=(payload.inspectie_soort
+                         if payload.inspectie_soort in ("crow_groot", "klein_onderhoud")
+                         else "crow_groot"),
         nen1176_inspectie_kind=nen1176_kind,
         datum_inspectie=payload.datum_inspectie or datetime.now(timezone.utc),
         inspecteur_id=inspecteur_id,

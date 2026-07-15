@@ -253,6 +253,17 @@ def _run_migrations():
                     for col in org_missing:
                         conn.execute(_sql_text(f"ALTER TABLE organizations ADD COLUMN {col} {org_extra[col]}"))
 
+        # Inspecties — inspectie_soort (grote CROW vs klein onderhoud)
+        if "inspections" in insp.get_table_names():
+            icols = [c["name"] for c in insp.get_columns("inspections")]
+            if "inspectie_soort" not in icols:
+                print("[migration] inspections.inspectie_soort kolom toevoegen...")
+                from sqlalchemy import text as _sql_text
+                with engine.begin() as conn:
+                    conn.execute(_sql_text("ALTER TABLE inspections ADD COLUMN inspectie_soort VARCHAR(20) DEFAULT 'crow_groot'"))
+                    conn.execute(_sql_text("CREATE INDEX IF NOT EXISTS ix_inspections_soort ON inspections(inspectie_soort)"))
+                print("[migration] inspections.inspectie_soort toegevoegd.")
+
         # Photo-kolommen vergroten van VARCHAR(500) naar TEXT zodat
         # inline base64-data-URLs (foto's) zonder truncation worden opgeslagen.
         # Treft 3 tabellen: opleveringspunten, meldingen, inspection_defects.
