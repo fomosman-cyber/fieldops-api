@@ -5,16 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>FieldOps — Portaal</title>
 
-  <!-- Zoom-lock: de portaal gedraagt zich als een vaste native-app op telefoon —
-       geen pinch- of dubbeltik-zoom op dashboard/hoofdpagina. iOS Safari negeert
-       user-scalable=no in een tab, dus pinch wordt ook via gesture-events geblokkeerd.
-       touch-action: manipulation schakelt dubbeltik-zoom uit maar laat scrollen intact. -->
+  <!-- Zoom-lock: de portaal gedraagt zich als één vast scherm — als een native app.
+       Het doel is dat de layout niet verspringt door in/uit-zoomen (bij zoom verandert
+       de effectieve CSS-breedte, waardoor de responsive breakpoints de sidebar inklappen).
+       Wat een browser WÉL kan blokkeren doen we hieronder; wat een browser NIET kan
+       (desktop-toetsenbordzoom Ctrl +/- is een browser-shortcut, niet annuleerbaar in
+       Chrome/Firefox) vereist de native Capacitor-app voor 100% zoom-vergrendeling.
+         • mobiel/tablet: pinch- en dubbeltik-zoom geblokkeerd (gesture-events + touch-action
+           + viewport maximum-scale=1.0, user-scalable=no).
+         • desktop: trackpad-pinch en Ctrl+scroll-zoom vuren een 'wheel'-event met ctrlKey
+           → preventDefault blokkeert dat betrouwbaar.
+         • Ctrl/⌘ + +/-/0: best-effort preventDefault (werkt in kiosk/embedded + sommige
+           browsers; reguliere desktop-browsers negeren dit by-design). -->
   <style>html, body { touch-action: manipulation; }</style>
   <script>
     (function () {
+      // Mobiele pinch (iOS Safari negeert user-scalable=no in een tab)
       ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (ev) {
         document.addEventListener(ev, function (e) { e.preventDefault(); }, { passive: false });
       });
+      // Desktop trackpad-pinch / Ctrl+scroll-zoom → wheel-event met ctrlKey
+      window.addEventListener('wheel', function (e) {
+        if (e.ctrlKey) { e.preventDefault(); }
+      }, { passive: false });
+      // Best-effort: Ctrl/⌘ + +/-/0 (zoom-in/uit/reset). Niet gegarandeerd op
+      // reguliere desktop-browsers, maar onschadelijk en helpt waar het wél kan.
+      window.addEventListener('keydown', function (e) {
+        if ((e.ctrlKey || e.metaKey) &&
+            ['=', '+', '-', '_', '0'].indexOf(e.key) !== -1) {
+          e.preventDefault();
+        }
+      }, { passive: false });
     })();
   </script>
   <meta name="robots" content="noindex, nofollow">
