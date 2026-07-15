@@ -830,6 +830,10 @@ class Inspection(Base):
     # hoofd       = jaarlijks uitgebreid (structureel + onderdelen-vervanging)
     nen1176_inspectie_kind = Column(String(16), nullable=True, index=True)
 
+    # Inspectie-soort: 'crow_groot' = volledige formele CROW/NEN-inspectie,
+    # 'klein_onderhoud' = snelle, lichte onderhoudsinspectie.
+    inspectie_soort = Column(String(20), nullable=True, default="crow_groot", index=True)
+
     datum_inspectie = Column(DateTime, nullable=True)        # uitvoeringsdatum veldwerk
     inspecteur_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
     inspecteur_naam = Column(String(120), nullable=True)     # gedenormaliseerd voor rapport

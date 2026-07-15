@@ -4014,6 +4014,13 @@
           <input id="kwNewTitle" placeholder="bv. Eerste-graads inspectie Brug A20" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
         </div>
         <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Soort inspectie</label>
+          <select id="kwNewSoort" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <option value="crow_groot">Grote CROW-inspectie — volledig formeel (alle bouwdelen + checklist)</option>
+            <option value="klein_onderhoud">Klein onderhoud — snel &amp; licht (voeg zelf bouwdelen toe)</option>
+          </select>
+        </div>
+        <div>
           <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_asset">Kunstwerk (asset)</label>
           <select id="kwNewAsset" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
             <option value="">— Laden —</option>
@@ -15517,6 +15524,12 @@
     var KUNSTWERK_CATEGORY_ORDER = ['kunstwerken','wegen','groen','markering','verlichting','ondergronds'];
     var _kwCategoryFilter = ''; // '' = alle, anders categorie-key
 
+    function _kwSoortBadge(soort) {
+      if (soort === 'klein_onderhoud')
+        return ' <span style="background:#dbeafe;color:#1e40af;font-size:9px;padding:1px 6px;border-radius:100px;font-weight:700;letter-spacing:.04em;vertical-align:middle;">KLEIN ONDERHOUD</span>';
+      return ' <span style="background:#fef3c7;color:#92400e;font-size:9px;padding:1px 6px;border-radius:100px;font-weight:700;letter-spacing:.04em;vertical-align:middle;">GROTE CROW</span>';
+    }
+
     function kunstwerkCategoryForType(typeKey) {
       for (var k in KUNSTWERK_CATEGORIES) {
         if (KUNSTWERK_CATEGORIES[k].types.indexOf(typeKey) !== -1) return k;
@@ -15655,7 +15668,7 @@
           var date = i.datum_inspectie ? new Date(i.datum_inspectie).toLocaleDateString('nl-NL') : '—';
           var typeLabel = i.kunstwerk_type ? (i.kunstwerk_type.charAt(0).toUpperCase() + i.kunstwerk_type.slice(1)) : '—';
           return '<tr style="cursor:pointer;" onclick="openKunstwerkDetail(\'' + i.id + '\')">'
-            + '<td style="font-weight:600;">' + escapeHtml(i.title) + '</td>'
+            + '<td style="font-weight:600;">' + escapeHtml(i.title) + _kwSoortBadge(i.inspectie_soort) + '</td>'
             + '<td>' + escapeHtml(typeLabel) + '</td>'
             + '<td>' + escapeHtml(i.asset_name || i.asset_code || '—') + '</td>'
             + '<td>' + escapeHtml(i.inspecteur_naam || '—') + '</td>'
@@ -15943,10 +15956,14 @@
         showToast('Vul titel en kunstwerk in', 'error');
         return;
       }
+      var soort = (document.getElementById('kwNewSoort') || {}).value || 'crow_groot';
       var payload = {
         asset_id: asset_id,
         title: title,
-        auto_elements: true,
+        inspectie_soort: soort,
+        // Klein onderhoud start leeg (snel — voeg zelf de relevante bouwdelen toe);
+        // grote CROW-inspectie seedt de volledige standaard-decompositie.
+        auto_elements: soort !== 'klein_onderhoud',
       };
       if (kunstwerk_type) payload.kunstwerk_type = kunstwerk_type;
       if (datum) payload.datum_inspectie = new Date(datum).toISOString();
@@ -15962,7 +15979,7 @@
       }
 
       api('POST', '/api/kunstwerken-inspecties/', payload).then(function(insp){
-        showToast('Inspectie gestart — ' + (insp.elementen_count || 0) + ' elementen klaar', 'success');
+        showToast(insp.elementen_count ? ('Inspectie gestart — ' + insp.elementen_count + ' bouwdelen klaar') : 'Klein onderhoud gestart — voeg bouwdelen toe waar nodig', 'success');
         closeNieuweKunstwerkModal();
         openKunstwerkDetail(insp.id);
         loadKunstwerkInspecties();
