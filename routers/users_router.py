@@ -711,6 +711,10 @@ def accept_invitation(
     db: Session = Depends(get_db),
 ):
     """Uitnodiging accepteren en account aanmaken."""
+    # Server-side wachtwoordsterkte-gate (compliance-audit kijkt naar backend,
+    # niet naar HTML minlength). Zelfde eis als alle andere wachtwoord-flows.
+    validate_password_strength(request.password)
+
     inv = db.query(Invitation).filter(
         Invitation.token == request.token,
         Invitation.accepted == False,
@@ -718,7 +722,13 @@ def accept_invitation(
     if not inv:
         raise HTTPException(status_code=404, detail="Ongeldige of verlopen uitnodiging")
 
-    if inv.expires_at < datetime.now(timezone.utc):
+    # expires_at komt uit de DB als offset-naive terug (SQLite, en Postgres
+    # TIMESTAMP WITHOUT TIME ZONE). Normaliseer naar UTC-aware voordat we
+    # vergelijken, anders crasht de vergelijking met een aware now().
+    expires_at = inv.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Deze uitnodiging is verlopen")
 
     # Maak gebruiker aan

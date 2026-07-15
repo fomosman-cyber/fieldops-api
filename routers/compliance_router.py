@@ -148,9 +148,9 @@ def compliance_status(current_user: User = Depends(get_current_user)):
         },
         "encryption": {
             "in_transit": "TLS 1.3",
-            "at_rest": "AES-256",
+            "at_rest": "AES-256 (Render managed disk/DB)",
             "passwords": "Bcrypt cost 12",
-            "tokens": "JWT short-lived (1u) + refresh",
+            "tokens": "JWT short-lived (1u) + refresh; OAuth-tokens app-level versleuteld (Fernet: AES-128-CBC + HMAC-SHA256)",
         },
         "backups": {
             "frequency": "daily",
@@ -189,7 +189,7 @@ def list_documents(current_user: User = Depends(get_current_user)):
                 "format": ["MD", "PDF (op verzoek)"],
                 "version": "1.0-2026-05",
                 "based_on": "EU Standard Contractual Clauses Module 2",
-                "url": "https://www.fieldopsapp.nl/compliance/dpa.pdf",
+                "availability": "Op aanvraag via compliance@fieldopsapp.nl",
             },
             {
                 "id": "iso27001-soa",
@@ -198,7 +198,7 @@ def list_documents(current_user: User = Depends(get_current_user)):
                 "format": ["MD"],
                 "version": "1.0-2026-05",
                 "status": "Self-assessment (Pad B)",
-                "url": "https://www.fieldopsapp.nl/compliance/iso27001-soa.pdf",
+                "availability": "Op aanvraag via compliance@fieldopsapp.nl",
             },
             {
                 "id": "sub-processors",
@@ -214,7 +214,7 @@ def list_documents(current_user: User = Depends(get_current_user)):
                 "description": "Volledige procedure voor security-incidents + datalekken (AVG art. 33)",
                 "format": ["MD", "PDF (op verzoek)"],
                 "version": "1.0-2026-05",
-                "url": "https://www.fieldopsapp.nl/compliance/incident-response.pdf",
+                "availability": "Op aanvraag via compliance@fieldopsapp.nl",
             },
         ],
         "request_signed_copies": "compliance@fieldopsapp.nl",
@@ -298,14 +298,15 @@ def security_posture(current_user: User = Depends(get_current_user)):
         },
         "encryption": {
             "tls_version_minimum": "1.3",
-            "database_encryption": "AES-256 at rest",
+            "database_encryption": "AES-256 at rest (Render managed disk/DB)",
+            "sensitive_tokens_app_level": "OAuth-tokens versleuteld met Fernet (AES-128-CBC + HMAC-SHA256)",
             "password_hash": "Bcrypt cost 12",
             "key_management": "Render managed (HSM-backed)",
         },
         "access_control": {
             "rbac": True,
-            "multi_factor_auth": "Available (mandatory for Enterprise admin)",
-            "sso_saml": "Enterprise plan only",
+            "multi_factor_auth": "Beschikbaar (TOTP) — niet afgedwongen per plan",
+            "sso_saml": "Op de roadmap — nog niet beschikbaar",
             "session_timeout_min": 30,
             "password_policy_strength": "12 chars + 3 of 4 character classes",
             "failed_login_lockout": "5 attempts → 15 min lockout",

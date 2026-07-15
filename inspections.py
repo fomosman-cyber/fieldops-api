@@ -213,6 +213,32 @@ def sha256_of(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def decode_data_url(data_url: str) -> tuple[bytes, str]:
+    """Parse een 'data:image/...;base64,....' data-URL → (raw_bytes, media_type).
+
+    Gebruikt door endpoints die een foto als data-URL ontvangen (bv. de
+    AI-foto-knoppen in de melding-modal) en die door `analyze_image` willen
+    halen. Raised ValueError als het geen geldige base64-image-data-URL is.
+    """
+    if not data_url or not data_url.startswith("data:"):
+        raise ValueError("Geen geldige data-URL")
+    header, _, b64 = data_url.partition(",")
+    if not b64:
+        raise ValueError("Data-URL bevat geen payload")
+    # header = 'data:image/jpeg;base64'
+    media_type = "image/jpeg"
+    meta = header[len("data:"):].split(";", 1)[0].strip()
+    if meta in _ALLOWED_MEDIA:
+        media_type = meta
+    try:
+        raw = base64.b64decode(b64, validate=False)
+    except (ValueError, TypeError) as e:
+        raise ValueError(f"Kan base64 niet decoderen: {e}")
+    if not raw:
+        raise ValueError("Lege foto")
+    return raw, media_type
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Resultaat-validatie
 # ─────────────────────────────────────────────────────────────────────────────
@@ -480,3 +506,56 @@ def _http_fallback(api_key, image_bytes, image_media_type, image_url,
     out["_prompt_version"] = PROMPT_VERSION
     out["_raw_response"] = raw_text
     return out
+
+
+def analyze_photo_json(*, image_bytes, image_media_type, system_prompt,
+                       extra_context=None, max_tokens=1024):
+    """Generieke vision-call met een caller-gedefinieerde system-prompt.
+
+    Kijkt naar de werkelijke foto-pixels en geeft het rauw-geparste JSON-object
+    terug (zonder domein-validatie — dat doet de caller). Voor domeinen buiten
+    CROW 146/NEN 2767 (bv. NEN-EN 1176 speeltoestellen, NEN 3140 elektra).
+
+    Returnt None als er geen ANTHROPIC_API_KEY is, geen foto, of de call/parse
+    faalt → de caller valt dan terug op de heuristiek (nooit een harde fout).
+    Bij succes bevat het dict-resultaat een ``_model_id``-sleutel.
+    """
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key or not image_bytes:
+        return None
+    content = _user_content(image_bytes, image_media_type, None, extra_context)
+    sys_block = [{"type": "text", "text": system_prompt,
+                  "cache_control": {"type": "ephemeral"}}]
+    try:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+            msg = client.messages.create(
+                model=DEFAULT_MODEL, max_tokens=max_tokens,
+                system=sys_block,
+                messages=[{"role": "user", "content": content}],
+            )
+            raw_text = "".join(b.text for b in msg.content
+                               if getattr(b, "type", None) == "text")
+            model_id = msg.model
+        except ImportError:
+            body = {"model": DEFAULT_MODEL, "max_tokens": max_tokens,
+                    "system": sys_block,
+                    "messages": [{"role": "user", "content": content}]}
+            headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01",
+                       "content-type": "application/json"}
+            with httpx.Client(timeout=60.0) as cli:
+                r = cli.post("https://api.anthropic.com/v1/messages",
+                             json=body, headers=headers)
+                r.raise_for_status()
+                data = r.json()
+            raw_text = "".join(b.get("text", "") for b in data.get("content", [])
+                               if b.get("type") == "text")
+            model_id = data.get("model", DEFAULT_MODEL)
+        result = _coerce_result(raw_text)
+        if isinstance(result, dict):
+            result["_model_id"] = model_id
+            return result
+        return None
+    except Exception:
+        return None

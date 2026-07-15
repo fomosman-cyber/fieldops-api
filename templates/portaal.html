@@ -119,7 +119,7 @@
       --border-hover: #cbd5e1;
       --text: #1e293b;
       --text-muted: #64748b;
-      --text-dim: #94a3b8;
+      --text-dim: #5f6b7a;   /* L5: AA-contrast (was #94a3b8, faalde WCAG ~2.6:1) */
       --accent: #0284c7;
       --accent-dark: #0369a1;
       --gradient: linear-gradient(135deg, #0284c7, #0369a1);
@@ -142,7 +142,7 @@
       --border-hover: #3a414c;
       --text: #e6edf3;
       --text-muted: #9ba6b3;
-      --text-dim: #6e7787;
+      --text-dim: #9aa5b3;   /* L5: AA-contrast op donkere bg (was #6e7787) */
       --accent: #38bdf8;
       --accent-dark: #0ea5e9;
       --gradient: linear-gradient(135deg, #38bdf8, #0284c7);
@@ -973,6 +973,12 @@
     .toast.show { transform: translateY(0); opacity: 1; }
     .toast.success { background: rgba(0,230,118,0.15); color: var(--green); border: 1px solid rgba(0,230,118,0.3); }
     .toast.error { background: rgba(255,82,82,0.15); color: var(--red); border: 1px solid rgba(255,82,82,0.3); }
+    /* L3: info/warning hadden geen achtergrond -> offline-sync-toasts waren onzichtbaar */
+    .toast.info { background: rgba(2,132,199,0.15); color: var(--accent); border: 1px solid rgba(2,132,199,0.35); }
+    .toast.warning { background: rgba(234,88,12,0.15); color: var(--orange); border: 1px solid rgba(234,88,12,0.35); }
+
+    /* ───── A11Y — zichtbare focus voor toetsenbord/veld-navigatie (L15) ───── */
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
     /* ───── LOADING SPINNER ───── */
     @keyframes spin { to { transform: rotate(360deg); } }
@@ -1055,6 +1061,8 @@
       .btn-logout { font-size: 11px; padding: 6px 10px; }
       .user-pill { padding: 4px 8px; }
       .lang-switcher, #langSwitcher { font-size: 11px; padding: 4px 6px; }
+      /* L14: 44px tap-targets voor veldgebruik (handschoenen) */
+      .notif-btn { min-width: 44px; min-height: 44px; font-size: 20px; }
     }
 
     /* ───── SCROLLBAR ───── */
@@ -4027,6 +4035,13 @@
           <input id="kwNewTitle" placeholder="bv. Eerste-graads inspectie Brug A20" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
         </div>
         <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Soort inspectie</label>
+          <select id="kwNewSoort" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <option value="crow_groot">Grote CROW-inspectie — volledig formeel (alle bouwdelen + checklist)</option>
+            <option value="klein_onderhoud">Klein onderhoud — snel &amp; licht (voeg zelf bouwdelen toe)</option>
+          </select>
+        </div>
+        <div>
           <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_asset">Kunstwerk (asset)</label>
           <select id="kwNewAsset" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
             <option value="">— Laden —</option>
@@ -4092,6 +4107,49 @@
   </div>
 
   <!-- Defect toevoegen -->
+  <div class="modal-overlay" id="kwKritiekModal">
+    <div class="modal" style="max-width:640px;">
+      <button class="modal-close" onclick="closeKwKritiekModal()" aria-label="Sluiten">&times;</button>
+      <h2>⚠ Kritieke gebreken</h2>
+      <p class="subtitle">Alle gebreken met NEN 2767-2 defect-score 5 of 6 (slecht / zeer slecht) in deze inspectie, gesorteerd op ernst.</p>
+      <div id="kwKritiekBody" style="margin-top:16px;max-height:60vh;overflow-y:auto;"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="kwAddElementModal">
+    <div class="modal" style="max-width:520px;">
+      <button class="modal-close" onclick="closeKwAddElementModal()" aria-label="Sluiten">&times;</button>
+      <h2>Bouwdeel toevoegen</h2>
+      <p class="subtitle">Kies een standaard-bouwdeel (NEN 2767-2 / CROW 134) of voeg een eigen bouwdeel toe. Elk bouwdeel krijgt automatisch de bijbehorende vragenlijst.</p>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-top:16px;">
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Uit de standaard-bibliotheek</label>
+          <select id="kwAddElLib" onchange="kwAddElLibKies()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <option value="">— laden... —</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Naam bouwdeel</label>
+          <input id="kwAddElNaam" placeholder="bv. Remmingwerk / fender" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;">Groep</label>
+          <select id="kwAddElGroep" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <option value="constructief">Constructief</option>
+            <option value="afwerking">Afwerking</option>
+            <option value="installatie">Installatie</option>
+            <option value="omgeving">Omgeving</option>
+            <option value="overig">Overig</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px;">
+          <button class="btn-secondary" onclick="closeKwAddElementModal()">Annuleren</button>
+          <button class="btn-primary" onclick="submitKwAddElement()">Toevoegen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="kwDefectModal">
     <div class="modal" style="max-width:560px;">
       <button class="modal-close" onclick="closeKwDefectModal()" aria-label="Sluiten">&times;</button>
@@ -4288,6 +4346,8 @@
           <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_foto">Foto (optioneel)</label>
           <input id="kwDefectPhoto" type="file" accept="image/*" capture="environment" onchange="kwDefectPhotoPreview()" style="width:100%;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
           <div id="kwDefectPhotoPreview"></div>
+          <button type="button" class="btn-secondary" id="kwDefectAiBtn" onclick="kwDefectAiClassify()" style="margin-top:8px;font-size:12px;background:linear-gradient(135deg,#ea580c,#b45309);color:#fff;border:none;" title="Analyseer de foto via CROW 146 (Claude vision) en vul de classificatie voor">🛣️ CROW 146-analyse (foto)</button>
+          <div id="kwDefectAiHint" style="display:none;margin-top:8px;padding:10px;border-radius:8px;background:rgba(234,88,12,0.06);border:1px solid rgba(234,88,12,0.2);font-size:12px;color:var(--text);line-height:1.5;"></div>
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:20px;justify-content:flex-end;">
@@ -4921,7 +4981,7 @@
   </div>
 
   <!-- ═══════ TOAST ═══════ -->
-  <div class="toast" id="toast"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- ═══════ LEAFLET JS ═══════ -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -7914,9 +7974,30 @@
     var currentUser = null;
     var currentOrg = null;
 
-    // ── Init: check token from URL hash or localStorage ──
+    // ── Auth-opslag ──
+    // Standaard leeft de sessie alleen in sessionStorage (wachtwoord elke keer opnieuw
+    // invullen); alleen bij een expliciete "ingelogd blijven"-keuze op de loginpagina
+    // (hash-param remember=1) bewaren we het token in localStorage.
+    function _authGet(key) {
+      try { var v = sessionStorage.getItem(key); if (v) return v; } catch (e) {}
+      try { return localStorage.getItem(key); } catch (e) { return null; }
+    }
+    function _authSet(key, value) {
+      // Volg de opslag waar het token al leeft (sessie tenzij "onthouden" gekozen is).
+      var useLocal = false;
+      try { useLocal = !sessionStorage.getItem('fieldops_token') && !!localStorage.getItem('fieldops_token'); } catch (e) {}
+      try { (useLocal ? localStorage : sessionStorage).setItem(key, value); } catch (e) {}
+    }
+    function _authClear() {
+      ['fieldops_token', 'fieldops_user'].forEach(function(k) {
+        try { sessionStorage.removeItem(k); } catch (e) {}
+        try { localStorage.removeItem(k); } catch (e) {}
+      });
+    }
+
+    // ── Init: check token from URL hash or storage ──
     (function init() {
-      // Check for token in URL hash (coming from Shopify login)
+      // Check for token in URL hash (coming from the fieldopsapp.nl login)
       var hash = window.location.hash;
       if (hash && hash.indexOf('token=') > -1) {
         var params = {};
@@ -7925,23 +8006,25 @@
           params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1] || '');
         });
         if (params.token) {
-          localStorage.setItem('fieldops_token', params.token);
-          if (params.user) {
-            localStorage.setItem('fieldops_user', params.user);
-          }
+          _authClear(); // nooit een oude sessie laten rondslingeren
+          var store = params.remember === '1' ? localStorage : sessionStorage;
+          try {
+            store.setItem('fieldops_token', params.token);
+            if (params.user) store.setItem('fieldops_user', params.user);
+          } catch (e) {}
           // Clear hash
           history.replaceState(null, '', window.location.pathname);
         }
       }
 
-      token = localStorage.getItem('fieldops_token');
+      token = _authGet('fieldops_token');
       if (!token) {
         window.location.href = 'https://fieldopsapp.nl';
         return;
       }
 
-      // Load user from localStorage
-      var stored = localStorage.getItem('fieldops_user');
+      // Load user from storage
+      var stored = _authGet('fieldops_user');
       if (stored) {
         try { currentUser = JSON.parse(stored); } catch(e) { currentUser = null; }
       }
@@ -7974,9 +8057,10 @@
       if (body) opts.body = JSON.stringify(body);
       return fetch(API_URL + path, opts).then(function(res) {
         if (res.status === 401) {
-          localStorage.removeItem('fieldops_token');
-          localStorage.removeItem('fieldops_user');
-          window.location.href = 'https://fieldopsapp.nl';
+          _authClear();
+          // Terug naar de loginpagina mét uitleg: die opent de login-modal
+          // en toont "sessie verlopen" i.p.v. een kale bounce naar de homepage.
+          window.location.href = 'https://fieldopsapp.nl/#sessie=verlopen';
           return;
         }
         // Robuuste body-parse — handelt zowel JSON als plain-text 5xx-responses af
@@ -8030,7 +8114,7 @@
       // Get current user
       api('GET', '/api/auth/me').then(function(user) {
         currentUser = user;
-        localStorage.setItem('fieldops_user', JSON.stringify(user));
+        _authSet('fieldops_user', JSON.stringify(user));
         setUserUI(user);
 
         // Branding prefetch (cached in orgBrandingCache) — voor PDF-generators
@@ -8851,8 +8935,7 @@
 
     // ── Uitloggen ──
     function uitloggen() {
-      localStorage.removeItem('fieldops_token');
-      localStorage.removeItem('fieldops_user');
+      _authClear();
       window.location.href = 'https://fieldopsapp.nl';
     }
 
@@ -8876,6 +8959,8 @@
       var t = document.getElementById('toast');
       t.textContent = msg;
       t.className = 'toast ' + (type || 'success');
+      // L4: urgente meldingen (fout/waarschuwing) assertief aankondigen voor screenreaders
+      t.setAttribute('aria-live', (type === 'error' || type === 'warning') ? 'assertive' : 'polite');
       setTimeout(function() { t.classList.add('show'); }, 10);
       setTimeout(function() { t.classList.remove('show'); }, 3500);
     }
@@ -9826,10 +9911,13 @@
       });
     }
 
+    var _mjopProjectId = '';  // huidige projectfilter van de MJOP-modal ('' = alle projecten)
+
     function downloadMjopPdf(years) {
       // PDF-download met Bearer-token via fetch + blob (een gewone <a href>
       // kan geen Authorization-header meesturen, dus fetch + objectURL).
       var url = '/api/mjop/export.pdf?years=' + (years || 10);
+      if (_mjopProjectId) url += '&project_id=' + encodeURIComponent(_mjopProjectId);
       fetch(API_URL + url, { headers: { 'Authorization': 'Bearer ' + token } })
         .then(function(res) {
           if (!res.ok) return res.text().then(function(t) { throw new Error('Server fout ' + res.status + ': ' + t.substring(0, 120)); });
@@ -9847,6 +9935,31 @@
         })
         .catch(function(err) {
           showToast('PDF mislukt: ' + (err.message || 'Onbekend'), 'error');
+        });
+    }
+
+    function downloadMjopCsv(years) {
+      // CSV-download met Bearer-token via fetch + blob (zelfde patroon als
+      // downloadMjopPdf — een kale <a href> geeft 401 zonder Authorization).
+      var url = '/api/mjop/export.csv?years=' + (years || 10);
+      if (_mjopProjectId) url += '&project_id=' + encodeURIComponent(_mjopProjectId);
+      fetch(API_URL + url, { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function(res) {
+          if (!res.ok) return res.text().then(function(t) { throw new Error('Server fout ' + res.status + ': ' + t.substring(0, 120)); });
+          return res.blob().then(function(blob) {
+            var disp = res.headers.get('Content-Disposition') || '';
+            var m = disp.match(/filename="?([^";]+)"?/);
+            var fname = m ? m[1] : ('mjop-' + new Date().toISOString().slice(0,10) + '.csv');
+            var blobUrl = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = blobUrl; a.download = fname;
+            document.body.appendChild(a); a.click();
+            setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(blobUrl); }, 100);
+            showToast('MJOP-CSV gedownload', 'success');
+          });
+        })
+        .catch(function(err) {
+          showToast('CSV mislukt: ' + (err.message || 'Onbekend'), 'error');
         });
     }
 
@@ -9869,11 +9982,15 @@
         });
     }
 
-    function showMjopModal() {
+    function showMjopModal(projectId) {
       // MJOP-modal — Meerjaren Onderhoudsplan op basis van conditie-scores
-      // + cyclus + kosten-katalogus (CROW 145 / GWW-kostengids 2024)
+      // + cyclus + kosten-katalogus (CROW 145 / GWW-kostengids 2024).
+      // Optioneel gefilterd op één project (projectId leeg = alle projecten).
       var defaultYears = 10;
-      api('GET', '/api/mjop/summary?years=' + defaultYears).then(function(r){
+      _mjopProjectId = projectId || '';
+      var summaryUrl = '/api/mjop/summary?years=' + defaultYears +
+        (_mjopProjectId ? '&project_id=' + encodeURIComponent(_mjopProjectId) : '');
+      api('GET', summaryUrl).then(function(r){
         var s = r;
         // Bouw "per jaar"-rijen
         var yearRows = (s.by_year || []).map(function(y){
@@ -9896,6 +10013,13 @@
         }).join('');
         var totMin = (s.grand_total && s.grand_total.min) || 0;
         var totMax = (s.grand_total && s.grand_total.max) || 0;
+        // Projectselectie — gevuld uit allProjects; wisselen herlaadt de modal
+        var projectOptions = '<option value="">Alle projecten</option>' +
+          (allProjects || []).map(function(p){
+            return '<option value="' + escapeHtml(p.id) + '"' +
+              (_mjopProjectId === p.id ? ' selected' : '') + '>' +
+              escapeHtml(p.name || p.id) + '</option>';
+          }).join('');
         var html = '<div style="background:rgba(0,0,0,0.5);position:fixed;inset:0;z-index:10000;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;" onclick="if(event.target===this)this.remove()">' +
           '<div style="background:#fff;border-radius:14px;width:100%;max-width:960px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3);">' +
           '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px;">' +
@@ -9903,12 +10027,19 @@
           '<p style="margin:0;font-size:13px;color:var(--text-muted);">Horizon: 10 jaar · Conform NEN 2767-2 + CROW 145 + GWW-kostengids 2024 · ' + s.total_assets + ' assets meegenomen</p></div>' +
           '<button onclick="this.closest(\'div[style*=fixed]\').remove()" style="background:transparent;border:none;font-size:24px;cursor:pointer;color:var(--text-muted);">×</button>' +
           '</div>' +
+          // Projectfilter
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">' +
+          '<label style="font-size:12px;font-weight:600;color:var(--text-muted);">Project:</label>' +
+          '<select onchange="var v=this.value;this.closest(\'div[style*=fixed]\').remove();showMjopModal(v)" ' +
+          'style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:inherit;background:#fff;color:#1e293b;min-width:220px;">' +
+          projectOptions + '</select>' +
+          '</div>' +
           // Grand total
           '<div style="background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;border-radius:12px;padding:16px 22px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;">' +
           '<div><div style="font-size:11px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.85;">Totale begroting 10 jaar</div>' +
           '<div style="font-size:28px;font-weight:800;line-height:1.2;">€ ' + totMin.toLocaleString('nl-NL') + ' — € ' + totMax.toLocaleString('nl-NL') + '</div></div>' +
           '<div style="display:flex;gap:8px;flex-shrink:0;">' +
-          '<a href="/api/mjop/export.csv?years=10" style="background:#fff;color:#0369a1;padding:10px 18px;border-radius:8px;font-weight:700;text-decoration:none;font-size:13px;">📥 CSV</a>' +
+          '<button onclick="downloadMjopCsv(10)" style="background:#fff;color:#0369a1;padding:10px 18px;border-radius:8px;font-weight:700;border:none;cursor:pointer;font-size:13px;font-family:inherit;">📥 CSV</button>' +
           '<button onclick="downloadMjopPdf(10)" style="background:#fff;color:#0369a1;padding:10px 18px;border-radius:8px;font-weight:700;border:none;cursor:pointer;font-size:13px;font-family:inherit;">📄 PDF</button>' +
           '</div>' +
           '</div>' +
@@ -10960,6 +11091,32 @@
     // Mo's bug: het document uit een melding miste GPS, de foto zelf en de
     // asset-codering. Deze functie bouwt een CROW-conform document van één
     // melding mét al die onderdelen.
+    // Narratieve samenvatting/advies-alinea uit de melding-data (volzinnen).
+    function _meldingNarratief(m, assetTxt, datum, statusLabels) {
+      var parts = [];
+      var cat = (m.category || 'een melding');
+      var waar = (assetTxt && assetTxt !== '—') ? (' ter plaatse van ' + assetTxt) : '';
+      parts.push('Deze melding betreft ' + cat + waar + ', aangemaakt op ' + datum +
+        ' door ' + (m.creator_name || 'onbekend') + '.');
+      if (m.crow_klasse || m.crow_schadebeeld || m.nen_2767_conditie != null) {
+        var cls = 'De waarneming is geclassificeerd';
+        if (m.crow_schadebeeld) cls += ' volgens CROW 146 als ' + m.crow_schadebeeld;
+        if (m.crow_klasse) cls += ' (klasse ' + m.crow_klasse + ')';
+        if (m.nen_2767_conditie != null) cls += ', wat overeenkomt met NEN 2767-conditie ' + m.nen_2767_conditie;
+        parts.push(cls + '.');
+      }
+      var statusLabel = (statusLabels && statusLabels[m.status]) || m.status || 'open';
+      var prio = (m.priority || 'normaal');
+      parts.push('De huidige status is "' + statusLabel + '" met prioriteit ' + prio + '.');
+      if (m.onderhoud_categorie || m.gw_maatregel) {
+        var adv = 'Geadviseerde afhandeling';
+        if (m.onderhoud_categorie) adv += ' (' + m.onderhoud_categorie + ')';
+        adv += ': ' + (m.gw_maatregel || 'conform de geldende onderhoudsrichtlijn') + '.';
+        parts.push(adv);
+      }
+      return parts.join(' ');
+    }
+
     function generateMeldingDocument(meldingId) {
       var id = meldingId || editingMeldingId;
       if (!id) { showToast('Geen melding geselecteerd', 'error'); return; }
@@ -11072,6 +11229,14 @@
         doc.text(doc.splitTextToSize(String(f[1]), cw-10), fx, fy+5);
       });
       y += blockH + 6;
+
+      // ── Samenvatting & advies (narratief) ──
+      doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
+      doc.setFontSize(11); bold(); doc.setTextColor(_brandRgb[0],_brandRgb[1],_brandRgb[2]);
+      doc.text('SAMENVATTING & ADVIES', M, y); y += 6;
+      normal(); doc.setTextColor(30,41,59); doc.setFontSize(11);
+      var _narrLines = doc.splitTextToSize(_meldingNarratief(m, assetTxt, datum, statusLabels), W-2*M);
+      doc.text(_narrLines, M, y); y += _narrLines.length * 5.5 + 6;
 
       // ── GPS-locatie (kern van #12) ──
       doc.setDrawColor(226,232,240); doc.line(M, y, W-M, y); y += 7;
@@ -13111,7 +13276,7 @@
       if (fromV) qs += '&from=' + encodeURIComponent(fromV);
       if (toV) qs += '&to=' + encodeURIComponent(toV);
 
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       showToast('CSV genereren...', 'info');
       fetch('/api/meldingen/export.csv?' + qs, {
         headers: token ? { 'Authorization': 'Bearer ' + token } : {},
@@ -13197,7 +13362,7 @@
       // Direct dry-run uitvoeren
       var fd = new FormData();
       fd.append('file', file);
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       showToast('CSV analyseren...', 'info');
       var commitBtn = document.getElementById('aiwCommitBtn');
       if (commitBtn) { commitBtn.disabled = true; commitBtn.textContent = '⏳ Analyseren...'; }
@@ -13301,7 +13466,7 @@
 
       var fd = new FormData();
       fd.append('file', _aiwFile);
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       // dry_run=false (default)
       fetch('/api/assets/import/csv', {
         method: 'POST',
@@ -13574,7 +13739,7 @@
         return;
       }
       _giwFile = file;
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       showToast('GeoJSON analyseren...', 'info');
       var btn = document.getElementById('giwCommitBtn');
       if (btn) { btn.disabled = true; btn.textContent = '⏳ Analyseren...'; }
@@ -13654,7 +13819,7 @@
       if (!_giwFile) { showToast('Geen bestand geselecteerd', 'error'); return; }
       var btn = document.getElementById('giwCommitBtn');
       if (btn) { btn.disabled = true; btn.textContent = '⏳ Importeren...'; }
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       fetch(_giwEndpoint(_giwFile), {
         method: 'POST',
         headers: token ? { 'Authorization': 'Bearer ' + token } : {},
@@ -13679,7 +13844,7 @@
     function importAssetsCsv(event) {
       var f = event.target.files && event.target.files[0]; if (!f) return;
       var fd = new FormData(); fd.append('file', f);
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       showToast('CSV uploaden...', 'info');
       fetch('/api/assets/import/csv', {
         method:'POST',
@@ -15012,6 +15177,7 @@
     // ══════════════════════════════════════════════════════════════
     var _kunstwerkInspecties = [];
     var _currentKunstwerk = null;        // huidige inspectie-detail
+    var _kwElFilter = 'alle';            // bouwdelen-filter: alle|kritiek|defecten|tebeoordelen
     var _kunstwerkTaxonomy = {};         // cache per type
     var _kunstwerkTypes = null;          // labels per type-key
 
@@ -15041,11 +15207,87 @@
     var KW_CONDITIE_LABEL = new Proxy({}, { get: function(_, k){ return kwConditieLabel(parseInt(k,10)); } });
     var KW_STATUS_LABEL = new Proxy({}, { get: function(_, k){ return kwStatusLabel(k); } });
 
+    // ── Bouwdelen-filter (flow-overzicht) ──
+    function _kwIsKritiek(e) {
+      return (e.defecten || []).some(function(d){ return (d.defect_score || 0) >= 5; });
+    }
+    function _kwApplyFilter(elementen) {
+      if (_kwElFilter === 'kritiek') return elementen.filter(_kwIsKritiek);
+      if (_kwElFilter === 'defecten') return elementen.filter(function(e){ return (e.defecten || []).length > 0; });
+      if (_kwElFilter === 'tebeoordelen') return elementen.filter(function(e){ return !e.beoordeeld && !e.niet_inspecteerbaar_reden; });
+      return elementen;
+    }
+    function _kwFilterBar(elementen) {
+      var nKrit = elementen.filter(_kwIsKritiek).length;
+      var nDef = elementen.filter(function(e){ return (e.defecten || []).length > 0; }).length;
+      var nTodo = elementen.filter(function(e){ return !e.beoordeeld && !e.niet_inspecteerbaar_reden; }).length;
+      var chips = [
+        ['alle', 'Alle (' + elementen.length + ')', null],
+        ['kritiek', '⚠ Kritiek (' + nKrit + ')', '#dc2626'],
+        ['defecten', 'Met defecten (' + nDef + ')', null],
+        ['tebeoordelen', 'Te beoordelen (' + nTodo + ')', null],
+      ];
+      return '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">' + chips.map(function(c){
+        var active = _kwElFilter === c[0];
+        var col = c[2] || 'var(--accent)';
+        return '<button onclick="setKwElFilter(\'' + c[0] + '\')" style="font-size:12px;padding:5px 12px;border-radius:100px;cursor:pointer;font-family:inherit;font-weight:600;border:1px solid ' + (active ? col : 'var(--border)') + ';background:' + (active ? col : 'var(--card-bg)') + ';color:' + (active ? '#fff' : 'var(--text-muted)') + ';">' + c[1] + '</button>';
+      }).join('') + '</div>';
+    }
+    function setKwElFilter(f) {
+      _kwElFilter = f;
+      if (_currentKunstwerk) renderKunstwerkDetail(_currentKunstwerk);
+    }
+
+    // ── Kritieke-gebreken-overzicht (klik op de 'kritiek'-KPI) ──
+    function showKwKritiek() {
+      if (!_currentKunstwerk) return;
+      var crit = [];
+      (_currentKunstwerk.elementen || []).forEach(function(e){
+        (e.defecten || []).forEach(function(d){
+          if ((d.defect_score || 0) >= 5) crit.push({ e: e, d: d });
+        });
+      });
+      crit.sort(function(a, b){ return (b.d.defect_score || 0) - (a.d.defect_score || 0); });
+      var body = document.getElementById('kwKritiekBody');
+      if (!crit.length) {
+        body.innerHTML = '<p style="color:var(--text-dim);padding:16px;text-align:center;">Geen kritieke gebreken (score 5-6) in deze inspectie.</p>';
+      } else {
+        body.innerHTML = crit.map(function(it){
+          var d = it.d, e = it.e;
+          var photo = d.photo_url ? '<img src="' + escapeHtml(d.photo_url) + '" style="width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid var(--border);">' : '';
+          var details = (typeof _kwDefectDetailsLine === 'function') ? _kwDefectDetailsLine(d) : '';
+          return '<div style="display:flex;gap:10px;padding:10px;border:1px solid #fecaca;background:#fef2f2;border-radius:8px;margin-bottom:8px;align-items:flex-start;">'
+            + photo
+            + '<div style="flex:1;min-width:0;">'
+            +   '<div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.04em;">' + escapeHtml(e.element_naam || '') + '</div>'
+            +   '<div style="font-weight:700;font-size:14px;color:#991b1b;">' + escapeHtml(d.gebrek_naam || 'Gebrek') + ' ' + _kwBadge(d.defect_score) + '</div>'
+            +   '<div style="font-size:11px;color:var(--text-dim);">' + details + (d.locatie_beschrijving ? ' &middot; ' + escapeHtml(d.locatie_beschrijving) : '') + '</div>'
+            +   (d.omschrijving ? '<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">' + escapeHtml(d.omschrijving) + '</div>' : '')
+            + '</div>'
+            + '<button class="btn-secondary" style="font-size:11px;padding:4px 10px;white-space:nowrap;" onclick="kwKritiekGaNaar(\'' + e.id + '\')">Naar bouwdeel</button>'
+            + '</div>';
+        }).join('');
+      }
+      document.getElementById('kwKritiekModal').classList.add('active');
+    }
+    function closeKwKritiekModal() { document.getElementById('kwKritiekModal').classList.remove('active'); }
+    function kwKritiekGaNaar(elId) {
+      closeKwKritiekModal();
+      _kwElFilter = 'alle';
+      if (_currentKunstwerk) renderKunstwerkDetail(_currentKunstwerk);
+      setTimeout(function(){
+        var box = document.getElementById('kwEl-' + elId);
+        if (box) { box.style.display = ''; box.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      }, 60);
+    }
+
     function _kwMetricsStrip(m) {
       if (!m || !m.elementen_totaal) return '';
-      var tile = function(label, val, color, sub) {
-        return '<div style="flex:1;min-width:120px;padding:10px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">'
-          + '<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600;">' + label + '</div>'
+      var tile = function(label, val, color, sub, onclick) {
+        var clickAttr = onclick ? ' onclick="' + onclick + '" title="Klik voor het overzicht"' : '';
+        var clickStyle = onclick ? 'cursor:pointer;box-shadow:0 0 0 1px ' + (color || 'var(--border)') + ' inset;' : '';
+        return '<div' + clickAttr + ' style="flex:1;min-width:120px;padding:10px 12px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;' + clickStyle + '">'
+          + '<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600;">' + label + (onclick ? ' &rsaquo;' : '') + '</div>'
           + '<div style="font-size:22px;font-weight:700;color:' + (color || 'var(--text)') + ';margin-top:2px;line-height:1.1;">' + val + '</div>'
           + (sub ? '<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">' + sub + '</div>' : '')
           + '</div>';
@@ -15078,7 +15320,7 @@
         +   tile(t('kw_kpi_voortgang'), m.voortgang_pct + '%', voortgangColor, m.elementen_beoordeeld + '/' + m.elementen_totaal + ' ' + t('kw_elementen'))
         +   tile(t('kw_kpi_vragen'), m.vragen_beantwoord + '/' + m.vragen_totaal, voortgangColor, m.vragen_voortgang_pct + '% ' + t('kw_pct_beantwoord'))
         +   tile(t('kw_kpi_aandacht'), m.vragen_aandacht, aandachtColor, t('kw_punten_risico'))
-        +   tile(t('kw_kpi_kritiek'), m.defecten_kritiek, kritiekColor, t('kw_defecten_kritiek_sub'))
+        +   tile(t('kw_kpi_kritiek'), m.defecten_kritiek, kritiekColor, t('kw_defecten_kritiek_sub'), (m.defecten_kritiek > 0 ? 'showKwKritiek()' : null))
         + '</div>'
         + (totaal > 0 ? '<div style="margin-top:10px;padding:10px 14px;background:var(--card-bg);border:1px solid var(--border);border-radius:10px;">'
             + '<div style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-bottom:4px;">' + t('kw_conditie_verdeling') + '</div>'
@@ -15326,6 +15568,12 @@
     var KUNSTWERK_CATEGORY_ORDER = ['kunstwerken','wegen','groen','markering','verlichting','ondergronds'];
     var _kwCategoryFilter = ''; // '' = alle, anders categorie-key
 
+    function _kwSoortBadge(soort) {
+      if (soort === 'klein_onderhoud')
+        return ' <span style="background:#dbeafe;color:#1e40af;font-size:9px;padding:1px 6px;border-radius:100px;font-weight:700;letter-spacing:.04em;vertical-align:middle;">KLEIN ONDERHOUD</span>';
+      return ' <span style="background:#fef3c7;color:#92400e;font-size:9px;padding:1px 6px;border-radius:100px;font-weight:700;letter-spacing:.04em;vertical-align:middle;">GROTE CROW</span>';
+    }
+
     function kunstwerkCategoryForType(typeKey) {
       for (var k in KUNSTWERK_CATEGORIES) {
         if (KUNSTWERK_CATEGORIES[k].types.indexOf(typeKey) !== -1) return k;
@@ -15464,7 +15712,7 @@
           var date = i.datum_inspectie ? new Date(i.datum_inspectie).toLocaleDateString('nl-NL') : '—';
           var typeLabel = i.kunstwerk_type ? (i.kunstwerk_type.charAt(0).toUpperCase() + i.kunstwerk_type.slice(1)) : '—';
           return '<tr style="cursor:pointer;" onclick="openKunstwerkDetail(\'' + i.id + '\')">'
-            + '<td style="font-weight:600;">' + escapeHtml(i.title) + '</td>'
+            + '<td style="font-weight:600;">' + escapeHtml(i.title) + _kwSoortBadge(i.inspectie_soort) + '</td>'
             + '<td>' + escapeHtml(typeLabel) + '</td>'
             + '<td>' + escapeHtml(i.asset_name || i.asset_code || '—') + '</td>'
             + '<td>' + escapeHtml(i.inspecteur_naam || '—') + '</td>'
@@ -15615,7 +15863,7 @@
       }
 
       // Laad assets — filter op kunstwerk-types (asset_type kan al matchen)
-      api('GET', '/api/assets/').then(function(items){
+      api('GET', '/api/assets/?limit=1000').then(function(items){
         var sel = document.getElementById('kwNewAsset');
         sel.innerHTML = '<option value="">— Kies kunstwerk —</option>';
         (items || []).forEach(function(a){
@@ -15752,10 +16000,14 @@
         showToast('Vul titel en kunstwerk in', 'error');
         return;
       }
+      var soort = (document.getElementById('kwNewSoort') || {}).value || 'crow_groot';
       var payload = {
         asset_id: asset_id,
         title: title,
-        auto_elements: true,
+        inspectie_soort: soort,
+        // Klein onderhoud start leeg (snel — voeg zelf de relevante bouwdelen toe);
+        // grote CROW-inspectie seedt de volledige standaard-decompositie.
+        auto_elements: soort !== 'klein_onderhoud',
       };
       if (kunstwerk_type) payload.kunstwerk_type = kunstwerk_type;
       if (datum) payload.datum_inspectie = new Date(datum).toISOString();
@@ -15771,7 +16023,7 @@
       }
 
       api('POST', '/api/kunstwerken-inspecties/', payload).then(function(insp){
-        showToast('Inspectie gestart — ' + (insp.elementen_count || 0) + ' elementen klaar', 'success');
+        showToast(insp.elementen_count ? ('Inspectie gestart — ' + insp.elementen_count + ' bouwdelen klaar') : 'Klein onderhoud gestart — voeg bouwdelen toe waar nodig', 'success');
         closeNieuweKunstwerkModal();
         openKunstwerkDetail(insp.id);
         loadKunstwerkInspecties();
@@ -15840,13 +16092,22 @@
 
       // Elementen-tree
       var elementen = insp.elementen || [];
+      var addElBtn = (!locked) ? '<div style="margin-bottom:14px;display:flex;gap:8px;flex-wrap:wrap;">'
+        + '<button class="btn-secondary" onclick="openKwAddElementModal()">+ Bouwdeel toevoegen</button>'
+        + '<button class="btn-secondary" onclick="kwJumpNext()">&rarr; Volgende te beoordelen</button>'
+        + '<button class="btn-secondary" onclick="kwBulkGeenBijzonderheden()">&#10003; Markeer rest \'geen bijzonderheden\'</button>'
+        + '<button class="btn-secondary" onclick="kwSaveTemplate()" title="Bewaar deze bouwdelen-set voor dit object; een volgende inspectie hergebruikt deze">&#128190; Bewaar bouwdelen-set</button>'
+        + '</div>' : '';
       if (!elementen.length) {
-        elementsEl.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:20px;">' + t('kw_geen_elementen') + '</p>';
+        elementsEl.innerHTML = addElBtn + '<p style="color:var(--text-dim);text-align:center;padding:20px;">' + t('kw_geen_elementen') + '</p>';
         return;
       }
+      // Filterbalk + gefilterde subset (flow-overzicht)
+      var filterBar = _kwFilterBar(elementen);
+      var shown = _kwApplyFilter(elementen);
       // Groepeer per element_groep
       var groups = {};
-      elementen.forEach(function(e){
+      shown.forEach(function(e){
         var g = e.element_groep || 'overig';
         if (!groups[g]) groups[g] = [];
         groups[g].push(e);
@@ -15859,7 +16120,11 @@
         omgeving:     t('kw_omgeving'),
         overig:       t('kw_overig'),
       };
-      elementsEl.innerHTML = groupOrder.filter(function(g){ return groups[g]; }).map(function(g){
+      if (!shown.length) {
+        elementsEl.innerHTML = addElBtn + filterBar + '<p style="color:var(--text-dim);text-align:center;padding:16px;">Geen bouwdelen in dit filter.</p>';
+        return;
+      }
+      elementsEl.innerHTML = addElBtn + filterBar + groupOrder.filter(function(g){ return groups[g]; }).map(function(g){
         var items = groups[g];
         var groupHtml = '<div style="margin-bottom:18px;">'
           + '<h3 style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);margin:0 0 8px;">' + groupLabels[g] + '</h3>';
@@ -15926,8 +16191,9 @@
             elementHtml += '<p style="color:var(--text-dim);font-size:13px;margin:8px 0;">Nog geen defecten geregistreerd.</p>';
           }
           if (!locked) {
-            elementHtml += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;font-size:12px;">'
+            elementHtml += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:12px;">'
               + '<label style="color:var(--text-muted);"><input type="checkbox" ' + (e.beoordeeld ? 'checked' : '') + ' onchange="toggleKwBeoordeeld(\'' + e.id + '\', this.checked)"> ' + t('kw_chk_beoordeeld_geen_bijzonderheden') + '</label>'
+              + '<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:#dc2626;border-color:#fee2e2;" onclick="deleteKwElement(\'' + e.id + '\', ' + JSON.stringify(e.element_naam || '') + ')">🗑️ Bouwdeel verwijderen</button>'
               + '</div>';
           }
           elementHtml += '</div></div>';
@@ -15942,6 +16208,140 @@
       var box = document.getElementById('kwEl-' + elId);
       if (!box) return;
       box.style.display = box.style.display === 'none' ? '' : 'none';
+    }
+
+    // ── Flexibele bouwdelen-editor: standaard-bibliotheek + eigen element + verwijderen ──
+    function openKwAddElementModal() {
+      if (!_currentKunstwerk) return;
+      document.getElementById('kwAddElNaam').value = '';
+      document.getElementById('kwAddElGroep').value = 'constructief';
+      var sel = document.getElementById('kwAddElLib');
+      sel.innerHTML = '<option value="">— laden... —</option>';
+      var aanwezig = {};
+      (_currentKunstwerk.elementen || []).forEach(function(e){ aanwezig[e.element_code] = true; });
+      api('GET', '/api/kunstwerken-inspecties/taxonomy/' + encodeURIComponent(_currentKunstwerk.kunstwerk_type || '')).then(function(tax){
+        var opts = ['<option value="">— kies een standaard-bouwdeel —</option>'];
+        (tax.elementen || []).forEach(function(el){
+          if (!aanwezig[el.code]) {
+            opts.push('<option value="' + escapeHtml(el.code) + '" data-naam="' + escapeHtml(el.naam) + '" data-groep="' + escapeHtml(el.groep || 'overig') + '">' + escapeHtml(el.naam) + '</option>');
+          }
+        });
+        if (opts.length === 1) opts.push('<option value="" disabled>(alle standaard-bouwdelen zitten al in deze inspectie)</option>');
+        sel.innerHTML = opts.join('');
+      }).catch(function(){ sel.innerHTML = '<option value="">(bibliotheek niet beschikbaar — gebruik een eigen bouwdeel)</option>'; });
+      document.getElementById('kwAddElementModal').classList.add('active');
+    }
+    function closeKwAddElementModal() {
+      document.getElementById('kwAddElementModal').classList.remove('active');
+    }
+    function kwAddElLibKies() {
+      var sel = document.getElementById('kwAddElLib');
+      var opt = sel.options[sel.selectedIndex];
+      if (opt && opt.value) {
+        document.getElementById('kwAddElNaam').value = opt.getAttribute('data-naam') || opt.text;
+        document.getElementById('kwAddElGroep').value = opt.getAttribute('data-groep') || 'overig';
+      }
+    }
+    function submitKwAddElement() {
+      if (!_currentKunstwerk) return;
+      var sel = document.getElementById('kwAddElLib');
+      var opt = sel.options[sel.selectedIndex];
+      var naam = (document.getElementById('kwAddElNaam').value || '').trim();
+      if (!naam) { showToast('Geef een naam voor het bouwdeel', 'error'); return; }
+      var groep = document.getElementById('kwAddElGroep').value || 'overig';
+      var code = (opt && opt.value) ? opt.value
+        : 'EIGEN.' + naam.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 30);
+      api('POST', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen', {
+        element_code: code, element_naam: naam, element_groep: groep, order_index: 100,
+      }).then(function(){
+        showToast('Bouwdeel toegevoegd', 'success');
+        closeKwAddElementModal();
+        return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+      }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
+        .catch(function(err){ showToast('Toevoegen mislukt: ' + (err.message || ''), 'error'); });
+    }
+    function deleteKwElement(elId, naam) {
+      if (!_currentKunstwerk) return;
+      if (!confirm('Bouwdeel "' + (naam || '') + '" verwijderen uit deze inspectie? De bijbehorende vragen en defecten gaan ook weg.')) return;
+      api('DELETE', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + elId).then(function(){
+        showToast('Bouwdeel verwijderd', 'success');
+        return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+      }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
+        .catch(function(err){ showToast('Verwijderen mislukt: ' + (err.message || ''), 'error'); });
+    }
+
+    // ── Volgende te beoordelen-sprong ──
+    function kwJumpNext() {
+      if (!_currentKunstwerk) return;
+      var next = (_currentKunstwerk.elementen || []).find(function(e){
+        return !e.beoordeeld && !e.niet_inspecteerbaar_reden;
+      });
+      if (!next) { showToast('Alle bouwdelen zijn beoordeeld ✓', 'success'); return; }
+      if (_kwElFilter !== 'alle') { _kwElFilter = 'alle'; renderKunstwerkDetail(_currentKunstwerk); }
+      setTimeout(function(){
+        var box = document.getElementById('kwEl-' + next.id);
+        if (box) { box.style.display = ''; box.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      }, 60);
+    }
+
+    // ── Bulk: markeer resterende onbeoordeelde (zonder defecten) als 'geen bijzonderheden' ──
+    function kwBulkGeenBijzonderheden() {
+      if (!_currentKunstwerk) return;
+      var todo = (_currentKunstwerk.elementen || []).filter(function(e){
+        return !e.beoordeeld && !e.niet_inspecteerbaar_reden && (e.defecten || []).length === 0;
+      });
+      if (!todo.length) { showToast('Geen onbeoordeelde bouwdelen zonder defecten', 'info'); return; }
+      if (!confirm(todo.length + ' bouwdeel/bouwdelen markeren als \'geen bijzonderheden\'?')) return;
+      Promise.all(todo.map(function(e){
+        return api('PATCH', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + e.id, { beoordeeld: true });
+      })).then(function(){
+        showToast(todo.length + ' bouwdelen gemarkeerd', 'success');
+        return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+      }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
+        .catch(function(err){ showToast('Markeren mislukt: ' + (err.message || ''), 'error'); });
+    }
+
+    // ── CROW 146-foto-analyse in de defect-modal (prefill gebrek-naam + ernst) ──
+    function kwDefectAiClassify() {
+      var fileInput = document.getElementById('kwDefectPhoto');
+      var file = fileInput && fileInput.files && fileInput.files[0];
+      if (!file) { showToast('Kies eerst een foto in deze defect-modal', 'error'); return; }
+      var btn = document.getElementById('kwDefectAiBtn');
+      var orig = btn.textContent; btn.disabled = true; btn.textContent = '⏳ CROW 146 analyseert…';
+      var hint = _currentKunstwerk ? (_currentKunstwerk.kunstwerk_type || '') : '';
+      _photoToDataUrl(file).then(function(dataUrl){
+        return api('POST', '/api/ai/classify-crow146', { asset_type: hint, photo_data_url: dataUrl });
+      }).then(function(r){
+        var s = (r && r.suggestions && r.suggestions[0]) || null;
+        var hintEl = document.getElementById('kwDefectAiHint');
+        hintEl.style.display = 'block';
+        if (!s) { hintEl.innerHTML = 'Geen schadebeeld gedetecteerd op de foto.'; return; }
+        var naamEl = document.getElementById('kwDefectGebrekNaam');
+        if (naamEl && !naamEl.value) naamEl.value = s.naam || s.code || '';
+        var ernstMap = { 'L': '1', 'M': '2', 'E': '3' };
+        if (s.ernst && ernstMap[s.ernst]) document.getElementById('kwDefectErnst').value = ernstMap[s.ernst];
+        var bits = [];
+        if (s.naam) bits.push('<strong>' + escapeHtml(s.naam) + '</strong>');
+        if (s.klasse) bits.push('CROW-klasse ' + escapeHtml(s.klasse));
+        if (r.nen_2767_conditie != null) bits.push('NEN-conditie ' + r.nen_2767_conditie);
+        if (s.maatregel) bits.push('maatregel: ' + escapeHtml(s.maatregel));
+        var bevHtml = (r.bevindingen && r.bevindingen.length)
+          ? '<ul style="margin:6px 0 0 16px;padding:0;">' + r.bevindingen.map(function(b){ return '<li>' + escapeHtml(b) + '</li>'; }).join('') + '</ul>' : '';
+        var via = (r.detection_method === 'vision') ? '📷 AI-foto-analyse' : 'indicatief (geen foto-analyse beschikbaar)';
+        hintEl.innerHTML = '<div style="font-weight:600;margin-bottom:4px;">AI-suggestie (' + via + ') — controleer en pas aan:</div>'
+          + bits.join(' · ') + bevHtml;
+      }).catch(function(err){
+        showToast('CROW 146-analyse mislukt: ' + (err.message || ''), 'error');
+      }).finally(function(){ btn.disabled = false; btn.textContent = orig; });
+    }
+
+    // ── Per-object template: huidige bouwdelen-set bewaren op het object ──
+    function kwSaveTemplate() {
+      if (!_currentKunstwerk) return;
+      if (!confirm('De huidige bouwdelen-set opslaan als standaard voor dit object? Een volgende inspectie van dit object begint dan met deze set.')) return;
+      api('POST', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/save-elements-template', {}).then(function(r){
+        showToast('Bouwdelen-set opgeslagen voor dit object (' + ((r && r.saved) || 0) + ' bouwdelen)', 'success');
+      }).catch(function(err){ showToast('Opslaan mislukt: ' + (err.message || ''), 'error'); });
     }
 
     function saveKwElementBev(elId) {
@@ -17226,7 +17626,7 @@
       // het predictive-summary endpoint).
       var assetsPromise = (allAssets && allAssets.length > 0)
         ? Promise.resolve(allAssets)
-        : api('GET', '/api/assets/').then(function(a){ allAssets = a || []; return allAssets; });
+        : api('GET', '/api/assets/?limit=1000').then(function(a){ allAssets = a || []; return allAssets; });
 
       Promise.all([
         assetsPromise,
@@ -18088,7 +18488,7 @@
       const tx = db.transaction(SYNC_STORE, 'readwrite');
       tx.objectStore(SYNC_STORE).add({
         method, path, body,
-        token: localStorage.getItem('fieldops_token') || '',
+        token: _authGet('fieldops_token') || '',
         created_at: new Date().toISOString(),
       });
       await new Promise((r, rj) => { tx.oncomplete = r; tx.onerror = () => rj(tx.error); });
@@ -19746,7 +20146,7 @@
       if (projId) qs += '&project_id=' + encodeURIComponent(projId);
       if (userId) qs += '&user_id=' + encodeURIComponent(userId);
 
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       showToast('CSV genereren...', 'info');
       fetch('/api/daybook/export.csv?' + qs, {
         headers: token ? { 'Authorization': 'Bearer ' + token } : {},
@@ -20185,7 +20585,7 @@
       api('PATCH', '/api/users/me/profile', payload).then(function(user){
         if (user) {
           currentUser = Object.assign({}, currentUser || {}, user);
-          localStorage.setItem('fieldops_user', JSON.stringify(currentUser));
+          _authSet('fieldops_user', JSON.stringify(currentUser));
           // Naam-weergave in topbar bijwerken
           var nm = document.getElementById('topUserName');
           if (nm && user.first_name) nm.textContent = (user.first_name + ' ' + (user.last_name || '')).trim();
@@ -20274,8 +20674,7 @@
       api('DELETE', '/api/users/me/anonymize').then(function() {
         showToast(t('erasure_done'), 'success');
         setTimeout(function() {
-          localStorage.removeItem('fieldops_token');
-          localStorage.removeItem('fieldops_user');
+          _authClear();
           window.location.href = 'https://fieldopsapp.nl';
         }, 2000);
       }).catch(function(err) {
@@ -20661,7 +21060,7 @@
       var desc = document.getElementById('meldingDesc').value;
       if (desc) fd.append('extra_context', desc);
 
-      var token = localStorage.getItem('fieldops_token') || '';
+      var token = _authGet('fieldops_token') || '';
       fetch('/api/inspecties/analyse-foto', {
         method: 'POST',
         headers: token ? { 'Authorization': 'Bearer ' + token } : {},
@@ -20729,6 +21128,34 @@
       });
     }
 
+    // Bouw een LEESBARE tekst-hint uit asset.properties. De AI-endpoints
+    // (classify-crow146 / -en1176 / -nen3140) verwachten properties_hint als
+    // STRING; asset.properties is bij geïmporteerde assets vaak een object
+    // (CROW GVI/GBI-velden). Object rechtstreeks doorsturen gaf een 422
+    // "Input should be a valid string". Hier maken we er een compacte,
+    // betekenisvolle string van (beter voor de AI dan een ruwe JSON-blob).
+    function _assetPropsHint(a) {
+      if (!a) return null;
+      var p = a.properties;
+      if (typeof p === 'string' && p.trim()) return p.trim();
+      if (p && typeof p === 'object') {
+        var voorkeur = ['onderdeeltype','objecttype','materiaal','wegtype',
+                        'markering','bermligging','omschrijving','type'];
+        var parts = [];
+        voorkeur.forEach(function(k){
+          if (p[k] != null && String(p[k]).trim()) parts.push(String(p[k]).trim());
+        });
+        if (parts.length) return parts.join(' · ');
+        try {
+          var flat = Object.keys(p)
+            .filter(function(k){ var v = p[k]; return v != null && typeof v !== 'object'; })
+            .map(function(k){ return k + '=' + p[k]; });
+          if (flat.length) return flat.join(' · ');
+        } catch (e) { /* val terug op location_description */ }
+      }
+      return (a.location_description || '') || null;
+    }
+
     function analyseFotoCrow146() {
       if (!meldingPhotoFile) { showToast('Kies eerst een foto', 'error'); return; }
       var btn = document.getElementById('meldingCrow146Btn');
@@ -20744,7 +21171,7 @@
         var a = meldingAssets.find(function(x){ return x.id === assetId; });
         if (a) {
           asset_type = a.type || null;
-          properties_hint = (a.properties || a.location_description || '') || null;
+          properties_hint = _assetPropsHint(a);
         }
       }
       // Categorie als asset_type-fallback (vooral 'Wegdek')
@@ -20779,12 +21206,12 @@
       var typeEl = document.getElementById('meldingCrow146Type');
       if (!box || !summary || !r) return;
 
-      if (typeEl) typeEl.textContent = (r.verhardingstype_label || '') + ' · ' + (r.detection_method === 'auto' ? 'auto-detect' : 'expliciet');
+      if (typeEl) typeEl.textContent = (r.verhardingstype_label || '') + ' · ' + (r.detection_method === 'vision' ? '📷 AI-foto-analyse' : (r.detection_method === 'auto' ? 'auto-detect' : 'expliciet'));
 
       var lines = [];
       var sugg = r.suggestions || [];
       if (sugg.length === 0) {
-        lines.push('<em>Geen schadebeelden gedetecteerd in de heuristiek.</em>');
+        lines.push('<em>Geen schadebeelden gedetecteerd op de foto.</em>');
       } else {
         lines.push('<div style="font-weight:600;margin-bottom:6px;">Top schadebeelden:</div>');
         lines.push('<ul style="margin:0 0 8px 18px;padding:0;">');
@@ -20805,6 +21232,13 @@
           '</li>');
         });
         lines.push('</ul>');
+      }
+      if (r.bevindingen && r.bevindingen.length) {
+        lines.push('<div style="margin-top:6px;font-size:12px;"><strong>AI-bevindingen op de foto:</strong><ul style="margin:4px 0 0 18px;padding:0;color:var(--text-muted);">' +
+          r.bevindingen.map(function(b){ return '<li>' + escapeHtml(b) + '</li>'; }).join('') + '</ul></div>');
+      }
+      if (r.nen_2767_conditie != null) {
+        lines.push('<div style="font-size:11px;color:var(--text-muted);margin-top:4px;">NEN 2767-conditie: <strong>' + escapeHtml(String(r.nen_2767_conditie)) + '</strong>/5</div>');
       }
       if (r.norm_reference) {
         lines.push('<div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Norm: ' + escapeHtml(r.norm_reference) + '</div>');
@@ -20873,7 +21307,7 @@
         var a = meldingAssets.find(function(x){ return x.id === assetId; });
         if (a) {
           asset_type = a.type || null;
-          properties_hint = (a.properties || a.location_description || '') || null;
+          properties_hint = _assetPropsHint(a);
         }
       }
       if (!asset_type) {
@@ -20991,7 +21425,7 @@
         var a = meldingAssets.find(function(x){ return x.id === assetId; });
         if (a) {
           asset_type = a.type || null;
-          properties_hint = (a.properties || a.location_description || '') || null;
+          properties_hint = _assetPropsHint(a);
         }
       }
       if (!asset_type) {

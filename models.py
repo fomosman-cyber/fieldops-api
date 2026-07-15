@@ -1,6 +1,7 @@
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, Float
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from database import Base
+from crypto_fields import EncryptedText
 from datetime import datetime, timezone
 import enum
 import uuid
@@ -8,6 +9,34 @@ import uuid
 
 def generate_uuid():
     return str(uuid.uuid4())
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Gereserveerde organisatienamen — centrale privilege-escalatie-guard
+#
+# is_platform_owner() / require_owner() kennen platform-rechten toe op basis
+# van org.name == "FieldOps". ELK code-pad dat een Organization aanmaakt of
+# hernoemt (org-PATCH, Shopify-webhook, admin-API, demo-approve, imports)
+# loopt via de @validates-hook op Organization.name hieronder, zodat er
+# nooit een tweede "FieldOps"-org kan ontstaan — ongeacht via welke route.
+#
+# Legitieme bootstrap-code (main.py lifespan, test-fixtures) moet expliciet
+# opt-in'en door VÓÓR het zetten van de naam `org.allow_reserved_name = True`
+# te zetten.
+# ─────────────────────────────────────────────────────────────────────────────
+
+RESERVED_ORG_NAMES = frozenset({"fieldops"})
+
+
+class ReservedOrgNameError(ValueError):
+    """Poging om een gereserveerde organisatienaam te gebruiken."""
+
+
+def is_reserved_org_name(name) -> bool:
+    """True als de naam (case-insensitive, whitespace-gestript) gereserveerd is."""
+    if not name:
+        return False
+    return "".join(str(name).split()).lower() in RESERVED_ORG_NAMES
 
 
 class UserRole(str, enum.Enum):
@@ -34,8 +63,25 @@ class SubscriptionPlan(str, enum.Enum):
 class Organization(Base):
     __tablename__ = "organizations"
 
+    # Geen Column — puur Python-vlag. Alleen platform-bootstrap (main.py
+    # lifespan / test-fixtures) zet dit op True om de naam "FieldOps" te
+    # mogen gebruiken. Wordt niet gepersisteerd.
+    allow_reserved_name = False
+
     id = Column(String, primary_key=True, default=generate_uuid)
     name = Column(String(255), nullable=False)
+
+    @validates("name")
+    def _validate_reserved_name(self, key, value):
+        """SECURITY: blokkeer gereserveerde namen op model-niveau.
+
+        Dit vuurt bij ELKE toewijzing aan .name (constructor én rename),
+        maar niet bij het laden van bestaande rijen uit de database.
+        """
+        if is_reserved_org_name(value) and not getattr(self, "allow_reserved_name", False):
+            raise ReservedOrgNameError(
+                "Deze organisatienaam is gereserveerd voor het platform")
+        return value
     plan = Column(SQLEnum(SubscriptionPlan), default=SubscriptionPlan.STARTER)
     status = Column(SQLEnum(AccountStatus), default=AccountStatus.TRIAL)
     max_users = Column(Integer, default=10)
@@ -483,8 +529,8 @@ class GoogleOAuthToken(Base):
     user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False, index=True)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
 
-    access_token = Column(Text, nullable=False)
-    refresh_token = Column(Text, nullable=True)
+    access_token = Column(EncryptedText, nullable=False)   # I7: app-level versleuteld (Fernet)
+    refresh_token = Column(EncryptedText, nullable=True)   # I7: app-level versleuteld (Fernet)
     expires_at = Column(DateTime, nullable=True)
     scope = Column(Text, nullable=True)            # space-separated lijst van scopes
     google_email = Column(String(255), nullable=True)
@@ -531,8 +577,8 @@ class MicrosoftOAuthToken(Base):
     user_id = Column(String, ForeignKey("users.id"), unique=True, nullable=False, index=True)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False)
 
-    access_token = Column(Text, nullable=False)
-    refresh_token = Column(Text, nullable=True)
+    access_token = Column(EncryptedText, nullable=False)   # I7: app-level versleuteld (Fernet)
+    refresh_token = Column(EncryptedText, nullable=True)   # I7: app-level versleuteld (Fernet)
     expires_at = Column(DateTime, nullable=True)
     scope = Column(Text, nullable=True)
     ms_email = Column(String(255), nullable=True)
@@ -783,6 +829,10 @@ class Inspection(Base):
     # operationeel = maandelijks functioneel (slijtage, beweegbare delen)
     # hoofd       = jaarlijks uitgebreid (structureel + onderdelen-vervanging)
     nen1176_inspectie_kind = Column(String(16), nullable=True, index=True)
+
+    # Inspectie-soort: 'crow_groot' = volledige formele CROW/NEN-inspectie,
+    # 'klein_onderhoud' = snelle, lichte onderhoudsinspectie.
+    inspectie_soort = Column(String(20), nullable=True, default="crow_groot", index=True)
 
     datum_inspectie = Column(DateTime, nullable=True)        # uitvoeringsdatum veldwerk
     inspecteur_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)

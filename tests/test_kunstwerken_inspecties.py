@@ -56,9 +56,11 @@ def _new_inspection(client, user, asset_id, **overrides):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_defect_score_grenswaarden():
-    assert scoring.defect_to_score(1, 1, 1) == 1
-    assert scoring.defect_to_score(3, 3, 5) == 6
-    assert scoring.defect_to_score(2, 2, 3) == 4
+    # NEN 2767 I/O-matrices (ernstklasse kiest matrix, intensiteit x omvang)
+    assert scoring.defect_to_score(1, 1, 1) == 1   # gering/begin/<2%
+    assert scoring.defect_to_score(3, 3, 5) == 6   # ernstig/eind/>70%
+    assert scoring.defect_to_score(3, 2, 4) == 4   # ernstig/gevorderd/30-70% (deck)
+    assert scoring.defect_to_score(2, 2, 3) == 2   # serieus/gevorderd/10-30%
 
 
 def test_defect_score_incomplete_returns_none():
@@ -80,6 +82,17 @@ def test_element_score_worst_defect():
     assert scoring.element_score([1, 3, 4]) == 4
     assert scoring.element_score([None, 2, None]) == 2
     assert scoring.element_score([None, None]) is None
+
+
+def test_element_score_from_defects_correctiefactor():
+    # NEN 2767-4 omvang-gewogen aggregatie (nog niet in router gewired, wel getest)
+    # Gevalideerd deck-voorbeeld: 20% c6 + 8% c3 + 32% c2 + 40% c1 -> 1,2144 -> 4
+    assert scoring.element_score_from_defects([(6, 20), (3, 8), (2, 32), (1, 40)]) == 4
+    # Klein ernstig gebrek (conditie 6 op 2%) -> element blijft bijna uitstekend
+    assert scoring.element_score_from_defects([(6, 2)]) == 2
+    # Zelfde conditie 6 maar over 60% van het element -> veel zwaarder
+    assert scoring.element_score_from_defects([(6, 60)]) == 5
+    assert scoring.element_score_from_defects([]) is None
 
 
 def test_object_score_worst_element():
@@ -246,14 +259,15 @@ def test_defect_toevoegen_berekent_score(client, admin_user):
     )
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["defect_score"] == 4
-    assert d["defect_score_label"] == "Matig"
+    # serieus(2) / gevorderd(2) / omvang 10-30%(3) -> I/O-matrix -> conditie 2
+    assert d["defect_score"] == 2
+    assert d["defect_score_label"] == "Goed"
 
-    # Element-score updated
+    # Element-score updated (worst-defect: één defect van 2)
     r = client.get(f"/api/kunstwerken-inspecties/{insp['id']}", headers=auth(admin_user))
     elements = r.json()["elementen"]
     updated = next(e for e in elements if e["id"] == el["id"])
-    assert updated["conditiescore"] == 4
+    assert updated["conditiescore"] == 2
     assert updated["beoordeeld"] is True
 
 
@@ -293,7 +307,8 @@ def test_omvang_percentage_wordt_naar_klasse_gemapt(client, admin_user):
     )
     d = r.json()
     assert d["omvang_klasse"] == 4
-    assert d["defect_score"] == 5  # 3 (ernst=2) + 1 (intensiteit=2) + 1 (omvang_klasse=4)
+    # serieus(2) / gevorderd(2) / omvang 30-70%(4) -> I/O-matrix -> conditie 3
+    assert d["defect_score"] == 3
 
 
 def test_defect_update_herberekent(client, admin_user):
@@ -391,7 +406,8 @@ def test_complete_berekent_overall_score(client, admin_user):
         db.close()
     insp = _new_inspection(client, admin_user, a_id)
     el = insp["elementen"][0]
-    # Eén ernstig defect
+    # Eén ernstig defect: ernstig(3) / gevorderd(2) / omvang 30-70%(4)
+    # -> NEN 2767 I/O-matrix -> conditie 4 (deck-voorbeeld)
     client.post(
         f"/api/kunstwerken-inspecties/{insp['id']}/elementen/{el['id']}/defecten",
         json={"gebrek_naam": "Scheur", "ernst": 3, "intensiteit": 2, "omvang_klasse": 4},
@@ -401,9 +417,9 @@ def test_complete_berekent_overall_score(client, admin_user):
     assert r.status_code == 200
     d = r.json()
     assert d["status"] == "completed"
-    assert d["conditiescore_overall"] == 6
-    assert d["conditiescore_label"] == "Zeer slecht"
-    assert d["maatregel_advies"]["categorie"] == "acuut"
+    assert d["conditiescore_overall"] == 4
+    assert d["conditiescore_label"] == "Matig"
+    assert d["maatregel_advies"]["categorie"] == "groot-onderhoud"
 
 
 def test_sign_zonder_complete_400(client, admin_user):
@@ -523,8 +539,8 @@ def test_defect_to_melding_creates_orchestration_link(client, admin_user):
     try:
         m = db.query(Melding).filter(Melding.id == melding_id).first()
         assert m is not None
-        # ernst=3, intensiteit=2, omvang_klasse=3 → 5 + 1 + 0 = 6 → "kritiek"
-        assert m.priority == "kritiek"
+        # ernstig(3)/gevorderd(2)/omvang 10-30%(3) → I/O-matrix → conditie 3 → "normaal"
+        assert m.priority == "normaal"
         assert m.gw_maatregel == "Reparatie betondekking"
         assert m.asset_id == a_id
         assert "NEN 2767-2" in (m.description or "")
@@ -776,10 +792,10 @@ def test_metrics_telt_aandacht_en_kritiek_correct(client, admin_user):
         json={"answer_value_text": "volledig"},
         headers=auth(admin_user),
     )
-    # 1 kritiek defect
+    # 1 kritiek defect: ernstig(3)/eindstadium(3)/omvang >70%(5) -> conditie 6
     client.post(
         f"/api/kunstwerken-inspecties/{insp['id']}/elementen/{el['id']}/defecten",
-        json={"gebrek_naam": "Zware scheur", "ernst": 3, "intensiteit": 2, "omvang_klasse": 4},
+        json={"gebrek_naam": "Zware scheur", "ernst": 3, "intensiteit": 3, "omvang_klasse": 5},
         headers=auth(admin_user),
     )
 

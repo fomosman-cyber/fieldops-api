@@ -418,6 +418,9 @@ class KunstwerkInspectionCreate(BaseModel):
     opdrachtgever_naam: Optional[str] = None
     opdrachtgever_email: Optional[str] = None
     auto_elements: bool = True
+    # Inspectie-soort: 'crow_groot' (volledige formele CROW/NEN-inspectie) of
+    # 'klein_onderhoud' (snelle, lichte onderhoudsinspectie).
+    inspectie_soort: str = "crow_groot"
     # NEN-EN 1176 — alleen voor kunstwerk_type=speeltoestel
     # routine | operationeel | hoofd
     nen1176_inspectie_kind: Optional[str] = None

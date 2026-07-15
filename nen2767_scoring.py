@@ -1,37 +1,48 @@
-"""NEN 2767-2 conditie-score berekening.
+"""NEN 2767-4 conditie-score berekening (conditiemeting infrastructuur).
 
 NEN 2767 hanteert een 6-punts conditie-schaal:
-    1 = uitstekend (nieuwbouw)
-    2 = goed
-    3 = redelijk
-    4 = matig
-    5 = slecht
-    6 = zeer slecht
+    1 = uitstekend (nieuwbouw)   4 = matig
+    2 = goed                     5 = slecht
+    3 = redelijk                 6 = zeer slecht
 
 Per gebrek wordt geclassificeerd met drie assen:
-    ernst       1 = gering, 2 = serieus, 3 = ernstig
-    intensiteit 1 = beginstadium, 2 = gevorderd, 3 = eindstadium
-    omvang_klasse  1 = <2%, 2 = 2-10%, 3 = 10-30%, 4 = 30-70%, 5 = >70%
+    ernst (belang)  1 = gering, 2 = serieus, 3 = ernstig  (ligt vast in de
+                    NEN 2767-4-2 gebrekenlijst per gebrek)
+    intensiteit     1 = beginstadium, 2 = gevorderd, 3 = eindstadium
+    omvang_klasse   1 = <2%, 2 = 2-10%, 3 = 10-30%, 4 = 30-70%, 5 = >70%
 
-De officiële NEN-tabel is geen open data, daarom hanteren wij een
-benaderende formule die in lijn is met het schema in NEN 2767-1 Bijlage A:
+BEREKENING (conform NEN 2767-1/-4 methodiek; geverifieerd tegen het
+Rgd-Handboek Onderhoudsinspecties én een NEN 2767-4-cursusdeck, incl.
+een doorgerekend voorbeeld):
 
-    base[ernst]    + intensiteit_bump  + omvang_bump
+1. Één gebrek → conditie (1-6): GEEN vermenigvuldiging, maar een OPZOEK-
+   matrix per ernstklasse. De ernst kiest de matrix, intensiteit × omvang
+   kruisen daarin. Drie matrices (ernstig loopt tot 6, serieus tot 5,
+   gering tot 4). Zie `_MATRIX`.
 
-Resultaat wordt geclipt naar [1, 6]. Voor compliance-doeleinden wordt de
-exacte formule (versie + datum) meegelogd in de audit-trail zodat een
-toekomstige tabel-wijziging traceerbaar is.
+2. Meerdere gebreken → elementconditie: correctiefactor gewogen naar
+   OMVANG% (NIET "slechtste gebrek wint"). Per gebrek een correctiefactor
+   (1,00 … 2,00), gewogen naar het aangetaste percentage; het onaangetaste
+   restpercentage telt als conditie 1 (factor 1,00). Zie
+   `element_score_from_defects`.
 
-Aggregatie van defect-score → element-score → object-score volgt de
-"slechtste-gebrek-regel" (worst-defect). Dit is gangbaar voor visuele
-periodieke inspecties; voor risk-based prioritering kan een gewogen
-formule worden ingezet (zie predictive.py).
+VERSIE-historie:
+  v1.0  additieve heuristiek + worst-defect (benadering; niet norm-conform)
+  v2.0  officiële I/O-matrices + correctiefactor-aggregatie (dit bestand)
+
+OPEN follow-ups (gedocumenteerd, nog niet geïmplementeerd):
+  - locatiefactor primair/secundair/tertiair bouwdeel (opstap ±1)
+  - verzorgingskwaliteit ("heel & schoon", los van technische conditie)
+  - objectaggregatie gewogen naar vervangingswaarde (nu nog worst-element,
+    omdat vervangingswaarde per element nog niet wordt vastgelegd)
+Exacte matrix-cellen/herleidingsgrenzen: te bevestigen tegen de betaalde
+NEN 2767-1/-4-2. De SCORING_VERSION wordt in de audit-trail meegelogd.
 """
 from __future__ import annotations
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Sequence, Tuple
 
 
-SCORING_VERSION = "nen2767-2.v1.0-2026"
+SCORING_VERSION = "nen2767-4.v2.0-2026-matrix-aggregatie"
 
 # Conditie-schaal labels (NL) — voor PDF + UI
 CONDITIE_LABELS = {
@@ -52,12 +63,34 @@ CONDITIE_KLEUREN = {
     6: "#7f1d1d",  # donker-rood
 }
 
-# Ernst → basis-score
-_ERNST_BASE = {1: 1, 2: 3, 3: 5}
-# Intensiteit → bump
-_INTENSITEIT_BUMP = {1: 0, 2: 1, 3: 1}
-# Omvang-klasse → bump (groter dan 30% van element-oppervlak → +1)
-_OMVANG_BUMP = {1: 0, 2: 0, 3: 0, 4: 1, 5: 1}
+# ── NEN 2767 I/O-matrices: ernstklasse kiest de matrix, [intensiteit][omvang] ──
+# Rijen = intensiteit 1..3 (begin/gevorderd/eind); kolommen = omvang_klasse 1..5.
+# Ernstig loopt tot 6, serieus tot 5, gering tot 4 ("diagonale verschuiving").
+_MATRIX = {
+    3: [  # ernstig
+        [1, 1, 2, 3, 4],   # beginstadium
+        [1, 2, 3, 4, 5],   # gevorderd
+        [2, 3, 4, 5, 6],   # eindstadium
+    ],
+    2: [  # serieus
+        [1, 1, 1, 2, 3],
+        [1, 1, 2, 3, 4],
+        [1, 2, 3, 4, 5],
+    ],
+    1: [  # gering
+        [1, 1, 1, 1, 2],
+        [1, 1, 1, 2, 3],
+        [1, 1, 2, 3, 4],
+    ],
+}
+
+# Conditie → correctiefactor (NEN 2767-1 bijl. B / -4). Voor omvang-gewogen
+# aggregatie van meerdere gebreken op één element.
+CORRECTIEFACTOR = {1: 1.00, 2: 1.02, 3: 1.10, 4: 1.30, 5: 1.70, 6: 2.00}
+
+# Representatief percentage per omvangklasse — alleen gebruikt als een gebrek
+# wel een klasse maar geen exact percentage heeft (klasse-midden).
+_OMVANG_PCT_REP = {1: 1.0, 2: 6.0, 3: 20.0, 4: 50.0, 5: 85.0}
 
 
 def _clip(score: int) -> int:
@@ -67,26 +100,29 @@ def _clip(score: int) -> int:
 def defect_to_score(ernst: Optional[int],
                     intensiteit: Optional[int],
                     omvang_klasse: Optional[int]) -> Optional[int]:
-    """Bereken defect-score (1-6) uit NEN 2767-2 ernst/intensiteit/omvang.
+    """Conditie (1-6) van één gebrek via de NEN 2767 I/O-matrix.
 
-    Returnt None als één van de drie waarden ontbreekt — de UI kan dan
-    aangeven dat het gebrek nog onvolledig is.
+    De ernstklasse kiest de matrix; intensiteit × omvang kruisen daarin.
+    Returnt None als één van de drie waarden ontbreekt of ongeldig is — de
+    UI kan dan aangeven dat het gebrek nog onvolledig is.
 
-    >>> defect_to_score(1, 1, 1)
+    >>> defect_to_score(1, 1, 1)   # gering, begin, <2%
     1
-    >>> defect_to_score(3, 3, 5)
+    >>> defect_to_score(3, 3, 5)   # ernstig, eind, >70%
     6
-    >>> defect_to_score(2, 2, 3)
+    >>> defect_to_score(3, 2, 4)   # ernstig, gevorderd, 30-70%  (deck-voorbeeld)
     4
+    >>> defect_to_score(2, 2, 3)   # serieus, gevorderd, 10-30%
+    2
     >>> defect_to_score(None, 2, 3) is None
     True
     """
     if ernst is None or intensiteit is None or omvang_klasse is None:
         return None
-    if ernst not in _ERNST_BASE: return None
-    if intensiteit not in _INTENSITEIT_BUMP: return None
-    if omvang_klasse not in _OMVANG_BUMP: return None
-    return _clip(_ERNST_BASE[ernst] + _INTENSITEIT_BUMP[intensiteit] + _OMVANG_BUMP[omvang_klasse])
+    if ernst not in _MATRIX: return None
+    if intensiteit not in (1, 2, 3): return None
+    if omvang_klasse not in (1, 2, 3, 4, 5): return None
+    return _MATRIX[ernst][intensiteit - 1][omvang_klasse - 1]
 
 
 def omvang_klasse_from_percentage(pct: Optional[float]) -> Optional[int]:
@@ -112,12 +148,76 @@ def omvang_klasse_from_percentage(pct: Optional[float]) -> Optional[int]:
     return 5
 
 
-def element_score(defect_scores: Iterable[Optional[int]]) -> Optional[int]:
-    """Aggregeer defect-scores naar één element-score (worst-defect rule).
+def representatief_pct(omvang_klasse: Optional[int]) -> Optional[float]:
+    """Representatief omvang-% (klasse-midden) voor als een gebrek wel een
+    omvangklasse maar geen exact percentage heeft.
 
-    Een element zonder defecten met score=None wordt impliciet behandeld als 1
-    (uitstekend) door de caller — wij retourneren hier None om "geen data"
-    expliciet te houden.
+    >>> representatief_pct(4)
+    50.0
+    >>> representatief_pct(None) is None
+    True
+    """
+    if omvang_klasse is None:
+        return None
+    return _OMVANG_PCT_REP.get(omvang_klasse)
+
+
+def _relatief_naar_conditie(relatief: float) -> int:
+    """Herleid de omvang-gewogen relatieve score naar conditie 1-6.
+
+    Grenzen liggen tussen de opeenvolgende correctiefactoren in. Gevalideerd
+    tegen het NEN 2767-4-cursusvoorbeeld (relatief 1,2144 → conditie 4).
+    """
+    if relatief <= 1.01: return 1
+    if relatief <= 1.04: return 2
+    if relatief <= 1.15: return 3
+    if relatief <= 1.40: return 4
+    if relatief <= 1.78: return 5
+    return 6
+
+
+def element_score_from_defects(
+        defects: Sequence[Tuple[Optional[int], Optional[float]]]) -> Optional[int]:
+    """Elementconditie (1-6) via de NEN 2767 correctiefactor-aggregatie.
+
+    `defects` = lijst van (conditie 1-6, aangetast omvang-percentage). De
+    correctiefactor per conditie wordt gewogen naar het aangetaste percentage;
+    het onaangetaste restpercentage telt als conditie 1 (factor 1,00):
+
+        relatief = ( Σ omvang%_i · factor(conditie_i) + rest% · 1,00 ) / 100
+
+    Dit vervangt "slechtste gebrek wint": een klein ernstig gebrek weegt nu
+    naar rato van zijn omvang mee, precies zoals in jouw leuning-vs-vangrail
+    voorbeeld.
+
+    >>> # Deck-voorbeeld: 20% c6 + 8% c3 + 32% c2 + 40% c1 -> 1,2144 -> 4
+    >>> element_score_from_defects([(6, 20), (3, 8), (2, 32), (1, 40)])
+    4
+    >>> # Eén klein ernstig gebrek (conditie 6 op 2%): rest 98% is nieuw
+    >>> element_score_from_defects([(6, 2)])
+    2
+    >>> # Zelfde conditie 6 maar over 60% van het element -> veel zwaarder
+    >>> element_score_from_defects([(6, 60)])
+    5
+    >>> element_score_from_defects([]) is None
+    True
+    """
+    bruikbaar = [(c, p) for (c, p) in defects
+                 if c in CORRECTIEFACTOR and p is not None and p > 0]
+    if not bruikbaar:
+        return None
+    som_pct = sum(p for _, p in bruikbaar)
+    rest = max(0.0, 100.0 - som_pct)
+    teller = sum(p * CORRECTIEFACTOR[c] for c, p in bruikbaar) + rest * 1.0
+    relatief = teller / 100.0
+    return _relatief_naar_conditie(relatief)
+
+
+def element_score(defect_scores: Iterable[Optional[int]]) -> Optional[int]:
+    """Aggregeer losse conditiescores naar één element-score (worst-defect).
+
+    Fallback voor checklist-only elementen (score_1_6 zonder omvang%). Zodra
+    er gebreken mét omvang zijn, gebruikt de caller `element_score_from_defects`.
 
     >>> element_score([1, 3, 4]) == 4
     True
