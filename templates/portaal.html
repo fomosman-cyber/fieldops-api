@@ -4048,7 +4048,10 @@
           </div>
           <div>
             <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwm_label_weer">Weersomstandigheden</label>
-            <input id="kwNewWeer" placeholder="droog, 12°C, bewolkt" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+            <div style="display:flex;gap:6px;">
+              <input id="kwNewWeer" placeholder="droog, 12°C, bewolkt" style="flex:1;min-width:0;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+              <button type="button" id="kwWeerAutoBtn" onclick="kwWeerAutofill()" data-i18n-title="kwm_weer_auto_title" title="Vul automatisch in via GPS + actueel weer" style="padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);cursor:pointer;flex-shrink:0;font-size:14px;">📍</button>
+            </div>
           </div>
         </div>
         <div>
@@ -4278,32 +4281,60 @@
           </div>
         </div>
 
-        <div id="kwDefectNen2767Grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
-          <div>
-            <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_ernst">Ernst (1-3)</label>
-            <select id="kwDefectErnst" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
-              <option value="1">1 — gering</option>
-              <option value="2" selected>2 — serieus</option>
-              <option value="3">3 — ernstig</option>
-            </select>
+        <div id="kwDefectNen2767Grid" style="display:grid;gap:8px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_ernst">Ernst (1-3)</label>
+              <select id="kwDefectErnst" onchange="kwDefectScorePreview()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+                <option value="1">1 — gering</option>
+                <option value="2" selected>2 — serieus</option>
+                <option value="3">3 — ernstig</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_intens">Intensiteit (1-3)</label>
+              <select id="kwDefectIntensiteit" onchange="kwDefectScorePreview()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+                <option value="1">1 — begin</option>
+                <option value="2" selected>2 — gevorderd</option>
+                <option value="3">3 — eindstadium</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_omvang">Omvang-klasse</label>
+              <select id="kwDefectOmvang" onchange="kwDefectKlasseChange()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+                <option value="1">1 — &lt;2%</option>
+                <option value="2" selected>2 — 2-10%</option>
+                <option value="3">3 — 10-30%</option>
+                <option value="4">4 — 30-70%</option>
+                <option value="5">5 — &gt;70%</option>
+              </select>
+            </div>
           </div>
-          <div>
-            <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_intens">Intensiteit (1-3)</label>
-            <select id="kwDefectIntensiteit" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
-              <option value="1">1 — begin</option>
-              <option value="2" selected>2 — gevorderd</option>
-              <option value="3">3 — eindstadium</option>
-            </select>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_omvang_pct">Omvang % van het bouwdeel *</label>
+              <input id="kwDefectOmvangPct" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="bv. 15" oninput="kwDefectOmvangPctChange()" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);box-sizing:border-box;">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_materiaal">Materiaal *</label>
+              <select id="kwDefectMateriaal" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
+                <option value="">— kies materiaal —</option>
+                <option value="beton">beton</option>
+                <option value="staal">staal</option>
+                <option value="hout">hout</option>
+                <option value="metselwerk">metselwerk</option>
+                <option value="kunststof">kunststof</option>
+                <option value="asfalt">asfalt</option>
+                <option value="natuursteen">natuursteen</option>
+                <option value="voegmateriaal">voegmateriaal</option>
+                <option value="conservering/coating">conservering/coating</option>
+                <option value="overig">overig</option>
+              </select>
+            </div>
           </div>
-          <div>
-            <label style="font-size:11px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="kwd_label_omvang">Omvang-klasse</label>
-            <select id="kwDefectOmvang" style="width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);">
-              <option value="1">1 — &lt;2%</option>
-              <option value="2" selected>2 — 2-10%</option>
-              <option value="3">3 — 10-30%</option>
-              <option value="4">4 — 30-70%</option>
-              <option value="5">5 — &gt;70%</option>
-            </select>
+          <div id="kwDefectScorePreviewBar" style="padding:9px 12px;border-radius:8px;background:rgba(2,132,199,0.07);border:1px solid rgba(2,132,199,0.2);font-size:12px;color:var(--text);display:flex;align-items:center;gap:8px;">
+            <span data-i18n="kwd_score_preview_label">Conditiescore van deze schade (NEN 2767-4):</span>
+            <strong id="kwDefectScorePreviewValue" style="font-size:14px;">—</strong>
           </div>
         </div>
         <div>
@@ -15931,6 +15962,39 @@
       }, { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 });
     }
 
+    // ── Weer-autofill: GPS → /api/weer/actueel → weersomstandigheden-veld ──
+    function kwWeerAutofill() {
+      var input = document.getElementById('kwNewWeer');
+      var btn = document.getElementById('kwWeerAutoBtn');
+      if (!input) return;
+      if (!navigator.geolocation) {
+        showToast(t('kw_weer_geen_gps') || 'GPS niet beschikbaar op dit apparaat', 'error');
+        return;
+      }
+      if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+      var reset = function() { if (btn) { btn.disabled = false; btn.textContent = '📍'; } };
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        api('GET', '/api/weer/actueel?lat=' + pos.coords.latitude.toFixed(5) +
+                   '&lon=' + pos.coords.longitude.toFixed(5))
+          .then(function(w) {
+            if (w && w.samenvatting) {
+              input.value = w.samenvatting;
+              showToast((t('kw_weer_ingevuld') || 'Weer ingevuld') + ': ' + w.samenvatting, 'success');
+            }
+            reset();
+          })
+          .catch(function(err) {
+            reset();
+            showToast((t('kw_weer_fout') || 'Weer ophalen mislukt') +
+                      (err && err.message ? ': ' + err.message : ''), 'error');
+          });
+      }, function() {
+        // Locatie geweigerd/mislukt → handmatig invullen blijft gewoon werken
+        reset();
+        showToast(t('kw_weer_gps_geweigerd') || 'Locatie niet beschikbaar — vul het weer handmatig in', 'error');
+      }, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+    }
+
     function submitNieuweKunstwerkInspectie() {
       var title = document.getElementById('kwNewTitle').value.trim();
       var asset_id = document.getElementById('kwNewAsset').value;
@@ -16090,6 +16154,19 @@
             + '<div id="kwEl-' + e.id + '" style="display:none;padding:0 14px 14px;border-top:1px solid var(--border);">'
             // ─── Vragenlijst (NEN/CROW-conform) ───
             +   _kwVragenSectie(e, locked)
+            // ─── Overzichtsfoto van het bouwdeel ───
+            +   '<div style="margin:12px 0 0;display:flex;gap:10px;align-items:center;">'
+            +     (e.overzichtsfoto_url
+                    ? '<a href="' + escapeHtml(e.overzichtsfoto_url) + '" target="_blank"><img src="' + escapeHtml(e.overzichtsfoto_url) + '" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--border);"></a>'
+                    : '<div style="width:64px;height:64px;border:1px dashed var(--border);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-size:10px;text-align:center;">' + t('kw_geen_overzichtsfoto') + '</div>')
+            +     (!locked
+                    ? '<div>'
+                      + '<button class="btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="document.getElementById(\'kwElFoto-' + e.id + '\').click()">📷 ' + t('kw_btn_overzichtsfoto') + '</button>'
+                      + (e.overzichtsfoto_url ? '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;margin-left:6px;color:#dc2626;border-color:#fee2e2;" onclick="kwElementFotoWissen(\'' + e.id + '\')">🗑️</button>' : '')
+                      + '<input type="file" id="kwElFoto-' + e.id + '" accept="image/*" capture="environment" style="display:none;" onchange="kwElementFotoUpload(\'' + e.id + '\', this)">'
+                    + '</div>'
+                    : '')
+            +   '</div>'
             +   '<div style="margin:12px 0 6px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'
             +     '<label style="font-size:12px;color:var(--text-muted);">' + t('kw_algemene_bevindingen') + ':</label>'
             +     '<textarea id="kwElBev-' + e.id + '" style="width:100%;min-height:50px;padding:8px;border:1px solid var(--border);border-radius:6px;font-family:inherit;font-size:13px;background:var(--bg);color:var(--text);" placeholder="' + t('kw_bevindingen_placeholder') + '" ' + (locked ? 'disabled' : '') + '>' + escapeHtml(e.bevindingen || '') + '</textarea>'
@@ -16130,9 +16207,14 @@
             elementHtml += '<p style="color:var(--text-dim);font-size:13px;margin:8px 0;">Nog geen defecten geregistreerd.</p>';
           }
           if (!locked) {
-            elementHtml += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:12px;">'
+            elementHtml += '<div style="margin-top:10px;display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:12px;flex-wrap:wrap;">'
               + '<label style="color:var(--text-muted);"><input type="checkbox" ' + (e.beoordeeld ? 'checked' : '') + ' onchange="toggleKwBeoordeeld(\'' + e.id + '\', this.checked)"> ' + t('kw_chk_beoordeeld_geen_bijzonderheden') + '</label>'
-              + '<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:#dc2626;border-color:#fee2e2;" onclick="deleteKwElement(\'' + e.id + '\', ' + JSON.stringify(e.element_naam || '') + ')">🗑️ Bouwdeel verwijderen</button>'
+              + '<div style="display:flex;gap:6px;">'
+              // Kopieer = zelfde bouwdeel nogmaals opvoeren (10 pijlers, 5 poeren,
+              // brugdek per voegovergang): antwoorden gaan mee, schades niet.
+              +   '<button class="btn-secondary" style="font-size:11px;padding:3px 8px;" title="' + t('kw_dupliceer_title') + '" onclick="kwDupliceerElement(\'' + e.id + '\', ' + JSON.stringify(e.element_naam || '') + ')">⧉ ' + t('kw_btn_dupliceer') + '</button>'
+              +   '<button class="btn-secondary" style="font-size:11px;padding:3px 8px;color:#dc2626;border-color:#fee2e2;" onclick="deleteKwElement(\'' + e.id + '\', ' + JSON.stringify(e.element_naam || '') + ')">🗑️ Bouwdeel verwijderen</button>'
+              + '</div>'
               + '</div>';
           }
           elementHtml += '</div></div>';
@@ -16207,6 +16289,50 @@
         return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
       }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
         .catch(function(err){ showToast('Verwijderen mislukt: ' + (err.message || ''), 'error'); });
+    }
+
+    // ── Bouwdeel dupliceren (10 pijlers / 5 poeren / brugdek per voegovergang) ──
+    function kwDupliceerElement(elId, naam) {
+      if (!_currentKunstwerk) return;
+      api('POST', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + elId + '/dupliceer')
+        .then(function(nieuw){
+          showToast((t('kw_dupliceer_ok') || 'Bouwdeel gekopieerd') + ': ' + (nieuw && nieuw.element_naam ? nieuw.element_naam : ''), 'success');
+          return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+        }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); } })
+        .catch(function(err){ showToast((t('kw_dupliceer_fout') || 'Kopiëren mislukt') + ': ' + (err.message || ''), 'error'); });
+    }
+
+    // ── Overzichtsfoto per bouwdeel ──
+    function kwElementFotoUpload(elId, input) {
+      if (!_currentKunstwerk || !input || !input.files || !input.files[0]) return;
+      var file = input.files[0];
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        api('PATCH', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + elId,
+            { overzichtsfoto_url: ev.target.result })
+          .then(function(){
+            showToast(t('kw_overzichtsfoto_ok') || 'Overzichtsfoto opgeslagen', 'success');
+            return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+          }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); _kwHeropenElement(elId); } })
+          .catch(function(err){ showToast('Foto opslaan mislukt: ' + (err.message || ''), 'error'); });
+      };
+      reader.readAsDataURL(file);
+    }
+    function kwElementFotoWissen(elId) {
+      if (!_currentKunstwerk) return;
+      api('PATCH', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id + '/elementen/' + elId,
+          { overzichtsfoto_url: null })
+        .then(function(){
+          return api('GET', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id);
+        }).then(function(insp){ if (insp) { _currentKunstwerk = insp; renderKunstwerkDetail(insp); _kwHeropenElement(elId); } })
+        .catch(function(err){ showToast('Foto wissen mislukt: ' + (err.message || ''), 'error'); });
+    }
+    // Na een re-render het bewerkte bouwdeel weer openklappen zodat je context houdt.
+    function _kwHeropenElement(elId) {
+      setTimeout(function(){
+        var box = document.getElementById('kwEl-' + elId);
+        if (box) { box.style.display = ''; }
+      }, 30);
     }
 
     // ── Volgende te beoordelen-sprong ──
