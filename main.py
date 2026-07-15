@@ -160,6 +160,9 @@ def _run_migrations():
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_org ON meldingen(organization_id)"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_org_proj_created ON meldingen(organization_id, project_id, created_at)"))
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_created ON meldingen(created_at)"))
+                # Meldingen-tab + dashboard filteren continu op status (open/
+                # afgerond/observatie/KO) binnen een org → composite-index (V3).
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_meldingen_org_status ON meldingen(organization_id, status)"))
 
         # NWB-Wegvakken architectuur — assets uitgebreid met geometry + WVK_ID (v3.4)
         if "assets" in insp.get_table_names():
@@ -214,6 +217,13 @@ def _run_migrations():
                         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_next_inspection_due ON assets(next_inspection_due)"))
                 print("[migration] assets inspectie-kolommen toegevoegd.")
 
+            # Soft-delete: élke asset-lijst filtert op archived_at IS NULL →
+            # zonder index een full-scan bij groeiende portefeuilles (V3).
+            # Idempotent.
+            with engine.begin() as conn:
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_archived_at ON assets(archived_at)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_assets_org_archived ON assets(organization_id, archived_at)"))
+
         # Organisations — self-service contact-velden voor org-admin (v3.7)
         if "organizations" in insp.get_table_names():
             ocols = [c["name"] for c in insp.get_columns("organizations")]
@@ -242,6 +252,17 @@ def _run_migrations():
                 with engine.begin() as conn:
                     for col in org_missing:
                         conn.execute(_sql_text(f"ALTER TABLE organizations ADD COLUMN {col} {org_extra[col]}"))
+
+        # Inspecties — inspectie_soort (grote CROW vs klein onderhoud)
+        if "inspections" in insp.get_table_names():
+            icols = [c["name"] for c in insp.get_columns("inspections")]
+            if "inspectie_soort" not in icols:
+                print("[migration] inspections.inspectie_soort kolom toevoegen...")
+                from sqlalchemy import text as _sql_text
+                with engine.begin() as conn:
+                    conn.execute(_sql_text("ALTER TABLE inspections ADD COLUMN inspectie_soort VARCHAR(20) DEFAULT 'crow_groot'"))
+                    conn.execute(_sql_text("CREATE INDEX IF NOT EXISTS ix_inspections_soort ON inspections(inspectie_soort)"))
+                print("[migration] inspections.inspectie_soort toegevoegd.")
 
         # Photo-kolommen vergroten van VARCHAR(500) naar TEXT zodat
         # inline base64-data-URLs (foto's) zonder truncation worden opgeslagen.
@@ -413,12 +434,15 @@ async def lifespan(app: FastAPI):
             existing = db.query(User).filter(User.email == owner_email).first()
             if not existing:
                 org = Organization(
-                    name="FieldOps",
                     plan=SubscriptionPlan.PROFESSIONAL,
                     status=AccountStatus.ACTIVE,
                     max_users=999,
                     trial_ends_at=None,
                 )
+                # Platform-bootstrap: enige legitieme plek waar de
+                # gereserveerde naam "FieldOps" gezet mag worden.
+                org.allow_reserved_name = True
+                org.name = "FieldOps"
                 db.add(org)
                 db.flush()
                 user = User(
@@ -1289,6 +1313,18 @@ def reset_wachtwoord():
     return HTMLResponse(content=html)
 
 
+@app.get("/uitnodiging", response_class=HTMLResponse)
+def uitnodiging():
+    """Serve de uitnodiging-accepteren pagina.
+
+    De uitnodig-mail (email_service.send_invitation_email) linkt hierheen met
+    ?token=... De pagina leest die token client-side en POST naar
+    /api/users/accept-invitation om het account te activeren.
+    """
+    html = (TEMPLATES_DIR / "uitnodiging.html").read_text(encoding="utf-8")
+    return HTMLResponse(content=html)
+
+
 @app.get("/handleiding", response_class=HTMLResponse)
 def handleiding():
     """Publieke handleiding — bereikbaar zonder login. Linkt vanuit portaal-
@@ -1409,9 +1445,11 @@ def detailed_status_check():
     - Sentry-config aanwezig
     - Backup-service config aanwezig
     - Resend (email) config aanwezig
-    - Render commit/release info
 
-    Geen auth — public endpoint voor monitoring. Geen credentials lekken.
+    Geen auth — public endpoint voor monitoring. SECURITY: alleen per-component
+    statusvlaggen naar buiten; géén release-hash, regio, of interne
+    config-opmerkingen (welke env-vars wel/niet gezet zijn) — dat is
+    reconnaissance-materiaal voor aanvallers.
     """
     checks = {}
     overall = "ok"
@@ -1421,49 +1459,26 @@ def detailed_status_check():
         from sqlalchemy import text
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        checks["database"] = {"status": "ok", "message": "Connection OK"}
-    except Exception as e:
-        checks["database"] = {"status": "down", "message": f"DB error: {type(e).__name__}"}
+        checks["database"] = {"status": "ok"}
+    except Exception:
+        checks["database"] = {"status": "down"}
         overall = "degraded"
 
     # Sentry-check
     sentry_dsn = bool(os.getenv("SENTRY_DSN", "").strip())
-    checks["error_tracking"] = {
-        "status": "ok" if sentry_dsn else "not_configured",
-        "message": "Sentry configured" if sentry_dsn else "SENTRY_DSN not set (errors only in logs)",
-    }
+    checks["error_tracking"] = {"status": "ok" if sentry_dsn else "not_configured"}
 
     # Backup-check
     backup_configured = bool(os.getenv("S3_BUCKET") and os.getenv("AWS_ACCESS_KEY_ID"))
-    last_backup = None
-    try:
-        import backup_service
-        st = backup_service.get_status()
-        last_backup = st.get("last_success_at")
-    except Exception:
-        pass
-    checks["backup"] = {
-        "status": "ok" if backup_configured else "not_configured",
-        "message": ("Configured" + (f", last success: {last_backup}" if last_backup else "")) if backup_configured else "S3 env-vars not set",
-    }
+    checks["backup"] = {"status": "ok" if backup_configured else "not_configured"}
 
     # Email-service
     resend_configured = bool(os.getenv("RESEND_API_KEY", "").strip())
-    checks["email"] = {
-        "status": "ok" if resend_configured else "not_configured",
-        "message": "Resend API key configured" if resend_configured else "RESEND_API_KEY not set",
-    }
-
-    # Release info
-    release = os.getenv("RENDER_GIT_COMMIT", "unknown")[:12]
-    deployed_at = os.getenv("RENDER_DEPLOY_AT", "")
+    checks["email"] = {"status": "ok" if resend_configured else "not_configured"}
 
     return {
         "status": overall,
         "checks": checks,
-        "release": release,
-        "deployed_at": deployed_at,
-        "region": os.getenv("RENDER_REGION", "frankfurt"),
         "timestamp": datetime.now(timezone.utc).isoformat() if "datetime" in globals() else None,
     }
 
@@ -1516,8 +1531,6 @@ def status_page():
 <div id="overallBox" class="overall ok"><div class="dot"></div><div>Status laden…</div></div>
 <div id="checksList"></div>
 <div class="meta">
-  <strong>Hosting:</strong> Render Frankfurt (eu-central) · <strong>Release:</strong> <code id="release">—</code>
-  <br><br>
   <a href="/portaal">→ Naar portaal</a> · <a href="/handleiding">Handleiding</a> · <a href="https://www.fieldopsapp.nl">Marketing-site</a>
 </div>
 <script>
@@ -1530,12 +1543,11 @@ async function loadStatus() {
     overall.innerHTML = '<div class="dot"></div><div>' +
       (d.status === 'ok' ? 'Alle systemen werken normaal' :
        d.status === 'degraded' ? 'Verminderde service' : 'Storing actief') + '</div>';
-    document.getElementById('release').textContent = d.release || 'unknown';
     const list = document.getElementById('checksList');
     const labels = { database: '🗄️ Database', error_tracking: '🐛 Error Tracking', backup: '💾 Backup', email: '📧 Email Service' };
     list.innerHTML = Object.keys(d.checks).map(k => {
       const c = d.checks[k];
-      return '<div class="check"><div><div class="check-name">' + (labels[k] || k) + '</div><div class="check-msg">' + (c.message || '') + '</div></div><span class="badge ' + c.status + '">' + (c.status === 'ok' ? 'Operationeel' : c.status === 'not_configured' ? 'Niet ingesteld' : 'Storing') + '</span></div>';
+      return '<div class="check"><div><div class="check-name">' + (labels[k] || k) + '</div></div><span class="badge ' + c.status + '">' + (c.status === 'ok' ? 'Operationeel' : c.status === 'not_configured' ? 'Niet ingesteld' : 'Storing') + '</span></div>';
     }).join('');
   } catch(e) {
     document.getElementById('overallBox').innerHTML = '<div class="dot"></div><div>API onbereikbaar</div>';

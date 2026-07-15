@@ -11,6 +11,7 @@ De `/tree` endpoint geeft per project de boom-structuur.
 import csv
 import io
 import json
+import math
 from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 
@@ -1053,18 +1054,23 @@ _RD_Y_RANGE = (300000, 650000)
 
 
 def _rd_to_wgs84(x: float, y: float) -> tuple[float, float]:
-    """Pseudo-conversie RD → WGS84. Gebruikt benadering goed genoeg voor weergave;
-    gemeenten die echte precisie nodig hebben moeten zelf de juiste lat/lng meegeven."""
-    # Polynome benadering uit https://thomasv.nl/rd-naar-wgs84
+    """RD (EPSG:28992) → WGS84 via de Schreutelkamp & van Hees benaderingsformule
+    (~0.5 m nauwkeurig binnen NL — ruim voldoende voor weergave/clustering).
+
+    NB (bugfix 2026-06): de longitude (3,0)-coëfficiënt was +0.81885 i.p.v. de
+    officiële −0.81885. De fout schaalt met dx³ → ~0 m rond Amersfoort maar tot
+    ~60 m oost/west aan de landsranden (Groningen ging van 14,3 m → 1,2 m afwijking).
+    De lat (2,3)/(4,1)-termen zijn eveneens naar de officiële waarden gezet.
+    """
     dx = (x - 155000) * 1e-5
     dy = (y - 463000) * 1e-5
     lat = 52.15517440 + (3235.65389 * dy - 32.58297 * dx*dx - 0.24750 * dy*dy
                          - 0.84978 * dx*dx*dy - 0.06550 * dy*dy*dy
                          - 0.01709 * dx*dx*dy*dy - 0.00738 * dx
-                         + 0.00530 * dx*dx*dx*dx + 0.00033 * dx*dx*dy*dy*dy
-                         - 0.00012 * dx*dy) / 3600
+                         + 0.00530 * dx*dx*dx*dx - 0.00039 * dx*dx*dy*dy*dy
+                         + 0.00033 * dx*dx*dx*dx*dy - 0.00012 * dx*dy) / 3600
     lng = 5.38720621 + (5260.52916 * dx + 105.94684 * dx*dy + 2.45656 * dx*dy*dy
-                         + 0.81885 * dx*dx*dx + 0.05594 * dx*dy*dy*dy
+                         - 0.81885 * dx*dx*dx + 0.05594 * dx*dy*dy*dy
                          - 0.05607 * dx*dx*dx*dy + 0.01199 * dy
                          + 0.00256 * dx*dx*dx*dy*dy - 0.00128 * dx*dy*dy*dy*dy
                          + 0.00022 * dy*dy - 0.00022 * dx*dx
@@ -1165,7 +1171,8 @@ def _parse_int_in_range(raw: str, lo: int, hi: int) -> tuple[Optional[int], Opti
     if not raw:
         return None, None
     try:
-        v = int(float(raw.replace(",", ".")))
+        # round i.p.v. afkappen: NL-Excel levert vaak "3,8" → moet 4 worden, niet 3.
+        v = int(round(float(raw.replace(",", "."))))
     except (TypeError, ValueError):
         return None, f"'{raw}' is geen geheel getal"
     if v < lo or v > hi:
@@ -1325,9 +1332,14 @@ async def import_assets_csv(
 
         # Conditie/levensduur — voeden de Voorspeller (W_CONDITION + W_AGE).
         # Ongeldige waarden loggen als rij-fout maar blokkeren de rij niet.
-        cond_val, cond_err = _parse_int_in_range(_get(row, mapping, "condition_score"), 1, 5)
+        # NEN 2767 loopt 1-6; intern dwingen we 1-5 af. Accepteer 6 (zeer slecht)
+        # en map naar 5 i.p.v. de slechtste assets stil te droppen (conform
+        # inspecties_router/kunstwerken_inspecties_router die ook min(5,…) doen).
+        cond_val, cond_err = _parse_int_in_range(_get(row, mapping, "condition_score"), 1, 6)
         if cond_err:
             errors.append({"row": i, "error": f"conditiescore: {cond_err}"})
+        elif cond_val is not None:
+            cond_val = min(5, cond_val)
         life_val, life_err = _parse_int_in_range(_get(row, mapping, "expected_lifespan_years"), 1, 200)
         if life_err:
             errors.append({"row": i, "error": f"levensduur: {life_err}"})
@@ -1471,7 +1483,19 @@ async def import_assets_geojson(
         if geom.get("type") == "Point":
             coords = geom.get("coordinates") or []
             if len(coords) >= 2:
-                lng, lat = float(coords[0]), float(coords[1])
+                # Robuust parsen (parallel aan het CSV-pad): vang niet-numerieke
+                # of NL-komma-coords i.p.v. de hele batch met een 500 te killen,
+                # en weiger NaN/Inf (float() accepteert die stilletjes).
+                try:
+                    lng = float(str(coords[0]).replace(",", "."))
+                    lat = float(str(coords[1]).replace(",", "."))
+                except (TypeError, ValueError):
+                    errors.append({"feature": i, "error": "ongeldige coordinaten"})
+                    lng = lat = None
+                else:
+                    if not (math.isfinite(lat) and math.isfinite(lng)):
+                        errors.append({"feature": i, "error": "niet-eindige coordinaten (NaN/Inf)"})
+                        lng = lat = None
 
         # Behoud overige properties als "properties_json"
         extra = {k: v for k, v in props.items()

@@ -108,12 +108,15 @@ def create_demo_request(request: DemoRequestCreate, http_request: Request, db: S
 
 
 @router.get("/email-health", response_model=dict)
-def demo_email_health():
-    """Debug endpoint: test email configuratie zonder een echte demo aan te maken."""
+def demo_email_health(admin: User = Depends(require_admin)):
+    """Debug endpoint (admin-only): test email-configuratie zonder een echte demo.
+
+    Was publiek → lekte de RESEND-key-prefix + platform-config aan iedereen.
+    Nu achter admin-auth, en de key-prefix is verwijderd (alleen nog set/niet-set).
+    """
     from email_service import RESEND_API_KEY, FROM_EMAIL, ADMIN_NOTIFICATION_EMAIL, FRONTEND_URL, PORTAAL_URL, get_last_email_error
     return {
         "resend_api_key_set": bool(RESEND_API_KEY),
-        "resend_api_key_prefix": RESEND_API_KEY[:7] + "..." if RESEND_API_KEY else None,
         "from_email": FROM_EMAIL,
         "admin_notification_email": ADMIN_NOTIFICATION_EMAIL,
         "frontend_url": FRONTEND_URL,
@@ -123,8 +126,12 @@ def demo_email_health():
 
 
 @router.post("/email-test", response_model=dict)
-def demo_email_test(to: str = "info@fieldopsapp.nl"):
-    """Debug endpoint: stuur een test email naar opgegeven adres om te zien wat Resend zegt."""
+def demo_email_test(to: str = "info@fieldopsapp.nl", admin: User = Depends(require_admin)):
+    """Debug endpoint (admin-only): stuur een test-email.
+
+    Was publiek → anonieme mail-relay via het FieldOps-domein (phishing-risico).
+    Nu achter admin-auth.
+    """
     from email_service import send_email, get_last_email_error
     ok = send_email(
         to,

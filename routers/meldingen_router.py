@@ -8,7 +8,8 @@ import zipfile
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse, Response, RedirectResponse
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session, defer, joinedload
 from typing import Optional
 from pydantic import BaseModel, Field
 from database import get_db
@@ -270,7 +271,9 @@ def _clean_norm_data(norm_data) -> Optional[str]:
     return json.dumps(cleaned, ensure_ascii=False) if cleaned else None
 
 
-def _melding_to_response(melding: Melding, light: bool = False, from_inspection: bool = False) -> dict:
+def _melding_to_response(melding: Melding, light: bool = False, from_inspection: bool = False,
+                         has_photo: Optional[bool] = None,
+                         has_photo_after: Optional[bool] = None) -> dict:
     """Converteer Melding naar response dict met creator_name + asset-koppeling.
 
     light=True laat de (vaak grote base64-)foto's WEG en geeft alleen
@@ -278,6 +281,11 @@ def _melding_to_response(melding: Melding, light: bool = False, from_inspection:
     endpoints om de payload klein te houden (performance — foto's worden lazy
     per melding geladen via GET /{id}). De detail-/create-/update-responses
     gebruiken light=False en bevatten de volledige foto's.
+
+    In light-mode worden `has_photo`/`has_photo_after` als parameter meegegeven
+    (vooraf berekend via func.length) zodat de zware photo_url-kolommen niet
+    geladen hoeven te worden. Zonder die params vallen we terug op
+    bool(melding.photo_url) (detail-pad, kolommen zijn dan toch geladen).
     """
     creator = melding.creator
     creator_name = f"{creator.first_name} {creator.last_name}" if creator else None
@@ -302,8 +310,8 @@ def _melding_to_response(melding: Melding, light: bool = False, from_inspection:
         "lng": melding.lng,
         "photo_url": None if light else melding.photo_url,
         "photo_after_url": None if light else melding.photo_after_url,
-        "has_photo": bool(melding.photo_url),
-        "has_photo_after": bool(melding.photo_after_url),
+        "has_photo": has_photo if has_photo is not None else bool(melding.photo_url),
+        "has_photo_after": has_photo_after if has_photo_after is not None else bool(melding.photo_after_url),
         "project_id": melding.project_id,
         "asset_id": melding.asset_id,
         "asset_code": asset.code if asset else None,
@@ -338,15 +346,34 @@ def list_meldingen(
     has_photo-vlaggen) — dat hield de lijst traag bij meerdere projecten.
     Zet with_photos=true alleen aan voor kleine, gefilterde lijsten.
     """
+    light = not with_photos
+    filters = [Melding.organization_id == current_user.organization_id]
+    if project_id:
+        filters.append(Melding.project_id == project_id)
+    if asset_id:
+        filters.append(Melding.asset_id == asset_id)
+
     query = (db.query(Melding)
                .options(joinedload(Melding.asset), joinedload(Melding.creator))
-               .filter(Melding.organization_id == current_user.organization_id))
-    if project_id:
-        query = query.filter(Melding.project_id == project_id)
-    if asset_id:
-        query = query.filter(Melding.asset_id == asset_id)
+               .filter(*filters))
+    if light:
+        # Laad de zware base64-foto-kolommen NIET — de lijst geeft ze toch niet
+        # terug. Voorheen trok bool(melding.photo_url) ze impliciet in geheugen
+        # → verborgen OOM bij grote datasets (V4).
+        query = query.options(defer(Melding.photo_url), defer(Melding.photo_after_url))
     meldingen = query.order_by(Melding.created_at.desc()).all()
-    light = not with_photos
+
+    # has_photo-vlaggen zonder de blobs te laden: aparte lichte query met
+    # func.length() (NULL of 0 → geen foto).
+    photo_flags = {}
+    if light:
+        for mid, plen, palen in db.query(
+            Melding.id,
+            func.length(Melding.photo_url),
+            func.length(Melding.photo_after_url),
+        ).filter(*filters).all():
+            photo_flags[mid] = (bool(plen), bool(palen))
+
     # Welke meldingen zijn gekoppeld aan een (formele CROW/NEN-)inspectie? Eén
     # bulk-query op InspectionDefect.melding_id (geen N+1). De Meldingen-tab
     # gebruikt deze vlag om te schakelen tussen Klein onderhoud en CROW grote ronde.
@@ -356,8 +383,86 @@ def list_meldingen(
             InspectionDefect.melding_id.isnot(None),
         ).all()
     }
-    return [_melding_to_response(m, light=light, from_inspection=(m.id in inspectie_ids))
-            for m in meldingen]
+    return [
+        _melding_to_response(
+            m, light=light, from_inspection=(m.id in inspectie_ids),
+            has_photo=photo_flags.get(m.id, (None, None))[0],
+            has_photo_after=photo_flags.get(m.id, (None, None))[1],
+        )
+        for m in meldingen
+    ]
+
+
+@router.post("/backfill-photos", response_model=dict)
+def backfill_photos(
+    dry_run: bool = Query(True, description="True = alleen tellen, niets schrijven."),
+    limit: int = Query(200, ge=1, le=2000, description="Max meldingen per batch."),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Verplaats bestaande base64-foto's naar R2/S3 (V5 — echte OOM-fix).
+
+    Historische meldingen dragen hun foto als base64 in photo_url/photo_after_url
+    → die blazen de DB op en voeden de OOM. Dit endpoint uploadt ze alsnog naar
+    R2 en vervangt de kolom door de korte CDN-URL.
+
+    - **Idempotent**: pakt alleen meldingen die nog een ``data:``-URL hebben;
+      al-ge-offloade https-URL's worden overgeslagen.
+    - **Batch**: max ``limit`` meldingen per call (herhaal tot remaining stabiel).
+    - **Dry-run** (default): telt alleen, schrijft niets.
+    - Org-scoped + org-admin only. Bij upload-fout blijft de base64 staan (geen
+      data-loss). Kleine plaatjes (< MIN_OFFLOAD_BYTES) blijven bewust base64.
+    """
+    require_org_admin(current_user)
+    from photo_storage import is_configured, is_data_url, offload_photo
+
+    org_id = current_user.organization_id
+    base_q = db.query(Melding).filter(
+        Melding.organization_id == org_id,
+        or_(Melding.photo_url.like("data:%"),
+            Melding.photo_after_url.like("data:%")),
+    )
+    candidates = base_q.count()
+
+    result = {
+        "dry_run": dry_run,
+        "s3_configured": is_configured(),
+        "candidates": candidates,
+        "processed": 0,
+        "offloaded_fields": 0,
+        "skipped_small_or_failed": 0,
+        "remaining_after_batch": candidates,
+    }
+
+    if not is_configured():
+        result["note"] = ("S3/R2 niet geconfigureerd — zet S3_BUCKET + AWS-keys "
+                          "op Render. Niets verplaatst.")
+        return result
+    if dry_run:
+        result["note"] = (f"Dry-run: {candidates} meldingen met base64-foto's. "
+                          f"Roep aan met dry_run=false (batch {limit}) om te verplaatsen.")
+        return result
+
+    batch = base_q.order_by(Melding.created_at.desc()).limit(limit).all()
+    offloaded_fields = 0
+    misses = 0
+    for m in batch:
+        for field in ("photo_url", "photo_after_url"):
+            val = getattr(m, field)
+            if is_data_url(val):
+                new_url = offload_photo(val, organization_id=org_id, kind="melding")
+                if new_url and new_url != val:
+                    setattr(m, field, new_url)
+                    offloaded_fields += 1
+                else:
+                    misses += 1  # te klein of upload-fout → blijft base64
+        result["processed"] += 1
+    db.commit()
+
+    result["offloaded_fields"] = offloaded_fields
+    result["skipped_small_or_failed"] = misses
+    result["remaining_after_batch"] = base_q.count()
+    return result
 
 
 @router.post("/", response_model=MeldingResponse)
