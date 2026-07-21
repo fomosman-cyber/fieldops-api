@@ -1,4 +1,6 @@
-from pydantic import BaseModel, EmailStr
+import json
+
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional
 from datetime import datetime
 from models import UserRole, SubscriptionPlan, AccountStatus
@@ -119,6 +121,21 @@ class OrganizationResponse(BaseModel):
     streetview_provider_url_template: Optional[str] = None
     beheer_provider_label: Optional[str] = None
     beheer_provider_url_template: Optional[str] = None
+    # Module-toggles: lijst van actieve PORTAL_MODULES-keys.
+    # None = alles aan (default voor bestaande orgs).
+    enabled_modules: Optional[list[str]] = None
+
+    @field_validator("enabled_modules", mode="before")
+    @classmethod
+    def _parse_enabled_modules(cls, v):
+        """DB slaat dit op als JSON-tekst — hier naar lijst parsen."""
+        if v is None or isinstance(v, list):
+            return v
+        try:
+            parsed = json.loads(v)
+        except (ValueError, TypeError):
+            return None
+        return parsed if isinstance(parsed, list) else None
 
     model_config = {"from_attributes": True}
 

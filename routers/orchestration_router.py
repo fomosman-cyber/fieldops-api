@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User, JobCluster, UserSkill, Melding
 from auth import get_current_user
-from permissions import UserRole, require_org_admin
+from permissions import UserRole, require_org_admin, require_module
 from audit import log_action, ACTION
 from orchestration import (
     generate_clusters,
@@ -68,7 +68,7 @@ class UserSkillsRequest(BaseModel):
 # Cluster endpoints
 # ════════════════════════════════════════════════════════════
 
-@router.get("/clusters")
+@router.get("/clusters", dependencies=[Depends(require_module("clusters"))])
 def list_clusters(
     status: Optional[str] = None,
     current_user: User = Depends(get_current_user),
@@ -82,7 +82,7 @@ def list_clusters(
     return [cluster_summary(c) for c in clusters]
 
 
-@router.post("/clusters/generate")
+@router.post("/clusters/generate", dependencies=[Depends(require_module("clusters"))])
 def generate(
     payload: GenerateClustersRequest = GenerateClustersRequest(),
     request: Request = None,
@@ -110,7 +110,7 @@ def generate(
     return summary
 
 
-@router.get("/clusters/{cluster_id}")
+@router.get("/clusters/{cluster_id}", dependencies=[Depends(require_module("clusters"))])
 def get_cluster(
     cluster_id: str,
     current_user: User = Depends(get_current_user),
@@ -140,7 +140,7 @@ def get_cluster(
     return summary
 
 
-@router.patch("/clusters/{cluster_id}/assign")
+@router.patch("/clusters/{cluster_id}/assign", dependencies=[Depends(require_module("clusters"))])
 def assign(
     cluster_id: str,
     payload: ClusterAssignRequest,
@@ -177,7 +177,7 @@ def assign(
     return cluster_summary(jc)
 
 
-@router.patch("/clusters/{cluster_id}/status")
+@router.patch("/clusters/{cluster_id}/status", dependencies=[Depends(require_module("clusters"))])
 def update_status(
     cluster_id: str,
     payload: ClusterStatusRequest,
@@ -201,7 +201,7 @@ def update_status(
     return cluster_summary(jc)
 
 
-@router.delete("/clusters/{cluster_id}")
+@router.delete("/clusters/{cluster_id}", dependencies=[Depends(require_module("clusters"))])
 def delete_cluster(
     cluster_id: str,
     request: Request,
@@ -233,7 +233,7 @@ def delete_cluster(
 # My-clusters + skills (mobile day-planner)
 # ════════════════════════════════════════════════════════════
 
-@router.get("/users/me/clusters")
+@router.get("/users/me/clusters", dependencies=[Depends(require_module("clusters"))])
 def my_assigned_clusters(
     include_meldingen: bool = True,
     current_user: User = Depends(get_current_user),
@@ -249,7 +249,7 @@ def my_assigned_clusters(
     return [cluster_summary(c, include_meldingen=include_meldingen, db=db) for c in clusters]
 
 
-@router.patch("/clusters/{cluster_id}/meldingen/{melding_id}/status")
+@router.patch("/clusters/{cluster_id}/meldingen/{melding_id}/status", dependencies=[Depends(require_module("clusters"))])
 def update_melding_status_in_cluster(
     cluster_id: str,
     melding_id: str,
@@ -409,7 +409,7 @@ def skills_catalog():
 # Productiviteit-savings dashboard (ROI)
 # ════════════════════════════════════════════════════════════
 
-@router.get("/orchestration/savings")
+@router.get("/orchestration/savings", dependencies=[Depends(require_module("clusters"))])
 def savings_dashboard(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

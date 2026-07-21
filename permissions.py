@@ -160,6 +160,29 @@ def require_platform_owner(current_user: User = Depends(get_current_user)) -> Us
     return current_user
 
 
+def require_module(module_key: str):
+    """Depends-fabriek: blokkeer de route als de org deze portaal-module
+    niet aan heeft staan (PORTAL_MODULES in models.py).
+
+        router = APIRouter(..., dependencies=[Depends(require_module("kunstwerken"))])
+
+    NULL in organizations.enabled_modules = alles aan (default). De
+    FieldOps-org (platform) heeft altijd alles — ook als iemand per ongeluk
+    modules uitvinkt op de platform-org zelf.
+    """
+    def _dep(current_user: User = Depends(get_current_user)) -> User:
+        org = current_user.organization
+        if org is None or org.name == "FieldOps":
+            return current_user
+        if not org.module_enabled(module_key):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Module '{module_key}' is niet actief voor jouw organisatie")
+        return current_user
+
+    return _dep
+
+
 def list_assignable_roles(current_user: User) -> list[dict]:
     """Lijst rollen die deze gebruiker aan anderen mag toewijzen.
     Alleen org-admin mag rollen wijzigen."""

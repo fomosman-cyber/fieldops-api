@@ -33,13 +33,15 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User, Asset, Project, Organization, Melding
 from auth import get_current_user
+from permissions import require_module
 
 import mjop_kosten as mjop
 import inspection_cycle as cycle
 import mjop_rapport as rapport
 from collections import Counter
 
-router = APIRouter(prefix="/api/mjop", tags=["MJOP"])
+router = APIRouter(prefix="/api/mjop", tags=["MJOP"],
+                   dependencies=[Depends(require_module("kunstwerken"))])
 
 
 # ─────────────────────────────────────────────────────────────────────────────

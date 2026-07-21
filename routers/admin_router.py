@@ -10,7 +10,7 @@ import string
 from database import get_db
 from models import (
     User, Organization, DemoRequest, Project, Melding, Asset,
-    SubscriptionPlan, AccountStatus, is_reserved_org_name,
+    SubscriptionPlan, AccountStatus, is_reserved_org_name, PORTAL_MODULES,
 )
 from auth import get_current_user, hash_password, validate_password_strength
 from audit import log_action, ACTION
@@ -67,6 +67,10 @@ def admin_overview(
             User.is_active == True,
             not_anon,
         ).count()
+        try:
+            enabled_modules = json.loads(o.enabled_modules) if o.enabled_modules else None
+        except (ValueError, TypeError):
+            enabled_modules = None
         org_data.append({
             "id": o.id,
             "name": o.name,
@@ -74,6 +78,7 @@ def admin_overview(
             "status": o.status.value if o.status else None,
             "max_users": o.max_users,
             "user_count": user_count,
+            "enabled_modules": enabled_modules,
             "created_at": o.created_at.isoformat() if o.created_at else None,
         })
 
@@ -225,14 +230,21 @@ def create_organization(
 @router.put("/organizations/{org_id}")
 def update_organization(
     org_id: str,
+    request: Request,
     current_user: User = Depends(require_owner),
     db: Session = Depends(get_db),
     name: Optional[str] = None,
     plan: Optional[str] = None,
     max_users: Optional[int] = None,
     status: Optional[str] = None,
+    enabled_modules: Optional[str] = None,
 ):
-    """Organisatie bijwerken (alleen platform eigenaar)."""
+    """Organisatie bijwerken (alleen platform eigenaar).
+
+    enabled_modules: komma-gescheiden lijst van PORTAL_MODULES-keys die AAN
+    moeten staan (bv "kunstwerken,predictive"). Lege string = alle optionele
+    modules UIT (alleen basis). Niet meegeven = ongewijzigd laten.
+    """
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organisatie niet gevonden")
@@ -252,14 +264,34 @@ def update_organization(
     if status:
         status_map = {"active": AccountStatus.ACTIVE, "trial": AccountStatus.TRIAL, "expired": AccountStatus.EXPIRED, "suspended": AccountStatus.SUSPENDED}
         org.status = status_map.get(status, AccountStatus.ACTIVE)
+    if enabled_modules is not None:
+        keys = [k.strip() for k in enabled_modules.split(",") if k.strip()]
+        unknown = [k for k in keys if k not in PORTAL_MODULES]
+        if unknown:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Onbekende module(s): {', '.join(unknown)}. "
+                       f"Geldig: {', '.join(PORTAL_MODULES)}")
+        before_modules = org.enabled_modules
+        org.enabled_modules = json.dumps(sorted(set(keys)))
+        log_action(db, request, current_user,
+                   action="org.modules_update", entity_type="organization",
+                   entity_id=org.id,
+                   before={"enabled_modules": before_modules},
+                   after={"enabled_modules": org.enabled_modules})
     db.commit()
     db.refresh(org)
+    try:
+        modules_out = json.loads(org.enabled_modules) if org.enabled_modules else None
+    except (ValueError, TypeError):
+        modules_out = None
     return {
         "id": org.id,
         "name": org.name,
         "plan": org.plan.value,
         "status": org.status.value,
         "max_users": org.max_users,
+        "enabled_modules": modules_out,
     }
 
 

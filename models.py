@@ -4,6 +4,7 @@ from database import Base
 from crypto_fields import EncryptedText
 from datetime import datetime, timezone
 import enum
+import json
 import uuid
 
 
@@ -116,10 +117,41 @@ class Organization(Base):
     public_meld_default_project_id = Column(String, ForeignKey("projects.id"), nullable=True)
     public_meld_categories = Column(Text, nullable=True)  # JSON-array van categorieën
     public_meld_intro_text = Column(Text, nullable=True)  # welkom-tekst voor de melder
+    # Module-toggles per organisatie — JSON-array van PORTAL_MODULES-keys die
+    # deze org AAN heeft staan. NULL = alle modules aan (backward compat +
+    # de platform-org). Alleen de platform-eigenaar wijzigt dit (admin-panel).
+    enabled_modules = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     users = relationship("User", back_populates="organization")
     invitations = relationship("Invitation", back_populates="organization")
+
+    def module_enabled(self, key: str) -> bool:
+        """True als deze org de module aan heeft. NULL/onparsebaar = alles aan."""
+        if self.enabled_modules is None:
+            return True
+        try:
+            enabled = json.loads(self.enabled_modules)
+        except (ValueError, TypeError):
+            return True
+        if not isinstance(enabled, list):
+            return True
+        return key in enabled
+
+
+# Optionele portaal-modules die per klant-organisatie aan/uit kunnen.
+# Keys matchen de data-page-id's in de portaal-sidebar zodat de front-end
+# 1-op-1 kan verbergen. Basis-onderdelen (dashboard, projecten, assets,
+# meldingen, kaart, gebruikers, instellingen) staan hier bewust NIET in —
+# die heeft iedere org altijd.
+PORTAL_MODULES: dict[str, str] = {
+    "kunstwerken": "Inspecties (CROW / NEN 2767)",
+    "predictive":  "Voorspeller",
+    "clusters":    "Clusters (AI-route)",
+    "opleveren":   "Opleveren",
+    "mijn-dag":    "Mijn dag",
+    "dagboek":     "Werkdagboek",
+}
 
 
 class User(Base):

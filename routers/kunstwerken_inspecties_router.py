@@ -48,7 +48,7 @@ from schemas import (
 )
 from auth import get_current_user
 from audit import log_action, ACTION
-from permissions import can_create_meldingen
+from permissions import can_create_meldingen, require_module
 
 import kunstwerken_taxonomy as kt
 import nen2767_scoring as scoring
@@ -57,7 +57,8 @@ import kunstwerken_i18n as kw_i18n
 import crow_kosten as ck
 import inspectie_rapport as rapport
 
-router = APIRouter(prefix="/api/kunstwerken-inspecties", tags=["Kunstwerken-inspecties"])
+router = APIRouter(prefix="/api/kunstwerken-inspecties", tags=["Kunstwerken-inspecties"],
+                   dependencies=[Depends(require_module("kunstwerken"))])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
