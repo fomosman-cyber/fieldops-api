@@ -191,3 +191,86 @@ def test_accept_met_verlopen_token_geeft_400(client, admin_user):
         },
     )
     assert res.status_code == 400, res.text
+
+
+def test_accept_respecteert_seat_limiet(client, admin_user):
+    """(e) Seat-limiet wordt ook bij ACCEPT gecontroleerd.
+
+    /invite checkt alleen tegen de actieve users op verstuur-moment en telt
+    openstaande uitnodigingen niet mee. Zonder tweede check kan een org via
+    meerdere uitnodigingen over max_users groeien.
+    """
+    from models import Organization, User
+
+    # Verstuur de uitnodiging terwijl er nog ruimte is
+    res = client.post(
+        "/api/users/invite",
+        json={"email": "laatkomer@test.nl", "role": "inspector"},
+        headers=auth(admin_user),
+    )
+    assert res.status_code == 200, res.text
+    token = _pak_token("laatkomer@test.nl", admin_user.organization_id)
+    assert token
+
+    # Zet max_users gelijk aan het huidige aantal actieve users -> vol
+    db = SessionLocal()
+    try:
+        actief = (
+            db.query(User)
+            .filter(User.organization_id == admin_user.organization_id,
+                    User.is_active == True)  # noqa: E712
+            .count()
+        )
+        org = db.query(Organization).filter(
+            Organization.id == admin_user.organization_id
+        ).first()
+        org.max_users = actief
+        db.commit()
+    finally:
+        db.close()
+
+    res = client.post(
+        "/api/users/accept-invitation",
+        json={
+            "token": token,
+            "first_name": "Laat",
+            "last_name": "Komer",
+            "password": "geheim-wachtwoord-123",
+        },
+    )
+    assert res.status_code == 400, res.text
+    assert "Maximum aantal gebruikers" in res.json()["detail"]
+
+
+def test_accept_met_bestaand_emailadres_geeft_400(client, admin_user):
+    """(f) Bestaat er al een account met dit e-mailadres, dan een nette 400
+    in plaats van een 500 op de unique-constraint."""
+    from models import Invitation as Inv
+
+    # Uitnodiging handmatig aanmaken voor een e-mailadres dat al bestaat
+    db = SessionLocal()
+    try:
+        inv = Inv(
+            email=admin_user.email,
+            organization_id=admin_user.organization_id,
+            role=UserRole.INSPECTOR,
+            token="dubbel-email-token",
+            expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+            invited_by=admin_user.id,
+        )
+        db.add(inv)
+        db.commit()
+    finally:
+        db.close()
+
+    res = client.post(
+        "/api/users/accept-invitation",
+        json={
+            "token": "dubbel-email-token",
+            "first_name": "Dubbel",
+            "last_name": "Email",
+            "password": "geheim-wachtwoord-123",
+        },
+    )
+    assert res.status_code == 400, res.text
+    assert "al in gebruik" in res.json()["detail"]

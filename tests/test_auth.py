@@ -57,6 +57,22 @@ def test_me_without_token_fails(client):
     assert r.status_code in (401, 403)
 
 
+def test_me_is_super_admin_false_voor_klant_org_admin(client, admin_user):
+    """Org-admin van een klant-org is GEEN platform-eigenaar — de frontend
+    mag de Admin-tab dan niet tonen (backend require_owner geeft 403)."""
+    r = client.get("/api/auth/me", headers=auth(admin_user))
+    assert r.status_code == 200
+    assert r.json()["is_super_admin"] is False
+
+
+def test_me_is_super_admin_true_voor_fieldops_org_admin(client, platform_owner):
+    """Org-admin binnen de FieldOps-org = super-admin (zelfde logica als
+    require_owner in admin_router)."""
+    r = client.get("/api/auth/me", headers=auth(platform_owner))
+    assert r.status_code == 200
+    assert r.json()["is_super_admin"] is True
+
+
 def test_password_reset_request_creates_db_token(client, admin_user):
     r = client.post("/api/auth/reset-password-request", json={"email": admin_user.email})
     assert r.status_code == 200

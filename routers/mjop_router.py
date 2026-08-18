@@ -377,6 +377,28 @@ def export_mjop_pdf(
         """A4-rapport met voettekst (scope links, paginanummer rechts)."""
         footer_left = ""
 
+        # Centrale sanitizer: álle tekst die via cell()/multi_cell() het
+        # rapport in gaat door _safe(), zodat em/en-dashes en €-tekens in
+        # bv. projectnamen nooit een FPDFUnicodeEncodingException geven.
+        # _safe() is idempotent, dus dubbel saneren kan geen kwaad.
+        @staticmethod
+        def _safe_text_args(args, kwargs):
+            args = list(args)
+            if len(args) >= 3:
+                args[2] = _safe(args[2])
+            for key in ("text", "txt"):
+                if key in kwargs:
+                    kwargs[key] = _safe(kwargs[key])
+            return args, kwargs
+
+        def cell(self, *args, **kwargs):
+            args, kwargs = self._safe_text_args(args, kwargs)
+            return super().cell(*args, **kwargs)
+
+        def multi_cell(self, *args, **kwargs):
+            args, kwargs = self._safe_text_args(args, kwargs)
+            return super().multi_cell(*args, **kwargs)
+
         def footer(self):
             self.set_y(-12)
             self.set_font("Helvetica", "I", 7)

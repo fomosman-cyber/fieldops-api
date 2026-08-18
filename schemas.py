@@ -68,6 +68,10 @@ class UserResponse(BaseModel):
     role: UserRole
     is_active: bool
     is_org_admin: bool
+    # Platform-eigenaar (org-admin binnen de FieldOps-org zelf) — zelfde
+    # logica als require_owner in admin_router. Alleen /api/auth/me vult dit;
+    # elders blijft de default False.
+    is_super_admin: bool = False
     must_change_password: bool = False
     organization_id: str
     created_at: datetime

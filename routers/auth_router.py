@@ -176,7 +176,15 @@ def login_mfa(
 
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(get_current_user)):
-    return current_user
+    # is_super_admin = platform-eigenaar: org-admin binnen de FieldOps-org
+    # (zelfde logica als require_owner in admin_router). De frontend gebruikt
+    # dit om de Admin-tab alleen te tonen waar de backend hem ook toestaat.
+    me = UserResponse.model_validate(current_user)
+    org = current_user.organization
+    me.is_super_admin = bool(
+        current_user.is_org_admin and org is not None and org.name == "FieldOps"
+    )
+    return me
 
 
 @router.post("/reset-password-request")
