@@ -12383,7 +12383,22 @@
           updateMeldingCategories();
           setTimeout(function(){
             var catSel = document.getElementById('meldingCategory');
-            if (catSel && m.category) catSel.value = m.category;
+            if (!catSel || !m.category) return;
+            // De dropdown bevat alleen de categorieën van het gekozen project.
+            // Staat de huidige categorie daar niet tussen (ouder project,
+            // import, gewijzigde projectcategorieën), dan blijft de select op
+            // "" staan en wist het opslaan de categorie stil. Daarom de
+            // bestaande waarde toevoegen voordat we hem selecteren.
+            var bestaat = Array.prototype.some.call(catSel.options, function(o){
+              return o.value === m.category;
+            });
+            if (!bestaat) {
+              var opt = document.createElement('option');
+              opt.value = m.category;
+              opt.textContent = m.category;
+              catSel.insertBefore(opt, catSel.options[1] || null);
+            }
+            catSel.value = m.category;
           }, 50);
           if (m.project_id) loadAssetsForMelding(m.asset_id);
           // Norm-specifieke velden herstellen op basis van asset-type (#16)
