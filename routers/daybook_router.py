@@ -31,9 +31,10 @@ from pydantic import BaseModel, Field
 from database import get_db
 from models import DaybookEntry, User, Project
 from auth import get_current_user
-from permissions import require_org_admin
+from permissions import require_org_admin, require_module
 
-router = APIRouter(prefix="/api/daybook", tags=["Werkdagboek"])
+router = APIRouter(prefix="/api/daybook", tags=["Werkdagboek"],
+                   dependencies=[Depends(require_module("dagboek"))])
 
 
 # ─────────────────────────────────────────────────────────────────────────────

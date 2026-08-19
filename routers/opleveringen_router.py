@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import User, Oplevering, OpleveringPunt, Asset
 from auth import get_current_user
+from permissions import require_module
 from audit import log_action
 from email_service import send_oplevering_email
 
@@ -33,7 +34,8 @@ def _collect_recipients(o: Oplevering) -> list[str]:
         out.append(o.aannemer_email)
     return out
 
-router = APIRouter(prefix="/api/opleveringen", tags=["Opleveringen"])
+router = APIRouter(prefix="/api/opleveringen", tags=["Opleveringen"],
+                   dependencies=[Depends(require_module("opleveren"))])
 
 
 # ── Pydantic-schemas ─────────────────────────────────────────────────

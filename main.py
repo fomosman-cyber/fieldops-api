@@ -244,6 +244,7 @@ def _run_migrations():
                 "public_meld_default_project_id":   "VARCHAR",
                 "public_meld_categories":           "TEXT",
                 "public_meld_intro_text":           "TEXT",
+                "enabled_modules":                  "TEXT",
             }
             org_missing = [c for c in org_extra if c not in ocols]
             if org_missing:

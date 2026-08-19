@@ -3715,10 +3715,10 @@
         <div class="card-header"><h3>Organisaties</h3></div>
         <table class="data-table">
           <thead>
-            <tr><th>Naam</th><th>Plan</th><th>Status</th><th>Gebruikers</th><th>Aangemaakt</th><th>Acties</th></tr>
+            <tr><th>Naam</th><th>Plan</th><th>Status</th><th>Gebruikers</th><th>Modules</th><th>Aangemaakt</th><th>Acties</th></tr>
           </thead>
           <tbody id="adminOrgsBody">
-            <tr><td colspan="6" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
+            <tr><td colspan="7" class="page-loading"><div class="loading-spinner"></div> Laden...</td></tr>
           </tbody>
         </table>
       </div>
@@ -8119,8 +8119,9 @@
         setUserUI(user);
 
         // Branding prefetch (cached in orgBrandingCache) — voor PDF-generators
-        // die altijd brand-header willen tonen zonder eerst te wachten
-        getOrgBranding();
+        // die altijd brand-header willen tonen zonder eerst te wachten.
+        // Zelfde response bevat enabled_modules → sidebar-modules tonen/verbergen.
+        getOrgBranding().then(applyModuleVisibility);
 
         // Notifications polling starten (badge + dropdown)
         if (typeof startNotificationsPolling === 'function') startNotificationsPolling();
@@ -8184,6 +8185,40 @@
     // direct URL/hash bypassen, daarom check ook hier).
     var ADMIN_ONLY_PAGES = ['admin'];
 
+    // ── Module-toggles per organisatie ──
+    // Keys matchen de data-page-id's in de sidebar én PORTAL_MODULES in
+    // models.py. Basis-onderdelen (dashboard/projecten/assets/meldingen/kaart)
+    // staan hier niet in — die heeft iedere org altijd. De backend weigert
+    // uitgeschakelde modules óók (require_module), dit is alleen de UI-laag.
+    var MODULE_PAGES = ['kunstwerken', 'predictive', 'clusters', 'opleveren', 'mijn-dag', 'dagboek'];
+    var MODULE_LABELS = {
+      'kunstwerken': 'Inspecties (CROW / NEN 2767)',
+      'predictive':  'Voorspeller',
+      'clusters':    'Clusters (AI-route)',
+      'opleveren':   'Opleveren',
+      'mijn-dag':    'Mijn dag',
+      'dagboek':     'Werkdagboek'
+    };
+    var orgEnabledModules = null; // null = alles aan (default / platform-org)
+
+    function moduleEnabled(page) {
+      if (MODULE_PAGES.indexOf(page) === -1) return true; // basis-onderdeel
+      if (orgEnabledModules === null) return true;
+      return orgEnabledModules.indexOf(page) !== -1;
+    }
+
+    function applyModuleVisibility(org) {
+      org = org || {};
+      // Platform-org (FieldOps) ziet altijd alles
+      orgEnabledModules = (org.name === 'FieldOps') ? null :
+        (Array.isArray(org.enabled_modules) ? org.enabled_modules : null);
+      MODULE_PAGES.forEach(function(page) {
+        document.querySelectorAll('.sidebar-nav a[data-page="' + page + '"]').forEach(function(a) {
+          a.style.display = moduleEnabled(page) ? '' : 'none';
+        });
+      });
+    }
+
     function navigateTo(page) {
       // RBAC: weiger admin-only paginas voor niet-org-admins
       if (ADMIN_ONLY_PAGES.indexOf(page) !== -1) {
@@ -8191,6 +8226,11 @@
           showToast('Geen toegang — alleen voor org-admins', 'error');
           page = 'dashboard';
         }
+      }
+      // Module-gates: pagina van een uitgeschakelde module → dashboard
+      if (!moduleEnabled(page)) {
+        showToast('Deze module is niet actief voor jouw organisatie', 'error');
+        page = 'dashboard';
       }
       // Hide all sections
       document.querySelectorAll('.page-section').forEach(function(s) {
@@ -8487,6 +8527,53 @@
     }
 
     // ── Admin Organization Actions ──
+    var __adminOrgsCache = [];
+
+    // Module-checkboxes per organisatie (alleen platform-eigenaar).
+    // Basic aan/uit: welke extra onderdelen deze klant-org mag gebruiken.
+    function adminEditOrgModules(orgId) {
+      var o = __adminOrgsCache.find(function(x) { return x.id === orgId; });
+      if (!o) return;
+      var enabled = Array.isArray(o.enabled_modules) ? o.enabled_modules : MODULE_PAGES.slice();
+      var rows = MODULE_PAGES.map(function(key) {
+        var checked = enabled.indexOf(key) !== -1 ? ' checked' : '';
+        return '<label style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border);cursor:pointer;font-size:14px;color:var(--text);">' +
+          '<input type="checkbox" class="orgModuleCheck" value="' + key + '"' + checked + ' style="width:16px;height:16px;accent-color:var(--accent);cursor:pointer;">' +
+          '<span>' + (MODULE_LABELS[key] || key) + '</span></label>';
+      }).join('');
+      var html = rows +
+        '<p style="font-size:12px;color:var(--text-dim);margin-top:12px;">Basis-onderdelen (Dashboard, Projecten, Assets, Meldingen, Kaart) staan altijd aan.</p>' +
+        '<div style="display:flex;gap:10px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:16px;margin-top:8px;">' +
+          '<button onclick="closeOrgModulesModal()" style="background:none;border:1px solid var(--border);color:var(--text);padding:10px 18px;border-radius:8px;cursor:pointer;font-weight:600;">Annuleren</button>' +
+          '<button onclick="saveOrgModules(\'' + o.id + '\')" style="background:var(--accent);color:white;border:none;padding:10px 18px;border-radius:8px;cursor:pointer;font-weight:600;">Opslaan</button>' +
+        '</div>';
+      var modal = document.getElementById('orgModulesModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'orgModulesModal';
+        modal.className = 'modal-overlay';
+        modal.innerHTML = '<div class="modal"><button class="modal-close" onclick="closeOrgModulesModal()">&times;</button><h2 id="orgModulesTitle">Modules</h2><p class="subtitle" id="orgModulesSubtitle"></p><div id="orgModulesContent"></div></div>';
+        document.body.appendChild(modal);
+      }
+      document.getElementById('orgModulesTitle').textContent = 'Modules — ' + o.name;
+      document.getElementById('orgModulesSubtitle').textContent = 'Vink aan welke extra onderdelen deze organisatie in het portaal ziet.';
+      document.getElementById('orgModulesContent').innerHTML = html;
+      modal.classList.add('active');
+    }
+
+    function closeOrgModulesModal() {
+      var m = document.getElementById('orgModulesModal');
+      if (m) m.classList.remove('active');
+    }
+
+    function saveOrgModules(orgId) {
+      var keys = Array.prototype.slice.call(
+        document.querySelectorAll('#orgModulesModal .orgModuleCheck:checked')
+      ).map(function(c) { return c.value; });
+      closeOrgModulesModal();
+      adminUpdateOrg(orgId, { enabled_modules: keys.join(',') });
+    }
+
     async function adminUpdateOrg(orgId, data) {
       try {
         var qs = Object.keys(data).map(function(k) { return k + '=' + encodeURIComponent(data[k]); }).join('&');
@@ -8626,6 +8713,7 @@
 
         // Organizations table with actions
         var orgsBody = document.getElementById('adminOrgsBody');
+        __adminOrgsCache = data.organizations || [];
         if (data.organizations && data.organizations.length > 0) {
           orgsBody.innerHTML = data.organizations.map(function(o) {
             var date = new Date(o.created_at).toLocaleDateString(currentLang, { day:'numeric', month:'short', year:'numeric' });
@@ -8635,18 +8723,25 @@
               '<option value="professional"' + (o.plan === 'professional' ? ' selected' : '') + '>Pro</option>' +
               '<option value="enterprise"' + (o.plan === 'enterprise' ? ' selected' : '') + '>Op maat</option></select>';
             var usersBtn = '<button onclick="adminChangeMaxUsers(\'' + o.id + '\', ' + (o.max_users||10) + ')" style="background:none;border:1px solid var(--border);font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;">' + (o.user_count||0) + ' / ' + (o.max_users||10) + '</button>';
+            // Module-toggles: platform-org heeft altijd alles; klant-orgs
+            // krijgen een knop met "aan / totaal" die de checkbox-modal opent.
+            var modCount = Array.isArray(o.enabled_modules) ? o.enabled_modules.length : MODULE_PAGES.length;
+            var modulesBtn = o.name === 'FieldOps'
+              ? '<span style="font-size:11px;color:var(--text-dim);">alles</span>'
+              : '<button onclick="adminEditOrgModules(\'' + o.id + '\')" style="background:none;border:1px solid var(--border);font-size:11px;padding:2px 8px;border-radius:4px;cursor:pointer;" title="Modules aan/uit zetten">&#9881; ' + modCount + ' / ' + MODULE_PAGES.length + '</button>';
             var deleteBtn = o.name === 'FieldOps' ? '' : '<button onclick="adminDeleteOrg(\'' + o.id + '\', \'' + escapedName + '\')" style="background:none;border:1px solid var(--border);color:var(--red);font-size:11px;padding:2px 6px;border-radius:4px;cursor:pointer;" title="Verwijderen">&#128465;</button>';
             return '<tr>' +
               '<td><strong>' + o.name + '</strong></td>' +
               '<td>' + planSelect + '</td>' +
               '<td><span class="status-badge ' + o.status + '">' + o.status + '</span></td>' +
               '<td>' + usersBtn + '</td>' +
+              '<td>' + modulesBtn + '</td>' +
               '<td style="color: var(--text-dim);">' + date + '</td>' +
               '<td>' + deleteBtn + '</td>' +
               '</tr>';
           }).join('');
         } else {
-          orgsBody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-dim);">'+t('geen_organisaties')+'</td></tr>';
+          orgsBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color: var(--text-dim);">'+t('geen_organisaties')+'</td></tr>';
         }
 
         // Users table with admin actions
@@ -8714,7 +8809,7 @@
         }
       }).catch(function(err) {
         console.error('Admin data laden mislukt:', err);
-        document.getElementById('adminOrgsBody').innerHTML = '<tr><td colspan="5" style="color: var(--red);">'+t('fout_laden')+': ' + err.message + '</td></tr>';
+        document.getElementById('adminOrgsBody').innerHTML = '<tr><td colspan="7" style="color: var(--red);">'+t('fout_laden')+': ' + err.message + '</td></tr>';
       });
     }
 
@@ -17875,6 +17970,8 @@
     function loadDashboardPredictiveWidget() {
       var widget = document.getElementById('predictiveWidget');
       if (!widget) return;
+      // Voorspeller-module uit voor deze org → widget verbergen, geen 403-call
+      if (!moduleEnabled('predictive')) { widget.style.display = 'none'; return; }
       api('GET', '/api/predictive/summary').then(function(s){
         if (!s.total_assets) { widget.style.display = 'none'; return; }
         widget.style.display = '';

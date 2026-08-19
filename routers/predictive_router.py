@@ -13,9 +13,11 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import Asset, User
 from auth import get_current_user
+from permissions import require_module
 from predictive import compute_asset_risk, list_at_risk, find_geo_clusters
 
-router = APIRouter(prefix="/api/predictive", tags=["Predictive Maintenance"])
+router = APIRouter(prefix="/api/predictive", tags=["Predictive Maintenance"],
+                   dependencies=[Depends(require_module("predictive"))])
 
 
 @router.get("/at-risk")
