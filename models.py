@@ -753,6 +753,10 @@ class DemoRequest(Base):
     num_users = Column(Integer, default=10)
     status = Column(String(20), default="pending")  # pending, approved
     processed = Column(Boolean, default=False)
+    # Expliciete opt-in voor commerciele mailings. Bewust los van de aanvraag
+    # zelf: een demo-aanvraag is een verzoek om contact, geen aanmelding voor
+    # een nieuwsbrief. Alleen bij True mag dit adres in een mailing.
+    marketing_opt_in = Column(Boolean, default=False, nullable=False)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
