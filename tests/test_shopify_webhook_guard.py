@@ -46,7 +46,9 @@ def _order_payload(company="FieldOps", email="attacker@evil.example"):
         "email": email,
         "customer": {"id": 12345, "first_name": "Evil", "last_name": "Actor",
                      "company": company},
-        "line_items": [{"title": "FieldOps Professional"}],
+        # SKU bepaalt de rechten (niet de titel) — zie LICENSE_SKUS.
+        "line_items": [{"title": "FieldOps - per gebruiker, per maand",
+                        "sku": "FO-INSP-1M", "quantity": 1}],
     }
 
 
