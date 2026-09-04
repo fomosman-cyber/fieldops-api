@@ -233,7 +233,10 @@ def delete_cluster(
 # My-clusters + skills (mobile day-planner)
 # ════════════════════════════════════════════════════════════
 
-@router.get("/users/me/clusters", dependencies=[Depends(require_module("clusters"))])
+# Dit endpoint voedt uitsluitend de "Mijn dag"-pagina (loadMijnDag), dus het
+# hoort achter die module-toggle en niet achter "clusters" — anders blijft de
+# data bereikbaar terwijl Mijn dag voor de organisatie is uitgezet.
+@router.get("/users/me/clusters", dependencies=[Depends(require_module("mijn-dag"))])
 def my_assigned_clusters(
     include_meldingen: bool = True,
     current_user: User = Depends(get_current_user),

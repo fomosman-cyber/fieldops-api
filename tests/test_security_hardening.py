@@ -61,7 +61,10 @@ def test_shopify_order_paid_omits_temp_password(client, monkeypatch):
     body, sig = _signed_body({
         "email": "shopify-buyer@new-org.nl",
         "customer": {"id": 1, "first_name": "Koen", "last_name": "Koper"},
-        "line_items": [{"title": "FieldOps Professional"}],
+        # Echte licentie-SKU, anders slaat de webhook provisioning over en
+        # test deze assertie het lek-pad helemaal niet meer.
+        "line_items": [{"title": "FieldOps - per gebruiker, per maand",
+                        "sku": "FO-INSP-1M", "quantity": 1}],
     })
     r = client.post("/api/shopify/webhook/order-paid", content=body,
                     headers={"X-Shopify-Hmac-Sha256": sig,

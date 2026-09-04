@@ -29,6 +29,7 @@ MODULE_ENDPOINTS = {
     "clusters":    "/api/clusters",
     "opleveren":   "/api/opleveringen/",
     "dagboek":     "/api/daybook/summary",
+    "mijn-dag":    "/api/users/me/clusters",
 }
 
 
@@ -182,4 +183,8 @@ def test_module_registry_consistent(client):
     """De keys die de tests gebruiken bestaan echt in PORTAL_MODULES."""
     for key in MODULE_ENDPOINTS:
         assert key in PORTAL_MODULES
-    assert "mijn-dag" in PORTAL_MODULES  # front-end-only module, wel registreren
+    # Elke module in het register hoort een endpoint te hebben dat hem
+    # server-side afdwingt. Staat een key hier niet in, dan is de toggle
+    # alleen een front-end-gordijn en blijft de data opvraagbaar.
+    assert set(MODULE_ENDPOINTS) == set(PORTAL_MODULES), (
+        f"zonder server-side gate: {set(PORTAL_MODULES) - set(MODULE_ENDPOINTS)}")

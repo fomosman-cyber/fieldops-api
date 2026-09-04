@@ -346,6 +346,56 @@ FieldOps
     )
 
 
+def send_license_welcome(user, password: str, org, *, seats: int = 1) -> bool:
+    """Welkomstmail na een betaalde licentie (Shopify-bestelling).
+
+    Bewust apart van send_demo_welcome: die tekst spreekt over een goedgekeurde
+    demo-aanvraag, wat voor een betalende klant niet klopt.
+    """
+    login_url = FRONTEND_URL
+    seats_tekst = "1 gebruiker" if seats == 1 else f"{seats} gebruikers"
+
+    content = f"""
+<h2 style="color:#1e293b;font-size:22px;margin:0 0 8px;">Welkom bij FieldOps, {user.first_name}!</h2>
+<p style="color:#64748b;font-size:15px;line-height:1.6;margin:0 0 24px;">
+Je bestelling is gelukt en de omgeving van <strong>{org.name}</strong> staat klaar voor {seats_tekst}. Hieronder vind je je inloggegevens.
+</p>
+
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f8fafc;border-radius:12px;margin-bottom:24px;">
+<tr><td style="padding:20px 24px;">
+<table width="100%" cellpadding="0" cellspacing="0">
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">APP</span><br>
+<a href="{login_url}" style="color:#0284c7;font-size:14px;font-weight:500;">{login_url}</a></td></tr>
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">E-MAILADRES</span><br>
+<span style="color:#1e293b;font-size:14px;font-weight:500;">{user.email}</span></td></tr>
+<tr><td style="padding:6px 0;"><span style="color:#94a3b8;font-size:12px;font-weight:600;">TIJDELIJK WACHTWOORD</span><br>
+<span style="color:#0284c7;font-size:14px;font-weight:600;font-family:monospace;">{password}</span></td></tr>
+</table>
+</td></tr></table>
+
+<table cellpadding="0" cellspacing="0" style="margin:0 auto 24px;">
+<tr><td style="background:linear-gradient(135deg,#0284c7,#0369a1);border-radius:12px;padding:14px 36px;">
+<a href="{login_url}" style="color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;display:inline-block;">
+Inloggen op FieldOps</a>
+</td></tr></table>
+
+<p style="color:#64748b;font-size:13px;line-height:1.6;margin:0 0 20px;">
+Bij je eerste keer inloggen vragen we je meteen een eigen wachtwoord te kiezen.
+</p>
+
+<p style="color:#94a3b8;font-size:13px;margin:0;">
+Met vriendelijke groet,<br>
+<strong style="color:#1e293b;">Faris Osman</strong><br>
+FieldOps
+</p>"""
+
+    return send_email(
+        user.email,
+        "Welkom bij FieldOps - je account is klaar",
+        _base_template(content, "Account geactiveerd"),
+    )
+
+
 def send_oplevering_email(oplevering, recipients: list[str], *, trigger: str = "manual") -> dict:
     """Verstuur oplever-formulier per email naar opdrachtgever + aannemer.
 
