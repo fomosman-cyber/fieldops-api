@@ -69,3 +69,26 @@ def test_opt_in_zichtbaar_voor_admin(client, admin_user):
     assert r.status_code == 200, r.text
     row = next(d for d in r.json() if d["email"] == email)
     assert row["marketing_opt_in"] is True
+
+
+def test_notes_wordt_bewaard(client):
+    """Rol en vraag uit het formulier mogen niet stil verdwijnen."""
+    email = "met-vraag@example.nl"
+    tekst = "Rol: Asset-manager | Hoe pakken jullie NEN 2767-2 kunstwerken op?"
+    r = client.post("/api/demo/request", json=_body(email, notes=tekst))
+    assert r.status_code == 200, r.text
+    assert _fetch(email).notes == tekst
+
+
+def test_notes_optioneel(client):
+    email = "zonder-vraag@example.nl"
+    assert client.post("/api/demo/request", json=_body(email)).status_code == 200
+    assert _fetch(email).notes is None
+
+
+def test_notes_zichtbaar_voor_admin(client, admin_user):
+    email = "notes-admin@example.nl"
+    client.post("/api/demo/request", json=_body(email, notes="Vraag over BAG-koppeling"))
+    r = client.get("/api/demo/requests", headers=auth(admin_user))
+    row = next(d for d in r.json() if d["email"] == email)
+    assert row["notes"] == "Vraag over BAG-koppeling"

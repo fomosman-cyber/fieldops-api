@@ -96,6 +96,13 @@ def _run_migrations():
                         ))
                 print("[migration] demo_requests.marketing_opt_in toegevoegd.")
 
+            # demo_requests.notes — vrije tekst uit het aanvraagformulier.
+            if "notes" not in cols:
+                print("[migration] demo_requests.notes kolom toevoegen...")
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE demo_requests ADD COLUMN notes TEXT"))
+                print("[migration] demo_requests.notes toegevoegd.")
+
         # users.must_change_password (toegevoegd voor force-reset bij eerste login)
         if "users" in insp.get_table_names():
             user_cols = [c["name"] for c in insp.get_columns("users")]

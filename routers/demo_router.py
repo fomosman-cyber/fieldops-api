@@ -52,6 +52,7 @@ def create_demo_request(request: DemoRequestCreate, http_request: Request, db: S
         plan=request.plan,
         num_users=request.num_users,
         marketing_opt_in=request.marketing_opt_in,
+        notes=request.notes,
         status="pending",
         processed=False,
     )
