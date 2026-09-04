@@ -1,12 +1,16 @@
+import json
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from database import get_db
-from models import User, Organization, AuditLog, is_reserved_org_name
+from models import User, Organization, Project, AuditLog, is_reserved_org_name
 from schemas import OrganizationResponse, OrganizationUpdate
 from auth import get_current_user
 from permissions import require_org_admin, is_platform_owner
 from audit import log_action, ACTION
+from branding import valideer_logo, valideer_kleur
 
 router = APIRouter(prefix="/api/organization", tags=["Organisatie"])
 
@@ -55,8 +59,9 @@ def update_my_organization(
     """Self-service org-edit voor org-admins.
 
     Toegestane velden: name, contact_email, contact_phone, billing_address,
-    kvk_number, btw_number, logo_data_url, brand_color. Plan/status/max_users
-    zijn voorbehouden aan billing-side (Shopify-flow) en super-admins.
+    kvk_number, btw_number, logo_data_url, brand_color, de provider-links en
+    de instellingen van het publieke meldpunt. Plan/status/max_users zijn
+    voorbehouden aan billing-side (Shopify-flow) en super-admins.
     """
     org = db.query(Organization).filter(
         Organization.id == current_user.organization_id,
@@ -81,23 +86,64 @@ def update_my_organization(
                 detail="Deze organisatienaam is gereserveerd voor het platform")
         org.allow_reserved_name = True
 
-    # Logo-validatie: data-URL, max 500KB om DB-bloat te voorkomen
+    # Zelfde regels als de super-admin-route, zie branding.py
     if "logo_data_url" in data and data["logo_data_url"]:
-        v = data["logo_data_url"]
-        if not v.startswith("data:image/"):
-            raise HTTPException(status_code=400,
-                                detail="logo_data_url moet beginnen met 'data:image/...'")
-        if len(v) > 700_000:  # ~500KB base64-encoded
-            raise HTTPException(status_code=400,
-                                detail="Logo te groot (max 500KB). Schaal de afbeelding eerst.")
-
-    # Brand-color validatie: hex-formaat
+        data["logo_data_url"] = valideer_logo(data["logo_data_url"])
     if "brand_color" in data and data["brand_color"]:
-        bc = data["brand_color"].strip()
-        if not (bc.startswith("#") and len(bc) in (4, 7)):
+        data["brand_color"] = valideer_kleur(data["brand_color"])
+
+    # Slug van het publieke meldpunt: komt in een URL en moet uniek zijn over
+    # alle organisaties heen, anders wijst /meld/<slug> naar de verkeerde club.
+    if "public_meld_slug" in data and data["public_meld_slug"]:
+        slug = data["public_meld_slug"].strip().lower()
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,58}[a-z0-9]", slug):
+            raise HTTPException(
+                status_code=400,
+                detail="Meldpunt-adres mag alleen kleine letters, cijfers en "
+                       "koppeltekens bevatten (3-60 tekens, niet beginnen of "
+                       "eindigen met een koppelteken)")
+        bezet = db.query(Organization).filter(
+            Organization.public_meld_slug == slug,
+            Organization.id != org.id,
+        ).first()
+        if bezet:
             raise HTTPException(status_code=400,
-                                detail="brand_color moet hex-formaat hebben (#abc of #aabbcc)")
-        data["brand_color"] = bc
+                                detail="Dit meldpunt-adres is al in gebruik")
+        data["public_meld_slug"] = slug
+
+    # Startproject moet van de eigen organisatie zijn — anders kun je via dit
+    # veld naar een project van een andere klant wijzen.
+    if "public_meld_default_project_id" in data and data["public_meld_default_project_id"]:
+        van_ons = db.query(Project).filter(
+            Project.id == data["public_meld_default_project_id"],
+            Project.organization_id == org.id,
+        ).first()
+        if not van_ons:
+            raise HTTPException(status_code=400,
+                                detail="Startproject hoort niet bij deze organisatie")
+
+    # Categorieen worden als JSON-array opgeslagen; onleesbare invoer zou het
+    # publieke formulier stukmaken.
+    if "public_meld_categories" in data and data["public_meld_categories"]:
+        try:
+            cats = json.loads(data["public_meld_categories"])
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400,
+                                detail="Categorieen zijn geen geldige lijst")
+        if not isinstance(cats, list) or not all(isinstance(c, str) for c in cats):
+            raise HTTPException(status_code=400,
+                                detail="Categorieen moeten een lijst met teksten zijn")
+        if len(cats) > 30:
+            raise HTTPException(status_code=400,
+                                detail="Maximaal 30 categorieen")
+
+    # Aanzetten kan alleen met een adres, anders is het meldpunt onbereikbaar.
+    if data.get("public_meld_enabled") and not (
+        data.get("public_meld_slug") or org.public_meld_slug
+    ):
+        raise HTTPException(status_code=400,
+                            detail="Kies eerst een meldpunt-adres voordat je "
+                                   "het meldpunt aanzet")
 
     # Audit: zet logo-content niet in before/after (te groot). Alleen flag.
     before = {}
