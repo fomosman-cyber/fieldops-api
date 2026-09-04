@@ -21,6 +21,47 @@ import secrets
 router = APIRouter(prefix="/api/users", tags=["Gebruikers"])
 
 
+def _bezette_seats(db: Session, org: Organization) -> int:
+    """Hoeveel seats er in gebruik zijn.
+
+    Openstaande uitnodigingen tellen mee: die worden straks een account, en
+    zonder meetellen kun je bij 5 van de 10 seats honderd uitnodigingen
+    versturen die daarna allemaal accepteren.
+    """
+    actieve = db.query(User).filter(
+        User.organization_id == org.id,
+        User.is_active == True,  # noqa: E712 - SQLAlchemy-vergelijking
+    ).count()
+    openstaand = db.query(Invitation).filter(
+        Invitation.organization_id == org.id,
+        Invitation.accepted == False,  # noqa: E712
+        Invitation.expires_at > datetime.now(timezone.utc),
+    ).count()
+    return actieve + openstaand
+
+
+def _seat_ruimte_of_fout(db: Session, org: Organization, *, erbij: int = 1) -> None:
+    """Weiger als er geen seat vrij is.
+
+    Deze check hoort op ELK pad dat een account laat ontstaan of heractiveert.
+    Stond hij alleen bij uitnodigen, dan was het plafond te omzeilen via
+    rechtstreeks aanmaken, via accepteren, en via heractiveren.
+    """
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organisatie niet gevonden")
+    maximum = org.max_users or 0
+    if maximum <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Deze organisatie heeft geen gebruikersplaatsen. Neem contact op.")
+    bezet = _bezette_seats(db, org)
+    if bezet + erbij > maximum:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum aantal gebruikers ({maximum}) bereikt voor uw abonnement. "
+                   f"Nu in gebruik: {bezet} (inclusief openstaande uitnodigingen).")
+
+
 @router.get("/roles")
 def get_assignable_roles(current_user: User = Depends(get_current_user)):
     """Lijst toewijsbare rollen voor de UI (alleen admins krijgen niet-lege lijst)."""
@@ -506,6 +547,13 @@ def update_user(
     if "role" in before and hasattr(before["role"], "value"):
         before["role"] = before["role"].value
 
+    # Heractiveren kost een seat. Zonder deze check kon je tien gebruikers
+    # deactiveren, een plaats bijkopen en ze allemaal weer aanzetten.
+    if update_data.get("is_active") is True and not user.is_active:
+        org_van_user = db.query(Organization).filter(
+            Organization.id == user.organization_id).first()
+        _seat_ruimte_of_fout(db, org_van_user)
+
     for field, value in update_data.items():
         setattr(user, field, value)
     db.commit()
@@ -582,6 +630,12 @@ def admin_create_user(
     db: Session = Depends(get_db),
 ):
     """Direct een gebruiker aanmaken (alleen admin). Geen uitnodiging nodig."""
+    # Dit pad had geen seat-controle: het uitnodigingsplafond was hiermee
+    # volledig te omzeilen, dus je kon veertig mensen op een betaalde plaats zetten.
+    org = db.query(Organization).filter(
+        Organization.id == current_user.organization_id).first()
+    _seat_ruimte_of_fout(db, org)
+
     validate_password_strength(data.password)
     existing = db.query(User).filter(User.email == data.email).first()
     if existing:
@@ -635,16 +689,7 @@ def invite_user(
     """Gebruiker uitnodigen (alleen admin)."""
     org = db.query(Organization).filter(Organization.id == current_user.organization_id).first()
 
-    # Check max users
-    current_count = db.query(User).filter(
-        User.organization_id == org.id,
-        User.is_active == True,
-    ).count()
-    if current_count >= org.max_users:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Maximum aantal gebruikers ({org.max_users}) bereikt voor uw abonnement",
-        )
+    _seat_ruimte_of_fout(db, org)
 
     # Check of email al bestaat
     existing = db.query(User).filter(User.email == invitation.email).first()
@@ -730,6 +775,14 @@ def accept_invitation(
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Deze uitnodiging is verlopen")
+
+    # Opnieuw controleren, niet alleen bij het versturen: tussen uitnodigen en
+    # accepteren kan het abonnement zijn verlaagd of kunnen andere uitnodigingen
+    # eerder zijn geaccepteerd. Deze uitnodiging telt al mee in _bezette_seats,
+    # dus we vragen hier geen extra plaats aan.
+    org_van_uitnodiging = db.query(Organization).filter(
+        Organization.id == inv.organization_id).first()
+    _seat_ruimte_of_fout(db, org_van_uitnodiging, erbij=0)
 
     # Maak gebruiker aan
     user = User(
