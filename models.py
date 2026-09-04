@@ -757,6 +757,9 @@ class DemoRequest(Base):
     # zelf: een demo-aanvraag is een verzoek om contact, geen aanmelding voor
     # een nieuwsbrief. Alleen bij True mag dit adres in een mailing.
     marketing_opt_in = Column(Boolean, default=False, nullable=False)
+    # Vrije tekst uit het aanvraagformulier: rol + de concrete vraag die
+    # iemand stelt. Zonder dit veld verdween dat stilzwijgend.
+    notes = Column(Text, nullable=True)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

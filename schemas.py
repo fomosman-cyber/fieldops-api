@@ -31,6 +31,7 @@ class DemoRequestCreate(BaseModel):
     plan: SubscriptionPlan = SubscriptionPlan.STARTER
     num_users: int = 10
     marketing_opt_in: bool = False
+    notes: Optional[str] = None
 
 
 class DemoRequestResponse(BaseModel):
@@ -43,6 +44,7 @@ class DemoRequestResponse(BaseModel):
     num_users: int
     processed: bool
     marketing_opt_in: bool = False
+    notes: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
