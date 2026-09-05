@@ -152,17 +152,54 @@ def delete_project(
                    before=snapshot)
         return {"message": f"Project '{project.name}' is gearchiveerd", "deleted": False}
 
-    # HARD DELETE — cascade-orphan
-    melding_count = (db.query(Melding)
-                       .filter(Melding.project_id == project_id)
-                       .update({Melding.project_id: None}, synchronize_session=False))
+    # HARD DELETE — alles wat naar dit project wijst eerst losmaken.
+    #
+    # Postgres weigert de DELETE zodra er ook maar één rij naar het project
+    # verwijst, en gaf dan een 500 waar de gebruiker "onbekende fout" van zag.
+    # In de praktijk raakte dat vrijwel elk actief project: het werkdagboek
+    # vult zich dagelijks, en assets en inspecties hangen er per definitie aan.
+    #
+    # Alle zeven verwijzingen zijn nulbaar, dus we maken ze los in plaats van
+    # ze mee te verwijderen. Dat past bij de bestaande keuze voor meldingen:
+    # de registratie blijft bestaan voor de audit, alleen de koppeling met het
+    # project verdwijnt. Wie het project weggooit, gooit niet zijn historie weg.
+    from models import (Asset, DaybookEntry, EmailInboxRoute, IncomingWebhook,
+                        Inspection, Oplevering, Organization)
+
+    losgemaakt = {}
+    for label, model, kolom in (
+        ("meldingen",   Melding,          Melding.project_id),
+        ("assets",      Asset,            Asset.project_id),
+        ("inspecties",  Inspection,       Inspection.project_id),
+        ("opleveringen", Oplevering,      Oplevering.project_id),
+        ("werkdagboek", DaybookEntry,     DaybookEntry.project_id),
+        ("e-mailroutes", EmailInboxRoute, EmailInboxRoute.default_project_id),
+        ("webhooks",    IncomingWebhook,  IncomingWebhook.default_project_id),
+    ):
+        aantal = (db.query(model)
+                    .filter(kolom == project_id)
+                    .update({kolom: None}, synchronize_session=False))
+        if aantal:
+            losgemaakt[label] = aantal
+
+    # Verraderlijkste van de zeven: de organisatie zelf kan dit project als
+    # standaard voor het burgerportaal hebben. Dan komt de blokkade van de
+    # ouder-rij en ziet de beheerder niets in het projectscherm.
+    org_reset = (db.query(Organization)
+                   .filter(Organization.public_meld_default_project_id == project_id)
+                   .update({Organization.public_meld_default_project_id: None},
+                           synchronize_session=False))
+    if org_reset:
+        losgemaakt["burgerportaal-standaard"] = org_reset
+
+    melding_count = losgemaakt.get("meldingen", 0)
     db.delete(project)
     db.commit()
 
     log_action(db, request, current_user,
                action=ACTION.PROJECT_DELETE, entity_type="project", entity_id=project_id,
                before=snapshot,
-               extra={"orphaned_meldingen": melding_count})
+               extra={"orphaned_meldingen": melding_count, "losgemaakt": losgemaakt})
     return {
         "message": f"Project '{snapshot['name']}' permanent verwijderd",
         "deleted": True,

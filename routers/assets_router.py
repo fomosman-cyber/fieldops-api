@@ -648,7 +648,31 @@ def delete_asset(
         return {"message": f"Asset '{asset.code}' gearchiveerd", "deleted": False}
 
     # HARD DELETE — cascade-orphan
-    from models import Melding, AIAnalysis
+    #
+    # Drie verwijzingen ontbraken hier en gaven een 500 zodra ze bestonden.
+    # De inspecties zijn het belangrijkst: elke asset die ooit geinspecteerd
+    # is, was daardoor onverwijderbaar.
+    from models import (AIAnalysis, IncomingWebhook, Inspection, Melding,
+                        OpleveringPunt)
+
+    # Inspection.asset_id is NOT NULL, dus losmaken kan niet — die inspecties
+    # moeten mee. Bewust een voor een via de ORM: alleen dan ruimt SQLAlchemy
+    # de elementen, gebreken en antwoorden eronder op. Een bulk-delete op de
+    # query slaat die cascade over en loopt op de volgende foreign key vast.
+    inspecties = db.query(Inspection).filter(Inspection.asset_id == asset_id).all()
+    for insp in inspecties:
+        db.delete(insp)
+    inspectie_count = len(inspecties)
+
+    opleverpunt_count = (db.query(OpleveringPunt)
+                           .filter(OpleveringPunt.asset_id == asset_id)
+                           .update({OpleveringPunt.asset_id: None},
+                                   synchronize_session=False))
+    webhook_count = (db.query(IncomingWebhook)
+                       .filter(IncomingWebhook.default_asset_id == asset_id)
+                       .update({IncomingWebhook.default_asset_id: None},
+                               synchronize_session=False))
+
     melding_count = (db.query(Melding)
                        .filter(Melding.asset_id == asset_id)
                        .update({Melding.asset_id: None}, synchronize_session=False))
@@ -668,6 +692,9 @@ def delete_asset(
                    "orphaned_meldingen": melding_count,
                    "orphaned_ai_analyses": aianalysis_count,
                    "orphaned_children": children_count,
+                   "orphaned_opleverpunten": opleverpunt_count,
+                   "orphaned_webhooks": webhook_count,
+                   "deleted_inspecties": inspectie_count,
                })
     return {
         "message": f"Asset '{snapshot['code']}' permanent verwijderd",
@@ -676,7 +703,11 @@ def delete_asset(
             "meldingen": melding_count,
             "ai_analyses": aianalysis_count,
             "children": children_count,
+            "opleverpunten": opleverpunt_count,
+            "webhooks": webhook_count,
         },
+        # Inspecties konden niet losgemaakt worden — die zijn meeverwijderd.
+        "verwijderd": {"inspecties": inspectie_count},
     }
 
 
