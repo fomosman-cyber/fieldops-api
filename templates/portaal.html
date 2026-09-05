@@ -8121,7 +8121,10 @@
         // Branding prefetch (cached in orgBrandingCache) — voor PDF-generators
         // die altijd brand-header willen tonen zonder eerst te wachten.
         // Zelfde response bevat enabled_modules → sidebar-modules tonen/verbergen.
-        getOrgBranding().then(applyModuleVisibility);
+        getOrgBranding().then(function(org) {
+          pasHuisstijlToe(org);
+          return applyModuleVisibility(org);
+        });
 
         // Notifications polling starten (badge + dropdown)
         if (typeof startNotificationsPolling === 'function') startNotificationsPolling();
@@ -18490,6 +18493,11 @@
       var next = current === 'dark' ? 'light' : 'dark';
       try { localStorage.setItem('fieldops_theme', next); } catch(e){}
       applyTheme(next);
+      // De huisstijlkleur wordt per thema anders bijgesteld, dus opnieuw
+      // toepassen — anders verdwijnt een donker logoblauw in het donkere thema.
+      if (typeof pasHuisstijlToe === 'function' && typeof orgBrandingCache !== 'undefined' && orgBrandingCache) {
+        pasHuisstijlToe(orgBrandingCache);
+      }
     }
     // Init bij page-load (vóór render, voorkomt flash van wit-thema)
     (function initTheme(){
@@ -20344,6 +20352,7 @@
       api('GET', '/api/organization/').then(function(org) {
         if (!org) return;
         orgBrandingCache = org;
+        pasHuisstijlToe(org);
         var setVal = function(id, v){ var el = document.getElementById(id); if (el) el.value = (v || ''); };
         setVal('settOrgEditName', org.name);
         setVal('settOrgContactEmail', org.contact_email);
@@ -20591,6 +20600,86 @@
     }
 
     // Helper: lazy-fetch org-branding voor PDF-generators. Cached na eerste call.
+    // ── White-label: logo en huisstijlkleur van de klant ────────
+    // Logo en kleur stonden alleen op de PDF's. In het portaal zelf zag een
+    // gemeente overal FieldOps staan — dus een leverancierstool in plaats van
+    // haar eigen omgeving. De kleur gaat hier op --accent en de bijbehorende
+    // gradiënten; die worden overal in dit bestand al gebruikt, dus één
+    // toewijzing kleurt het hele portaal.
+    var _huisstijlKleuren = null;
+
+    function _hexNaarRgb(hex) {
+      if (!hex || typeof hex !== 'string') return null;
+      var m = hex.replace('#', '').trim();
+      if (m.length === 3) m = m[0] + m[0] + m[1] + m[1] + m[2] + m[2];
+      if (!/^[0-9a-fA-F]{6}$/.test(m)) return null;
+      return [parseInt(m.slice(0, 2), 16), parseInt(m.slice(2, 4), 16), parseInt(m.slice(4, 6), 16)];
+    }
+
+    function _mengNaarHex(rgb, doel, factor) {
+      var uit = rgb.map(function(v) { return Math.round(v + (doel - v) * factor); });
+      return '#' + uit.map(function(v) {
+        var h = Math.max(0, Math.min(255, v)).toString(16);
+        return h.length === 1 ? '0' + h : h;
+      }).join('');
+    }
+
+    function _relatieveLuminantie(rgb) {
+      var k = rgb.map(function(v) {
+        var c = v / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * k[0] + 0.7152 * k[1] + 0.0722 * k[2];
+    }
+
+    function pasHuisstijlToe(org) {
+      var stijl = document.documentElement.style;
+      var kleur = org && org.brand_color;
+      var rgb = _hexNaarRgb(kleur);
+
+      if (!rgb) {
+        // Geen eigen kleur: terug naar het standaardthema.
+        ['--accent', '--accent-dark', '--gradient', '--gradient-hover'].forEach(function(v) {
+          stijl.removeProperty(v);
+        });
+        _huisstijlKleuren = null;
+      } else {
+        var lum = _relatieveLuminantie(rgb);
+        // Op een donkere ondergrond werkt een donkere huisstijlkleur niet: die
+        // valt weg tegen de achtergrond. Dan lichten we hem op. Andersom
+        // verdonkeren we een fel logo-geel zodat tekst erop leesbaar blijft.
+        var donkerThema = document.documentElement.getAttribute('data-theme') === 'dark';
+        var basis = kleur;
+        if (donkerThema && lum < 0.22) basis = _mengNaarHex(rgb, 255, 0.42);
+        else if (!donkerThema && lum > 0.62) basis = _mengNaarHex(rgb, 0, 0.30);
+
+        var basisRgb = _hexNaarRgb(basis) || rgb;
+        var donker = _mengNaarHex(basisRgb, 0, 0.22);
+        var licht = _mengNaarHex(basisRgb, 255, 0.28);
+
+        stijl.setProperty('--accent', basis);
+        stijl.setProperty('--accent-dark', donker);
+        stijl.setProperty('--gradient', 'linear-gradient(135deg, ' + basis + ', ' + donker + ')');
+        stijl.setProperty('--gradient-hover', 'linear-gradient(135deg, ' + licht + ', ' + basis + ')');
+        _huisstijlKleuren = kleur;
+      }
+
+      // Logo en naam in de balk linksboven.
+      var icoon = document.querySelector('.logo-icon');
+      var tekst = document.querySelector('.logo-text');
+      if (org && org.logo_data_url && icoon) {
+        icoon.innerHTML = '<img src="' + org.logo_data_url + '" alt="' +
+          String(org.name || '').replace(/"/g, '&quot;') +
+          '" style="width:100%;height:100%;object-fit:contain;border-radius:6px;background:#fff;">';
+        icoon.style.background = '#fff';
+      }
+      if (org && org.name && tekst) {
+        // Eigen naam, geen "Field<span>Ops</span>" meer.
+        tekst.textContent = org.name;
+        tekst.title = 'Geleverd met FieldOps';
+      }
+    }
+
     function getOrgBranding() {
       return new Promise(function(resolve) {
         if (orgBrandingCache) { resolve(orgBrandingCache); return; }
