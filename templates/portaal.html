@@ -12806,7 +12806,7 @@
         onConfirm: function() {
           var ok = 0, fail = 0, done = 0;
           ids.forEach(function(id){
-            api('PATCH', '/api/assets/' + id + '/archive').then(function(){ ok++; })
+            api('DELETE', '/api/assets/' + id).then(function(){ ok++; })
               .catch(function(){ fail++; })
               .finally(function(){
                 done++;
@@ -12832,7 +12832,7 @@
         onConfirm: function() {
           var ok = 0, fail = 0, done = 0;
           ids.forEach(function(id){
-            api('DELETE', '/api/assets/' + id).then(function(){ ok++; })
+            api('DELETE', '/api/assets/' + id + '?hard=true').then(function(){ ok++; })
               .catch(function(){ fail++; })
               .finally(function(){
                 done++;
