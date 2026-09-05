@@ -3239,6 +3239,56 @@
         </div>
       </div>
 
+      <!-- Abonnement — alleen org-admins -->
+      <div class="card" id="billingCard" style="max-width: 600px; margin-top: 20px; display:none;">
+        <div class="card-header"><h3>💳 Abonnement</h3></div>
+
+        <div id="billingUit" style="display:none;padding:14px 16px;border:1px solid var(--border);border-radius:10px;background:var(--bg);">
+          <p style="margin:0;font-size:13px;color:var(--text-muted);">
+            Betalen staat op deze omgeving nog niet aan. Neem contact op met FieldOps
+            als je het abonnement wilt starten.
+          </p>
+        </div>
+
+        <div id="billingInhoud" style="display:none;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div>
+              <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Tarief</label>
+              <div style="font-size:16px;font-weight:500;"><span id="billTarief">-</span> per gebruiker / maand</div>
+            </div>
+            <div>
+              <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Actieve gebruikers</label>
+              <div style="font-size:16px;font-weight:500;" id="billGebruikers">-</div>
+            </div>
+            <div>
+              <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Maandbedrag</label>
+              <div style="font-size:20px;font-weight:700;" id="billBedrag">-</div>
+            </div>
+            <div>
+              <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Status</label>
+              <div id="billStatus">-</div>
+            </div>
+          </div>
+
+          <p id="billTermijn" style="margin:14px 0 0;font-size:12.5px;color:var(--text-muted);"></p>
+          <p id="billAfwijking" style="display:none;margin:10px 0 0;padding:10px 12px;border-radius:8px;
+             background:rgba(217,119,6,.08);border:1px solid rgba(217,119,6,.28);font-size:12.5px;color:#9a6608;"></p>
+          <p id="billMelding" style="display:none;margin:12px 0 0;font-size:13px;"></p>
+
+          <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">
+            <button class="btn-primary" id="billStartBtn" style="display:none;" onclick="startAbonnement()">Abonnement starten</button>
+            <button class="btn-secondary" id="billSyncBtn" style="display:none;" onclick="syncAbonnementSeats()">Bedrag bijwerken</button>
+            <button class="btn-secondary" id="billCancelBtn" style="display:none;" onclick="zegAbonnementOp()">Opzeggen</button>
+          </div>
+
+          <p style="margin:14px 0 0;font-size:11.5px;color:var(--text-dim);line-height:1.6;">
+            Je betaalt per actieve gebruiker. Zet je er iemand bij of haal je iemand weg, dan geldt het
+            nieuwe bedrag vanaf de eerstvolgende incasso &mdash; er wordt niets naar rato verrekend.
+            Opzeggen kan elke maand; je houdt toegang tot het einde van de betaalde termijn.
+          </p>
+        </div>
+      </div>
+
       <!-- Recente activiteit (audit-summary) — alleen org-admins -->
       <div class="card" id="orgAuditSummaryCard" style="max-width: 600px; margin-top: 20px; display:none;">
         <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;">
@@ -8265,7 +8315,7 @@
       // meldingen die in Mijn Dag zijn afgerond meteen kloppen op het Dashboard.
       if (page === 'dashboard') { loadDashboardStats(); loadDashboardPredictiveWidget(); }
       if (page === 'integraties') loadIntegrations();
-      if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); loadOrgEditForm(); loadOrgAuditSummary(); refreshMfaStatus(); }
+      if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); loadOrgEditForm(); loadOrgAuditSummary(); refreshMfaStatus(); loadBillingCard(); }
       if (page === 'compliance') loadCompliance();
       if (page === 'dagboek') initDaybook();
     }
@@ -20334,6 +20384,154 @@
         document.body.insertAdjacentHTML('beforeend', html);
       }).catch(function(err) {
         showToast('Team-overzicht laden mislukt: ' + (err.message || ''), 'error');
+      });
+    }
+
+    // ── Abonnement (Mollie) ──────────────────────────────────────
+    // De backend weigert netjes met een 503 zolang MOLLIE_API_KEY ontbreekt;
+    // dan tonen we alleen een neutrale melding in plaats van knoppen die
+    // toch niets doen.
+    var _billingStatus = null;
+
+    function _billMeld(tekst, soort) {
+      var el = document.getElementById('billMelding');
+      if (!el) return;
+      if (!tekst) { el.style.display = 'none'; return; }
+      el.style.display = '';
+      el.textContent = tekst;
+      el.style.color = (soort === 'fout') ? 'var(--danger, #dc2626)' : 'var(--success, #16a34a)';
+    }
+
+    function loadBillingCard() {
+      var kaart = document.getElementById('billingCard');
+      if (!kaart) return;
+      if (!currentUser || !currentUser.is_org_admin) { kaart.style.display = 'none'; return; }
+      kaart.style.display = '';
+      _billMeld('');
+
+      api('GET', '/api/billing/status').then(function(st) {
+        if (!st) return;
+        _billingStatus = st;
+        var uit = document.getElementById('billingUit');
+        var inhoud = document.getElementById('billingInhoud');
+        if (!st.geconfigureerd) {
+          uit.style.display = '';
+          inhoud.style.display = 'none';
+          return;
+        }
+        uit.style.display = 'none';
+        inhoud.style.display = '';
+
+        document.getElementById('billTarief').textContent = '\u20ac ' + st.tarief_per_gebruiker;
+        document.getElementById('billGebruikers').textContent = st.actieve_gebruikers;
+        document.getElementById('billBedrag').textContent = '\u20ac ' + st.maandbedrag;
+
+        var statusTekst = {
+          'active': 'Actief',
+          'pending': 'Wacht op machtiging',
+          'past_due': 'Incasso mislukt',
+          'canceled': 'Opgezegd',
+          'geen': 'Nog geen abonnement'
+        }[st.billing_status] || st.billing_status;
+        var kleur = (st.billing_status === 'active') ? 'var(--success, #16a34a)'
+                  : (st.billing_status === 'past_due') ? '#c2410c' : 'var(--text-muted)';
+        var statusEl = document.getElementById('billStatus');
+        statusEl.textContent = statusTekst + (st.testmodus ? ' (testmodus)' : '');
+        statusEl.style.color = kleur;
+        statusEl.style.fontWeight = '600';
+
+        var termijn = document.getElementById('billTermijn');
+        if (st.betaald_tot) {
+          termijn.textContent = 'Betaald tot ' + new Date(st.betaald_tot).toLocaleDateString('nl-NL',
+            { day: 'numeric', month: 'long', year: 'numeric' }) + '.';
+        } else if (st.proef_tot) {
+          termijn.textContent = 'Proefperiode loopt tot ' + new Date(st.proef_tot).toLocaleDateString('nl-NL',
+            { day: 'numeric', month: 'long', year: 'numeric' }) + '.';
+        } else {
+          termijn.textContent = '';
+        }
+
+        // Aantal gebruikers uit de pas met wat Mollie incasseert.
+        var afwijking = document.getElementById('billAfwijking');
+        if (st.heeft_abonnement && st.in_rekening_gebracht_voor &&
+            st.in_rekening_gebracht_voor !== st.actieve_gebruikers) {
+          afwijking.style.display = '';
+          afwijking.textContent = 'Er wordt nu voor ' + st.in_rekening_gebracht_voor +
+            ' gebruiker(s) ge\u00efncasseerd, terwijl er ' + st.actieve_gebruikers +
+            ' actief zijn. Werk het bedrag bij zodat het klopt vanaf de volgende incasso.';
+        } else {
+          afwijking.style.display = 'none';
+        }
+
+        document.getElementById('billStartBtn').style.display = st.heeft_abonnement ? 'none' : '';
+        document.getElementById('billSyncBtn').style.display = st.heeft_abonnement ? '' : 'none';
+        document.getElementById('billCancelBtn').style.display = st.heeft_abonnement ? '' : 'none';
+      }).catch(function(e) {
+        _billMeld(e.message || 'Kon de abonnementsgegevens niet laden', 'fout');
+      });
+    }
+
+    function startAbonnement() {
+      var btn = document.getElementById('billStartBtn');
+      btn.disabled = true;
+      var oud = btn.textContent;
+      btn.textContent = 'Bezig...';
+      _billMeld('');
+      api('POST', '/api/billing/start').then(function(res) {
+        if (res && res.checkout_url) {
+          // Top-level navigatie: een formulier-post of iframe wordt door het
+          // contentbeveiligingsbeleid van dit portaal geblokkeerd.
+          window.location.href = res.checkout_url;
+          return;
+        }
+        _billMeld('Geen betaallink ontvangen van Mollie', 'fout');
+        btn.disabled = false; btn.textContent = oud;
+      }).catch(function(e) {
+        _billMeld(e.message || 'Starten mislukt', 'fout');
+        btn.disabled = false; btn.textContent = oud;
+      });
+    }
+
+    function syncAbonnementSeats() {
+      var btn = document.getElementById('billSyncBtn');
+      btn.disabled = true;
+      _billMeld('');
+      api('POST', '/api/billing/seats/sync').then(function(res) {
+        btn.disabled = false;
+        if (!res) return;
+        if (res.status === 'ongewijzigd') {
+          _billMeld('Het bedrag klopt al met het aantal gebruikers.');
+        } else {
+          _billMeld('Bijgewerkt naar \u20ac ' + res.maandbedrag +
+                    ' \u2014 dat gaat in bij de eerstvolgende incasso.');
+        }
+        loadBillingCard();
+      }).catch(function(e) {
+        btn.disabled = false;
+        _billMeld(e.message || 'Bijwerken mislukt', 'fout');
+      });
+    }
+
+    function zegAbonnementOp() {
+      var tot = (_billingStatus && _billingStatus.betaald_tot)
+        ? new Date(_billingStatus.betaald_tot).toLocaleDateString('nl-NL')
+        : null;
+      var vraag = 'Weet je zeker dat je het abonnement wilt opzeggen?' +
+        (tot ? '\n\nJe houdt toegang tot ' + tot + '.' : '');
+      if (!confirm(vraag)) return;
+
+      var btn = document.getElementById('billCancelBtn');
+      btn.disabled = true;
+      _billMeld('');
+      api('POST', '/api/billing/cancel').then(function(res) {
+        btn.disabled = false;
+        _billMeld('Abonnement opgezegd.' +
+          (res && res.toegang_tot ? ' Je houdt toegang tot ' +
+            new Date(res.toegang_tot).toLocaleDateString('nl-NL') + '.' : ''));
+        loadBillingCard();
+      }).catch(function(e) {
+        btn.disabled = false;
+        _billMeld(e.message || 'Opzeggen mislukt', 'fout');
       });
     }
 
