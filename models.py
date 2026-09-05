@@ -1417,3 +1417,84 @@ class ToolboxDeelnemer(Base):
 
     toolbox = relationship("Toolbox", back_populates="deelnemers")
     user = relationship("User", foreign_keys=[user_id])
+
+
+class Incident(Base):
+    """Een ongeval, bijna-ongeval of gevaarlijke situatie op het werk.
+
+    Bewust een eigen tabel en geen Melding met een vinkje. Een melding gaat over
+    een object -- een scheur in het wegdek, met een CROW-schadebeeld en een
+    kostenraming. Een incident gaat over een mens. De velden, de bewaartermijn,
+    wie het mag inzien en wat je ermee moet richting de Arbeidsinspectie zijn
+    allemaal anders.
+
+    Meldingsdrempel bewust laag: IEDEREEN mag een incident melden, ook een
+    viewer. Bijna-ongevallen worden alleen gemeld als het makkelijk is en niemand
+    bang hoeft te zijn; dat is de hele bedoeling van bijna-ongevalregistratie.
+    Inzien van andermans incidenten en de afhandeling is wel voorbehouden aan
+    admin en manager, want hier staan gezondheidsgegevens in.
+
+    AVG: letsel en verzuim van een met naam genoemd persoon zijn bijzondere
+    persoonsgegevens. Daarom staat er niet meer in dan nodig -- geen medische
+    details, alleen de categorie letsel en of er verzuim was -- en is
+    `betrokkene_naam` vrije tekst zodat een externe niet als gebruiker
+    vastgelegd hoeft te worden.
+
+    Status-flow:
+        gemeld       -> net binnen, nog niets mee gedaan
+        in_onderzoek -> oorzaak wordt uitgezocht
+        afgehandeld  -> maatregelen genomen en vastgelegd
+    """
+
+    __tablename__ = "incidenten"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)
+
+    # ongeval | bijna_ongeval | gevaarlijke_situatie
+    soort = Column(String(30), nullable=False, index=True)
+
+    # Wanneer het GEBEURDE, niet wanneer het gemeld werd -- die twee lopen bij
+    # een bijna-ongeval vaak een dag uit elkaar.
+    gebeurd_op = Column(DateTime, nullable=True)
+
+    locatie = Column(String(255), nullable=True)
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+
+    omschrijving = Column(Text, nullable=False)
+    direct_genomen = Column(Text, nullable=True)     # wat er meteen is gedaan
+    oorzaak = Column(Text, nullable=True)            # ingevuld bij het onderzoek
+    vervolgmaatregelen = Column(Text, nullable=True)
+
+    # Alleen zinvol bij een ongeval. geen | ehbo | behandeling | ziekenhuis | dodelijk
+    letsel = Column(String(20), nullable=True)
+    verzuim = Column(Boolean, default=False, nullable=False)
+    betrokkene_naam = Column(String(120), nullable=True)   # mag een externe zijn
+    betrokkene_user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+
+    # De Arbeidsinspectie moet worden ingelicht bij ziekenhuisopname, blijvend
+    # letsel of overlijden. Wij bepalen dat niet voor de klant, maar leggen wel
+    # vast of het gebeurd is -- dat is precies wat een auditor vraagt.
+    gemeld_bij_inspectie = Column(Boolean, default=False, nullable=False)
+
+    photo_url = Column(Text, nullable=True)          # inline base64 of externe URL
+    photo_2_url = Column(Text, nullable=True)
+
+    status = Column(String(30), nullable=False, default="gemeld", index=True)
+    afgehandeld_op = Column(DateTime, nullable=True)
+    afgehandeld_door = Column(String, ForeignKey("users.id"), nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    organization = relationship("Organization")
+    project = relationship("Project", foreign_keys=[project_id])
+    asset = relationship("Asset", foreign_keys=[asset_id])
+    betrokkene = relationship("User", foreign_keys=[betrokkene_user_id])
+    afhandelaar = relationship("User", foreign_keys=[afgehandeld_door])
+    melder = relationship("User", foreign_keys=[created_by])

@@ -4045,13 +4045,14 @@
       <div class="page-header">
         <div>
           <h1 data-i18n="vg_title">Veiligheid</h1>
-          <p data-i18n="vg_sub">Toolboxen en presentielijsten van je ploeg.</p>
+          <p id="vgSub" data-i18n="vg_sub">Toolboxen en presentielijsten van je ploeg.</p>
         </div>
-        <button class="btn-primary" onclick="openToolboxModal()" data-i18n="vg_new">+ Nieuwe toolbox</button>
+        <button class="btn-primary" id="vgToolboxKnop" onclick="openToolboxModal()" data-i18n="vg_new">+ Nieuwe toolbox</button>
       </div>
 
       <div class="tab-row" style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:20px;">
         <button class="int-tab active" data-tab="toolbox" onclick="switchVeiligheidTab('toolbox')" data-i18n="vg_tab_toolbox">Toolbox</button>
+        <button class="int-tab" data-tab="incidenten" onclick="switchVeiligheidTab('incidenten')" data-i18n="vg_tab_incidenten">Incidenten</button>
       </div>
 
       <div id="vg-tab-toolbox">
@@ -4067,6 +4068,39 @@
           </select>
         </div>
         <div class="card" id="toolboxList">
+          <div class="loading-spinner"></div>
+        </div>
+      </div>
+
+      <div id="vg-tab-incidenten" style="display:none;">
+        <!-- Melden staat bewust bovenaan en open voor iedereen: een
+             bijna-ongeval wordt alleen gemeld als het makkelijk gaat. -->
+        <div class="card" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+          <div>
+            <strong style="font-size:15px;" data-i18n="inc_melden_kop">Iets gezien of gebeurd?</strong>
+            <p style="font-size:13px;color:var(--text-muted);margin-top:2px;" data-i18n="inc_melden_sub">Melden mag altijd en door iedereen. Ook een bijna-ongeval.</p>
+          </div>
+          <button class="btn-primary" onclick="openIncidentModal()" data-i18n="inc_melden">Incident melden</button>
+        </div>
+
+        <div class="stats-grid" id="incStats" style="margin-bottom:16px;"></div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;">
+          <select id="incFilterSoort" onchange="loadIncidenten()" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+            <option value="" data-i18n="inc_alle_soorten">Alle soorten</option>
+            <option value="ongeval" data-i18n="inc_ongeval">Ongeval</option>
+            <option value="bijna_ongeval" data-i18n="inc_bijna">Bijna-ongeval</option>
+            <option value="gevaarlijke_situatie" data-i18n="inc_gevaar">Gevaarlijke situatie</option>
+          </select>
+          <select id="incFilterStatus" onchange="loadIncidenten()" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+            <option value="">Alle statussen</option>
+            <option value="gemeld" data-i18n="inc_st_gemeld">Gemeld</option>
+            <option value="in_onderzoek" data-i18n="inc_st_onderzoek">In onderzoek</option>
+            <option value="afgehandeld" data-i18n="inc_st_afgehandeld">Afgehandeld</option>
+          </select>
+        </div>
+
+        <div class="card" id="incidentList">
           <div class="loading-spinner"></div>
         </div>
       </div>
@@ -5376,6 +5410,96 @@
     </div>
   </div>
 
+
+  <!-- ═══ INCIDENT MELDEN ═══ -->
+  <div class="modal-overlay" id="incidentModal">
+    <div class="modal" style="max-width:640px;">
+      <button class="modal-close" onclick="closeIncidentModal()" aria-label="Sluiten">&times;</button>
+      <h2 data-i18n="inc_modal_title">Incident melden</h2>
+      <p class="subtitle" data-i18n="inc_modal_sub">Hoe eerder en hoe gewoner dit gebeurt, hoe meer je ermee kunt. Ook een bijna-ongeval telt.</p>
+
+      <div class="form-group">
+        <label data-i18n="inc_soort">Wat is er gebeurd?</label>
+        <select id="incSoort" onchange="incToggleLetsel()">
+          <option value="bijna_ongeval" data-i18n="inc_bijna">Bijna-ongeval</option>
+          <option value="gevaarlijke_situatie" data-i18n="inc_gevaar">Gevaarlijke situatie</option>
+          <option value="ongeval" data-i18n="inc_ongeval">Ongeval</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label data-i18n="inc_omschrijving">Wat gebeurde er precies?</label>
+        <textarea id="incOmschrijving" rows="4" placeholder="Beschrijf kort wat er gebeurde en waar."></textarea>
+      </div>
+      <div class="form-group">
+        <label data-i18n="inc_project">Project (optioneel)</label>
+        <select id="incProject"><option value="">-</option></select>
+      </div>
+      <div class="form-group">
+        <label data-i18n="inc_locatie">Locatie (optioneel)</label>
+        <input id="incLocatie" type="text" placeholder="Bijvoorbeeld: bij de inrit, kmp 12.4">
+      </div>
+      <div class="form-group">
+        <label data-i18n="inc_direct">Wat is er meteen gedaan? (optioneel)</label>
+        <textarea id="incDirect" rows="2"></textarea>
+      </div>
+
+      <div id="incLetselBlok" style="display:none;border-top:1px solid var(--border);padding-top:14px;">
+        <p style="font-size:12px;color:var(--text-dim);margin-bottom:10px;" data-i18n="inc_avg">
+          Deze gegevens gaan over een persoon. Vul niet meer in dan nodig; medische details horen hier niet.
+        </p>
+        <div class="form-group">
+          <label data-i18n="inc_letsel">Letsel</label>
+          <select id="incLetsel" onchange="incLetselHint()">
+            <option value="geen" data-i18n="inc_letsel_geen">Geen letsel</option>
+            <option value="ehbo" data-i18n="inc_letsel_ehbo">EHBO ter plaatse</option>
+            <option value="behandeling" data-i18n="inc_letsel_beh">Behandeling door een arts</option>
+            <option value="ziekenhuis" data-i18n="inc_letsel_zkh">Ziekenhuisopname</option>
+            <option value="dodelijk" data-i18n="inc_letsel_dood">Dodelijk</option>
+          </select>
+        </div>
+        <div id="incInspectieHint" style="display:none;background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.3);color:var(--red);border-radius:10px;padding:12px;font-size:13px;margin-bottom:14px;"></div>
+        <div class="form-group">
+          <label data-i18n="inc_betrokkene">Naam betrokkene (optioneel)</label>
+          <input id="incBetrokkene" type="text">
+        </div>
+        <label style="display:flex;align-items:center;gap:10px;font-size:14px;margin-bottom:14px;cursor:pointer;">
+          <input id="incVerzuim" type="checkbox" style="width:18px;height:18px;accent-color:var(--accent);">
+          <span data-i18n="inc_verzuim">Er is verzuim (niet kunnen werken)</span>
+        </label>
+      </div>
+
+      <div class="form-actions" style="display:flex;gap:10px;justify-content:flex-end;">
+        <button class="btn-secondary" onclick="closeIncidentModal()" data-i18n="annuleren">Annuleren</button>
+        <button class="btn-primary" onclick="saveIncident()" data-i18n="inc_verstuur">Melden</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ INCIDENT DETAIL / AFHANDELEN ═══ -->
+  <div class="modal-overlay" id="incidentDetailModal">
+    <div class="modal" style="max-width:680px;">
+      <button class="modal-close" onclick="closeIncidentDetail()" aria-label="Sluiten">&times;</button>
+      <h2 id="incdTitel">Incident</h2>
+      <p class="subtitle" id="incdSub"></p>
+      <div id="incdInhoud"></div>
+
+      <div id="incdAfhandelen" style="border-top:1px solid var(--border);margin-top:18px;padding-top:16px;">
+        <div class="form-group">
+          <label data-i18n="inc_oorzaak">Oorzaak</label>
+          <textarea id="incdOorzaak" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+          <label data-i18n="inc_maatregel">Welke maatregel is genomen?</label>
+          <textarea id="incdMaatregel" rows="3" placeholder="Zonder maatregel kan een incident niet worden afgehandeld."></textarea>
+        </div>
+        <div class="form-actions" style="display:flex;gap:10px;justify-content:flex-end;">
+          <button class="btn-secondary" onclick="incBewaarOnderzoek()" data-i18n="opslaan">Opslaan</button>
+          <button class="btn-primary" onclick="incAfhandelen()" data-i18n="inc_afhandelen">Afhandelen</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- ═══════ LEAFLET JS ═══════ -->
@@ -5399,7 +5523,8 @@
       nl: {
         // Nav & Sidebar
         dashboard: 'Dashboard', projecten: 'Projecten', meldingen: 'Meldingen', kaart: 'Kaart', gebruikers: 'Gebruikers',
-        beheer: 'Beheer', admin_overzicht: 'Admin Overzicht', instellingen: 'Instellingen', overig: 'Overig', hoofdmenu: 'Hoofdmenu',
+        beheer: 'Beheer', admin_overzicht: 'Admin Overzicht', instellingen: 'Instellingen', overig: 'Overig', hoofdmenu: 'Hoofdmenu', vg_sub_incidenten: 'Ongevallen, bijna-ongevallen en gevaarlijke situaties.',
+        vg_tab_incidenten: 'Incidenten', inc_melden: 'Incident melden', inc_melden_kop: 'Iets gezien of gebeurd?', inc_melden_sub: 'Melden mag altijd en door iedereen. Ook een bijna-ongeval.', inc_modal_title: 'Incident melden', inc_modal_sub: 'Hoe eerder en hoe gewoner dit gebeurt, hoe meer je ermee kunt. Ook een bijna-ongeval telt.', inc_soort: 'Wat is er gebeurd?', inc_soort_kop: 'Soort', inc_ongeval: 'Ongeval', inc_bijna: 'Bijna-ongeval', inc_gevaar: 'Gevaarlijke situatie', inc_omschrijving: 'Wat gebeurde er precies?', inc_omschrijving_kop: 'Wat gebeurde er', inc_project: 'Project (optioneel)', inc_locatie: 'Locatie (optioneel)', inc_direct: 'Wat is er meteen gedaan? (optioneel)', inc_direct_kop: 'Meteen gedaan', inc_letsel: 'Letsel', inc_letsel_geen: 'Geen letsel', inc_letsel_ehbo: 'EHBO ter plaatse', inc_letsel_behandeling: 'Behandeling door een arts', inc_letsel_ziekenhuis: 'Ziekenhuisopname', inc_letsel_dodelijk: 'Dodelijk', inc_letsel_beh: 'Behandeling door een arts', inc_letsel_zkh: 'Ziekenhuisopname', inc_letsel_dood: 'Dodelijk', inc_betrokkene: 'Naam betrokkene (optioneel)', inc_verzuim: 'Er is verzuim (niet kunnen werken)', inc_avg: 'Deze gegevens gaan over een persoon. Vul niet meer in dan nodig; medische details horen hier niet.', inc_verstuur: 'Melden', inc_gemeld: 'Incident gemeld', inc_melden_mislukt: 'Melden mislukt', inc_omschrijving_verplicht: 'Beschrijf kort wat er gebeurde', inc_maatregel_verplicht: 'Leg eerst vast welke maatregel is genomen', inc_oorzaak: 'Oorzaak', inc_maatregel: 'Welke maatregel is genomen?', inc_afhandelen: 'Afhandelen', inc_afgehandeld: 'Incident afgehandeld', inc_opgeslagen: 'Onderzoek opgeslagen', inc_alle_soorten: 'Alle soorten', inc_st_gemeld: 'Gemeld', inc_st_onderzoek: 'In onderzoek', inc_st_afgehandeld: 'Afgehandeld', inc_leeg_titel: 'Nog geen incidenten', inc_leeg_tekst: 'Dat is goed nieuws, maar meld een bijna-ongeval ook als er niets gebeurde.', inc_inspectie_kop: 'Meld dit bij de Arbeidsinspectie', inc_inspectie_waarschuwing: 'Bij ziekenhuisopname, blijvend letsel of overlijden moet dit ongeval direct worden gemeld bij de Nederlandse Arbeidsinspectie.', inc_gemeld_bij_inspectie: 'Gemeld bij de Arbeidsinspectie', begrepen: 'Begrepen', ja: 'Ja', nee: 'Nee',
         nav_veiligheid: 'Veiligheid', vg_title: 'Veiligheid', vg_sub: 'Toolboxen en presentielijsten van je ploeg.', vg_new: '+ Nieuwe toolbox', vg_tab_toolbox: 'Toolbox', vg_all_projects: 'Alle projecten', vg_leeg_titel: 'Nog geen toolbox', vg_leeg_tekst: 'Maak er een aan voordat het werk begint.', tb_new_title: 'Nieuwe toolbox', tb_new_sub: 'Kies het project en het onderwerp. Laat er een voorstel bij maken en pas het aan naar wat je op deze plek ziet.', tb_project: 'Project', tb_onderwerp: 'Onderwerp', tb_generate: 'Voorstel opstellen', tb_inleiding: 'Waar gaat het over', tb_risicos: 'Risico\'s (een per regel)', tb_maatregelen: 'Maatregelen (een per regel)', tb_bespreekpunten: 'Bespreekpunten (een per regel)', tb_risicos_kop: 'Risico\'s', tb_maatregelen_kop: 'Maatregelen', tb_bespreekpunten_kop: 'Bespreekpunten', tb_presentielijst: 'Presentielijst', tb_eigen_medewerker: 'Eigen medewerker', tb_extern: 'Externe deelnemer', tb_add: 'Toevoegen', tb_kies: 'Kies', tb_pdf: 'PDF', tb_afsluiten: 'Afsluiten', tb_teken: 'Tekenen', tb_sign_title: 'Tekenen voor deelname', tb_sign_save: 'Handtekening opslaan', tb_getekend: 'Getekend', tb_getekend_op: 'getekend op', tb_niet_getekend: 'niet getekend', tb_geen_deelnemers: 'Nog niemand op de lijst.', tb_extern_badge: 'extern', tb_kies_project: 'Kies eerst een project', tb_kies_onderwerp: 'Vul een onderwerp in', tb_kies_medewerker: 'Kies een medewerker', tb_naam_verplicht: 'Naam is verplicht', tb_bezig: 'Bezig...', tb_bron_ai: 'Opgesteld met AI uit de projectcontext', tb_bron_sjabloon: 'Sjabloon gebruikt (geen AI beschikbaar) - loop het zelf na', tb_open_meldingen: 'open meldingen', tb_gen_mislukt: 'Voorstel mislukt', tb_opgeslagen: 'Toolbox opgeslagen', tb_opslaan_mislukt: 'Opslaan mislukt', tb_add_mislukt: 'Toevoegen mislukt', tb_getekend_toast: 'Handtekening opgeslagen', tb_afgesloten: 'Toolbox afgesloten', tb_afsluiten_vraag: 'Hierna kan er niets meer worden gewijzigd. Doorgaan?', tb_pdf_klaar: 'PDF gedownload', tb_pdf_mislukt: 'PDF mislukt', datum: 'Datum', fout_laden: 'Laden mislukt', compliance: 'Compliance', handleiding: 'Handleiding', rondleiding: 'Rondleiding',
         uitloggen: 'Uitloggen',
         // Dashboard
@@ -5939,7 +6064,8 @@
       },
       en: {
         dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
-        beheer: 'Management', admin_overzicht: 'Admin Overview', instellingen: 'Settings', overig: 'Other', hoofdmenu: 'Main menu',
+        beheer: 'Management', admin_overzicht: 'Admin Overview', instellingen: 'Settings', overig: 'Other', hoofdmenu: 'Main menu', vg_sub_incidenten: 'Accidents, near misses and unsafe situations.',
+        vg_tab_incidenten: 'Incidents', inc_melden: 'Report incident', inc_melden_kop: 'Seen or had something happen?', inc_melden_sub: 'Anyone can report, any time. Near misses count too.', inc_modal_title: 'Report incident', inc_modal_sub: 'The sooner and the more routine this is, the more you can do with it. Near misses count.', inc_soort: 'What happened?', inc_soort_kop: 'Type', inc_ongeval: 'Accident', inc_bijna: 'Near miss', inc_gevaar: 'Unsafe situation', inc_omschrijving: 'What exactly happened?', inc_omschrijving_kop: 'What happened', inc_project: 'Project (optional)', inc_locatie: 'Location (optional)', inc_direct: 'What was done immediately? (optional)', inc_direct_kop: 'Immediate action', inc_letsel: 'Injury', inc_letsel_geen: 'No injury', inc_letsel_ehbo: 'First aid on site', inc_letsel_behandeling: 'Treated by a doctor', inc_letsel_ziekenhuis: 'Hospital admission', inc_letsel_dodelijk: 'Fatal', inc_letsel_beh: 'Treated by a doctor', inc_letsel_zkh: 'Hospital admission', inc_letsel_dood: 'Fatal', inc_betrokkene: 'Name of person involved (optional)', inc_verzuim: 'Resulted in absence from work', inc_avg: 'This is personal data. Enter no more than necessary; medical details do not belong here.', inc_verstuur: 'Report', inc_gemeld: 'Incident reported', inc_melden_mislukt: 'Reporting failed', inc_omschrijving_verplicht: 'Briefly describe what happened', inc_maatregel_verplicht: 'First record what action was taken', inc_oorzaak: 'Cause', inc_maatregel: 'What action was taken?', inc_afhandelen: 'Close', inc_afgehandeld: 'Incident closed', inc_opgeslagen: 'Investigation saved', inc_alle_soorten: 'All types', inc_st_gemeld: 'Reported', inc_st_onderzoek: 'Under investigation', inc_st_afgehandeld: 'Closed', inc_leeg_titel: 'No incidents yet', inc_leeg_tekst: 'Good news, but report near misses too, even when nothing happened.', inc_inspectie_kop: 'Report this to the labour inspectorate', inc_inspectie_waarschuwing: 'Hospital admission, permanent injury or death must be reported to the Netherlands Labour Authority immediately.', inc_gemeld_bij_inspectie: 'Reported to the labour inspectorate', begrepen: 'Understood', ja: 'Yes', nee: 'No',
         nav_veiligheid: 'Safety', vg_title: 'Safety', vg_sub: 'Toolbox talks and attendance lists for your crew.', vg_new: '+ New toolbox talk', vg_tab_toolbox: 'Toolbox', vg_all_projects: 'All projects', vg_leeg_titel: 'No toolbox talk yet', vg_leeg_tekst: 'Create one before work starts.', tb_new_title: 'New toolbox talk', tb_new_sub: 'Pick the project and the subject. Have a draft written and adjust it to what you see on site.', tb_project: 'Project', tb_onderwerp: 'Subject', tb_generate: 'Write a draft', tb_inleiding: 'What it is about', tb_risicos: 'Risks (one per line)', tb_maatregelen: 'Controls (one per line)', tb_bespreekpunten: 'Discussion points (one per line)', tb_risicos_kop: 'Risks', tb_maatregelen_kop: 'Controls', tb_bespreekpunten_kop: 'Discussion points', tb_presentielijst: 'Attendance list', tb_eigen_medewerker: 'Own employee', tb_extern: 'External attendee', tb_add: 'Add', tb_kies: 'Select', tb_pdf: 'PDF', tb_afsluiten: 'Close', tb_teken: 'Sign', tb_sign_title: 'Sign for attendance', tb_sign_save: 'Save signature', tb_getekend: 'Signed', tb_getekend_op: 'signed on', tb_niet_getekend: 'not signed', tb_geen_deelnemers: 'Nobody on the list yet.', tb_extern_badge: 'external', tb_kies_project: 'Select a project first', tb_kies_onderwerp: 'Enter a subject', tb_kies_medewerker: 'Select an employee', tb_naam_verplicht: 'Name is required', tb_bezig: 'Working...', tb_bron_ai: 'Drafted with AI from the project context', tb_bron_sjabloon: 'Template used (no AI available) - review it yourself', tb_open_meldingen: 'open reports', tb_gen_mislukt: 'Draft failed', tb_opgeslagen: 'Toolbox talk saved', tb_opslaan_mislukt: 'Saving failed', tb_add_mislukt: 'Could not add', tb_getekend_toast: 'Signature saved', tb_afgesloten: 'Toolbox talk closed', tb_afsluiten_vraag: 'Nothing can be changed after this. Continue?', tb_pdf_klaar: 'PDF downloaded', tb_pdf_mislukt: 'PDF failed', datum: 'Date', fout_laden: 'Loading failed', compliance: 'Compliance', handleiding: 'Manual', rondleiding: 'Tour',
         uitloggen: 'Logout',
         welkom_terug: 'Welcome back',
@@ -6417,7 +6543,8 @@
       },
       de: {
         dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
-        beheer: 'Verwaltung', admin_overzicht: 'Admin Übersicht', instellingen: 'Einstellungen', overig: 'Sonstiges', hoofdmenu: 'Hauptmenü',
+        beheer: 'Verwaltung', admin_overzicht: 'Admin Übersicht', instellingen: 'Einstellungen', overig: 'Sonstiges', hoofdmenu: 'Hauptmenü', vg_sub_incidenten: 'Unfälle, Beinaheunfälle und gefährliche Situationen.',
+        vg_tab_incidenten: 'Vorfälle', inc_melden: 'Vorfall melden', inc_melden_kop: 'Etwas gesehen oder passiert?', inc_melden_sub: 'Jeder darf jederzeit melden. Auch Beinaheunfälle.', inc_modal_title: 'Vorfall melden', inc_modal_sub: 'Je früher und selbstverständlicher, desto mehr lässt sich damit anfangen.', inc_soort: 'Was ist passiert?', inc_soort_kop: 'Art', inc_ongeval: 'Unfall', inc_bijna: 'Beinaheunfall', inc_gevaar: 'Gefährliche Situation', inc_omschrijving: 'Was genau ist passiert?', inc_omschrijving_kop: 'Was passiert ist', inc_project: 'Projekt (optional)', inc_locatie: 'Ort (optional)', inc_direct: 'Was wurde sofort getan? (optional)', inc_direct_kop: 'Sofortmaßnahme', inc_letsel: 'Verletzung', inc_letsel_geen: 'Keine Verletzung', inc_letsel_ehbo: 'Erste Hilfe vor Ort', inc_letsel_behandeling: 'Ärztlich behandelt', inc_letsel_ziekenhuis: 'Krankenhausaufnahme', inc_letsel_dodelijk: 'Tödlich', inc_letsel_beh: 'Ärztlich behandelt', inc_letsel_zkh: 'Krankenhausaufnahme', inc_letsel_dood: 'Tödlich', inc_betrokkene: 'Name der betroffenen Person (optional)', inc_verzuim: 'Mit Arbeitsausfall', inc_avg: 'Dies sind personenbezogene Daten. Nur das Nötigste eintragen; medizinische Details gehören nicht hierher.', inc_verstuur: 'Melden', inc_gemeld: 'Vorfall gemeldet', inc_melden_mislukt: 'Meldung fehlgeschlagen', inc_omschrijving_verplicht: 'Beschreiben Sie kurz, was passiert ist', inc_maatregel_verplicht: 'Halten Sie zuerst die Maßnahme fest', inc_oorzaak: 'Ursache', inc_maatregel: 'Welche Maßnahme wurde ergriffen?', inc_afhandelen: 'Abschließen', inc_afgehandeld: 'Vorfall abgeschlossen', inc_opgeslagen: 'Untersuchung gespeichert', inc_alle_soorten: 'Alle Arten', inc_st_gemeld: 'Gemeldet', inc_st_onderzoek: 'In Untersuchung', inc_st_afgehandeld: 'Abgeschlossen', inc_leeg_titel: 'Noch keine Vorfälle', inc_leeg_tekst: 'Gute Nachricht -- melden Sie Beinaheunfälle trotzdem.', inc_inspectie_kop: 'Der Arbeitsaufsicht melden', inc_inspectie_waarschuwing: 'Krankenhausaufnahme, bleibende Schäden oder Tod sind der Arbeitsaufsicht unverzüglich zu melden.', inc_gemeld_bij_inspectie: 'Der Arbeitsaufsicht gemeldet', begrepen: 'Verstanden', ja: 'Ja', nee: 'Nein',
         nav_veiligheid: 'Sicherheit', vg_title: 'Sicherheit', vg_sub: 'Sicherheitsunterweisungen und Anwesenheitslisten.', vg_new: '+ Neue Unterweisung', vg_tab_toolbox: 'Unterweisung', vg_all_projects: 'Alle Projekte', vg_leeg_titel: 'Noch keine Unterweisung', vg_leeg_tekst: 'Legen Sie eine an, bevor die Arbeit beginnt.', tb_new_title: 'Neue Unterweisung', tb_new_sub: 'Projekt und Thema wählen. Entwurf erstellen lassen und an die Baustelle anpassen.', tb_project: 'Projekt', tb_onderwerp: 'Thema', tb_generate: 'Entwurf erstellen', tb_inleiding: 'Worum geht es', tb_risicos: 'Gefahren (eine pro Zeile)', tb_maatregelen: 'Maßnahmen (eine pro Zeile)', tb_bespreekpunten: 'Besprechungspunkte (einer pro Zeile)', tb_risicos_kop: 'Gefahren', tb_maatregelen_kop: 'Maßnahmen', tb_bespreekpunten_kop: 'Besprechungspunkte', tb_presentielijst: 'Anwesenheitsliste', tb_eigen_medewerker: 'Eigener Mitarbeiter', tb_extern: 'Externer Teilnehmer', tb_add: 'Hinzufügen', tb_kies: 'Wählen', tb_pdf: 'PDF', tb_afsluiten: 'Abschließen', tb_teken: 'Unterschreiben', tb_sign_title: 'Teilnahme unterschreiben', tb_sign_save: 'Unterschrift speichern', tb_getekend: 'Unterschrieben', tb_getekend_op: 'unterschrieben am', tb_niet_getekend: 'nicht unterschrieben', tb_geen_deelnemers: 'Noch niemand auf der Liste.', tb_extern_badge: 'extern', tb_kies_project: 'Wählen Sie zuerst ein Projekt', tb_kies_onderwerp: 'Thema eingeben', tb_kies_medewerker: 'Mitarbeiter wählen', tb_naam_verplicht: 'Name ist erforderlich', tb_bezig: 'Bitte warten...', tb_bron_ai: 'Mit KI aus dem Projektkontext erstellt', tb_bron_sjabloon: 'Vorlage verwendet (keine KI verfügbar) - bitte selbst prüfen', tb_open_meldingen: 'offene Meldungen', tb_gen_mislukt: 'Entwurf fehlgeschlagen', tb_opgeslagen: 'Unterweisung gespeichert', tb_opslaan_mislukt: 'Speichern fehlgeschlagen', tb_add_mislukt: 'Hinzufügen fehlgeschlagen', tb_getekend_toast: 'Unterschrift gespeichert', tb_afgesloten: 'Unterweisung abgeschlossen', tb_afsluiten_vraag: 'Danach kann nichts mehr geändert werden. Fortfahren?', tb_pdf_klaar: 'PDF heruntergeladen', tb_pdf_mislukt: 'PDF fehlgeschlagen', datum: 'Datum', fout_laden: 'Laden fehlgeschlagen', compliance: 'Compliance', handleiding: 'Handbuch', rondleiding: 'Rundgang',
         uitloggen: 'Abmelden',
         welkom_terug: 'Willkommen zurück',
@@ -6895,7 +7022,8 @@
       },
       fr: {
         dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
-        beheer: 'Gestion', admin_overzicht: 'Vue admin', instellingen: 'Paramètres', overig: 'Autre', hoofdmenu: 'Menu principal',
+        beheer: 'Gestion', admin_overzicht: 'Vue admin', instellingen: 'Paramètres', overig: 'Autre', hoofdmenu: 'Menu principal', vg_sub_incidenten: 'Accidents, presqu’accidents et situations dangereuses.',
+        vg_tab_incidenten: 'Incidents', inc_melden: 'Signaler un incident', inc_melden_kop: 'Vous avez vu ou vécu quelque chose ?', inc_melden_sub: 'Tout le monde peut signaler, à tout moment. Les presqu’accidents comptent aussi.', inc_modal_title: 'Signaler un incident', inc_modal_sub: 'Plus c’est rapide et banal, plus c’est utile. Un presqu’accident compte.', inc_soort: 'Que s’est-il passé ?', inc_soort_kop: 'Type', inc_ongeval: 'Accident', inc_bijna: 'Presqu’accident', inc_gevaar: 'Situation dangereuse', inc_omschrijving: 'Que s’est-il passé exactement ?', inc_omschrijving_kop: 'Ce qui s’est passé', inc_project: 'Projet (facultatif)', inc_locatie: 'Lieu (facultatif)', inc_direct: 'Qu’a-t-on fait immédiatement ? (facultatif)', inc_direct_kop: 'Action immédiate', inc_letsel: 'Blessure', inc_letsel_geen: 'Aucune blessure', inc_letsel_ehbo: 'Premiers secours sur place', inc_letsel_behandeling: 'Soins médicaux', inc_letsel_ziekenhuis: 'Hospitalisation', inc_letsel_dodelijk: 'Mortel', inc_letsel_beh: 'Soins médicaux', inc_letsel_zkh: 'Hospitalisation', inc_letsel_dood: 'Mortel', inc_betrokkene: 'Nom de la personne concernée (facultatif)', inc_verzuim: 'A entraîné un arrêt de travail', inc_avg: 'Il s’agit de données personnelles. N’indiquez que le nécessaire ; pas de détails médicaux.', inc_verstuur: 'Signaler', inc_gemeld: 'Incident signalé', inc_melden_mislukt: 'Échec du signalement', inc_omschrijving_verplicht: 'Décrivez brièvement ce qui s’est passé', inc_maatregel_verplicht: 'Indiquez d’abord la mesure prise', inc_oorzaak: 'Cause', inc_maatregel: 'Quelle mesure a été prise ?', inc_afhandelen: 'Clôturer', inc_afgehandeld: 'Incident clôturé', inc_opgeslagen: 'Enquête enregistrée', inc_alle_soorten: 'Tous les types', inc_st_gemeld: 'Signalé', inc_st_onderzoek: 'En cours d’enquête', inc_st_afgehandeld: 'Clôturé', inc_leeg_titel: 'Aucun incident', inc_leeg_tekst: 'Bonne nouvelle, mais signalez aussi les presqu’accidents.', inc_inspectie_kop: 'Signalez-le à l’inspection du travail', inc_inspectie_waarschuwing: 'Une hospitalisation, une blessure permanente ou un décès doit être signalé immédiatement à l’inspection du travail.', inc_gemeld_bij_inspectie: 'Signalé à l’inspection du travail', begrepen: 'Compris', ja: 'Oui', nee: 'Non',
         nav_veiligheid: 'Sécurité', vg_title: 'Sécurité', vg_sub: 'Causeries sécurité et listes de présence de votre équipe.', vg_new: '+ Nouvelle causerie', vg_tab_toolbox: 'Causerie', vg_all_projects: 'Tous les projets', vg_leeg_titel: 'Aucune causerie', vg_leeg_tekst: 'Créez-en une avant le début des travaux.', tb_new_title: 'Nouvelle causerie', tb_new_sub: 'Choisissez le projet et le sujet. Faites rédiger une proposition et adaptez-la au chantier.', tb_project: 'Projet', tb_onderwerp: 'Sujet', tb_generate: 'Rédiger une proposition', tb_inleiding: 'De quoi il s’agit', tb_risicos: 'Risques (un par ligne)', tb_maatregelen: 'Mesures (une par ligne)', tb_bespreekpunten: 'Points à aborder (un par ligne)', tb_risicos_kop: 'Risques', tb_maatregelen_kop: 'Mesures', tb_bespreekpunten_kop: 'Points à aborder', tb_presentielijst: 'Liste de présence', tb_eigen_medewerker: 'Collaborateur interne', tb_extern: 'Participant externe', tb_add: 'Ajouter', tb_kies: 'Choisir', tb_pdf: 'PDF', tb_afsluiten: 'Clôturer', tb_teken: 'Signer', tb_sign_title: 'Signer la présence', tb_sign_save: 'Enregistrer la signature', tb_getekend: 'Signé', tb_getekend_op: 'signé le', tb_niet_getekend: 'non signé', tb_geen_deelnemers: 'Personne sur la liste.', tb_extern_badge: 'externe', tb_kies_project: 'Sélectionnez d\'abord un projet', tb_kies_onderwerp: 'Saisissez un sujet', tb_kies_medewerker: 'Choisissez un collaborateur', tb_naam_verplicht: 'Le nom est obligatoire', tb_bezig: 'En cours...', tb_bron_ai: 'Rédigé par l\'IA à partir du contexte du projet', tb_bron_sjabloon: 'Modèle utilisé (IA indisponible) - relisez-le vous-même', tb_open_meldingen: 'signalements ouverts', tb_gen_mislukt: 'Échec de la proposition', tb_opgeslagen: 'Causerie enregistrée', tb_opslaan_mislukt: 'Échec de l\'enregistrement', tb_add_mislukt: 'Échec de l\'ajout', tb_getekend_toast: 'Signature enregistrée', tb_afgesloten: 'Causerie clôturée', tb_afsluiten_vraag: 'Plus rien ne pourra être modifié ensuite. Continuer ?', tb_pdf_klaar: 'PDF téléchargé', tb_pdf_mislukt: 'Échec du PDF', datum: 'Date', fout_laden: 'Échec du chargement', compliance: 'Conformité', handleiding: 'Manuel', rondleiding: 'Visite guidée',
         uitloggen: 'Déconnexion',
         welkom_terug: 'Bon retour',
@@ -7373,7 +7501,8 @@
       },
       tr: {
         dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
-        beheer: 'Yönetim', admin_overzicht: 'Admin Genel Bakış', instellingen: 'Ayarlar', overig: 'Diğer', hoofdmenu: 'Ana menü',
+        beheer: 'Yönetim', admin_overzicht: 'Admin Genel Bakış', instellingen: 'Ayarlar', overig: 'Diğer', hoofdmenu: 'Ana menü', vg_sub_incidenten: 'Kazalar, ramak kala olaylar ve tehlikeli durumlar.',
+        vg_tab_incidenten: 'Olaylar', inc_melden: 'Olay bildir', inc_melden_kop: 'Bir şey mi gördünüz veya oldu?', inc_melden_sub: 'Herkes her zaman bildirebilir. Ramak kala olaylar da sayılır.', inc_modal_title: 'Olay bildir', inc_modal_sub: 'Ne kadar erken ve ne kadar olağan olursa o kadar işe yarar.', inc_soort: 'Ne oldu?', inc_soort_kop: 'Tür', inc_ongeval: 'Kaza', inc_bijna: 'Ramak kala', inc_gevaar: 'Tehlikeli durum', inc_omschrijving: 'Tam olarak ne oldu?', inc_omschrijving_kop: 'Ne oldu', inc_project: 'Proje (isteğe bağlı)', inc_locatie: 'Konum (isteğe bağlı)', inc_direct: 'Hemen ne yapıldı? (isteğe bağlı)', inc_direct_kop: 'Acil önlem', inc_letsel: 'Yaralanma', inc_letsel_geen: 'Yaralanma yok', inc_letsel_ehbo: 'Yerinde ilk yardım', inc_letsel_behandeling: 'Doktor tedavisi', inc_letsel_ziekenhuis: 'Hastaneye yatış', inc_letsel_dodelijk: 'Ölümlü', inc_letsel_beh: 'Doktor tedavisi', inc_letsel_zkh: 'Hastaneye yatış', inc_letsel_dood: 'Ölümlü', inc_betrokkene: 'İlgili kişinin adı (isteğe bağlı)', inc_verzuim: 'İş göremezlik oluştu', inc_avg: 'Bu kişisel verilerdir. Gerekenden fazlasını yazmayın; tıbbi ayrıntılar buraya ait değildir.', inc_verstuur: 'Bildir', inc_gemeld: 'Olay bildirildi', inc_melden_mislukt: 'Bildirim başarısız', inc_omschrijving_verplicht: 'Kısaca ne olduğunu yazın', inc_maatregel_verplicht: 'Önce alınan önlemi kaydedin', inc_oorzaak: 'Neden', inc_maatregel: 'Hangi önlem alındı?', inc_afhandelen: 'Kapat', inc_afgehandeld: 'Olay kapatıldı', inc_opgeslagen: 'İnceleme kaydedildi', inc_alle_soorten: 'Tüm türler', inc_st_gemeld: 'Bildirildi', inc_st_onderzoek: 'İncelemede', inc_st_afgehandeld: 'Kapatıldı', inc_leeg_titel: 'Henüz olay yok', inc_leeg_tekst: 'İyi haber, ama ramak kala olayları da bildirin.', inc_inspectie_kop: 'İş müfettişliğine bildirin', inc_inspectie_waarschuwing: 'Hastaneye yatış, kalıcı yaralanma veya ölüm derhal iş müfettişliğine bildirilmelidir.', inc_gemeld_bij_inspectie: 'İş müfettişliğine bildirildi', begrepen: 'Anlaşıldı', ja: 'Evet', nee: 'Hayır',
         nav_veiligheid: 'Güvenlik', vg_title: 'Güvenlik', vg_sub: 'Ekibiniz için güvenlik toplantıları ve katılım listeleri.', vg_new: '+ Yeni toplantı', vg_tab_toolbox: 'Toplantı', vg_all_projects: 'Tüm projeler', vg_leeg_titel: 'Henüz toplantı yok', vg_leeg_tekst: 'İş başlamadan önce bir tane oluşturun.', tb_new_title: 'Yeni güvenlik toplantısı', tb_new_sub: 'Proje ve konuyu seçin. Taslak hazırlatın ve sahaya göre uyarlayın.', tb_project: 'Proje', tb_onderwerp: 'Konu', tb_generate: 'Taslak hazırla', tb_inleiding: 'Konu nedir', tb_risicos: 'Riskler (her satıra bir)', tb_maatregelen: 'Önlemler (her satıra bir)', tb_bespreekpunten: 'Görüşülecek noktalar (her satıra bir)', tb_risicos_kop: 'Riskler', tb_maatregelen_kop: 'Önlemler', tb_bespreekpunten_kop: 'Görüşülecek noktalar', tb_presentielijst: 'Katılım listesi', tb_eigen_medewerker: 'Kendi çalışanımız', tb_extern: 'Dış katılımcı', tb_add: 'Ekle', tb_kies: 'Seç', tb_pdf: 'PDF', tb_afsluiten: 'Kapat', tb_teken: 'İmzala', tb_sign_title: 'Katılım için imza', tb_sign_save: 'İmzayı kaydet', tb_getekend: 'İmzalandı', tb_getekend_op: 'imza tarihi', tb_niet_getekend: 'imzalanmadı', tb_geen_deelnemers: 'Listede henüz kimse yok.', tb_extern_badge: 'dış', tb_kies_project: 'Önce bir proje seçin', tb_kies_onderwerp: 'Bir konu girin', tb_kies_medewerker: 'Bir çalışan seçin', tb_naam_verplicht: 'İsim zorunludur', tb_bezig: 'Çalışıyor...', tb_bron_ai: 'Proje bağlamından yapay zeka ile hazırlandı', tb_bron_sjabloon: 'Şablon kullanıldı (yapay zeka yok) - kendiniz gözden geçirin', tb_open_meldingen: 'açık bildirim', tb_gen_mislukt: 'Taslak başarısız', tb_opgeslagen: 'Toplantı kaydedildi', tb_opslaan_mislukt: 'Kaydetme başarısız', tb_add_mislukt: 'Eklenemedi', tb_getekend_toast: 'İmza kaydedildi', tb_afgesloten: 'Toplantı kapatıldı', tb_afsluiten_vraag: 'Bundan sonra hiçbir şey değiştirilemez. Devam edilsin mi?', tb_pdf_klaar: 'PDF indirildi', tb_pdf_mislukt: 'PDF başarısız', datum: 'Tarih', fout_laden: 'Yükleme başarısız', compliance: 'Uyumluluk', handleiding: 'Kılavuz', rondleiding: 'Tanıtım turu',
         uitloggen: 'Çıkış',
         welkom_terug: 'Tekrar hoş geldiniz',
@@ -23328,10 +23457,22 @@
     }
 
     function switchVeiligheidTab(tab) {
-      // Voorlopig een tab; LMRA, incidenten en certificaten komen hiernaast.
+      // LMRA en certificaten komen hier straks naast; de opzet is er al op
+      // gebouwd, dus dat is dan een knop en een paneel erbij.
       document.querySelectorAll('#page-veiligheid .int-tab').forEach(function (b) {
         b.classList.toggle('active', b.getAttribute('data-tab') === tab);
       });
+      ['toolbox', 'incidenten'].forEach(function (naam) {
+        var paneel = document.getElementById('vg-tab-' + naam);
+        if (paneel) paneel.style.display = (naam === tab) ? '' : 'none';
+      });
+      // De paginakop hoort bij het tabblad dat openstaat: een knop "Nieuwe
+      // toolbox" boven de incidentenlijst leidt alleen maar af.
+      var knop = document.getElementById('vgToolboxKnop');
+      if (knop) knop.style.display = (tab === 'toolbox') ? '' : 'none';
+      var sub = document.getElementById('vgSub');
+      if (sub) sub.textContent = (tab === 'toolbox') ? t('vg_sub') : t('vg_sub_incidenten');
+      if (tab === 'incidenten') loadIncidenten();
     }
 
     function loadVeiligheid() {
@@ -23662,6 +23803,237 @@
           });
         })
         .catch(function (err) { showToast(t('tb_pdf_mislukt') + ': ' + (err.message || ''), 'error'); });
+    }
+  </script>
+
+
+  <!-- ═══════ VEILIGHEID — INCIDENTEN ═══════ -->
+  <script>
+    var _incHuidig = null;
+
+    var INC_SOORT_LABEL = {
+      ongeval: 'inc_ongeval',
+      bijna_ongeval: 'inc_bijna',
+      gevaarlijke_situatie: 'inc_gevaar'
+    };
+    var INC_SOORT_KLEUR = {
+      ongeval: 'var(--red)',
+      bijna_ongeval: 'var(--orange)',
+      gevaarlijke_situatie: 'var(--text-muted)'
+    };
+
+    function incToggleLetsel() {
+      // Letsel vragen we alleen bij een ongeval. Bij een bijna-ongeval is er per
+      // definitie niemand gewond, en dan hoeven we ook geen persoonsgegevens.
+      var soort = document.getElementById('incSoort').value;
+      document.getElementById('incLetselBlok').style.display =
+        (soort === 'ongeval') ? '' : 'none';
+      incLetselHint();
+    }
+
+    function incLetselHint() {
+      var letsel = document.getElementById('incLetsel').value;
+      var hint = document.getElementById('incInspectieHint');
+      var soort = document.getElementById('incSoort').value;
+      if (soort === 'ongeval' && (letsel === 'ziekenhuis' || letsel === 'dodelijk')) {
+        hint.textContent = t('inc_inspectie_waarschuwing');
+        hint.style.display = '';
+      } else {
+        hint.style.display = 'none';
+      }
+    }
+
+    function openIncidentModal() {
+      document.getElementById('incSoort').value = 'bijna_ongeval';
+      ['incOmschrijving', 'incLocatie', 'incDirect', 'incBetrokkene'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      document.getElementById('incLetsel').value = 'geen';
+      document.getElementById('incVerzuim').checked = false;
+      var kies = document.getElementById('incProject');
+      if (kies && _tbProjecten && _tbProjecten.length) {
+        kies.innerHTML = '<option value="">-</option>' + _tbProjecten.map(function (p) {
+          return '<option value="' + _tbEsc(p.id) + '">' + _tbEsc(p.name) + '</option>';
+        }).join('');
+      }
+      incToggleLetsel();
+      document.getElementById('incidentModal').classList.add('active');
+    }
+
+    function closeIncidentModal() {
+      document.getElementById('incidentModal').classList.remove('active');
+    }
+
+    function saveIncident() {
+      var omschrijving = document.getElementById('incOmschrijving').value.trim();
+      if (!omschrijving) { showToast(t('inc_omschrijving_verplicht'), 'error'); return; }
+
+      var soort = document.getElementById('incSoort').value;
+      var body = {
+        soort: soort,
+        omschrijving: omschrijving,
+        project_id: document.getElementById('incProject').value || null,
+        locatie: document.getElementById('incLocatie').value.trim() || null,
+        direct_genomen: document.getElementById('incDirect').value.trim() || null
+      };
+      if (soort === 'ongeval') {
+        body.letsel = document.getElementById('incLetsel').value;
+        body.verzuim = document.getElementById('incVerzuim').checked;
+        body.betrokkene_naam = document.getElementById('incBetrokkene').value.trim() || null;
+      }
+
+      api('POST', '/api/incidenten/', body).then(function (inc) {
+        closeIncidentModal();
+        showToast(t('inc_gemeld'), 'success');
+        if (inc.waarschuwing) {
+          // Niet wegklikbaar in een toast verstoppen: dit moet blijven staan.
+          showConfirm({
+            icon: '⚠️',
+            title: t('inc_inspectie_kop'),
+            message: inc.waarschuwing,
+            actionLabel: t('begrepen'),
+            danger: true,
+            onConfirm: function () {}
+          });
+        }
+        loadIncidenten();
+      }).catch(function (err) {
+        showToast(t('inc_melden_mislukt') + ': ' + (err.message || ''), 'error');
+      });
+    }
+
+    function loadIncidenten() {
+      var doel = document.getElementById('incidentList');
+      if (!doel) return;
+      doel.innerHTML = '<div class="loading-spinner"></div>';
+
+      api('GET', '/api/incidenten/statistiek/samenvatting').then(function (s) {
+        var vak = document.getElementById('incStats');
+        if (!vak) return;
+        function kaart(label, waarde, kleur) {
+          return '<div class="stat-card" style="border-left:3px solid ' + kleur + ';">' +
+            '<div class="stat-value" style="color:' + kleur + ';">' + waarde + '</div>' +
+            '<div class="stat-label">' + _tbEsc(label) + '</div></div>';
+        }
+        vak.innerHTML =
+          kaart(t('inc_ongeval'), s.per_soort.ongeval, 'var(--red)') +
+          kaart(t('inc_bijna'), s.per_soort.bijna_ongeval, 'var(--orange)') +
+          kaart(t('inc_gevaar'), s.per_soort.gevaarlijke_situatie, 'var(--text-muted)') +
+          kaart(t('inc_st_afgehandeld'), s.per_status.afgehandeld, 'var(--green)');
+      }).catch(function () { /* cijfers zijn bijzaak; de lijst is het punt */ });
+
+      var qs = [];
+      var so = document.getElementById('incFilterSoort');
+      var st = document.getElementById('incFilterStatus');
+      if (so && so.value) qs.push('soort=' + encodeURIComponent(so.value));
+      if (st && st.value) qs.push('status=' + encodeURIComponent(st.value));
+
+      api('GET', '/api/incidenten/' + (qs.length ? '?' + qs.join('&') : ''))
+        .then(function (items) {
+          if (!items || !items.length) {
+            doel.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128737;</div>' +
+              '<h3>' + t('inc_leeg_titel') + '</h3><p>' + t('inc_leeg_tekst') + '</p></div>';
+            return;
+          }
+          doel.innerHTML = '<table class="data-table"><thead><tr>' +
+            '<th>' + t('inc_soort_kop') + '</th><th>' + t('inc_omschrijving_kop') + '</th>' +
+            '<th>' + t('datum') + '</th><th>' + t('tb_project') + '</th><th>Status</th>' +
+            '</tr></thead><tbody>' + items.map(function (i) {
+              var kleur = INC_SOORT_KLEUR[i.soort] || 'var(--text-muted)';
+              var stKleur = i.status === 'afgehandeld' ? 'var(--green)'
+                          : i.status === 'in_onderzoek' ? 'var(--accent)' : 'var(--text-dim)';
+              return '<tr style="cursor:pointer;" onclick="openIncidentDetail(\'' + _tbEsc(i.id) + '\')">' +
+                '<td style="color:' + kleur + ';font-weight:600;">' + t(INC_SOORT_LABEL[i.soort] || '') +
+                  (i.inspectie_verplicht ? ' <span class="nav-badge-new" style="background:var(--red);">!</span>' : '') + '</td>' +
+                '<td>' + _tbEsc((i.omschrijving || '').slice(0, 70)) + '</td>' +
+                '<td>' + _tbEsc((i.gebeurd_op || '').slice(0, 10)) + '</td>' +
+                '<td>' + _tbEsc(i.project_name || '-') + '</td>' +
+                '<td style="color:' + stKleur + ';font-weight:600;">' + _tbEsc(i.status) + '</td>' +
+                '</tr>';
+            }).join('') + '</tbody></table>';
+        })
+        .catch(function (err) {
+          doel.innerHTML = '<div class="error-state"><h3>' + t('fout_laden') + '</h3><p>' +
+            _tbEsc(err && err.message) + '</p></div>';
+        });
+    }
+
+    function openIncidentDetail(id) {
+      api('GET', '/api/incidenten/' + id).then(function (i) {
+        _incHuidig = i;
+        document.getElementById('incdTitel').textContent = t(INC_SOORT_LABEL[i.soort] || 'Incident');
+        document.getElementById('incdSub').textContent =
+          (i.gebeurd_op || '').slice(0, 10) + ' · ' + (i.project_name || '-') +
+          (i.locatie ? ' · ' + i.locatie : '');
+
+        function rij(label, waarde) {
+          if (!waarde) return '';
+          return '<p style="font-size:14px;line-height:1.6;margin-bottom:8px;"><strong>' +
+            _tbEsc(label) + ':</strong> ' + _tbEsc(waarde) + '</p>';
+        }
+        var html = '<p style="font-size:14px;line-height:1.6;">' + _tbEsc(i.omschrijving) + '</p>';
+        html += rij(t('inc_direct_kop'), i.direct_genomen);
+        if (i.letsel) html += rij(t('inc_letsel'), t('inc_letsel_' + i.letsel) || i.letsel);
+        if (i.betrokkene_naam) html += rij(t('inc_betrokkene'), i.betrokkene_naam);
+        if (i.verzuim) html += rij(t('inc_verzuim'), t('ja'));
+        if (i.inspectie_verplicht) {
+          html += '<div style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.3);' +
+            'color:var(--red);border-radius:10px;padding:12px;font-size:13px;margin:12px 0;">' +
+            _tbEsc(t('inc_inspectie_waarschuwing')) +
+            '<br><strong>' + t('inc_gemeld_bij_inspectie') + ': ' +
+            (i.gemeld_bij_inspectie ? t('ja') : t('nee')) + '</strong></div>';
+        }
+        if (i.photo_url) {
+          html += '<img src="' + _tbEsc(i.photo_url) + '" style="max-width:100%;border-radius:10px;margin-top:10px;">';
+        }
+        document.getElementById('incdInhoud').innerHTML = html;
+
+        document.getElementById('incdOorzaak').value = i.oorzaak || '';
+        document.getElementById('incdMaatregel').value = i.vervolgmaatregelen || '';
+        // Afhandelen is beheerwerk; wie het niet mag, krijgt van de server een
+        // 403 en hoeft het formulier ook niet te zien.
+        var mag = currentUser && (currentUser.is_org_admin ||
+                  currentUser.role === 'admin' || currentUser.role === 'manager');
+        document.getElementById('incdAfhandelen').style.display =
+          (mag && i.status !== 'afgehandeld') ? '' : 'none';
+
+        document.getElementById('incidentDetailModal').classList.add('active');
+      }).catch(function (err) {
+        showToast(t('fout_laden') + ': ' + (err.message || ''), 'error');
+      });
+    }
+
+    function closeIncidentDetail() {
+      document.getElementById('incidentDetailModal').classList.remove('active');
+      _incHuidig = null;
+    }
+
+    function incBewaarOnderzoek() {
+      if (!_incHuidig) return;
+      api('PATCH', '/api/incidenten/' + _incHuidig.id, {
+        oorzaak: document.getElementById('incdOorzaak').value.trim(),
+        vervolgmaatregelen: document.getElementById('incdMaatregel').value.trim(),
+        status: 'in_onderzoek'
+      }).then(function () {
+        showToast(t('inc_opgeslagen'), 'success');
+        closeIncidentDetail();
+        loadIncidenten();
+      }).catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function incAfhandelen() {
+      if (!_incHuidig) return;
+      var maatregel = document.getElementById('incdMaatregel').value.trim();
+      if (!maatregel) { showToast(t('inc_maatregel_verplicht'), 'error'); return; }
+      api('POST', '/api/incidenten/' + _incHuidig.id + '/afhandelen', {
+        oorzaak: document.getElementById('incdOorzaak').value.trim(),
+        vervolgmaatregelen: maatregel
+      }).then(function () {
+        showToast(t('inc_afgehandeld'), 'success');
+        closeIncidentDetail();
+        loadIncidenten();
+      }).catch(function (err) { showToast(err.message || '', 'error'); });
     }
   </script>
 
