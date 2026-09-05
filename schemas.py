@@ -162,6 +162,20 @@ class OrganizationUpdate(BaseModel):
     streetview_provider_url_template: Optional[str] = None
     beheer_provider_label: Optional[str] = None
     beheer_provider_url_template: Optional[str] = None
+    # Publiek meldpunt. Stonden wel in het instellingenformulier maar niet in
+    # dit schema, waardoor Pydantic ze stilzwijgend weggooide: de gebruiker
+    # kreeg "opgeslagen" te zien terwijl er niets veranderde.
+    public_meld_slug: Optional[str] = None
+    public_meld_enabled: Optional[bool] = None
+    public_meld_intro_text: Optional[str] = None
+    public_meld_default_project_id: Optional[str] = None
+    public_meld_categories: Optional[str] = None
+
+
+class OrganizationBrandingUpdate(BaseModel):
+    """Huisstijl die de platform-eigenaar per klant-organisatie kan zetten."""
+    logo_data_url: Optional[str] = None
+    brand_color: Optional[str] = None
 
 
 # Invitation
