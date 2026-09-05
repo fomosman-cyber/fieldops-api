@@ -122,6 +122,21 @@ def can_manage_assets(user: User) -> bool:
     return role is not None and role in _CAN_MANAGE_ASSETS
 
 
+def can_manage_toolbox(user: User) -> bool:
+    """Een toolbox opstellen, wijzigen of afsluiten — alleen admin/manager.
+
+    Zo gaat het op de bouwplaats: de uitvoerder of werkvoorbereider leidt de
+    bespreking, de rest is erbij. Tekenen mag daarom iedereen die is ingelogd
+    (en externen via de deelnemerslijst); alleen het opstellen en afsluiten is
+    voorbehouden. Deelt bewust dezelfde rollenset als assets — het is dezelfde
+    groep "wie mag hier iets vastleggen".
+    """
+    if is_org_admin(user):
+        return True
+    role = _user_role(user)
+    return role is not None and role in _CAN_MANAGE_ASSETS
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # FastAPI Depends-fabrieken
 # ─────────────────────────────────────────────────────────────────────────────
