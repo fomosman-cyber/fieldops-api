@@ -88,6 +88,17 @@ class Organization(Base):
     max_users = Column(Integer, default=10)
     trial_ends_at = Column(DateTime, nullable=True)
     shopify_customer_id = Column(String(255), nullable=True)
+    # Mollie-abonnement. Het mandaat ontstaat uit een eerste betaling van een
+    # cent; daarna incasseert Mollie maandelijks seats x tarief. billing_status
+    # volgt Mollie ("pending" zolang het mandaat er nog niet is, "past_due" na
+    # een mislukte incasso) en staat los van AccountStatus, die de toegang
+    # bepaalt.
+    mollie_customer_id = Column(String(64), nullable=True)
+    mollie_mandate_id = Column(String(64), nullable=True)
+    mollie_subscription_id = Column(String(64), nullable=True)
+    billing_status = Column(String(30), nullable=True)
+    billing_seats = Column(Integer, nullable=True)
+    paid_until = Column(DateTime, nullable=True)
     # Self-service contact-velden (org-admin kan zelf bijwerken)
     contact_email = Column(String(255), nullable=True)
     contact_phone = Column(String(50), nullable=True)
@@ -1273,3 +1284,39 @@ class DaybookEntry(Base):
     user = relationship("User", foreign_keys=[user_id])
     organization = relationship("Organization")
     project = relationship("Project", foreign_keys=[project_id])
+
+
+class Payment(Base):
+    """Elke betaling die Mollie ons meldt, één rij.
+
+    Twee doelen. Ten eerste **idempotentie**: Mollie herhaalt een webhook tot
+    ~26 uur lang bij elk niet-2xx antwoord, en stuurt bij statuswisselingen
+    opnieuw. ``mollie_payment_id`` is uniek, en ``processed_at`` legt vast dat
+    wij de gevolgen (abonnement aanmaken, termijn verlengen) al hebben
+    doorgevoerd. Ten tweede een **spoor** waarmee je achteraf kunt uitleggen
+    waarom een organisatie op een bepaalde dag toegang had.
+
+    Bewust géén ForeignKey naar organizations: financiële registraties horen
+    een organisatie niet te blokkeren bij verwijderen. Dat probleem bestaat in
+    deze database al op vijf andere plekken en daar zetten we er niet nog een
+    bij.
+    """
+
+    __tablename__ = "payments"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, nullable=True, index=True)
+    mollie_payment_id = Column(String(64), nullable=False, unique=True, index=True)
+    mollie_subscription_id = Column(String(64), nullable=True)
+    mollie_customer_id = Column(String(64), nullable=True)
+    # first | recurring | oneoff — bepaalt wat de webhook moet doen
+    sequence_type = Column(String(20), nullable=True)
+    amount = Column(String(20), nullable=True)
+    currency = Column(String(8), nullable=True, default="EUR")
+    status = Column(String(30), nullable=True)
+    description = Column(Text, nullable=True)
+    paid_at = Column(DateTime, nullable=True)
+    processed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
