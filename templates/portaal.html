@@ -1065,6 +1065,56 @@
       .notif-btn { min-width: 44px; min-height: 44px; font-size: 20px; }
     }
 
+    /* ───── MOBIEL: portaal als app, niet als website ─────
+       Drie dingen die op telefoon stuk waren:
+         1. Beheer (Gebruikers / Admin Overzicht / Integraties / Instellingen /
+            Compliance) staat alleen in .topbar-nav, en die is onder 1024px
+            verborgen -> op elke telefoon onbereikbaar. .sidebar-beheer is de
+            mobiele ingang naar exact dezelfde pagina's.
+         2. iOS zoomt zelf in zodra je een veld met font-size < 16px aantikt.
+            Geen viewport-instelling houdt dat tegen; alleen 16px doet dat.
+         3. Het scherm scrollde als een pagina (body) in plaats van als een app. */
+
+    /* 1 — Beheer verschijnt precies waar de topbar-nav wegvalt.
+           Boven 1024px blijft beheer in de topbar: geen dubbeling. */
+    .sidebar-beheer { display: none; }
+    @media (max-width: 1024px) {
+      .sidebar-beheer { display: block; }
+    }
+
+    @media (max-width: 768px) {
+      /* 2 — Alles wat je kunt aantikken minimaal 16px. !important omdat veel
+             velden in dit bestand een inline font-size meekrijgen. */
+      input, select, textarea,
+      .form-group input, .form-group select, .form-group textarea,
+      .modal .form-group input, .modal .form-group select, .modal .form-group textarea {
+        font-size: 16px !important;
+      }
+
+      /* 3 — App-shell: het venster staat vast, alleen .main scrollt.
+             .main blijft bewust in de normale flow (geen position:fixed): een
+             deel van de modals staat binnen <main>, en die moeten fixed t.o.v.
+             het venster blijven. Daarom reserveert body zelf de topbar-hoogte. */
+      html { height: 100%; overflow: hidden; }
+      body {
+        height: 100vh;          /* fallback voor oudere iOS */
+        height: 100dvh;
+        min-height: 0;
+        overflow: hidden;
+        overscroll-behavior: none;
+        box-sizing: border-box;
+        padding-top: calc(var(--topbar-h) + env(safe-area-inset-top, 0px));
+      }
+      .main {
+        margin-top: 0;
+        height: 100%;
+        min-height: 0;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+      }
+    }
+
     /* ───── SCROLLBAR ───── */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -1105,8 +1155,8 @@
            Geen dubbeling meer tussen de twee. -->
       <nav class="topbar-nav" id="topNav">
         <a data-page="gebruikers" onclick="navigateTo('gebruikers')">Gebruikers</a>
-        <a data-page="admin" onclick="navigateTo('admin')" id="topNavAdmin" style="display:none;">Admin Overzicht</a>
-        <a data-page="integraties" onclick="navigateTo('integraties')" id="topNavIntegraties" style="display:none;">Integraties</a>
+        <a data-page="admin" onclick="navigateTo('admin')" id="topNavAdmin" class="js-org-admin-only" style="display:none;">Admin Overzicht</a>
+        <a data-page="integraties" onclick="navigateTo('integraties')" id="topNavIntegraties" class="js-org-admin-only" style="display:none;">Integraties</a>
         <a data-page="instellingen" onclick="navigateTo('instellingen')">Instellingen</a>
         <a data-page="compliance" onclick="navigateTo('compliance')">Compliance</a>
       </nav>
@@ -1195,9 +1245,31 @@
         </a>
       </nav>
     </div>
-    <!-- Beheer + Overig zijn naar de topbar verplaatst (Gebruikers /
-         Admin Overzicht / Integraties / Instellingen) zodat de sidebar
-         puur operationeel blijft. Geen dubbele items meer. -->
+    <!-- Beheer staat op desktop in de topbar (zie .topbar-nav) zodat de
+         sidebar puur operationeel blijft. Onder 1024px is die topbar-nav
+         verborgen, dus daar is dit de ingang. Zichtbaarheid: .sidebar-beheer
+         in de CSS. Dezelfde data-page-waarden, dus navigateTo() zet het
+         actieve item in beide menu's tegelijk. -->
+    <div class="sidebar-section sidebar-beheer">
+      <div class="sidebar-label" data-i18n="beheer">Beheer</div>
+      <nav class="sidebar-nav">
+        <a data-page="gebruikers" onclick="navigateTo('gebruikers')">
+          <span class="icon">&#128101;</span> <span data-i18n="gebruikers">Gebruikers</span>
+        </a>
+        <a data-page="admin" onclick="navigateTo('admin')" class="js-org-admin-only" style="display:none;">
+          <span class="icon">&#128737;</span> <span data-i18n="admin_overzicht">Admin Overzicht</span>
+        </a>
+        <a data-page="integraties" onclick="navigateTo('integraties')" class="js-org-admin-only" style="display:none;">
+          <span class="icon">&#128279;</span> <span data-i18n="integraties">Integraties</span>
+        </a>
+        <a data-page="instellingen" onclick="navigateTo('instellingen')">
+          <span class="icon">&#9881;</span> <span data-i18n="instellingen">Instellingen</span>
+        </a>
+        <a data-page="compliance" onclick="navigateTo('compliance')">
+          <span class="icon">&#128203;</span> <span data-i18n="compliance">Compliance</span>
+        </a>
+      </nav>
+    </div>
 
     <div class="sidebar-lang">
       <select id="sidebarLangSwitcher" onchange="switchLanguage(this.value)">
@@ -8196,13 +8268,13 @@
         document.getElementById('settStatus').innerHTML = '<span class="status-badge ' + stats.status + '">' + stats.status + '</span>';
         document.getElementById('settUsers').textContent = (stats.active_users || 0) + ' / ' + (stats.max_users || 10);
 
-        // Show admin entries in TOPBAR + invite buttons for org admin
-        // (Sidebar Beheer-sectie is verwijderd — alles staat nu in topbar.)
+        // Show admin entries + invite buttons for org admin.
+        // Op klasse i.p.v. op id, zodat zowel de topbar (desktop) als de
+        // Beheer-sectie in de sidebar (mobiel/tablet) wordt vrijgegeven.
         if (currentUser && currentUser.is_org_admin) {
-          var navAdmin = document.getElementById('topNavAdmin');
-          var navIntegr = document.getElementById('topNavIntegraties');
-          if (navAdmin) navAdmin.style.display = '';
-          if (navIntegr) navIntegr.style.display = '';
+          document.querySelectorAll('.js-org-admin-only').forEach(function(el) {
+            el.style.display = '';
+          });
           // Show invite button and invitations tab for admins
           var invBtn = document.getElementById('inviteUserBtn');
           var tabInv = document.getElementById('tabInvites');
