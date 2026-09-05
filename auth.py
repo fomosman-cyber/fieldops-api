@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from database import get_db
-from models import User
+from models import User, is_reserved_org_name
 from dotenv import load_dotenv
 import os
 
@@ -289,6 +289,23 @@ def get_current_user(
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is gedeactiveerd")
+
+    # Organisatiestatus geldt ook voor een lopende sessie, niet alleen bij het
+    # inloggen. Zonder deze controle bleef iedereen die op het moment van
+    # schorsing was ingelogd nog tot 24 uur volledige toegang houden, inclusief
+    # exports. De platform-organisatie is uitgezonderd: daarmee zou de eigenaar
+    # zichzelf buiten kunnen sluiten en niets meer kunnen herstellen.
+    org = user.organization
+    if org is not None and not is_reserved_org_name(org.name):
+        status = getattr(org.status, "value", org.status)
+        if status == "expired":
+            raise HTTPException(
+                status_code=403,
+                detail="Uw abonnement is verlopen. Neem een abonnement om verder te gaan.")
+        if status == "suspended":
+            raise HTTPException(
+                status_code=403,
+                detail="Dit account is opgeschort. Neem contact op met support.")
     return user
 
 
