@@ -51,7 +51,7 @@ else:
 from database import engine, Base, SessionLocal
 from models import Organization, User, AccountStatus, SubscriptionPlan, UserRole
 from auth import hash_password
-from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router, kunstwerken_inspecties_router, inspection_cycle_router, mjop_router, risico_router, bag_router, iso55000_router, digigo_router, iot_router, proborm_router, damo_router, ai_photo_router, compliance_router, daybook_router, notifications_router, email_inbox_router, mfa_router, public_meld_router, imbor_router, imports_router, car2023_router
+from routers import auth_router, demo_router, users_router, org_router, shopify_router, admin_router, projects_router, meldingen_router, audit_router, assets_router, inspecties_router, webhooks_router, predictive_router, incoming_router, realtime_router, push_router, config_router, google_router, orchestration_router, microsoft_router, nwb_router, integrations_router, seo_router, opleveringen_router, kunstwerken_inspecties_router, inspection_cycle_router, mjop_router, risico_router, bag_router, iso55000_router, digigo_router, iot_router, proborm_router, damo_router, ai_photo_router, compliance_router, daybook_router, notifications_router, email_inbox_router, mfa_router, public_meld_router, imbor_router, imports_router, car2023_router, billing_router
 from audit import assign_request_id
 
 # Maak alle tabellen aan
@@ -270,6 +270,12 @@ def _run_migrations():
                 "public_meld_categories":           "TEXT",
                 "public_meld_intro_text":           "TEXT",
                 "enabled_modules":                  "TEXT",
+                "mollie_customer_id":               "VARCHAR(64)",
+                "mollie_mandate_id":                "VARCHAR(64)",
+                "mollie_subscription_id":           "VARCHAR(64)",
+                "billing_status":                   "VARCHAR(30)",
+                "billing_seats":                    "INTEGER",
+                "paid_until":                       "TIMESTAMP",
             }
             org_missing = [c for c in org_extra if c not in ocols]
             if org_missing:
@@ -581,6 +587,7 @@ _OPENAPI_TAGS = [
     {"name": "Admin",                  "description": "Platform-owner endpoints (cross-organisatie management)."},
     {"name": "Shopify Integratie",     "description": "Shopify cross-subdomain login-handoff voor www.fieldopsapp.nl ↔ portaal.fieldopsapp.nl."},
     {"name": "Config",                 "description": "Publieke configuratie (Google Maps key, feature flags) voor frontend."},
+    {"name": "Abonnement",             "description": "Mollie-abonnement per organisatie — eerste betaling voor het incassomandaat, maandelijkse incasso per gebruiker, webhook en opzeggen."},
 ]
 
 
@@ -747,6 +754,7 @@ app.include_router(demo_router.router)
 app.include_router(users_router.router)
 app.include_router(org_router.router)
 app.include_router(shopify_router.router)
+app.include_router(billing_router.router)
 app.include_router(admin_router.router)
 app.include_router(projects_router.router)
 app.include_router(meldingen_router.router)

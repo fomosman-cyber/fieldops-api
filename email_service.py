@@ -594,3 +594,90 @@ Je ontvangt deze email omdat een collega je heeft toegewezen aan een melding. Wi
         f"🎯 Toegewezen: {melding_title[:80]}",
         _base_template(content, "Toegewezen aan melding"),
     )
+
+
+# --- Abonnement (Mollie) ---
+
+def send_abonnement_actief(user, org, *, seats: int, maandbedrag: str) -> bool:
+    """Bevestiging dat het abonnement loopt en de machtiging is afgegeven.
+
+    Bewust concreet over het bedrag en de eerste incassodatum: dat is precies
+    waar anders een supportvraag over komt.
+    """
+    naam = getattr(user, "first_name", "") or ""
+    org_naam = getattr(org, "name", "je organisatie")
+    gebruikers = "1 gebruiker" if seats == 1 else f"{seats} gebruikers"
+
+    content = f"""
+<h2 style="color:#1e293b;font-size:22px;margin:0 0 8px;">Je abonnement is actief</h2>
+<p style="color:#64748b;font-size:15px;line-height:1.6;margin:0 0 20px;">
+Hoi {naam},<br>
+De machtiging voor <strong>{org_naam}</strong> is afgegeven. Vanaf nu heb je onbeperkt
+toegang tot FieldOps &mdash; alle inspectiemodules, onbeperkt projecten en assets.
+</p>
+
+<table cellpadding="0" cellspacing="0" width="100%" style="background:#f8fafc;border-radius:12px;margin:0 0 22px;">
+<tr><td style="padding:18px 20px;">
+<p style="margin:0 0 10px;color:#1e293b;font-size:14px;font-weight:600;">Wat je gaat betalen</p>
+<p style="margin:0;color:#64748b;font-size:14px;line-height:1.7;">
+Nu in rekening gebracht: <strong>{gebruikers}</strong><br>
+Maandbedrag: <strong>&euro; {maandbedrag}</strong><br>
+Eerste incasso: <strong>over een maand</strong> &mdash; deze maand is gratis
+</p>
+</td></tr></table>
+
+<table cellpadding="0" cellspacing="0" style="margin:0 auto 22px;">
+<tr><td style="background:linear-gradient(135deg,#0284c7,#0369a1);border-radius:12px;padding:14px 36px;">
+<a href="{PORTAAL_URL}/portaal" style="color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;display:inline-block;">
+Naar het portaal</a>
+</td></tr></table>
+
+<p style="color:#94a3b8;font-size:13px;line-height:1.6;margin:0;">
+Zet je later gebruikers bij of haal je ze weg, dan past het bedrag zich aan vanaf de
+eerstvolgende incasso. Opzeggen kan elke maand, in het portaal onder Instellingen.
+</p>"""
+
+    return send_email(
+        user.email,
+        f"Je FieldOps-abonnement is actief - {org_naam}",
+        _base_template(content, "Abonnement actief"))
+
+
+def send_incasso_mislukt(user, org, *, bedrag: str = "") -> bool:
+    """Waarschuwing na een mislukte incasso, mét wat er gebeurt als het zo blijft."""
+    naam = getattr(user, "first_name", "") or ""
+    org_naam = getattr(org, "name", "je organisatie")
+    bedrag_regel = f"<br>Het ging om <strong>&euro; {bedrag}</strong>." if bedrag else ""
+
+    content = f"""
+<h2 style="color:#1e293b;font-size:22px;margin:0 0 8px;">De incasso is niet gelukt</h2>
+<p style="color:#64748b;font-size:15px;line-height:1.6;margin:0 0 20px;">
+Hoi {naam},<br>
+We konden het maandbedrag voor <strong>{org_naam}</strong> niet afschrijven.{bedrag_regel}
+Meestal komt dat door onvoldoende saldo of een ingetrokken machtiging.
+</p>
+
+<table cellpadding="0" cellspacing="0" width="100%" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;margin:0 0 22px;">
+<tr><td style="padding:18px 20px;">
+<p style="margin:0;color:#9a3412;font-size:14px;line-height:1.7;">
+<strong>Je houdt voorlopig gewoon toegang.</strong> Mollie probeert het opnieuw. Blijft het
+misgaan, dan sluiten we de omgeving pas af nadat de betaalde termijn is verstreken
+&mdash; je verliest niets zonder waarschuwing.
+</p>
+</td></tr></table>
+
+<table cellpadding="0" cellspacing="0" style="margin:0 auto 22px;">
+<tr><td style="background:linear-gradient(135deg,#0284c7,#0369a1);border-radius:12px;padding:14px 36px;">
+<a href="{PORTAAL_URL}/portaal" style="color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;display:inline-block;">
+Betaalgegevens nakijken</a>
+</td></tr></table>
+
+<p style="color:#94a3b8;font-size:13px;line-height:1.6;margin:0;">
+Klopt er iets niet, of wil je overstappen op betalen per factuur? Mail
+<a href="mailto:info@fieldopsapp.nl" style="color:#0284c7;">info@fieldopsapp.nl</a> en we regelen het.
+</p>"""
+
+    return send_email(
+        user.email,
+        f"Actie nodig: incasso niet gelukt - {org_naam}",
+        _base_template(content, "Incasso niet gelukt"))

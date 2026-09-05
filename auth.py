@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 from jose import JWTError, jwt
 import bcrypt
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from database import get_db
@@ -249,7 +249,19 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+# Een verlopen organisatie moet zijn abonnement nog kunnen regelen. Blokkeer je
+# ook die routes, dan sluit je de klant op: hij kan niet betalen en dus nooit
+# meer binnenkomen. Opgeschort ("suspended") is een bewuste maatregel en blijft
+# wel volledig dicht.
+PADEN_TOEGESTAAN_BIJ_VERLOPEN = (
+    "/api/billing/",
+    "/api/auth/me",
+    "/api/auth/logout",
+)
+
+
 def get_current_user(
+    request: Request = None,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
@@ -299,9 +311,11 @@ def get_current_user(
     if org is not None and not is_reserved_org_name(org.name):
         status = getattr(org.status, "value", org.status)
         if status == "expired":
-            raise HTTPException(
-                status_code=403,
-                detail="Uw abonnement is verlopen. Neem een abonnement om verder te gaan.")
+            pad = getattr(getattr(request, "url", None), "path", "") or ""
+            if not pad.startswith(PADEN_TOEGESTAAN_BIJ_VERLOPEN):
+                raise HTTPException(
+                    status_code=403,
+                    detail="Uw abonnement is verlopen. Neem een abonnement om verder te gaan.")
         if status == "suspended":
             raise HTTPException(
                 status_code=403,
