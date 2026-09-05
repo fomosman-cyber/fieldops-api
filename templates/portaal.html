@@ -155,6 +155,14 @@
     }
     html[data-theme="dark"] .data-table tr:hover td { background: rgba(255,255,255,0.03); }
     html[data-theme="dark"] body { background: var(--bg); color: var(--text); }
+    /* De topbar had een hardgecodeerde witte achtergrond en bleef in donker
+       thema een felle balk boven een bijna zwarte pagina. Valt extra op nu de
+       balk op mobiel vast bovenaan staat. */
+    html[data-theme="dark"] .topbar {
+      background: rgba(17, 21, 28, 0.95);
+      border-bottom-color: var(--border);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+    }
     /* Dark-mode: native <select> heeft inline-style "background:rgba(0,0,0,0.04)"
        wat in dark-thema bijna onleesbaar is. Forceer leesbare achtergrond +
        force ook de opties zelf (browsers tonen die in systeem-licht-stijl). */
@@ -931,7 +939,7 @@
 
     .dash-stat-grid { grid-template-columns:repeat(3,1fr); }
     @media (max-width: 900px) { .dash-stat-grid { grid-template-columns:repeat(2,1fr) !important; } }
-    @media (max-width: 500px) { .dash-stat-grid { grid-template-columns:1fr !important; } }
+    @media (max-width: 500px) { .dash-stat-grid { grid-template-columns:repeat(2,1fr) !important; } }
 
     .status-badge { display:inline-block;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap; }
     .status-badge.open { background:rgba(100,116,139,0.15);color:#94a3b8; }
@@ -1110,9 +1118,122 @@
         height: 100%;
         min-height: 0;
         overflow-y: auto;
+        /* Zonder dit verschijnt er een horizontale schuifbalk: zodra een as
+           op auto staat rekent de browser de andere as ook naar auto, en dan
+           vervalt het overflow-x:hidden dat body eerst leverde. */
+        overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
         overscroll-behavior: contain;
       }
+    }
+
+    /* ───── MOBIELE INDELING ─────
+       De topbar liep door tot x=583 in een venster van 375 breed: de bel, je
+       naam en Uitloggen stonden simpelweg buiten beeld. Alles wat elders ook
+       bereikbaar is gaat hier weg; wat overblijft is wat je onderweg nodig
+       hebt. Daarnaast: de zijbalk liet dicht een haarlijn achter op x=0, en de
+       Operations-strook was 556px breed en duwde de hele pagina scheef. */
+    @media (max-width: 768px) {
+      /* "+ Melding" stond dubbel: de paginakop heeft al "+ Nieuwe melding". */
+      .mobile-demo-btn { display: none !important; }
+      /* Taalkeuze staat onderin de zijbalk (.sidebar-lang), rondleiding nu bij Overig. */
+      .topbar-right > #langSwitcher,
+      .topbar-right > #tourRestartBtn { display: none !important; }
+
+      .topbar { padding-left: 12px; padding-right: 12px; }
+      .topbar-left { gap: 10px; min-width: 0; }
+      .topbar-right { gap: 6px; flex: 0 0 auto; }
+      .logo-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+      /* De zijbalk staat dicht op x=-260..0; zijn rechterrand van 0,8px viel
+         precies op x=0 en bleef als streep over de hele hoogte staan. */
+      .sidebar { transform: translateX(calc(-100% - 2px)); }
+
+    }
+
+    /* Operations-strook: vijf kolommen naast elkaar passen niet zodra de
+       zijbalk 260px opeist. Tot 1024px daarom omvouwen: status en de twee
+       tellers op een rij, kop en actieknop elk op een eigen regel. Zonder dit
+       wordt de kop op tabletbreedte tot een smalle kolom geperst en valt
+       "Optimaliseer vandaag" van de rand. */
+    @media (max-width: 1024px) {
+      #opsCenterStrip { padding: 16px !important; }
+      .ops-strip-grid {
+        display: flex !important;
+        flex-wrap: wrap;
+        gap: 14px !important;
+      }
+      .ops-strip-grid > div { padding: 0 !important; border-left: none !important; }
+      .ops-strip-grid > div:nth-child(2) { flex: 1 1 100%; }
+      .ops-strip-grid > div:nth-child(3),
+      .ops-strip-grid > div:nth-child(4) { flex: 1 1 0; text-align: center !important; }
+      .ops-strip-grid > div:nth-child(5) { flex: 1 1 100%; text-align: left !important; }
+      .ops-strip-grid > div:nth-child(5) button { width: 100%; max-width: 280px; }
+    }
+
+    /* Overig verschijnt alleen op telefoon: op tablet staan Handleiding en
+       Rondleiding nog gewoon als knop in de topbar. */
+    .sidebar-overig { display: none; }
+    @media (max-width: 768px) {
+      .sidebar-overig { display: block; }
+    }
+
+    @media (max-width: 768px) {
+      /* De actieknop in de paginakop brak over twee regels omdat hij naast de
+         realtime-melding geperst werd. Op telefoon krijgt de melding een eigen
+         regel en gaat de knop over de volle breedte. */
+      .page-header > div { min-width: 0; }
+      .page-header .btn-primary { white-space: nowrap; }
+      #page-dashboard .page-header > div:last-child {
+        width: 100%;
+        flex-wrap: wrap;
+        gap: 10px !important;
+      }
+      #page-dashboard .page-header .btn-primary { flex: 1 1 100%; }
+
+      /* Tabbladenrijen zijn breder dan een telefoon. Ze mogen zijwaarts
+         schuiven -- afknijpen zou de laatste tabs onbereikbaar maken, en dat
+         is precies wat .main's overflow-x:hidden anders zou doen. */
+      .tab-row {
+        overflow-x: auto;
+        flex-wrap: nowrap !important;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .tab-row::-webkit-scrollbar { display: none; }
+      .tab-row > button { flex: 0 0 auto; white-space: nowrap; }
+
+      /* De twee bulk-balken hebben een inline position:sticky;top:64px. Die
+         64px was de topbar-hoogte, want het venster was de scrollport. Nu is
+         .main de scrollport en die begint al onder de topbar, dus die 64px
+         werd een tweede keer opgeteld en de balk hing 80px te laag met een
+         gat waar rijen doorheen scrolden. Binnen .main is de juiste offset 0. */
+      #meldingenBulkBar, #assetsBulkBar { top: 0 !important; }
+    }
+
+    @media (max-width: 480px) {
+      /* De merknaam wijkt voor de knoppen die je echt nodig hebt. Het logo
+         blijft staan en blijft de weg terug naar het dashboard. */
+      .logo-text { display: none; }
+    }
+
+    /* Printen / "Opslaan als PDF": het mobiele blok hierboven heeft geen
+       mediatype en slaat dus ook op print aan. Met een vast venster en
+       overflow:hidden levert dat precies een halve pagina op. Hier draaien we
+       de app-shell terug en laten we de inhoud gewoon doorlopen. */
+    @media print {
+      html, body {
+        height: auto !important;
+        overflow: visible !important;
+        padding-top: 0 !important;
+      }
+      .main {
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        margin: 0 !important;
+      }
+      .topbar, .sidebar, .sidebar-overlay, .modal-overlay { display: none !important; }
     }
 
     /* ───── SCROLLBAR ───── */
@@ -1266,7 +1387,19 @@
           <span class="icon">&#9881;</span> <span data-i18n="instellingen">Instellingen</span>
         </a>
         <a data-page="compliance" onclick="navigateTo('compliance')">
-          <span class="icon">&#128203;</span> <span data-i18n="compliance">Compliance</span>
+          <span class="icon">&#9878;</span> <span data-i18n="compliance">Compliance</span>
+        </a>
+      </nav>
+    </div>
+
+    <div class="sidebar-section sidebar-overig">
+      <div class="sidebar-label" data-i18n="overig">Overig</div>
+      <nav class="sidebar-nav">
+        <a onclick="window.open('/handleiding', '_blank')">
+          <span class="icon">&#10067;</span> <span data-i18n="handleiding">Handleiding</span>
+        </a>
+        <a onclick="if(window.FieldOpsTour){FieldOpsTour.start(true);}">
+          <span class="icon">&#127916;</span> <span data-i18n="rondleiding">Rondleiding</span>
         </a>
       </nav>
     </div>
@@ -2813,7 +2946,7 @@
       </div>
 
       <!-- Sub-tabs: CROW-inspectie vs Klein onderhoud (#9) -->
-      <div style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:18px;">
+      <div class="tab-row" style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:18px;">
         <button id="inspSubtabCrowBtn" onclick="switchInspectieTab('crow')" class="insp-subtab" style="background:none;border:none;border-bottom:2px solid var(--accent);color:var(--text);font-weight:600;font-size:14px;padding:10px 14px;cursor:pointer;">🏗️ CROW-inspectie</button>
         <button id="inspSubtabKoBtn" onclick="switchInspectieTab('ko')" class="insp-subtab" style="background:none;border:none;border-bottom:2px solid transparent;color:var(--text-dim);font-weight:600;font-size:14px;padding:10px 14px;cursor:pointer;">🔧 Klein onderhoud</button>
       </div>
@@ -3433,7 +3566,7 @@
           <p data-i18n="ph_integraties_sub">Webhooks, sensoren en compliance-trail in één overzicht.</p>
         </div>
       </div>
-      <div style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:24px;">
+      <div class="tab-row" style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:24px;">
         <button class="int-tab active" data-tab="hooks-out" onclick="switchIntegrationTab('hooks-out')">📤 Webhooks (uit)</button>
         <button class="int-tab" data-tab="hooks-in" onclick="switchIntegrationTab('hooks-in')">📥 Sensoren (IoT in)</button>
         <button class="int-tab" data-tab="email-inbox" onclick="switchIntegrationTab('email-inbox')">📧 Email naar melding</button>
@@ -5127,7 +5260,7 @@
       nl: {
         // Nav & Sidebar
         dashboard: 'Dashboard', projecten: 'Projecten', meldingen: 'Meldingen', kaart: 'Kaart', gebruikers: 'Gebruikers',
-        beheer: 'Beheer', admin_overzicht: 'Admin Overzicht', instellingen: 'Instellingen', overig: 'Overig', hoofdmenu: 'Hoofdmenu',
+        beheer: 'Beheer', admin_overzicht: 'Admin Overzicht', instellingen: 'Instellingen', overig: 'Overig', hoofdmenu: 'Hoofdmenu', compliance: 'Compliance', handleiding: 'Handleiding', rondleiding: 'Rondleiding',
         uitloggen: 'Uitloggen',
         // Dashboard
         welkom_terug: 'Welkom terug',
@@ -5666,7 +5799,7 @@
       },
       en: {
         dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
-        beheer: 'Management', admin_overzicht: 'Admin Overview', instellingen: 'Settings', overig: 'Other', hoofdmenu: 'Main menu',
+        beheer: 'Management', admin_overzicht: 'Admin Overview', instellingen: 'Settings', overig: 'Other', hoofdmenu: 'Main menu', compliance: 'Compliance', handleiding: 'Manual', rondleiding: 'Tour',
         uitloggen: 'Logout',
         welkom_terug: 'Welcome back',
         overzicht_subtitle: 'Overview of all projects and reports',
@@ -6143,7 +6276,7 @@
       },
       de: {
         dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
-        beheer: 'Verwaltung', admin_overzicht: 'Admin Übersicht', instellingen: 'Einstellungen', overig: 'Sonstiges', hoofdmenu: 'Hauptmenü',
+        beheer: 'Verwaltung', admin_overzicht: 'Admin Übersicht', instellingen: 'Einstellungen', overig: 'Sonstiges', hoofdmenu: 'Hauptmenü', compliance: 'Compliance', handleiding: 'Handbuch', rondleiding: 'Rundgang',
         uitloggen: 'Abmelden',
         welkom_terug: 'Willkommen zurück',
         overzicht_subtitle: 'Übersicht aller Projekte und Meldungen',
@@ -6620,7 +6753,7 @@
       },
       fr: {
         dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
-        beheer: 'Gestion', admin_overzicht: 'Vue admin', instellingen: 'Paramètres', overig: 'Autre', hoofdmenu: 'Menu principal',
+        beheer: 'Gestion', admin_overzicht: 'Vue admin', instellingen: 'Paramètres', overig: 'Autre', hoofdmenu: 'Menu principal', compliance: 'Conformité', handleiding: 'Manuel', rondleiding: 'Visite guidée',
         uitloggen: 'Déconnexion',
         welkom_terug: 'Bon retour',
         overzicht_subtitle: 'Aperçu de tous les projets et signalements',
@@ -7097,7 +7230,7 @@
       },
       tr: {
         dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
-        beheer: 'Yönetim', admin_overzicht: 'Admin Genel Bakış', instellingen: 'Ayarlar', overig: 'Diğer', hoofdmenu: 'Ana menü',
+        beheer: 'Yönetim', admin_overzicht: 'Admin Genel Bakış', instellingen: 'Ayarlar', overig: 'Diğer', hoofdmenu: 'Ana menü', compliance: 'Uyumluluk', handleiding: 'Kılavuz', rondleiding: 'Tanıtım turu',
         uitloggen: 'Çıkış',
         welkom_terug: 'Tekrar hoş geldiniz',
         overzicht_subtitle: 'Tüm proje ve bildirimlerin genel görünümü',
@@ -10469,9 +10602,21 @@
             _loadMeldingThumb(en.target);
           }
         });
-      }, { rootMargin: '300px' });
+      // De root moet de echte scrollport zijn. Op mobiel scrollt .main (en
+      // clipt hij), niet het venster; met de impliciete venster-root knipt
+      // .main de vergrote root-rect weg en verviel de 300px voorlaadbuffer.
+      }, { root: _scrollRoot(), rootMargin: '300px' });
       thumbs.forEach(function(el){ _meldingThumbObserver.observe(el); });
     }
+    // Geeft het element terug dat daadwerkelijk scrollt: .main zodra die een
+    // eigen scroll-container is (mobiel), anders null = het venster (desktop).
+    function _scrollRoot() {
+      var m = document.querySelector('.main');
+      if (!m) return null;
+      var ov = getComputedStyle(m).overflowY;
+      return (ov === 'auto' || ov === 'scroll') ? m : null;
+    }
+
     function _loadMeldingThumb(el) {
       var id = el.getAttribute('data-thumb-mid');
       if (!id || el._loaded) return;
