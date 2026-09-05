@@ -13,6 +13,8 @@ from models import (
     SubscriptionPlan, AccountStatus, is_reserved_org_name, PORTAL_MODULES,
 )
 from auth import get_current_user, hash_password, validate_password_strength
+from schemas import OrganizationBrandingUpdate
+from branding import valideer_logo, valideer_kleur
 from audit import log_action, ACTION
 from routers.users_router import ANONYMIZED_EMAIL_DOMAIN
 
@@ -292,6 +294,54 @@ def update_organization(
         "status": org.status.value,
         "max_users": org.max_users,
         "enabled_modules": modules_out,
+    }
+
+
+@router.put("/organizations/{org_id}/branding")
+def update_organization_branding(
+    org_id: str,
+    payload: OrganizationBrandingUpdate,
+    request: Request,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Huisstijl van een klant-organisatie zetten (alleen platform-eigenaar).
+
+    Aparte route met een body: de bovenstaande PUT werkt op query-parameters
+    en daar past geen logo van honderden kilobytes in. Hiermee kan de eigenaar
+    een klantportaal inrichten zonder als die klant in te loggen.
+
+    Een veld weglaten laat het ongemoeid; expliciet null wist het.
+    """
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organisatie niet gevonden")
+
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(status_code=400, detail="Geen velden om te wijzigen")
+
+    before = {}
+    after = {}
+    if "logo_data_url" in data:
+        before["logo_data_url"] = "(set)" if org.logo_data_url else "(empty)"
+        org.logo_data_url = valideer_logo(data["logo_data_url"])
+        after["logo_data_url"] = "(set)" if org.logo_data_url else "(empty)"
+    if "brand_color" in data:
+        before["brand_color"] = org.brand_color
+        org.brand_color = valideer_kleur(data["brand_color"])
+        after["brand_color"] = org.brand_color
+
+    db.commit()
+    db.refresh(org)
+    log_action(db, request, current_user,
+               action="org.branding_update", entity_type="organization",
+               entity_id=org.id, before=before, after=after)
+    return {
+        "id": org.id,
+        "name": org.name,
+        "logo_data_url": org.logo_data_url,
+        "brand_color": org.brand_color,
     }
 
 
