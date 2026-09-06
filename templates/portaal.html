@@ -4054,6 +4054,7 @@
       <div class="tab-row" style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:20px;">
         <button class="int-tab active" data-tab="toolbox" onclick="switchVeiligheidTab('toolbox')" data-i18n="vg_tab_toolbox">Toolbox</button>
         <button class="int-tab" data-tab="incidenten" onclick="switchVeiligheidTab('incidenten')" data-i18n="vg_tab_incidenten">Incidenten</button>
+        <button class="int-tab" data-tab="wpi" onclick="switchVeiligheidTab('wpi')" data-i18n="vg_tab_wpi">Werkplekinspectie</button>
       </div>
 
       <div id="vg-tab-toolbox">
@@ -4102,6 +4103,26 @@
         </div>
 
         <div class="card" id="incidentList">
+          <div class="loading-spinner"></div>
+        </div>
+      </div>
+
+      <div id="vg-tab-wpi" style="display:none;">
+        <div class="card" style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+          <div>
+            <strong style="font-size:15px;" data-i18n="wpi_start_kop">Rondgang over de werkplek</strong>
+            <p style="font-size:13px;color:var(--text-muted);margin-top:2px;" data-i18n="wpi_start_sub">Loop de controlevragen langs en leg vast wat niet in orde is.</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="wpiProject" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;"><option value="">-</option></select>
+            <button class="btn-primary" onclick="startWpi()" data-i18n="wpi_start">Start rondgang</button>
+          </div>
+        </div>
+
+        <!-- Openstaande punten bovenaan: dat is waar iemand naar zoekt. -->
+        <div id="wpiActies" style="margin-bottom:16px;"></div>
+
+        <div class="card" id="wpiList">
           <div class="loading-spinner"></div>
         </div>
       </div>
@@ -5501,6 +5522,35 @@
     </div>
   </div>
 
+
+  <!-- ═══ WERKPLEKINSPECTIE — DE RONDGANG ═══ -->
+  <div class="modal-overlay" id="wpiModal">
+    <div class="modal" style="max-width:760px;">
+      <button class="modal-close" onclick="closeWpi()" aria-label="Sluiten">&times;</button>
+      <h2 data-i18n="wpi_title">Werkplekinspectie</h2>
+      <p class="subtitle" id="wpiSub"></p>
+
+      <div id="wpiVoortgang" style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
+
+      <div class="form-group">
+        <label data-i18n="wpi_locatie">Locatie</label>
+        <input id="wpiLocatie" type="text" onchange="wpiBewaarKop()">
+      </div>
+
+      <div id="wpiVragen"></div>
+
+      <div class="form-group" style="margin-top:18px;">
+        <label data-i18n="wpi_indruk">Algemene indruk (optioneel)</label>
+        <textarea id="wpiIndruk" rows="3" onchange="wpiBewaarKop()"></textarea>
+      </div>
+
+      <div class="form-actions" style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+        <button class="btn-secondary" onclick="downloadWpiPdf()" data-i18n="tb_pdf">PDF</button>
+        <button class="btn-primary" id="wpiAfrondKnop" onclick="rondWpiAf()" data-i18n="wpi_afronden">Afronden</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- ═══════ LEAFLET JS ═══════ -->
@@ -5524,7 +5574,8 @@
       nl: {
         // Nav & Sidebar
         dashboard: 'Dashboard', projecten: 'Projecten', meldingen: 'Meldingen', kaart: 'Kaart', gebruikers: 'Gebruikers',
-        beheer: 'Beheer', admin_overzicht: 'Admin Overzicht', instellingen: 'Instellingen', overig: 'Overig', hoofdmenu: 'Hoofdmenu', vg_sub_incidenten: 'Ongevallen, bijna-ongevallen en gevaarlijke situaties.',
+        beheer: 'Beheer', admin_overzicht: 'Admin Overzicht', instellingen: 'Instellingen', overig: 'Overig', hoofdmenu: 'Hoofdmenu',
+        vg_tab_wpi: 'Werkplekinspectie', vg_sub_wpi: 'Rondgangen over de werkplek en wat er nog open staat.', wpi_title: 'Werkplekinspectie', wpi_start: 'Start rondgang', wpi_start_kop: 'Rondgang over de werkplek', wpi_start_sub: 'Loop de controlevragen langs en leg vast wat niet in orde is.', wpi_locatie: 'Locatie', wpi_indruk: 'Algemene indruk (optioneel)', wpi_in_orde: 'In orde', wpi_niet_in_orde: 'Niet in orde', wpi_open: 'open', wpi_score: 'Score', wpi_afronden: 'Afronden', wpi_afronden_vraag: 'Hierna kan er niets meer worden gewijzigd. Doorgaan?', wpi_afgerond: 'Rondgang afgerond', wpi_bewaard: 'Bevinding opgeslagen', wpi_toelichting: 'Wat is er niet in orde?', wpi_actie: 'Wat gaat er gebeuren? (optioneel)', wpi_toelichting_vraag: 'Wat is er niet in orde?', wpi_toelichting_verplicht: 'Vul een toelichting in — zonder uitleg kan niemand er iets mee', wpi_gereed: 'Gereed', wpi_open_acties: 'Openstaande punten', wpi_leeg_titel: 'Nog geen rondgang', wpi_leeg_tekst: 'Start er een voordat het werk begint.', vg_sub_incidenten: 'Ongevallen, bijna-ongevallen en gevaarlijke situaties.',
         vg_tab_incidenten: 'Incidenten', inc_melden: 'Incident melden', inc_melden_kop: 'Iets gezien of gebeurd?', inc_melden_sub: 'Melden mag altijd en door iedereen. Ook een bijna-ongeval.', inc_modal_title: 'Incident melden', inc_modal_sub: 'Hoe eerder en hoe gewoner dit gebeurt, hoe meer je ermee kunt. Ook een bijna-ongeval telt.', inc_soort: 'Wat is er gebeurd?', inc_soort_kop: 'Soort', inc_ongeval: 'Ongeval', inc_bijna: 'Bijna-ongeval', inc_gevaar: 'Gevaarlijke situatie', inc_omschrijving: 'Wat gebeurde er precies?', inc_omschrijving_kop: 'Wat gebeurde er', inc_project: 'Project (optioneel)', inc_locatie: 'Locatie (optioneel)', inc_direct: 'Wat is er meteen gedaan? (optioneel)', inc_direct_kop: 'Meteen gedaan', inc_letsel: 'Letsel', inc_letsel_geen: 'Geen letsel', inc_letsel_ehbo: 'EHBO ter plaatse', inc_letsel_behandeling: 'Behandeling door een arts', inc_letsel_ziekenhuis: 'Ziekenhuisopname', inc_letsel_dodelijk: 'Dodelijk', inc_letsel_beh: 'Behandeling door een arts', inc_letsel_zkh: 'Ziekenhuisopname', inc_letsel_dood: 'Dodelijk', inc_betrokkene: 'Naam betrokkene (optioneel)', inc_verzuim: 'Er is verzuim (niet kunnen werken)', inc_avg: 'Deze gegevens gaan over een persoon. Vul niet meer in dan nodig; medische details horen hier niet.', inc_verstuur: 'Melden', inc_gemeld: 'Incident gemeld', inc_melden_mislukt: 'Melden mislukt', inc_omschrijving_verplicht: 'Beschrijf kort wat er gebeurde', inc_maatregel_verplicht: 'Leg eerst vast welke maatregel is genomen', inc_oorzaak: 'Oorzaak', inc_maatregel: 'Welke maatregel is genomen?', inc_afhandelen: 'Afhandelen', inc_afgehandeld: 'Incident afgehandeld', inc_opgeslagen: 'Onderzoek opgeslagen', inc_alle_soorten: 'Alle soorten', inc_st_gemeld: 'Gemeld', inc_st_onderzoek: 'In onderzoek', inc_st_afgehandeld: 'Afgehandeld', inc_leeg_titel: 'Nog geen incidenten', inc_leeg_tekst: 'Dat is goed nieuws, maar meld een bijna-ongeval ook als er niets gebeurde.', inc_inspectie_kop: 'Meld dit bij de Arbeidsinspectie', inc_inspectie_waarschuwing: 'Bij ziekenhuisopname, blijvend letsel of overlijden moet dit ongeval direct worden gemeld bij de Nederlandse Arbeidsinspectie.', inc_gemeld_bij_inspectie: 'Gemeld bij de Arbeidsinspectie', begrepen: 'Begrepen', ja: 'Ja', nee: 'Nee',
         nav_veiligheid: 'Veiligheid', vg_title: 'Veiligheid', vg_sub: 'Toolboxen en presentielijsten van je ploeg.', vg_new: '+ Nieuwe toolbox', vg_tab_toolbox: 'Toolbox', vg_all_projects: 'Alle projecten', vg_leeg_titel: 'Nog geen toolbox', vg_leeg_tekst: 'Maak er een aan voordat het werk begint.', tb_new_title: 'Nieuwe toolbox', tb_new_sub: 'Kies het project en het onderwerp. Laat er een voorstel bij maken en pas het aan naar wat je op deze plek ziet.', tb_project: 'Project', tb_onderwerp: 'Onderwerp', tb_generate: 'Voorstel opstellen', tb_inleiding: 'Waar gaat het over', tb_risicos: 'Risico\'s (een per regel)', tb_maatregelen: 'Maatregelen (een per regel)', tb_bespreekpunten: 'Bespreekpunten (een per regel)', tb_risicos_kop: 'Risico\'s', tb_maatregelen_kop: 'Maatregelen', tb_bespreekpunten_kop: 'Bespreekpunten', tb_presentielijst: 'Presentielijst', tb_eigen_medewerker: 'Eigen medewerker', tb_extern: 'Externe deelnemer', tb_add: 'Toevoegen', tb_kies: 'Kies', tb_pdf: 'PDF', tb_afsluiten: 'Afsluiten', tb_teken: 'Tekenen', tb_sign_title: 'Tekenen voor deelname', tb_sign_save: 'Handtekening opslaan', tb_getekend: 'Getekend', tb_getekend_op: 'getekend op', tb_niet_getekend: 'niet getekend', tb_geen_deelnemers: 'Nog niemand op de lijst.', tb_extern_badge: 'extern', tb_kies_project: 'Kies eerst een project', tb_kies_onderwerp: 'Vul een onderwerp in', tb_kies_medewerker: 'Kies een medewerker', tb_naam_verplicht: 'Naam is verplicht', tb_bezig: 'Bezig...', tb_bron_ai: 'Opgesteld met AI uit de projectcontext', tb_bron_sjabloon: 'Sjabloon gebruikt (geen AI beschikbaar) - loop het zelf na', tb_open_meldingen: 'open meldingen', tb_gen_mislukt: 'Voorstel mislukt', tb_opgeslagen: 'Toolbox opgeslagen', tb_opslaan_mislukt: 'Opslaan mislukt', tb_add_mislukt: 'Toevoegen mislukt', tb_getekend_toast: 'Handtekening opgeslagen', tb_afgesloten: 'Toolbox afgesloten', tb_afsluiten_vraag: 'Hierna kan er niets meer worden gewijzigd. Doorgaan?', tb_pdf_klaar: 'PDF gedownload', tb_pdf_mislukt: 'PDF mislukt', datum: 'Datum', fout_laden: 'Laden mislukt', compliance: 'Compliance', handleiding: 'Handleiding', rondleiding: 'Rondleiding',
         uitloggen: 'Uitloggen',
@@ -6065,7 +6116,8 @@
       },
       en: {
         dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
-        beheer: 'Management', admin_overzicht: 'Admin Overview', instellingen: 'Settings', overig: 'Other', hoofdmenu: 'Main menu', vg_sub_incidenten: 'Accidents, near misses and unsafe situations.',
+        beheer: 'Management', admin_overzicht: 'Admin Overview', instellingen: 'Settings', overig: 'Other', hoofdmenu: 'Main menu',
+        vg_tab_wpi: 'Site inspection', vg_sub_wpi: 'Site walk-rounds and what is still open.', wpi_title: 'Site inspection', wpi_start: 'Start walk-round', wpi_start_kop: 'Walk-round of the site', wpi_start_sub: 'Work through the checks and record what is not in order.', wpi_locatie: 'Location', wpi_indruk: 'General impression (optional)', wpi_in_orde: 'In order', wpi_niet_in_orde: 'Not in order', wpi_open: 'open', wpi_score: 'Score', wpi_afronden: 'Close', wpi_afronden_vraag: 'Nothing can be changed after this. Continue?', wpi_afgerond: 'Walk-round closed', wpi_bewaard: 'Finding saved', wpi_toelichting: 'What is not in order?', wpi_actie: 'What will be done? (optional)', wpi_toelichting_vraag: 'What is not in order?', wpi_toelichting_verplicht: 'Add a note — without it nobody can act on this', wpi_gereed: 'Done', wpi_open_acties: 'Open points', wpi_leeg_titel: 'No walk-round yet', wpi_leeg_tekst: 'Start one before work begins.', vg_sub_incidenten: 'Accidents, near misses and unsafe situations.',
         vg_tab_incidenten: 'Incidents', inc_melden: 'Report incident', inc_melden_kop: 'Seen or had something happen?', inc_melden_sub: 'Anyone can report, any time. Near misses count too.', inc_modal_title: 'Report incident', inc_modal_sub: 'The sooner and the more routine this is, the more you can do with it. Near misses count.', inc_soort: 'What happened?', inc_soort_kop: 'Type', inc_ongeval: 'Accident', inc_bijna: 'Near miss', inc_gevaar: 'Unsafe situation', inc_omschrijving: 'What exactly happened?', inc_omschrijving_kop: 'What happened', inc_project: 'Project (optional)', inc_locatie: 'Location (optional)', inc_direct: 'What was done immediately? (optional)', inc_direct_kop: 'Immediate action', inc_letsel: 'Injury', inc_letsel_geen: 'No injury', inc_letsel_ehbo: 'First aid on site', inc_letsel_behandeling: 'Treated by a doctor', inc_letsel_ziekenhuis: 'Hospital admission', inc_letsel_dodelijk: 'Fatal', inc_letsel_beh: 'Treated by a doctor', inc_letsel_zkh: 'Hospital admission', inc_letsel_dood: 'Fatal', inc_betrokkene: 'Name of person involved (optional)', inc_verzuim: 'Resulted in absence from work', inc_avg: 'This is personal data. Enter no more than necessary; medical details do not belong here.', inc_verstuur: 'Report', inc_gemeld: 'Incident reported', inc_melden_mislukt: 'Reporting failed', inc_omschrijving_verplicht: 'Briefly describe what happened', inc_maatregel_verplicht: 'First record what action was taken', inc_oorzaak: 'Cause', inc_maatregel: 'What action was taken?', inc_afhandelen: 'Close', inc_afgehandeld: 'Incident closed', inc_opgeslagen: 'Investigation saved', inc_alle_soorten: 'All types', inc_st_gemeld: 'Reported', inc_st_onderzoek: 'Under investigation', inc_st_afgehandeld: 'Closed', inc_leeg_titel: 'No incidents yet', inc_leeg_tekst: 'Good news, but report near misses too, even when nothing happened.', inc_inspectie_kop: 'Report this to the labour inspectorate', inc_inspectie_waarschuwing: 'Hospital admission, permanent injury or death must be reported to the Netherlands Labour Authority immediately.', inc_gemeld_bij_inspectie: 'Reported to the labour inspectorate', begrepen: 'Understood', ja: 'Yes', nee: 'No',
         nav_veiligheid: 'Safety', vg_title: 'Safety', vg_sub: 'Toolbox talks and attendance lists for your crew.', vg_new: '+ New toolbox talk', vg_tab_toolbox: 'Toolbox', vg_all_projects: 'All projects', vg_leeg_titel: 'No toolbox talk yet', vg_leeg_tekst: 'Create one before work starts.', tb_new_title: 'New toolbox talk', tb_new_sub: 'Pick the project and the subject. Have a draft written and adjust it to what you see on site.', tb_project: 'Project', tb_onderwerp: 'Subject', tb_generate: 'Write a draft', tb_inleiding: 'What it is about', tb_risicos: 'Risks (one per line)', tb_maatregelen: 'Controls (one per line)', tb_bespreekpunten: 'Discussion points (one per line)', tb_risicos_kop: 'Risks', tb_maatregelen_kop: 'Controls', tb_bespreekpunten_kop: 'Discussion points', tb_presentielijst: 'Attendance list', tb_eigen_medewerker: 'Own employee', tb_extern: 'External attendee', tb_add: 'Add', tb_kies: 'Select', tb_pdf: 'PDF', tb_afsluiten: 'Close', tb_teken: 'Sign', tb_sign_title: 'Sign for attendance', tb_sign_save: 'Save signature', tb_getekend: 'Signed', tb_getekend_op: 'signed on', tb_niet_getekend: 'not signed', tb_geen_deelnemers: 'Nobody on the list yet.', tb_extern_badge: 'external', tb_kies_project: 'Select a project first', tb_kies_onderwerp: 'Enter a subject', tb_kies_medewerker: 'Select an employee', tb_naam_verplicht: 'Name is required', tb_bezig: 'Working...', tb_bron_ai: 'Drafted with AI from the project context', tb_bron_sjabloon: 'Template used (no AI available) - review it yourself', tb_open_meldingen: 'open reports', tb_gen_mislukt: 'Draft failed', tb_opgeslagen: 'Toolbox talk saved', tb_opslaan_mislukt: 'Saving failed', tb_add_mislukt: 'Could not add', tb_getekend_toast: 'Signature saved', tb_afgesloten: 'Toolbox talk closed', tb_afsluiten_vraag: 'Nothing can be changed after this. Continue?', tb_pdf_klaar: 'PDF downloaded', tb_pdf_mislukt: 'PDF failed', datum: 'Date', fout_laden: 'Loading failed', compliance: 'Compliance', handleiding: 'Manual', rondleiding: 'Tour',
         uitloggen: 'Logout',
@@ -6544,7 +6596,8 @@
       },
       de: {
         dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
-        beheer: 'Verwaltung', admin_overzicht: 'Admin Übersicht', instellingen: 'Einstellungen', overig: 'Sonstiges', hoofdmenu: 'Hauptmenü', vg_sub_incidenten: 'Unfälle, Beinaheunfälle und gefährliche Situationen.',
+        beheer: 'Verwaltung', admin_overzicht: 'Admin Übersicht', instellingen: 'Einstellungen', overig: 'Sonstiges', hoofdmenu: 'Hauptmenü',
+        vg_tab_wpi: 'Arbeitsplatzbegehung', vg_sub_wpi: 'Begehungen und was noch offen ist.', wpi_title: 'Arbeitsplatzbegehung', wpi_start: 'Begehung starten', wpi_start_kop: 'Begehung der Arbeitsstelle', wpi_start_sub: 'Prüfpunkte durchgehen und festhalten, was nicht in Ordnung ist.', wpi_locatie: 'Ort', wpi_indruk: 'Gesamteindruck (optional)', wpi_in_orde: 'In Ordnung', wpi_niet_in_orde: 'Nicht in Ordnung', wpi_open: 'offen', wpi_score: 'Ergebnis', wpi_afronden: 'Abschließen', wpi_afronden_vraag: 'Danach kann nichts mehr geändert werden. Fortfahren?', wpi_afgerond: 'Begehung abgeschlossen', wpi_bewaard: 'Feststellung gespeichert', wpi_toelichting: 'Was ist nicht in Ordnung?', wpi_actie: 'Was wird unternommen? (optional)', wpi_toelichting_vraag: 'Was ist nicht in Ordnung?', wpi_toelichting_verplicht: 'Bitte erläutern -- ohne Angabe kann niemand handeln', wpi_gereed: 'Erledigt', wpi_open_acties: 'Offene Punkte', wpi_leeg_titel: 'Noch keine Begehung', wpi_leeg_tekst: 'Starten Sie eine, bevor die Arbeit beginnt.', vg_sub_incidenten: 'Unfälle, Beinaheunfälle und gefährliche Situationen.',
         vg_tab_incidenten: 'Vorfälle', inc_melden: 'Vorfall melden', inc_melden_kop: 'Etwas gesehen oder passiert?', inc_melden_sub: 'Jeder darf jederzeit melden. Auch Beinaheunfälle.', inc_modal_title: 'Vorfall melden', inc_modal_sub: 'Je früher und selbstverständlicher, desto mehr lässt sich damit anfangen.', inc_soort: 'Was ist passiert?', inc_soort_kop: 'Art', inc_ongeval: 'Unfall', inc_bijna: 'Beinaheunfall', inc_gevaar: 'Gefährliche Situation', inc_omschrijving: 'Was genau ist passiert?', inc_omschrijving_kop: 'Was passiert ist', inc_project: 'Projekt (optional)', inc_locatie: 'Ort (optional)', inc_direct: 'Was wurde sofort getan? (optional)', inc_direct_kop: 'Sofortmaßnahme', inc_letsel: 'Verletzung', inc_letsel_geen: 'Keine Verletzung', inc_letsel_ehbo: 'Erste Hilfe vor Ort', inc_letsel_behandeling: 'Ärztlich behandelt', inc_letsel_ziekenhuis: 'Krankenhausaufnahme', inc_letsel_dodelijk: 'Tödlich', inc_letsel_beh: 'Ärztlich behandelt', inc_letsel_zkh: 'Krankenhausaufnahme', inc_letsel_dood: 'Tödlich', inc_betrokkene: 'Name der betroffenen Person (optional)', inc_verzuim: 'Mit Arbeitsausfall', inc_avg: 'Dies sind personenbezogene Daten. Nur das Nötigste eintragen; medizinische Details gehören nicht hierher.', inc_verstuur: 'Melden', inc_gemeld: 'Vorfall gemeldet', inc_melden_mislukt: 'Meldung fehlgeschlagen', inc_omschrijving_verplicht: 'Beschreiben Sie kurz, was passiert ist', inc_maatregel_verplicht: 'Halten Sie zuerst die Maßnahme fest', inc_oorzaak: 'Ursache', inc_maatregel: 'Welche Maßnahme wurde ergriffen?', inc_afhandelen: 'Abschließen', inc_afgehandeld: 'Vorfall abgeschlossen', inc_opgeslagen: 'Untersuchung gespeichert', inc_alle_soorten: 'Alle Arten', inc_st_gemeld: 'Gemeldet', inc_st_onderzoek: 'In Untersuchung', inc_st_afgehandeld: 'Abgeschlossen', inc_leeg_titel: 'Noch keine Vorfälle', inc_leeg_tekst: 'Gute Nachricht -- melden Sie Beinaheunfälle trotzdem.', inc_inspectie_kop: 'Der Arbeitsaufsicht melden', inc_inspectie_waarschuwing: 'Krankenhausaufnahme, bleibende Schäden oder Tod sind der Arbeitsaufsicht unverzüglich zu melden.', inc_gemeld_bij_inspectie: 'Der Arbeitsaufsicht gemeldet', begrepen: 'Verstanden', ja: 'Ja', nee: 'Nein',
         nav_veiligheid: 'Sicherheit', vg_title: 'Sicherheit', vg_sub: 'Sicherheitsunterweisungen und Anwesenheitslisten.', vg_new: '+ Neue Unterweisung', vg_tab_toolbox: 'Unterweisung', vg_all_projects: 'Alle Projekte', vg_leeg_titel: 'Noch keine Unterweisung', vg_leeg_tekst: 'Legen Sie eine an, bevor die Arbeit beginnt.', tb_new_title: 'Neue Unterweisung', tb_new_sub: 'Projekt und Thema wählen. Entwurf erstellen lassen und an die Baustelle anpassen.', tb_project: 'Projekt', tb_onderwerp: 'Thema', tb_generate: 'Entwurf erstellen', tb_inleiding: 'Worum geht es', tb_risicos: 'Gefahren (eine pro Zeile)', tb_maatregelen: 'Maßnahmen (eine pro Zeile)', tb_bespreekpunten: 'Besprechungspunkte (einer pro Zeile)', tb_risicos_kop: 'Gefahren', tb_maatregelen_kop: 'Maßnahmen', tb_bespreekpunten_kop: 'Besprechungspunkte', tb_presentielijst: 'Anwesenheitsliste', tb_eigen_medewerker: 'Eigener Mitarbeiter', tb_extern: 'Externer Teilnehmer', tb_add: 'Hinzufügen', tb_kies: 'Wählen', tb_pdf: 'PDF', tb_afsluiten: 'Abschließen', tb_teken: 'Unterschreiben', tb_sign_title: 'Teilnahme unterschreiben', tb_sign_save: 'Unterschrift speichern', tb_getekend: 'Unterschrieben', tb_getekend_op: 'unterschrieben am', tb_niet_getekend: 'nicht unterschrieben', tb_geen_deelnemers: 'Noch niemand auf der Liste.', tb_extern_badge: 'extern', tb_kies_project: 'Wählen Sie zuerst ein Projekt', tb_kies_onderwerp: 'Thema eingeben', tb_kies_medewerker: 'Mitarbeiter wählen', tb_naam_verplicht: 'Name ist erforderlich', tb_bezig: 'Bitte warten...', tb_bron_ai: 'Mit KI aus dem Projektkontext erstellt', tb_bron_sjabloon: 'Vorlage verwendet (keine KI verfügbar) - bitte selbst prüfen', tb_open_meldingen: 'offene Meldungen', tb_gen_mislukt: 'Entwurf fehlgeschlagen', tb_opgeslagen: 'Unterweisung gespeichert', tb_opslaan_mislukt: 'Speichern fehlgeschlagen', tb_add_mislukt: 'Hinzufügen fehlgeschlagen', tb_getekend_toast: 'Unterschrift gespeichert', tb_afgesloten: 'Unterweisung abgeschlossen', tb_afsluiten_vraag: 'Danach kann nichts mehr geändert werden. Fortfahren?', tb_pdf_klaar: 'PDF heruntergeladen', tb_pdf_mislukt: 'PDF fehlgeschlagen', datum: 'Datum', fout_laden: 'Laden fehlgeschlagen', compliance: 'Compliance', handleiding: 'Handbuch', rondleiding: 'Rundgang',
         uitloggen: 'Abmelden',
@@ -7023,7 +7076,8 @@
       },
       fr: {
         dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
-        beheer: 'Gestion', admin_overzicht: 'Vue admin', instellingen: 'Paramètres', overig: 'Autre', hoofdmenu: 'Menu principal', vg_sub_incidenten: 'Accidents, presqu’accidents et situations dangereuses.',
+        beheer: 'Gestion', admin_overzicht: 'Vue admin', instellingen: 'Paramètres', overig: 'Autre', hoofdmenu: 'Menu principal',
+        vg_tab_wpi: 'Inspection de chantier', vg_sub_wpi: 'Tournées de chantier et points encore ouverts.', wpi_title: 'Inspection de chantier', wpi_start: 'Démarrer la tournée', wpi_start_kop: 'Tournée du chantier', wpi_start_sub: 'Parcourez les points de contrôle et notez ce qui ne va pas.', wpi_locatie: 'Lieu', wpi_indruk: 'Impression générale (facultatif)', wpi_in_orde: 'Conforme', wpi_niet_in_orde: 'Non conforme', wpi_open: 'ouvert', wpi_score: 'Score', wpi_afronden: 'Clôturer', wpi_afronden_vraag: 'Plus rien ne pourra être modifié ensuite. Continuer ?', wpi_afgerond: 'Tournée clôturée', wpi_bewaard: 'Constat enregistré', wpi_toelichting: 'Qu\'est-ce qui ne va pas ?', wpi_actie: 'Que va-t-on faire ? (facultatif)', wpi_toelichting_vraag: 'Qu\'est-ce qui ne va pas ?', wpi_toelichting_verplicht: 'Ajoutez une précision — sans cela personne ne peut agir', wpi_gereed: 'Fait', wpi_open_acties: 'Points ouverts', wpi_leeg_titel: 'Aucune tournée', wpi_leeg_tekst: 'Commencez-en une avant le début des travaux.', vg_sub_incidenten: 'Accidents, presqu’accidents et situations dangereuses.',
         vg_tab_incidenten: 'Incidents', inc_melden: 'Signaler un incident', inc_melden_kop: 'Vous avez vu ou vécu quelque chose ?', inc_melden_sub: 'Tout le monde peut signaler, à tout moment. Les presqu’accidents comptent aussi.', inc_modal_title: 'Signaler un incident', inc_modal_sub: 'Plus c’est rapide et banal, plus c’est utile. Un presqu’accident compte.', inc_soort: 'Que s’est-il passé ?', inc_soort_kop: 'Type', inc_ongeval: 'Accident', inc_bijna: 'Presqu’accident', inc_gevaar: 'Situation dangereuse', inc_omschrijving: 'Que s’est-il passé exactement ?', inc_omschrijving_kop: 'Ce qui s’est passé', inc_project: 'Projet (facultatif)', inc_locatie: 'Lieu (facultatif)', inc_direct: 'Qu’a-t-on fait immédiatement ? (facultatif)', inc_direct_kop: 'Action immédiate', inc_letsel: 'Blessure', inc_letsel_geen: 'Aucune blessure', inc_letsel_ehbo: 'Premiers secours sur place', inc_letsel_behandeling: 'Soins médicaux', inc_letsel_ziekenhuis: 'Hospitalisation', inc_letsel_dodelijk: 'Mortel', inc_letsel_beh: 'Soins médicaux', inc_letsel_zkh: 'Hospitalisation', inc_letsel_dood: 'Mortel', inc_betrokkene: 'Nom de la personne concernée (facultatif)', inc_verzuim: 'A entraîné un arrêt de travail', inc_avg: 'Il s’agit de données personnelles. N’indiquez que le nécessaire ; pas de détails médicaux.', inc_verstuur: 'Signaler', inc_gemeld: 'Incident signalé', inc_melden_mislukt: 'Échec du signalement', inc_omschrijving_verplicht: 'Décrivez brièvement ce qui s’est passé', inc_maatregel_verplicht: 'Indiquez d’abord la mesure prise', inc_oorzaak: 'Cause', inc_maatregel: 'Quelle mesure a été prise ?', inc_afhandelen: 'Clôturer', inc_afgehandeld: 'Incident clôturé', inc_opgeslagen: 'Enquête enregistrée', inc_alle_soorten: 'Tous les types', inc_st_gemeld: 'Signalé', inc_st_onderzoek: 'En cours d’enquête', inc_st_afgehandeld: 'Clôturé', inc_leeg_titel: 'Aucun incident', inc_leeg_tekst: 'Bonne nouvelle, mais signalez aussi les presqu’accidents.', inc_inspectie_kop: 'Signalez-le à l’inspection du travail', inc_inspectie_waarschuwing: 'Une hospitalisation, une blessure permanente ou un décès doit être signalé immédiatement à l’inspection du travail.', inc_gemeld_bij_inspectie: 'Signalé à l’inspection du travail', begrepen: 'Compris', ja: 'Oui', nee: 'Non',
         nav_veiligheid: 'Sécurité', vg_title: 'Sécurité', vg_sub: 'Causeries sécurité et listes de présence de votre équipe.', vg_new: '+ Nouvelle causerie', vg_tab_toolbox: 'Causerie', vg_all_projects: 'Tous les projets', vg_leeg_titel: 'Aucune causerie', vg_leeg_tekst: 'Créez-en une avant le début des travaux.', tb_new_title: 'Nouvelle causerie', tb_new_sub: 'Choisissez le projet et le sujet. Faites rédiger une proposition et adaptez-la au chantier.', tb_project: 'Projet', tb_onderwerp: 'Sujet', tb_generate: 'Rédiger une proposition', tb_inleiding: 'De quoi il s’agit', tb_risicos: 'Risques (un par ligne)', tb_maatregelen: 'Mesures (une par ligne)', tb_bespreekpunten: 'Points à aborder (un par ligne)', tb_risicos_kop: 'Risques', tb_maatregelen_kop: 'Mesures', tb_bespreekpunten_kop: 'Points à aborder', tb_presentielijst: 'Liste de présence', tb_eigen_medewerker: 'Collaborateur interne', tb_extern: 'Participant externe', tb_add: 'Ajouter', tb_kies: 'Choisir', tb_pdf: 'PDF', tb_afsluiten: 'Clôturer', tb_teken: 'Signer', tb_sign_title: 'Signer la présence', tb_sign_save: 'Enregistrer la signature', tb_getekend: 'Signé', tb_getekend_op: 'signé le', tb_niet_getekend: 'non signé', tb_geen_deelnemers: 'Personne sur la liste.', tb_extern_badge: 'externe', tb_kies_project: 'Sélectionnez d\'abord un projet', tb_kies_onderwerp: 'Saisissez un sujet', tb_kies_medewerker: 'Choisissez un collaborateur', tb_naam_verplicht: 'Le nom est obligatoire', tb_bezig: 'En cours...', tb_bron_ai: 'Rédigé par l\'IA à partir du contexte du projet', tb_bron_sjabloon: 'Modèle utilisé (IA indisponible) - relisez-le vous-même', tb_open_meldingen: 'signalements ouverts', tb_gen_mislukt: 'Échec de la proposition', tb_opgeslagen: 'Causerie enregistrée', tb_opslaan_mislukt: 'Échec de l\'enregistrement', tb_add_mislukt: 'Échec de l\'ajout', tb_getekend_toast: 'Signature enregistrée', tb_afgesloten: 'Causerie clôturée', tb_afsluiten_vraag: 'Plus rien ne pourra être modifié ensuite. Continuer ?', tb_pdf_klaar: 'PDF téléchargé', tb_pdf_mislukt: 'Échec du PDF', datum: 'Date', fout_laden: 'Échec du chargement', compliance: 'Conformité', handleiding: 'Manuel', rondleiding: 'Visite guidée',
         uitloggen: 'Déconnexion',
@@ -7502,7 +7556,8 @@
       },
       tr: {
         dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
-        beheer: 'Yönetim', admin_overzicht: 'Admin Genel Bakış', instellingen: 'Ayarlar', overig: 'Diğer', hoofdmenu: 'Ana menü', vg_sub_incidenten: 'Kazalar, ramak kala olaylar ve tehlikeli durumlar.',
+        beheer: 'Yönetim', admin_overzicht: 'Admin Genel Bakış', instellingen: 'Ayarlar', overig: 'Diğer', hoofdmenu: 'Ana menü',
+        vg_tab_wpi: 'İş yeri denetimi', vg_sub_wpi: 'İş yeri turları ve henüz açık olanlar.', wpi_title: 'İş yeri denetimi', wpi_start: 'Tura başla', wpi_start_kop: 'İş yeri turu', wpi_start_sub: 'Kontrol sorularını geçin ve uygun olmayanları kaydedin.', wpi_locatie: 'Konum', wpi_indruk: 'Genel izlenim (isteğe bağlı)', wpi_in_orde: 'Uygun', wpi_niet_in_orde: 'Uygun değil', wpi_open: 'açık', wpi_score: 'Puan', wpi_afronden: 'Kapat', wpi_afronden_vraag: 'Bundan sonra hiçbir şey değiştirilemez. Devam edilsin mi?', wpi_afgerond: 'Tur kapatıldı', wpi_bewaard: 'Tespit kaydedildi', wpi_toelichting: 'Ne uygun değil?', wpi_actie: 'Ne yapılacak? (isteğe bağlı)', wpi_toelichting_vraag: 'Ne uygun değil?', wpi_toelichting_verplicht: 'Açıklama girin — açıklama olmadan kimse harekete geçemez', wpi_gereed: 'Tamam', wpi_open_acties: 'Açık noktalar', wpi_leeg_titel: 'Henüz tur yok', wpi_leeg_tekst: 'İş başlamadan önce bir tane başlatın.', vg_sub_incidenten: 'Kazalar, ramak kala olaylar ve tehlikeli durumlar.',
         vg_tab_incidenten: 'Olaylar', inc_melden: 'Olay bildir', inc_melden_kop: 'Bir şey mi gördünüz veya oldu?', inc_melden_sub: 'Herkes her zaman bildirebilir. Ramak kala olaylar da sayılır.', inc_modal_title: 'Olay bildir', inc_modal_sub: 'Ne kadar erken ve ne kadar olağan olursa o kadar işe yarar.', inc_soort: 'Ne oldu?', inc_soort_kop: 'Tür', inc_ongeval: 'Kaza', inc_bijna: 'Ramak kala', inc_gevaar: 'Tehlikeli durum', inc_omschrijving: 'Tam olarak ne oldu?', inc_omschrijving_kop: 'Ne oldu', inc_project: 'Proje (isteğe bağlı)', inc_locatie: 'Konum (isteğe bağlı)', inc_direct: 'Hemen ne yapıldı? (isteğe bağlı)', inc_direct_kop: 'Acil önlem', inc_letsel: 'Yaralanma', inc_letsel_geen: 'Yaralanma yok', inc_letsel_ehbo: 'Yerinde ilk yardım', inc_letsel_behandeling: 'Doktor tedavisi', inc_letsel_ziekenhuis: 'Hastaneye yatış', inc_letsel_dodelijk: 'Ölümlü', inc_letsel_beh: 'Doktor tedavisi', inc_letsel_zkh: 'Hastaneye yatış', inc_letsel_dood: 'Ölümlü', inc_betrokkene: 'İlgili kişinin adı (isteğe bağlı)', inc_verzuim: 'İş göremezlik oluştu', inc_avg: 'Bu kişisel verilerdir. Gerekenden fazlasını yazmayın; tıbbi ayrıntılar buraya ait değildir.', inc_verstuur: 'Bildir', inc_gemeld: 'Olay bildirildi', inc_melden_mislukt: 'Bildirim başarısız', inc_omschrijving_verplicht: 'Kısaca ne olduğunu yazın', inc_maatregel_verplicht: 'Önce alınan önlemi kaydedin', inc_oorzaak: 'Neden', inc_maatregel: 'Hangi önlem alındı?', inc_afhandelen: 'Kapat', inc_afgehandeld: 'Olay kapatıldı', inc_opgeslagen: 'İnceleme kaydedildi', inc_alle_soorten: 'Tüm türler', inc_st_gemeld: 'Bildirildi', inc_st_onderzoek: 'İncelemede', inc_st_afgehandeld: 'Kapatıldı', inc_leeg_titel: 'Henüz olay yok', inc_leeg_tekst: 'İyi haber, ama ramak kala olayları da bildirin.', inc_inspectie_kop: 'İş müfettişliğine bildirin', inc_inspectie_waarschuwing: 'Hastaneye yatış, kalıcı yaralanma veya ölüm derhal iş müfettişliğine bildirilmelidir.', inc_gemeld_bij_inspectie: 'İş müfettişliğine bildirildi', begrepen: 'Anlaşıldı', ja: 'Evet', nee: 'Hayır',
         nav_veiligheid: 'Güvenlik', vg_title: 'Güvenlik', vg_sub: 'Ekibiniz için güvenlik toplantıları ve katılım listeleri.', vg_new: '+ Yeni toplantı', vg_tab_toolbox: 'Toplantı', vg_all_projects: 'Tüm projeler', vg_leeg_titel: 'Henüz toplantı yok', vg_leeg_tekst: 'İş başlamadan önce bir tane oluşturun.', tb_new_title: 'Yeni güvenlik toplantısı', tb_new_sub: 'Proje ve konuyu seçin. Taslak hazırlatın ve sahaya göre uyarlayın.', tb_project: 'Proje', tb_onderwerp: 'Konu', tb_generate: 'Taslak hazırla', tb_inleiding: 'Konu nedir', tb_risicos: 'Riskler (her satıra bir)', tb_maatregelen: 'Önlemler (her satıra bir)', tb_bespreekpunten: 'Görüşülecek noktalar (her satıra bir)', tb_risicos_kop: 'Riskler', tb_maatregelen_kop: 'Önlemler', tb_bespreekpunten_kop: 'Görüşülecek noktalar', tb_presentielijst: 'Katılım listesi', tb_eigen_medewerker: 'Kendi çalışanımız', tb_extern: 'Dış katılımcı', tb_add: 'Ekle', tb_kies: 'Seç', tb_pdf: 'PDF', tb_afsluiten: 'Kapat', tb_teken: 'İmzala', tb_sign_title: 'Katılım için imza', tb_sign_save: 'İmzayı kaydet', tb_getekend: 'İmzalandı', tb_getekend_op: 'imza tarihi', tb_niet_getekend: 'imzalanmadı', tb_geen_deelnemers: 'Listede henüz kimse yok.', tb_extern_badge: 'dış', tb_kies_project: 'Önce bir proje seçin', tb_kies_onderwerp: 'Bir konu girin', tb_kies_medewerker: 'Bir çalışan seçin', tb_naam_verplicht: 'İsim zorunludur', tb_bezig: 'Çalışıyor...', tb_bron_ai: 'Proje bağlamından yapay zeka ile hazırlandı', tb_bron_sjabloon: 'Şablon kullanıldı (yapay zeka yok) - kendiniz gözden geçirin', tb_open_meldingen: 'açık bildirim', tb_gen_mislukt: 'Taslak başarısız', tb_opgeslagen: 'Toplantı kaydedildi', tb_opslaan_mislukt: 'Kaydetme başarısız', tb_add_mislukt: 'Eklenemedi', tb_getekend_toast: 'İmza kaydedildi', tb_afgesloten: 'Toplantı kapatıldı', tb_afsluiten_vraag: 'Bundan sonra hiçbir şey değiştirilemez. Devam edilsin mi?', tb_pdf_klaar: 'PDF indirildi', tb_pdf_mislukt: 'PDF başarısız', datum: 'Tarih', fout_laden: 'Yükleme başarısız', compliance: 'Uyumluluk', handleiding: 'Kılavuz', rondleiding: 'Tanıtım turu',
         uitloggen: 'Çıkış',
@@ -23492,7 +23547,7 @@
       document.querySelectorAll('#page-veiligheid .int-tab').forEach(function (b) {
         b.classList.toggle('active', b.getAttribute('data-tab') === tab);
       });
-      ['toolbox', 'incidenten'].forEach(function (naam) {
+      ['toolbox', 'incidenten', 'wpi'].forEach(function (naam) {
         var paneel = document.getElementById('vg-tab-' + naam);
         if (paneel) paneel.style.display = (naam === tab) ? '' : 'none';
       });
@@ -23501,8 +23556,13 @@
       var knop = document.getElementById('vgToolboxKnop');
       if (knop) knop.style.display = (tab === 'toolbox') ? '' : 'none';
       var sub = document.getElementById('vgSub');
-      if (sub) sub.textContent = (tab === 'toolbox') ? t('vg_sub') : t('vg_sub_incidenten');
+      if (sub) {
+        sub.textContent = tab === 'toolbox' ? t('vg_sub')
+                        : tab === 'wpi' ? t('vg_sub_wpi')
+                        : t('vg_sub_incidenten');
+      }
       if (tab === 'incidenten') loadIncidenten();
+      if (tab === 'wpi') loadWpi();
     }
 
     function loadVeiligheid() {
@@ -24064,6 +24124,284 @@
         closeIncidentDetail();
         loadIncidenten();
       }).catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+  </script>
+
+
+  <!-- ═══════ VEILIGHEID — WERKPLEKINSPECTIE ═══════ -->
+  <script>
+    var _wpiHuidig = null;
+
+    function loadWpi() {
+      // Projectkeuze vullen uit de lijst die Veiligheid al ophaalt.
+      var kies = document.getElementById('wpiProject');
+      if (kies && _tbProjecten && _tbProjecten.length && kies.options.length <= 1) {
+        kies.innerHTML = '<option value="">' + t('tb_project') + '...</option>' +
+          _tbProjecten.map(function (p) {
+            return '<option value="' + _tbEsc(p.id) + '">' + _tbEsc(p.name) + '</option>';
+          }).join('');
+      }
+
+      // Openstaande punten bovenaan: daar zoekt iemand naar.
+      api('GET', '/api/wpi/acties/open').then(function (acties) {
+        var vak = document.getElementById('wpiActies');
+        if (!vak) return;
+        if (!acties || !acties.length) { vak.innerHTML = ''; return; }
+        vak.innerHTML = '<div class="card" style="border-left:3px solid var(--orange);">' +
+          '<strong style="font-size:14px;">' + t('wpi_open_acties') + ' (' + acties.length + ')</strong>' +
+          '<table class="data-table" style="margin-top:8px;"><tbody>' +
+          acties.map(function (a) {
+            return '<tr><td><strong>' + _tbEsc(a.vraag || '') + '</strong>' +
+              (a.toelichting ? '<br><span style="font-size:12px;color:var(--text-muted);">' + _tbEsc(a.toelichting) + '</span>' : '') +
+              (a.actie ? '<br><span style="font-size:12px;">&#8594; ' + _tbEsc(a.actie) +
+                (a.actiehouder_naam ? ' (' + _tbEsc(a.actiehouder_naam) + ')' : '') + '</span>' : '') +
+              '</td><td style="text-align:right;white-space:nowrap;">' +
+              '<span style="font-size:12px;color:var(--text-dim);">' + _tbEsc(a.project_name || '') + '</span><br>' +
+              '<button class="btn-secondary" style="font-size:12px;padding:4px 10px;margin-top:4px;" ' +
+              'onclick="wpiVinkActieAf(\'' + _tbEsc(a.wpi_id) + '\', \'' + _tbEsc(a.id) + '\')">' +
+              t('wpi_gereed') + '</button></td></tr>';
+          }).join('') + '</tbody></table></div>';
+      }).catch(function () { /* acties zijn extra; de lijst is het punt */ });
+
+      var doel = document.getElementById('wpiList');
+      if (!doel) return;
+      doel.innerHTML = '<div class="loading-spinner"></div>';
+      api('GET', '/api/wpi/').then(function (items) {
+        if (!items || !items.length) {
+          doel.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128203;</div>' +
+            '<h3>' + t('wpi_leeg_titel') + '</h3><p>' + t('wpi_leeg_tekst') + '</p></div>';
+          return;
+        }
+        doel.innerHTML = '<table class="data-table"><thead><tr>' +
+          '<th>' + t('datum') + '</th><th>' + t('tb_project') + '</th>' +
+          '<th>' + t('wpi_score') + '</th><th>' + t('wpi_niet_in_orde') + '</th><th>Status</th>' +
+          '</tr></thead><tbody>' + items.map(function (w) {
+            var score = w.score_pct === null || w.score_pct === undefined
+              ? (w.voortgang ? w.voortgang.beantwoord + '/' + w.voortgang.totaal : '-')
+              : w.score_pct + '%';
+            var kleur = w.score_pct === null || w.score_pct === undefined ? 'var(--text-dim)'
+                      : w.score_pct >= 90 ? 'var(--green)'
+                      : w.score_pct >= 70 ? 'var(--orange)' : 'var(--red)';
+            return '<tr style="cursor:pointer;" onclick="openWpi(\'' + _tbEsc(w.id) + '\')">' +
+              '<td>' + _tbEsc((w.datum || '').slice(0, 10)) + '</td>' +
+              '<td>' + _tbEsc(w.project_name || '-') + '</td>' +
+              '<td style="color:' + kleur + ';font-weight:700;">' + score + '</td>' +
+              '<td>' + (w.aantal_niet_in_orde === null || w.aantal_niet_in_orde === undefined ? '-' : w.aantal_niet_in_orde) + '</td>' +
+              '<td>' + _tbEsc(w.status) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }).catch(function (err) {
+        doel.innerHTML = '<div class="error-state"><h3>' + t('fout_laden') + '</h3><p>' +
+          _tbEsc(err && err.message) + '</p></div>';
+      });
+    }
+
+    function startWpi() {
+      var project = document.getElementById('wpiProject').value;
+      if (!project) { showToast(t('tb_kies_project'), 'error'); return; }
+      api('POST', '/api/wpi/', { project_id: project })
+        .then(function (w) { _wpiHuidig = w; toonWpi(); loadWpi(); })
+        .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function openWpi(id) {
+      api('GET', '/api/wpi/' + id)
+        .then(function (w) { _wpiHuidig = w; toonWpi(); })
+        .catch(function (err) { showToast(t('fout_laden') + ': ' + (err.message || ''), 'error'); });
+    }
+
+    function closeWpi() {
+      document.getElementById('wpiModal').classList.remove('active');
+      _wpiHuidig = null;
+      loadWpi();
+    }
+
+    function toonWpi() {
+      var w = _wpiHuidig;
+      if (!w) return;
+      var afgerond = w.status === 'afgerond';
+
+      document.getElementById('wpiSub').textContent =
+        (w.project_name || '-') + ' \u00b7 ' + (w.datum || '').slice(0, 10) +
+        ' \u00b7 ' + (w.inspecteur_naam || '');
+      document.getElementById('wpiLocatie').value = w.locatie || '';
+      document.getElementById('wpiIndruk').value = w.algemene_indruk || '';
+      document.getElementById('wpiLocatie').disabled = afgerond;
+      document.getElementById('wpiIndruk').disabled = afgerond;
+      document.getElementById('wpiAfrondKnop').style.display = afgerond ? 'none' : '';
+
+      tekenVoortgang();
+      tekenVragen();
+      document.getElementById('wpiModal').classList.add('active');
+    }
+
+    function tekenVoortgang() {
+      var w = _wpiHuidig;
+      var vak = document.getElementById('wpiVoortgang');
+      if (!w || !vak) return;
+      var lijst = w.antwoorden || [];
+      var ja = lijst.filter(function (a) { return a.antwoord === 'ja'; }).length;
+      var nee = lijst.filter(function (a) { return a.antwoord === 'nee'; }).length;
+      var nvt = lijst.filter(function (a) { return a.antwoord === 'nvt'; }).length;
+      var open = lijst.length - ja - nee - nvt;
+      var beoordeeld = ja + nee;
+      var pct = beoordeeld ? Math.round(100 * ja / beoordeeld) : null;
+
+      vak.innerHTML =
+        '<strong style="font-size:15px;">' + (pct === null ? '-' : pct + '% ' + t('wpi_in_orde')) + '</strong>' +
+        ' &middot; ' + ja + ' ' + t('wpi_in_orde') +
+        ' &middot; <span style="color:var(--red);font-weight:600;">' + nee + ' ' + t('wpi_niet_in_orde') + '</span>' +
+        ' &middot; ' + nvt + ' n.v.t.' +
+        (open ? ' &middot; <span style="color:var(--orange);font-weight:600;">' + open + ' ' + t('wpi_open') + '</span>' : '');
+    }
+
+    function tekenVragen() {
+      var w = _wpiHuidig;
+      var doel = document.getElementById('wpiVragen');
+      if (!w || !doel) return;
+      var afgerond = w.status === 'afgerond';
+      var cats = w.categorieen || {};
+      var huidig = null;
+      var html = '';
+
+      (w.antwoorden || []).forEach(function (a) {
+        if (a.categorie !== huidig) {
+          huidig = a.categorie;
+          html += '<h3 style="font-size:14px;margin:18px 0 8px;color:var(--accent);">' +
+            _tbEsc(cats[huidig] || huidig || '') + '</h3>';
+        }
+        var isNee = a.antwoord === 'nee';
+        html += '<div style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;' +
+          (isNee ? 'border-color:rgba(220,38,38,0.4);background:rgba(220,38,38,0.04);' : '') + '">' +
+          '<div style="font-size:14px;margin-bottom:8px;">' + _tbEsc(a.vraag || '') + '</div>' +
+          '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+          ['ja', 'nee', 'nvt'].map(function (keuze) {
+            var aan = a.antwoord === keuze;
+            var kleur = keuze === 'ja' ? 'var(--green)' : keuze === 'nee' ? 'var(--red)' : 'var(--text-muted)';
+            var label = keuze === 'ja' ? t('wpi_in_orde') : keuze === 'nee' ? t('wpi_niet_in_orde') : 'n.v.t.';
+            return '<button ' + (afgerond ? 'disabled ' : '') +
+              'onclick="wpiAntwoord(\'' + _tbEsc(a.id) + '\', \'' + keuze + '\')" ' +
+              'style="flex:1 1 0;min-width:96px;padding:10px 8px;border-radius:8px;cursor:' +
+              (afgerond ? 'default' : 'pointer') + ';font-family:inherit;font-size:13px;font-weight:600;' +
+              (aan ? 'background:' + kleur + ';color:#fff;border:1px solid ' + kleur + ';'
+                   : 'background:none;color:' + kleur + ';border:1px solid var(--border);') + '">' +
+              label + '</button>';
+          }).join('') + '</div>';
+
+        if (isNee) {
+          html += '<div style="margin-top:10px;">' +
+            '<input type="text" id="wpi-t-' + _tbEsc(a.id) + '" value="' + _tbEsc(a.toelichting || '') +
+              '" placeholder="' + t('wpi_toelichting') + '" ' + (afgerond ? 'disabled ' : '') +
+              'style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;margin-bottom:6px;">' +
+            '<input type="text" id="wpi-a-' + _tbEsc(a.id) + '" value="' + _tbEsc(a.actie || '') +
+              '" placeholder="' + t('wpi_actie') + '" ' + (afgerond ? 'disabled ' : '') +
+              'style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">' +
+            '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">' +
+            (afgerond ? '' : '<button class="btn-secondary" style="font-size:12px;padding:6px 12px;" onclick="wpiBewaarBevinding(\'' + _tbEsc(a.id) + '\')">' + t('opslaan') + '</button>') +
+            '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">' +
+            '<input type="checkbox" ' + (a.actie_gereed ? 'checked ' : '') +
+            'onchange="wpiVinkActieAf(null, \'' + _tbEsc(a.id) + '\', this.checked)" ' +
+            'style="width:18px;height:18px;accent-color:var(--accent);"><span>' + t('wpi_gereed') + '</span></label>' +
+            '</div></div>';
+        }
+        html += '</div>';
+      });
+      doel.innerHTML = html;
+    }
+
+    function _wpiVervang(nieuw) {
+      // Het antwoord in de lokale kopie bijwerken en opnieuw tekenen, zodat de
+      // rondgang niet bij elke klik opnieuw wordt opgehaald -- op een telefoon
+      // met slecht bereik is dat het verschil tussen bruikbaar en niet.
+      (_wpiHuidig.antwoorden || []).forEach(function (a, i) {
+        if (a.id === nieuw.id) _wpiHuidig.antwoorden[i] = nieuw;
+      });
+      tekenVoortgang();
+      tekenVragen();
+    }
+
+    function wpiAntwoord(antwoordId, keuze) {
+      if (!_wpiHuidig) return;
+      var body = { antwoord: keuze };
+      if (keuze === 'nee') {
+        // De server weigert een NEE zonder toelichting. Hier vast een streepje
+        // zetten zou die controle omzeilen; dus vragen we het meteen.
+        var bestaand = (_wpiHuidig.antwoorden || []).filter(function (a) { return a.id === antwoordId; })[0];
+        var toelichting = (bestaand && bestaand.toelichting) || '';
+        if (!toelichting.trim()) {
+          toelichting = (prompt(t('wpi_toelichting_vraag')) || '').trim();
+          if (!toelichting) { showToast(t('wpi_toelichting_verplicht'), 'error'); return; }
+        }
+        body.toelichting = toelichting;
+      }
+      api('PATCH', '/api/wpi/' + _wpiHuidig.id + '/antwoorden/' + antwoordId, body)
+        .then(_wpiVervang)
+        .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function wpiBewaarBevinding(antwoordId) {
+      if (!_wpiHuidig) return;
+      var toelichting = (document.getElementById('wpi-t-' + antwoordId) || {}).value || '';
+      var actie = (document.getElementById('wpi-a-' + antwoordId) || {}).value || '';
+      if (!toelichting.trim()) { showToast(t('wpi_toelichting_verplicht'), 'error'); return; }
+      api('PATCH', '/api/wpi/' + _wpiHuidig.id + '/antwoorden/' + antwoordId,
+          { antwoord: 'nee', toelichting: toelichting.trim(), actie: actie.trim() })
+        .then(function (nieuw) { _wpiVervang(nieuw); showToast(t('wpi_bewaard'), 'success'); })
+        .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function wpiVinkActieAf(wpiId, antwoordId, gereed) {
+      var id = wpiId || (_wpiHuidig && _wpiHuidig.id);
+      if (!id) return;
+      api('PATCH', '/api/wpi/' + id + '/antwoorden/' + antwoordId,
+          { actie_gereed: gereed === undefined ? true : !!gereed })
+        .then(function (nieuw) {
+          if (_wpiHuidig && _wpiHuidig.id === id) _wpiVervang(nieuw);
+          loadWpi();
+        })
+        .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function wpiBewaarKop() {
+      if (!_wpiHuidig || _wpiHuidig.status === 'afgerond') return;
+      api('PATCH', '/api/wpi/' + _wpiHuidig.id, {
+        locatie: document.getElementById('wpiLocatie').value.trim(),
+        algemene_indruk: document.getElementById('wpiIndruk').value.trim()
+      }).catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function rondWpiAf() {
+      if (!_wpiHuidig) return;
+      if (!confirm(t('wpi_afronden_vraag'))) return;
+      api('POST', '/api/wpi/' + _wpiHuidig.id + '/afronden')
+        .then(function (w) {
+          _wpiHuidig = w;
+          showToast(t('wpi_afgerond') + ' — ' + w.score_pct + '%', 'success');
+          toonWpi();
+          loadWpi();
+        })
+        .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function downloadWpiPdf() {
+      if (!_wpiHuidig) return;
+      fetch(API_URL + '/api/wpi/' + _wpiHuidig.id + '/export.pdf',
+            { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function (res) {
+          if (!res.ok) return res.text().then(function (x) { throw new Error('Server fout ' + res.status + ': ' + x.substring(0, 120)); });
+          return res.blob().then(function (blob) {
+            var disp = res.headers.get('Content-Disposition') || '';
+            var m = disp.match(/filename="?([^";]+)"?/);
+            var blobUrl = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = m ? m[1] : 'werkplekinspectie.pdf';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); }, 100);
+            showToast(t('tb_pdf_klaar'), 'success');
+          });
+        })
+        .catch(function (err) { showToast(t('tb_pdf_mislukt') + ': ' + (err.message || ''), 'error'); });
     }
   </script>
 
