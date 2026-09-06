@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, Float
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, Float, UniqueConstraint
 from sqlalchemy.orm import relationship, validates
 from database import Base
 from crypto_fields import EncryptedText
@@ -1899,3 +1899,79 @@ class Schouwwaarneming(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     rit = relationship("Schouwrit", back_populates="waarnemingen")
+
+
+class Invoice(Base):
+    """Een verkoopfactuur voor een abonnementstermijn.
+
+    Mollie factureert onze klanten niet -- Mollie factureert ons. Zonder dit
+    model krijgt een klant een afschrijving zonder factuur, en dan kan zijn
+    boekhouder de BTW niet terugvorderen en wij hem niet verantwoorden.
+
+    **Alles wordt gesnapshot.** Naam, adres, KvK en BTW-nummer van beide
+    partijen staan hier vast zoals ze op de factuurdatum waren. Verhuist een
+    klant volgend jaar, dan verandert een factuur uit dit jaar niet mee -- een
+    factuur is een historisch document, geen weergave van de huidige stand.
+
+    **Het factuurnummer is doorlopend per jaar** en uniek afgedwongen in de
+    database. Een gat in de reeks moet je kunnen uitleggen aan de
+    Belastingdienst, dus nummers worden nooit hergebruikt en een mislukte
+    poging laat geen nummer achter: het nummer wordt pas toegekend als de rij
+    ook echt wordt weggeschreven.
+    """
+
+    __tablename__ = "invoices"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, nullable=False, index=True)
+
+    # Bv. "2026-0001". Uniek over alle organisaties: het is onze reeks, niet die
+    # van de klant.
+    factuurnummer = Column(String(20), nullable=False, unique=True, index=True)
+    jaar = Column(Integer, nullable=False, index=True)
+    volgnummer = Column(Integer, nullable=False)
+
+    factuurdatum = Column(DateTime, nullable=False)
+    # Betaald via automatische incasso, dus geen betalingstermijn -- maar het
+    # veld staat er voor het geval een klant ooit op rekening gaat.
+    vervaldatum = Column(DateTime, nullable=True)
+
+    periode_van = Column(DateTime, nullable=True)
+    periode_tot = Column(DateTime, nullable=True)
+
+    # Wat er in rekening is gebracht.
+    seats = Column(Integer, nullable=False, default=1)
+    tarief_excl = Column(String(20), nullable=False)      # per gebruiker
+    bedrag_excl = Column(String(20), nullable=False)
+    btw_percentage = Column(String(10), nullable=False)
+    btw_bedrag = Column(String(20), nullable=False)
+    bedrag_incl = Column(String(20), nullable=False)
+    valuta = Column(String(8), nullable=False, default="EUR")
+
+    # Verkoper, gesnapshot uit de omgeving.
+    verkoper_naam = Column(String(255), nullable=False)
+    verkoper_adres = Column(Text, nullable=True)
+    verkoper_kvk = Column(String(20), nullable=True)
+    verkoper_btw = Column(String(30), nullable=True)
+    verkoper_iban = Column(String(40), nullable=True)
+
+    # Klant, gesnapshot uit de organisatie.
+    klant_naam = Column(String(255), nullable=False)
+    klant_adres = Column(Text, nullable=True)
+    klant_kvk = Column(String(20), nullable=True)
+    klant_btw = Column(String(30), nullable=True)
+    klant_email = Column(String(255), nullable=True)
+
+    # Koppeling naar de betaling waaruit deze factuur voortkwam. Bewust geen
+    # ForeignKey, gelijk aan Payment: een financiele registratie hoort niets te
+    # blokkeren bij verwijderen.
+    mollie_payment_id = Column(String(64), nullable=True, index=True)
+
+    status = Column(String(20), nullable=False, default="betaald")
+    verzonden_op = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("jaar", "volgnummer", name="uq_invoice_jaar_volgnummer"),
+    )

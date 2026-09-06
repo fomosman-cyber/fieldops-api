@@ -3503,6 +3503,11 @@
             <button class="btn-secondary" id="billCancelBtn" style="display:none;" onclick="zegAbonnementOp()">Opzeggen</button>
           </div>
 
+          <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+            <h4 style="font-size:13.5px;margin:0 0 8px;color:var(--text-dim);">Facturen</h4>
+            <div id="billFacturen"><p style="font-size:13px;color:var(--text-muted);">Laden...</p></div>
+          </div>
+
           <p style="margin:14px 0 0;font-size:11.5px;color:var(--text-dim);line-height:1.6;">
             Je betaalt per actieve gebruiker. Zet je er iemand bij of haal je iemand weg, dan geldt het
             nieuwe bedrag vanaf de eerstvolgende incasso &mdash; er wordt niets naar rato verrekend.
@@ -22100,6 +22105,7 @@
       kaart.style.display = '';
       _billMeld('');
 
+      loadFacturen();
       api('GET', '/api/billing/status').then(function(st) {
         if (!st) return;
         _billingStatus = st;
@@ -22167,6 +22173,58 @@
       }).catch(function(e) {
         _billMeld(e.message || 'Kon de abonnementsgegevens niet laden', 'fout');
       });
+    }
+
+    function loadFacturen() {
+      var box = document.getElementById('billFacturen');
+      if (!box) return;
+      api('GET', '/api/billing/facturen').then(function (d) {
+        if (!d.ingesteld) {
+          // Zeg wát er ontbreekt; "facturatie staat uit" laat iemand zoeken.
+          box.innerHTML = '<p style="font-size:12.5px;color:var(--text-muted);">'
+            + 'Facturatie staat nog niet aan. Ontbrekende instellingen: '
+            + _esc((d.ontbrekende_instellingen || []).join(', ')) + '.</p>';
+          return;
+        }
+        if (!d.facturen.length) {
+          box.innerHTML = '<p style="font-size:12.5px;color:var(--text-muted);">'
+            + 'Nog geen facturen. Die verschijnen hier na de eerste incasso.</p>';
+          return;
+        }
+        box.innerHTML = d.facturen.map(function (f) {
+          return '<div style="display:flex;justify-content:space-between;align-items:center;'
+            + 'gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">'
+            + '<div><strong>' + _esc(f.factuurnummer) + '</strong>'
+            + '<div style="font-size:11.5px;color:var(--text-dim);">'
+            + _esc((f.factuurdatum || '').substring(0, 10)) + ' &middot; '
+            + f.seats + ' gebruiker(s)</div></div>'
+            + '<div style="text-align:right;white-space:nowrap;">'
+            + '€ ' + _esc(f.bedrag_incl)
+            + ' <button class="btn-secondary" style="padding:3px 10px;font-size:12px;margin-left:8px;"'
+            + ' onclick="downloadFactuur(\'' + f.id + '\',\'' + _esc(f.factuurnummer) + '\')">PDF</button>'
+            + '</div></div>';
+        }).join('');
+      }).catch(function () {
+        box.innerHTML = '<p style="font-size:12.5px;color:var(--text-muted);">'
+          + 'Facturen konden niet worden geladen.</p>';
+      });
+    }
+
+    function downloadFactuur(id, nummer) {
+      fetch(API_URL + '/api/billing/facturen/' + id + '/pdf',
+            { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function (res) {
+          if (!res.ok) throw new Error('Server fout ' + res.status);
+          return res.blob();
+        })
+        .then(function (blob) {
+          var u = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = u; a.download = 'factuur-' + nummer + '.pdf';
+          document.body.appendChild(a); a.click();
+          setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(u); }, 100);
+        })
+        .catch(function (e) { showToast(e.message || 'PDF mislukt', 'error'); });
     }
 
     function startAbonnement() {

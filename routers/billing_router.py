@@ -30,12 +30,14 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+import facturatie
 import mollie
 from auth import get_current_user
 from database import get_db
-from models import AccountStatus, Organization, Payment, User
+from models import AccountStatus, Invoice, Organization, Payment, User
 from permissions import is_platform_owner, require_org_admin
 
 router = APIRouter(prefix="/api/billing", tags=["Abonnement"])
@@ -450,16 +452,54 @@ def _mandaat_binnen(db: Session, org: Organization, rij: Payment) -> dict:
 
 
 def _termijn_verlengen(db: Session, org: Organization, rij: Payment) -> dict:
-    """Maandelijkse incasso gelukt."""
+    """Maandelijkse incasso gelukt: termijn verlengen en factureren."""
     basis = _naief(org.paid_until) or _naief(_nu())
     nu = _naief(_nu())
     if basis < nu:
         basis = nu
-    org.paid_until = basis + timedelta(days=31)
+    van, tot = basis, basis + timedelta(days=31)
+    org.paid_until = tot
     org.billing_status = "active"
     if getattr(org.status, "value", org.status) in ("expired", "trial"):
         org.status = AccountStatus.ACTIVE
-    return {"status": "termijn verlengd", "betaald_tot": org.paid_until.isoformat()}
+
+    factuur = _maak_factuur(db, org, rij, periode_van=van, periode_tot=tot)
+    return {"status": "termijn verlengd",
+            "betaald_tot": org.paid_until.isoformat(),
+            "factuur": factuur.factuurnummer if factuur else None}
+
+
+def _maak_factuur(db: Session, org: Organization, rij: Payment,
+                  *, periode_van, periode_tot):
+    """Factuur bij een geincasseerd bedrag.
+
+    Best-effort: een ontbrekende instelling of een kapotte PDF mag de
+    verwerking van de betaling niet tegenhouden, want dan blijft de klant
+    onbetaald staan terwijl het geld al binnen is. De fout wordt wel gemeld en
+    is terug te vinden: een betaling zonder factuur is zichtbaar in het
+    overzicht.
+
+    De mandaatbetaling van een cent krijgt geen factuur. Dat is geen levering
+    maar een verificatie van het incassomandaat; de eerste maand is gratis en
+    er is dus niets om te factureren.
+    """
+    if not facturatie.is_ingesteld():
+        print(f"[billing] geen factuur voor {rij.mollie_payment_id}: "
+              f"ontbrekende instellingen {facturatie.ontbrekende_instellingen()}")
+        return None
+    try:
+        seats, excl, btw, incl = maandbedrag(db, org)
+        return facturatie.maak_factuur(
+            db, org,
+            seats=seats,
+            tarief_excl=tarief_per_gebruiker(),
+            bedrag_excl=excl, btw_percentage=btw_percentage(),
+            btw_bedrag=btw, bedrag_incl=incl,
+            periode_van=periode_van, periode_tot=periode_tot,
+            mollie_payment_id=rij.mollie_payment_id)
+    except Exception as exc:  # noqa: BLE001 -- geld is binnen, factuur kan later
+        print(f"[billing] factuur maken mislukt voor {org.id}: {exc}")
+        return None
 
 
 def _incasso_mislukt(db: Session, org: Organization, rij: Payment) -> None:
@@ -573,6 +613,48 @@ def zeg_abonnement_op(
         "status": "opgezegd",
         "toegang_tot": org.paid_until.isoformat() if org.paid_until else None,
     }
+
+
+@router.get("/facturen")
+def facturen(
+    current_user: User = Depends(require_org_admin),
+    db: Session = Depends(get_db),
+):
+    """Facturen van de eigen organisatie; de platform-eigenaar ziet alles.
+
+    Anders dan het betalingsoverzicht staat dit op org-admin: een factuur bevat
+    het adres en het KvK-nummer van de organisatie, en dat is niet iets voor
+    elke medewerker.
+    """
+    q = db.query(Invoice).order_by(Invoice.factuurdatum.desc())
+    if not is_platform_owner(current_user):
+        q = q.filter(Invoice.organization_id == current_user.organization_id)
+    return {
+        "ingesteld": facturatie.is_ingesteld(),
+        "ontbrekende_instellingen": facturatie.ontbrekende_instellingen(),
+        "facturen": [facturatie.als_dict(f) for f in q.limit(200).all()],
+    }
+
+
+@router.get("/facturen/{factuur_id}/pdf")
+def factuur_pdf(
+    factuur_id: str,
+    current_user: User = Depends(require_org_admin),
+    db: Session = Depends(get_db),
+):
+    f = db.query(Invoice).filter(Invoice.id == factuur_id).first()
+    if not f or (not is_platform_owner(current_user)
+                 and f.organization_id != current_user.organization_id):
+        raise HTTPException(status_code=404, detail="Factuur niet gevonden")
+    try:
+        inhoud = facturatie.bouw_pdf(f)
+    except ImportError:
+        raise HTTPException(status_code=500,
+                            detail="PDF-generator niet geinstalleerd")
+    naam = f"factuur-{f.factuurnummer}.pdf"
+    return StreamingResponse(
+        iter([inhoud]), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{naam}"'})
 
 
 @router.get("/betalingen")
