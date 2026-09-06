@@ -55,8 +55,8 @@ def test_opt_in_true_wordt_bewaard(client):
     assert _fetch(email).marketing_opt_in is True
 
 
-def test_opt_in_zichtbaar_voor_admin(client, admin_user):
-    """De admin-lijst moet de opt-in tonen, anders kun je 'm niet exporteren."""
+def test_opt_in_zichtbaar_voor_eigenaar(client, platform_owner):
+    """De lijst moet de opt-in tonen, anders kun je 'm niet exporteren."""
     email = "admin-ziet-optin@example.nl"
     assert client.post(
         "/api/demo/request", json=_body(email, marketing_opt_in=True)
@@ -64,7 +64,7 @@ def test_opt_in_zichtbaar_voor_admin(client, admin_user):
 
     r = client.get(
         "/api/demo/requests",
-        headers=auth(admin_user),
+        headers=auth(platform_owner),
     )
     assert r.status_code == 200, r.text
     row = next(d for d in r.json() if d["email"] == email)
@@ -86,9 +86,37 @@ def test_notes_optioneel(client):
     assert _fetch(email).notes is None
 
 
-def test_notes_zichtbaar_voor_admin(client, admin_user):
+def test_notes_zichtbaar_voor_eigenaar(client, platform_owner):
     email = "notes-admin@example.nl"
     client.post("/api/demo/request", json=_body(email, notes="Vraag over BAG-koppeling"))
-    r = client.get("/api/demo/requests", headers=auth(admin_user))
+    r = client.get("/api/demo/requests", headers=auth(platform_owner))
     row = next(d for d in r.json() if d["email"] == email)
     assert row["notes"] == "Vraag over BAG-koppeling"
+
+
+def test_klantbeheerder_ziet_de_salespipeline_niet(client, admin_user):
+    """Regressietest op een datalek over organisatiegrenzen heen.
+
+    ``/api/demo/requests`` hing op ``require_admin``, en dat controleert alleen
+    ``is_org_admin``. Elke beheerder van elke klantorganisatie kon daarmee naam,
+    e-mailadres en telefoonnummer van iedere prospect opvragen.
+    """
+    email = "prospect-mag-niet-lekken@example.nl"
+    assert client.post("/api/demo/request", json=_body(email)).status_code == 200
+
+    r = client.get("/api/demo/requests", headers=auth(admin_user))
+    assert r.status_code == 403, r.text
+    assert email not in r.text
+
+
+def test_klantbeheerder_kan_niet_mailen_namens_fieldops(client, admin_user):
+    """``/api/demo/email-test`` mailt naar een vrij invulbaar adres.
+
+    Onder ``require_admin`` was dat een phishing-relay op het FieldOps-domein
+    voor elke klantbeheerder.
+    """
+    r = client.post(
+        "/api/demo/email-test?to=slachtoffer@example.nl",
+        headers=auth(admin_user),
+    )
+    assert r.status_code == 403, r.text
