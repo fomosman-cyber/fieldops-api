@@ -40,17 +40,25 @@ from permissions import is_platform_owner, require_org_admin
 
 router = APIRouter(prefix="/api/billing", tags=["Abonnement"])
 
-# Tarief per gebruiker per maand. Staat op de website; hier instelbaar zodat we
-# een prijswijziging niet hoeven te deployen.
+# Tarief per gebruiker per maand, EXCLUSIEF BTW. Staat zo ook op de website;
+# hier instelbaar zodat we een prijswijziging niet hoeven te deployen.
 STANDAARD_TARIEF = "9.00"
+# Nederlands hoog tarief. Instelbaar omdat een tariefwijziging bij wet gebeurt
+# en dan geen deploy hoort te vergen.
+STANDAARD_BTW = "21"
 # Bedrag van de eerste betaling. Alleen bedoeld om het mandaat te krijgen;
 # Mollie staat minimaal één cent toe bij iDEAL.
 MANDAAT_BEDRAG = "0.01"
 # Zoveel dagen blijft een organisatie na een mislukte incasso nog werken.
 COULANCE_DAGEN = 7
+# Mollie-statussen waarbij de incasso er definitief niet komt. De rest --
+# "open", "pending" en "authorized" -- betekent dat hij nog onderweg is, en bij
+# SEPA duurt dat dagen. Zie _verwerk_betaling.
+DEFINITIEF_MISLUKT = frozenset({"failed", "canceled", "expired"})
 
 
 def tarief_per_gebruiker() -> Decimal:
+    """Tarief per gebruiker per maand, exclusief BTW."""
     ruw = (os.getenv("FIELDOPS_TARIEF_PER_GEBRUIKER") or STANDAARD_TARIEF).strip()
     try:
         return Decimal(ruw)
@@ -58,9 +66,22 @@ def tarief_per_gebruiker() -> Decimal:
         return Decimal(STANDAARD_TARIEF)
 
 
+def btw_percentage() -> Decimal:
+    ruw = (os.getenv("FIELDOPS_BTW_PERCENTAGE") or STANDAARD_BTW).strip()
+    try:
+        return Decimal(ruw)
+    except Exception:  # noqa: BLE001 — zie hierboven
+        return Decimal(STANDAARD_BTW)
+
+
+def _rond(waarde: Decimal) -> Decimal:
+    """Afronden op hele centen, zoals op een factuur."""
+    return waarde.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 def _bedrag(waarde: Decimal) -> str:
     """Mollie wil een string met exact twee decimalen."""
-    return str(waarde.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+    return str(_rond(waarde))
 
 
 def _webhook_token() -> str:
@@ -88,14 +109,24 @@ def actieve_gebruikers(db: Session, org_id: str) -> int:
     ).count()
 
 
-def maandbedrag(db: Session, org: Organization) -> tuple[int, Decimal]:
-    """Aantal te betalen gebruikers en het maandbedrag.
+def maandbedrag(db: Session, org: Organization) -> tuple[int, Decimal, Decimal, Decimal]:
+    """Aantal te betalen gebruikers en het maandbedrag, gesplitst.
+
+    Geeft ``(seats, excl, btw, incl)`` terug. Het tarief is exclusief BTW —
+    zo staat het ook op de website — dus wat Mollie incasseert is het
+    inclusief-bedrag. Bij één gebruiker is dat € 9,00 + € 1,89 = € 10,89.
+
+    De BTW wordt over het totaal berekend en niet per gebruiker, en ``incl``
+    is de som van de twee afgeronde bedragen. Anders kan een factuur een cent
+    verschil vertonen tussen de regels en het totaal.
 
     Minimaal één gebruiker: een organisatie zonder actieve gebruikers hoort
     geen abonnement van nul euro te krijgen, want Mollie weigert dat.
     """
     seats = max(1, actieve_gebruikers(db, org.id))
-    return seats, tarief_per_gebruiker() * seats
+    excl = _rond(tarief_per_gebruiker() * seats)
+    btw = _rond(excl * btw_percentage() / Decimal("100"))
+    return seats, excl, btw, excl + btw
 
 
 def _nu() -> datetime:
@@ -125,7 +156,7 @@ def abonnement_status(
     if org is None:
         raise HTTPException(status_code=404, detail="Geen organisatie gevonden")
 
-    seats, bedrag = maandbedrag(db, org)
+    seats, excl, btw, incl = maandbedrag(db, org)
     return {
         "geconfigureerd": mollie.is_geconfigureerd(),
         "testmodus": mollie.is_testmodus(),
@@ -135,7 +166,11 @@ def abonnement_status(
         "heeft_abonnement": bool(org.mollie_subscription_id),
         "actieve_gebruikers": seats,
         "tarief_per_gebruiker": _bedrag(tarief_per_gebruiker()),
-        "maandbedrag": _bedrag(bedrag),
+        "btw_percentage": str(btw_percentage()),
+        "maandbedrag_excl": _bedrag(excl),
+        "maandbedrag_btw": _bedrag(btw),
+        # Dit is wat er daadwerkelijk van de rekening gaat.
+        "maandbedrag": _bedrag(incl),
         "in_rekening_gebracht_voor": org.billing_seats,
         "betaald_tot": org.paid_until.isoformat() if org.paid_until else None,
         "proef_tot": org.trial_ends_at.isoformat() if org.trial_ends_at else None,
@@ -184,7 +219,7 @@ def start_abonnement(
             org.mollie_customer_id = klant.get("id")
             db.commit()
 
-        seats, bedrag = maandbedrag(db, org)
+        seats, excl, btw, incl = maandbedrag(db, org)
         betaling = mollie.maak_eerste_betaling(
             org.mollie_customer_id,
             bedrag=MANDAAT_BEDRAG,
@@ -207,7 +242,9 @@ def start_abonnement(
     return {
         "checkout_url": checkout,
         "payment_id": betaling.get("id"),
-        "maandbedrag": _bedrag(bedrag),
+        "maandbedrag_excl": _bedrag(excl),
+        "maandbedrag_btw": _bedrag(btw),
+        "maandbedrag": _bedrag(incl),
         "actieve_gebruikers": seats,
     }
 
@@ -340,7 +377,13 @@ def _verwerk_betaling(db: Session, betaling: dict) -> dict:
     soort = betaling.get("sequenceType")
 
     if status != "paid":
-        if soort == "recurring":
+        # Alleen een definitief mislukte incasso is een mislukte incasso.
+        # Hier stond `if status != "paid"` zonder verdere controle, en dat is
+        # bij SEPA fataal: een incasso staat dagen op "open" of "pending"
+        # voordat hij "paid" wordt. Elke tussenstand leverde de klant dus een
+        # "incasso mislukt"-mail op, en bij een lege paid_until zelfs meteen
+        # een geblokkeerd account -- terwijl het geld gewoon onderweg was.
+        if soort == "recurring" and status in DEFINITIEF_MISLUKT:
             _incasso_mislukt(db, org, rij)
         db.commit()
         return {"status": "verwerkt", "betaling": status}
@@ -375,11 +418,12 @@ def _mandaat_binnen(db: Session, org: Organization, rij: Payment) -> dict:
     if org.mollie_subscription_id:
         return {"status": "abonnement bestond al"}
 
-    seats, bedrag = maandbedrag(db, org)
+    seats, excl, btw, incl = maandbedrag(db, org)
     try:
         abonnement = mollie.maak_abonnement(
             org.mollie_customer_id,
-            bedrag=_bedrag(bedrag),
+            # Inclusief BTW: dit is het bedrag dat Mollie incasseert.
+            bedrag=_bedrag(incl),
             # Uniek per klant zolang er meerdere abonnementen kunnen lopen.
             beschrijving=f"FieldOps {org.name} ({org.id[:8]})",
             webhook_url=_webhook_url(),
@@ -401,7 +445,7 @@ def _mandaat_binnen(db: Session, org: Organization, rij: Payment) -> dict:
     # De eerste maand is gratis; daarna incasseert Mollie.
     org.paid_until = _naief(_nu() + timedelta(days=30))
 
-    _stuur_activatiemail(db, org, seats, bedrag)
+    _stuur_activatiemail(db, org, seats, excl, btw, incl)
     return {"status": "abonnement gestart", "subscription": org.mollie_subscription_id}
 
 
@@ -436,7 +480,8 @@ def _admins(db: Session, org: Organization) -> list[User]:
     ).all()
 
 
-def _stuur_activatiemail(db: Session, org: Organization, seats: int, bedrag: Decimal) -> None:
+def _stuur_activatiemail(db: Session, org: Organization, seats: int,
+                         excl: Decimal, btw: Decimal, incl: Decimal) -> None:
     """Bevestiging dat het abonnement loopt.
 
     Best-effort: een haperende mailserver mag geen webhook-retry veroorzaken,
@@ -446,7 +491,10 @@ def _stuur_activatiemail(db: Session, org: Organization, seats: int, bedrag: Dec
         from email_service import send_abonnement_actief
         for admin in _admins(db, org):
             send_abonnement_actief(
-                admin, org, seats=seats, maandbedrag=_bedrag(bedrag))
+                admin, org, seats=seats,
+                bedrag_excl=_bedrag(excl),
+                bedrag_btw=_bedrag(btw),
+                maandbedrag=_bedrag(incl))
     except Exception as exc:  # noqa: BLE001
         print(f"[billing] activatiemail mislukt voor {org.id}: {exc}")
 
@@ -478,15 +526,15 @@ def synchroniseer_seats(
     if org is None or not org.mollie_subscription_id:
         raise HTTPException(status_code=404, detail="Geen lopend abonnement")
 
-    seats, bedrag = maandbedrag(db, org)
+    seats, excl, btw, incl = maandbedrag(db, org)
     if org.billing_seats == seats:
         return {"status": "ongewijzigd", "actieve_gebruikers": seats,
-                "maandbedrag": _bedrag(bedrag)}
+                "maandbedrag": _bedrag(incl)}
 
     try:
         mollie.wijzig_abonnement(
             org.mollie_customer_id, org.mollie_subscription_id,
-            bedrag=_bedrag(bedrag))
+            bedrag=_bedrag(incl))
     except mollie.MollieFout as exc:
         raise HTTPException(status_code=502, detail=f"Mollie: {exc.detail}")
 
@@ -495,7 +543,9 @@ def synchroniseer_seats(
     return {
         "status": "bijgewerkt",
         "actieve_gebruikers": seats,
-        "maandbedrag": _bedrag(bedrag),
+        "maandbedrag_excl": _bedrag(excl),
+        "maandbedrag_btw": _bedrag(btw),
+        "maandbedrag": _bedrag(incl),
         "ingangsdatum": "vanaf de eerstvolgende incasso",
     }
 
