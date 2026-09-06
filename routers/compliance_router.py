@@ -26,9 +26,21 @@ from auth import get_current_user
 router = APIRouter(prefix="/api/compliance", tags=["Compliance"])
 
 
+# Elke partij die namens ons persoonsgegevens verwerkt hoort hier te staan, met
+# de host die de code werkelijk aanroept. Die host is geen sierlijk detail: hij
+# is de sleutel waarop `test_sub_verwerkers` controleert dat deze lijst niet
+# achterloopt op de code.
+#
+# Deze lijst is een keer stil onwaar geworden. Er stond dat de AI-functies
+# lokaal draaiden en dat er geen klantdata naar een externe AI ging. Dat klopte
+# toen de fotoanalyse nog een sjabloon was; sinds die echt naar Claude kijkt
+# klopte het niet meer, en niemand die de tekst had geschreven kwam er nog langs.
+# Vandaar de test: een nieuwe uitgaande host zonder regel in deze lijst laat de
+# testsuite falen.
 SUB_PROCESSORS = [
     {
         "name": "Render Services Inc.",
+        "hosts": ["render.com", "onrender.com", "portaal.fieldopsapp.nl"],
         "category": "Hosting (application + database)",
         "hq": "San Francisco, US",
         "data_location": "Frankfurt EU (eu-central-1)",
@@ -42,6 +54,7 @@ SUB_PROCESSORS = [
     },
     {
         "name": "Cloudflare Inc.",
+        "hosts": ["cloudflarestorage.com"],
         "category": "CDN + DNS + DDoS protection",
         "hq": "San Francisco, US",
         "data_location": "EU-only routing for *.fieldopsapp.nl",
@@ -55,6 +68,7 @@ SUB_PROCESSORS = [
     },
     {
         "name": "Amazon Web Services (AWS)",
+        "hosts": ["amazonaws.com"],
         "category": "Object storage (S3)",
         "hq": "Seattle, US",
         "data_location": "Frankfurt EU (eu-central-1)",
@@ -69,6 +83,8 @@ SUB_PROCESSORS = [
     },
     {
         "name": "PDOK (Kadaster)",
+        "hosts": ["pdok.nl", "api.pdok.nl",
+                  "geodata.nationaalgeoregister.nl"],
         "category": "Open-data geo-services",
         "hq": "Den Haag, NL",
         "data_location": "Netherlands",
@@ -83,6 +99,7 @@ SUB_PROCESSORS = [
     },
     {
         "name": "Resend Inc.",
+        "hosts": ["api.resend.com"],
         "category": "Transactional email",
         "hq": "San Francisco, US",
         "data_location": "Frankfurt EU sending region",
@@ -96,6 +113,7 @@ SUB_PROCESSORS = [
     },
     {
         "name": "Sentry",
+        "hosts": ["ingest.sentry.io", "sentry.io", "sentry-cdn.com"],
         "category": "Error tracking + performance monitoring",
         "hq": "San Francisco, US",
         "data_location": "Frankfurt EU region",
@@ -106,6 +124,144 @@ SUB_PROCESSORS = [
         "certifications": ["SOC 2 Type II", "ISO 27001 (in progress)"],
         "policy_url": "https://sentry.io/privacy/",
         "since": "2024-04",
+    },
+    {
+        "name": "Anthropic PBC",
+        "category": "AI (beeldanalyse en tekstgeneratie)",
+        "hq": "San Francisco, US",
+        "data_location": "Verenigde Staten",
+        "hosts": ["api.anthropic.com"],
+        "purpose": ("Analyse van inspectiefoto's en het opstellen van "
+                    "toolboxteksten. Inspectiefoto's kunnen personen, "
+                    "kentekens en locaties bevatten."),
+        "data_categories": ["foto's", "inspectiegegevens", "projectcontext"],
+        "dpa_signed": True,
+        "scc_in_place": True,
+        "certifications": ["SOC 2 Type II"],
+        "policy_url": "https://www.anthropic.com/legal/privacy",
+        "since": "2025",
+        "opmerking": ("Doorgifte buiten de EER. Zonder ANTHROPIC_API_KEY valt "
+                      "de analyse terug op een sjabloon en gaat er niets heen."),
+    },
+    {
+        "name": "Mollie B.V.",
+        "category": "Betaaldienstverlener",
+        "hq": "Amsterdam, NL",
+        "data_location": "Nederland / EU",
+        "hosts": ["api.mollie.com"],
+        "purpose": "Incassomandaat en maandelijkse abonnementsincasso",
+        "data_categories": ["organisatienaam", "contact-e-mailadres",
+                            "betaalgegevens"],
+        "dpa_signed": True,
+        "scc_in_place": False,
+        "certifications": ["PCI-DSS", "DNB-vergunning"],
+        "policy_url": "https://www.mollie.com/nl/privacy",
+        "since": "2026-09",
+    },
+    {
+        "name": "Vercel Inc.",
+        "category": "Hosting marketingsite",
+        "hq": "San Francisco, US",
+        "data_location": "Edge, wereldwijd",
+        "hosts": ["fieldopsapp.nl", "www.fieldopsapp.nl"],
+        "purpose": ("Hosting van fieldopsapp.nl, inclusief het demo- en "
+                    "contactformulier"),
+        "data_categories": ["naam", "e-mailadres", "telefoonnummer",
+                            "IP-adres"],
+        "dpa_signed": True,
+        "scc_in_place": True,
+        "certifications": ["SOC 2 Type II", "ISO 27001"],
+        "policy_url": "https://vercel.com/legal/privacy-policy",
+        "since": "2026",
+    },
+    {
+        "name": "Google LLC",
+        "category": "Optionele koppeling",
+        "hq": "Mountain View, US",
+        "data_location": "Verenigde Staten",
+        "hosts": ["www.googleapis.com", "maps.google.com",
+                  "fonts.googleapis.com", "fonts.gstatic.com",
+                  "accounts.google.com", "oauth2.googleapis.com"],
+        "purpose": ("Agenda- en Drive-koppeling en kaartweergave, alleen voor "
+                    "organisaties die deze koppeling zelf aanzetten"),
+        "data_categories": ["agenda-items", "bestandsnamen", "locaties"],
+        "dpa_signed": True,
+        "scc_in_place": True,
+        "certifications": ["SOC 2 Type II", "ISO 27001", "ISO 27018"],
+        "policy_url": "https://policies.google.com/privacy",
+        "since": "2025",
+        "opmerking": "Staat standaard uit; alleen actief na koppeling door de klant.",
+    },
+    {
+        "name": "Microsoft Corporation",
+        "category": "Optionele koppeling",
+        "hq": "Redmond, US",
+        "data_location": "EU (Microsoft EU Data Boundary)",
+        "hosts": ["login.microsoftonline.com", "graph.microsoft.com"],
+        "purpose": ("Agenda- en Teams-koppeling, alleen voor organisaties die "
+                    "deze koppeling zelf aanzetten"),
+        "data_categories": ["agenda-items", "e-mailadressen"],
+        "dpa_signed": True,
+        "scc_in_place": True,
+        "certifications": ["SOC 2 Type II", "ISO 27001", "ISO 27018"],
+        "policy_url": "https://privacy.microsoft.com/privacystatement",
+        "since": "2025",
+        "opmerking": "Staat standaard uit; alleen actief na koppeling door de klant.",
+    },
+    {
+        "name": "Shopify Inc.",
+        "category": "Webshop (licentieverkoop)",
+        "hq": "Ottawa, CA",
+        "data_location": "Canada / VS",
+        "hosts": ["myshopify.com"],
+        "purpose": "Bestellingen van licenties en de bijbehorende klantgegevens",
+        "data_categories": ["naam", "e-mailadres", "bestelgegevens"],
+        "dpa_signed": True,
+        "scc_in_place": True,
+        "certifications": ["PCI-DSS", "SOC 2 Type II"],
+        "policy_url": "https://www.shopify.com/legal/privacy",
+        "since": "2026-09",
+        "opmerking": ("Canada heeft een adequaatheidsbesluit van de Europese "
+                      "Commissie."),
+    },
+    {
+        "name": "OpenStreetMap Foundation / Esri",
+        "category": "Kaartmateriaal",
+        "hq": "Cambridge, UK / Redlands, US",
+        "data_location": "Verenigd Koninkrijk en Verenigde Staten",
+        "hosts": ["tile.openstreetmap.org", "nominatim.openstreetmap.org",
+                  "server.arcgisonline.com"],
+        "purpose": ("Kaarttegels en adres-zoekopdrachten in het portaal. De "
+                    "browser van de gebruiker haalt die rechtstreeks op."),
+        "data_categories": ["IP-adres", "opgevraagde kaartuitsnede"],
+        "dpa_signed": False,
+        "scc_in_place": False,
+        "certifications": [],
+        "policy_url": "https://osmfoundation.org/wiki/Privacy_Policy",
+        "since": "2024",
+        "opmerking": ("Geen verwerkersovereenkomst: dit is publieke "
+                      "infrastructuur die de browser zelf benadert. Het "
+                      "Verenigd Koninkrijk heeft een adequaatheidsbesluit; "
+                      "voor de Esri-tegels geldt dat niet en die zijn daarom "
+                      "te vervangen als een klant daarom vraagt."),
+    },
+    {
+        "name": "CDN's voor front-end-bibliotheken",
+        "category": "Contentdistributie",
+        "hq": "Verschillend (VS)",
+        "data_location": "Wereldwijd",
+        "hosts": ["cdn.jsdelivr.net", "cdnjs.cloudflare.com", "unpkg.com"],
+        "purpose": ("JavaScript-bibliotheken die het portaal in de browser "
+                    "laadt, zoals de kaartcomponent."),
+        "data_categories": ["IP-adres", "user-agent"],
+        "dpa_signed": False,
+        "scc_in_place": False,
+        "certifications": [],
+        "policy_url": "https://www.jsdelivr.com/terms/privacy-policy-jsdelivr-net",
+        "since": "2024",
+        "opmerking": ("Geen verwerkersovereenkomst: de browser haalt deze "
+                      "bestanden zelf op. Zelf hosten haalt deze partijen "
+                      "volledig weg en staat op de lijst."),
     },
 ]
 
