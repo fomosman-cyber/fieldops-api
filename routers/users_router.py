@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from typing import Optional
+
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from database import get_db
@@ -38,6 +40,20 @@ def _bezette_seats(db: Session, org: Organization) -> int:
         Invitation.expires_at > datetime.now(timezone.utc),
     ).count()
     return actieve + openstaand
+
+
+def _sync_seats(db: Session, org: Optional[Organization]) -> None:
+    """Maandbedrag gelijktrekken nadat het aantal gebruikers is veranderd.
+
+    Zonder dit liep het bedrag alleen mee als een beheerder zelf op "Bedrag
+    bijwerken" drukte -- wie tien collega's toevoegde betaalde voor een. Stil en
+    best-effort: mislukt het, dan pakt de nachtelijke controle het op.
+    """
+    try:
+        import billing_reconciliatie
+        billing_reconciliatie.sync_seats(db, org)
+    except Exception as exc:  # noqa: BLE001 -- mag de gebruikersactie niet raken
+        print(f"[users] seats synchroniseren mislukt: {exc}")
 
 
 def _seat_ruimte_of_fout(db: Session, org: Organization, *, erbij: int = 1) -> None:
@@ -557,6 +573,7 @@ def update_user(
     for field, value in update_data.items():
         setattr(user, field, value)
     db.commit()
+    _sync_seats(db, current_user.organization)
     db.refresh(user)
 
     role_after = user.role.value if user.role else None
@@ -606,6 +623,7 @@ def deactivate_user(
     # loggen, niet pas na 24u JWT-TTL.
     invalidate_user_sessions(user)
     db.commit()
+    _sync_seats(db, current_user.organization)
     log_action(db, request, current_user,
                action=ACTION.USER_DEACTIVATE, entity_type="user", entity_id=user.id,
                before={"is_active": True, "email": user.email})
@@ -660,6 +678,7 @@ def admin_create_user(
     )
     db.add(user)
     db.commit()
+    _sync_seats(db, current_user.organization)
     db.refresh(user)
 
     log_action(db, request, current_user,
@@ -806,6 +825,9 @@ def accept_invitation(
     inv.accepted = True
     db.commit()
     db.refresh(user)
+
+    # Nieuwe gebruiker erbij: maandbedrag gelijktrekken.
+    _sync_seats(db, org_van_uitnodiging)
 
     # Stuur welkom-mail. De organisatie is hierboven al opgehaald voor de
     # seat-controle, dus geen tweede query.
