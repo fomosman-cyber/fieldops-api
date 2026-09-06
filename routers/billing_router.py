@@ -25,6 +25,7 @@ antwoord laat Mollie ruim een dag lang opnieuw proberen.
 
 from __future__ import annotations
 
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
@@ -631,6 +632,35 @@ def reconciliatie(
     """
     import billing_reconciliatie
     return billing_reconciliatie.reconcilieer(db, toepassen=toepassen)
+
+
+@router.get("/reconciliatie/status")
+def reconciliatie_status(
+    current_user: User = Depends(require_platform_owner),
+    db: Session = Depends(get_db),
+):
+    """Draait de nachtelijke controle echt, en wanneer voor het laatst?
+
+    Een controle waarvan je niet kunt zien of hij loopt, is net zo goed geen
+    controle. Dit leest het audit-logboek: `laatste_start` is er alleen als er
+    ook echt een ronde is geweest.
+    """
+    import billing_planner
+    from models import AuditLog
+
+    laatste = db.query(AuditLog).filter(
+        AuditLog.action == billing_planner.ACTIE_KLAAR,
+    ).order_by(AuditLog.created_at.desc()).first()
+
+    return {
+        "stand": billing_planner.stand(),
+        "uur_utc": billing_planner.UUR_UTC,
+        "vandaag_al_gedraaid": billing_planner.al_gedraaid_vandaag(db),
+        "volgende_moment": billing_planner.volgende_moment().isoformat(),
+        "laatste_ronde": laatste.created_at.isoformat() if laatste else None,
+        "laatste_details": json.loads(laatste.details) if (
+            laatste and laatste.details) else None,
+    }
 
 
 @router.get("/facturen")
