@@ -422,7 +422,7 @@ def export_mjop_pdf(
     pdf.cell(0, 10, "MEERJAREN ONDERHOUDSPLAN", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 12)
     pdf.set_x(18)
-    pdf.cell(0, 7, f"{org_name} - " + (project_name or "Organisatie-breed"))
+    pdf.cell(0, 7, _safe(f"{org_name} - " + (project_name or "Organisatie-breed")))
     pdf.set_text_color(0, 0, 0)
     pdf.ln(40)
 
@@ -593,7 +593,7 @@ def export_mjop_pdf(
     total_typed = sum(asset_type_counts.values()) or 1
     for atype, cnt in asset_type_counts.most_common(15):
         pct = (cnt / total_typed) * 100
-        pdf.cell(70, 5, str(atype)[:32], border=1)
+        pdf.cell(70, 5, _safe(atype)[:32], border=1)
         pdf.cell(30, 5, str(cnt), border=1, align="R")
         pdf.cell(40, 5, f"{pct:.1f}%", border=1, align="R")
         pdf.ln()
@@ -656,7 +656,7 @@ def export_mjop_pdf(
         pdf.ln()
         pdf.set_font("Helvetica", "", 9)
         for cat, cnt in meld_per_type.most_common(10):
-            pdf.cell(90, 5, str(cat)[:42], border=1)
+            pdf.cell(90, 5, _safe(cat)[:42], border=1)
             pdf.cell(30, 5, str(cnt), border=1, align="R")
             pdf.ln()
         pdf.ln(4)
@@ -678,8 +678,8 @@ def export_mjop_pdf(
             a = asset_lookup.get(aid)
             if not a:
                 continue
-            pdf.cell(50, 5, str(a.code or "-")[:22], border=1)
-            pdf.cell(40, 5, str(a.asset_type or "-")[:18], border=1)
+            pdf.cell(50, 5, _safe(a.code or "-")[:22], border=1)
+            pdf.cell(40, 5, _safe(a.asset_type or "-")[:18], border=1)
             pdf.cell(40, 5, str(cnt), border=1, align="R")
             pdf.cell(30, 5, str(a.condition_score) if a.condition_score else "-",
                      border=1, align="C")
@@ -744,10 +744,10 @@ def export_mjop_pdf(
         pdf.set_font("Helvetica", "", 7)
         for r in rows:
             pdf.cell(15, 5, str(r["year"]), border=1)
-            pdf.cell(28, 5, str(r["asset_code"] or "")[:16], border=1)
-            pdf.cell(28, 5, str(r["asset_type"] or "")[:16], border=1)
+            pdf.cell(28, 5, _safe(r["asset_code"] or "")[:16], border=1)
+            pdf.cell(28, 5, _safe(r["asset_type"] or "")[:16], border=1)
             pdf.cell(13, 5, str(r["condition_score"]), border=1, align="C")
-            pdf.cell(58, 5, str(r["maatregel"])[:38], border=1)
+            pdf.cell(58, 5, _safe(r["maatregel"])[:38], border=1)
             pdf.cell(25, 5, _fmt_eur(r["min_total"]), border=1, align="R")
             pdf.cell(25, 5, _fmt_eur(r["max_total"]), border=1, align="R")
             pdf.ln()
