@@ -857,9 +857,18 @@ def manifest():
 
 @app.get("/{doc}.md")
 def serve_setup_doc(doc: str):
-    """Serveer whitelisted setup-docs (GOOGLE-SETUP, MICROSOFT-SETUP, ...) als
-    plain markdown. Toegankelijk vanuit de portaal-UI als CTA voor admins."""
-    allowed = {"GOOGLE-SETUP", "MICROSOFT-SETUP", "RENDER-SETUP", "DEPLOYMENT", "IOS_BUILD_GUIDE"}
+    """Serveer de twee integratiehandleidingen als plain markdown.
+
+    Het portaal opent deze met een gewone ``<a href="/GOOGLE-SETUP.md">``, dus
+    zonder Authorization-header; ze zijn daarom noodzakelijk publiek. Dat kan
+    alleen omdat beide bestanden uitsluitend placeholders bevatten.
+
+    **Interne documenten horen hier niet.** RENDER-SETUP.md, DEPLOYMENT.md en
+    IOS_BUILD_GUIDE.md stonden hier eerder ook in; RENDER-SETUP.md bevatte een
+    echte VAPID-private-key en was daarmee voor iedereen op internet leesbaar.
+    Zet hier nooit een document bij zonder eerst te controleren dat er geen
+    sleutel, token of wachtwoord in staat."""
+    allowed = {"GOOGLE-SETUP", "MICROSOFT-SETUP"}
     if doc not in allowed:
         from fastapi import HTTPException as _HE
         raise _HE(status_code=404, detail="Document niet gevonden")

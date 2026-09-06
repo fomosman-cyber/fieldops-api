@@ -27,13 +27,24 @@ def test_email_test_requires_auth(client):
     assert r.status_code in (401, 403)
 
 
-def test_email_health_admin_ok_without_key_leak(client, admin_user):
-    r = client.get("/api/demo/email-health", headers=auth(admin_user))
+def test_email_health_eigenaar_ok_zonder_key_leak(client, platform_owner):
+    """De platformconfiguratie is voor de eigenaar, niet voor klantbeheerders.
+
+    Dit endpoint stond op ``require_admin``, wat alleen ``is_org_admin`` toetst
+    en dus voor elke klantbeheerder openstond. Zie
+    ``test_email_health_verboden_voor_klantbeheerder`` hieronder.
+    """
+    r = client.get("/api/demo/email-health", headers=auth(platform_owner))
     assert r.status_code == 200, r.text
     body = r.json()
     assert "resend_api_key_set" in body
     # De key-prefix mag NOOIT meer in de response zitten
     assert "resend_api_key_prefix" not in body
+
+
+def test_email_health_verboden_voor_klantbeheerder(client, admin_user):
+    r = client.get("/api/demo/email-health", headers=auth(admin_user))
+    assert r.status_code == 403, r.text
 
 
 def test_email_test_forbidden_for_viewer(client, viewer_user):

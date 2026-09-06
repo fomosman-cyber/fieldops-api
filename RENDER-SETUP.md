@@ -21,8 +21,8 @@ Dit document is **één keer doorlopen, klaar**. Neem ~30 minuten — daarna zij
 VAPID-keys zijn **al gegenereerd**, plak deze drie env-vars in Render:
 
 ```
-VAPID_PUBLIC_KEY=BFt_mKzysw8viwdASr4DQTl0YuA6OBbiP1X77pD327uh2sZpKJqFgp2K69MDylKrfc-wxs1v-vyWreaYWwtHxC4
-VAPID_PRIVATE_KEY=wly5mtVYJlX5TIOMbn_dKMvqJbYKObnDQNhwGAAsPgI
+VAPID_PUBLIC_KEY=<publieke sleutel uit het genereer-commando hierboven>
+VAPID_PRIVATE_KEY=<private sleutel uit het genereer-commando hierboven — nooit in git>
 VAPID_SUBJECT=mailto:info@fieldopsapp.nl
 ```
 
@@ -61,7 +61,7 @@ Voor: GPS-autocomplete in melding-formulier, Street View in melding-detail, kaar
 #### Stap 2 — Plak in Render
 
 ```
-GOOGLE_MAPS_API_KEY=AIzaSy....(jouw key)
+GOOGLE_MAPS_API_KEY=<Maps API key uit de Google Cloud Console>
 ```
 
 #### Stap 3 — Billing
@@ -116,8 +116,8 @@ Voor: inspectie-deadlines automatisch in Google Calendar, foto's auto-upload naa
 #### Stap 3 — Plak in Render
 
 ```
-GOOGLE_OAUTH_CLIENT_ID=123456-abc....apps.googleusercontent.com
-GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-....
+GOOGLE_OAUTH_CLIENT_ID=<Client ID uit de Google Cloud Console>
+GOOGLE_OAUTH_CLIENT_SECRET=<Client secret uit de Google Cloud Console>
 GOOGLE_OAUTH_REDIRECT_URI=https://portaal.fieldopsapp.nl/api/google/oauth/callback
 ```
 
@@ -136,8 +136,8 @@ Tijdens **test-mode** (eerste 100 users) hoef je niets meer te doen. Bij groei �
 Dit is wat je in totaal moet plakken — kopieer-paste in Render Environment:
 
 ```
-VAPID_PUBLIC_KEY=BFt_mKzysw8viwdASr4DQTl0YuA6OBbiP1X77pD327uh2sZpKJqFgp2K69MDylKrfc-wxs1v-vyWreaYWwtHxC4
-VAPID_PRIVATE_KEY=wly5mtVYJlX5TIOMbn_dKMvqJbYKObnDQNhwGAAsPgI
+VAPID_PUBLIC_KEY=<publieke sleutel uit het genereer-commando hierboven>
+VAPID_PRIVATE_KEY=<private sleutel uit het genereer-commando hierboven — nooit in git>
 VAPID_SUBJECT=mailto:info@fieldopsapp.nl
 GOOGLE_MAPS_API_KEY=<vul in na Blok 2>
 GOOGLE_OAUTH_CLIENT_ID=<vul in na Blok 3>

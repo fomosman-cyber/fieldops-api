@@ -3,7 +3,8 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import DemoRequest, User, AuditLog
 from schemas import DemoRequestCreate, DemoRequestResponse
-from auth import require_admin, check_public_post_rate_limit
+from auth import check_public_post_rate_limit
+from permissions import require_platform_owner
 from audit import ACTION
 
 router = APIRouter(prefix="/api/demo", tags=["Demo Aanvragen"])
@@ -110,11 +111,12 @@ def create_demo_request(request: DemoRequestCreate, http_request: Request, db: S
 
 
 @router.get("/email-health", response_model=dict)
-def demo_email_health(admin: User = Depends(require_admin)):
-    """Debug endpoint (admin-only): test email-configuratie zonder een echte demo.
+def demo_email_health(admin: User = Depends(require_platform_owner)):
+    """Debug endpoint (alleen platform-eigenaar): test de e-mailconfiguratie.
 
-    Was publiek → lekte de RESEND-key-prefix + platform-config aan iedereen.
-    Nu achter admin-auth, en de key-prefix is verwijderd (alleen nog set/niet-set).
+    Was ooit publiek → lekte de RESEND-key-prefix + platform-config aan
+    iedereen. Daarna ``require_admin``, maar dat is elke beheerder van elke
+    klantorganisatie; die hoort de platformconfiguratie niet te zien.
     """
     from email_service import RESEND_API_KEY, FROM_EMAIL, ADMIN_NOTIFICATION_EMAIL, FRONTEND_URL, PORTAAL_URL, get_last_email_error
     return {
@@ -128,11 +130,15 @@ def demo_email_health(admin: User = Depends(require_admin)):
 
 
 @router.post("/email-test", response_model=dict)
-def demo_email_test(to: str = "info@fieldopsapp.nl", admin: User = Depends(require_admin)):
-    """Debug endpoint (admin-only): stuur een test-email.
+def demo_email_test(
+    to: str = "info@fieldopsapp.nl",
+    admin: User = Depends(require_platform_owner),
+):
+    """Debug endpoint (alleen platform-eigenaar): stuur een test-e-mail.
 
-    Was publiek → anonieme mail-relay via het FieldOps-domein (phishing-risico).
-    Nu achter admin-auth.
+    ``to`` is vrij invulbaar, dus dit endpoint kan namens het FieldOps-domein
+    naar een willekeurig adres mailen. Onder ``require_admin`` kon elke
+    klantbeheerder dat — een phishing-relay op jouw domein en jouw reputatie.
     """
     from email_service import send_email, get_last_email_error
     ok = send_email(
@@ -147,6 +153,15 @@ def demo_email_test(to: str = "info@fieldopsapp.nl", admin: User = Depends(requi
 
 
 @router.get("/requests", response_model=list[DemoRequestResponse])
-def list_demo_requests(db: Session = Depends(get_db), admin: User = Depends(require_admin)):
-    """Alle demo aanvragen ophalen (alleen voor admins)."""
+def list_demo_requests(
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_platform_owner),
+):
+    """Alle demo-aanvragen ophalen — uitsluitend voor de platform-eigenaar.
+
+    Dit stond op ``require_admin``, en dat controleert alleen ``is_org_admin``.
+    Elke beheerder van elke klantorganisatie kon daarmee de volledige
+    salespipeline lezen: naam, e-mailadres en telefoonnummer van iedere
+    prospect. Dat is een datalek over organisatiegrenzen heen, geen
+    autorisatiedetail."""
     return db.query(DemoRequest).order_by(DemoRequest.created_at.desc()).all()
