@@ -807,11 +807,12 @@ def accept_invitation(
     db.commit()
     db.refresh(user)
 
-    # Stuur welkom email (org is hierboven al opgehaald voor de seat-check)
+    # Stuur welkom-mail. De organisatie is hierboven al opgehaald voor de
+    # seat-controle, dus geen tweede query.
     send_welcome_email(
         to_email=user.email,
         user_name=f"{user.first_name} {user.last_name}".strip(),
-        org_name=org.name if org else "",
+        org_name=org_van_uitnodiging.name if org_van_uitnodiging else "",
     )
 
     return user
