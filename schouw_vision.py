@@ -53,26 +53,6 @@ class NietGeblurd(RuntimeError):
     """Het beeld is niet als privacy-gecontroleerd aangemerkt."""
 
 
-# Wat we in een straatbeeld zoeken. De meetlat-codes komen uit crow_schouw; de
-# objecttypen uit car2023. Zo landt elke waarneming in een bestaande scorelaag
-# in plaats van in een eigen lijstje dat later niemand kan koppelen.
-GEBIEDS_WAARNEMINGEN: list[dict] = [
-    {"meetlat": "zwerfafval", "vraag": "los afval op verharding of in de berm",
-     "eenheid": "aantal stuks in beeld"},
-    {"meetlat": "bijplaatsing", "vraag": "zakken, dozen of grofvuil naast een container",
-     "eenheid": "aantal stuks in beeld"},
-    {"meetlat": "onkruid_verharding", "vraag": "begroeiing tussen klinkers, in voegen of langs de band",
-     "eenheid": "geschat percentage van het zichtbare verhardingsoppervlak"},
-    {"meetlat": "bekladding", "vraag": "graffiti of bekladding op gevels, kasten of abri's",
-     "eenheid": "geschat percentage van het zichtbare geveloppervlak"},
-    {"meetlat": "veegvuil", "vraag": "zand en aanslag in de goot of tegen de trottoirband",
-     "eenheid": "geschat percentage van de zichtbare goot"},
-    {"meetlat": "blad", "vraag": "bladophoping op verharding",
-     "eenheid": "geschat percentage van het zichtbare verhardingsoppervlak"},
-    {"meetlat": "onkruid_groen", "vraag": "onkruid in plantvakken",
-     "eenheid": "geschat percentage van het zichtbare plantvak"},
-]
-
 # Objecten die je op een straatbeeld kunt aanwijzen en die car2023 kent.
 OBJECT_TYPES: list[str] = [
     "verkeersbord", "lichtmast", "bewegwijzering", "afvalbak", "zitbank",
@@ -83,22 +63,40 @@ _OBJECT_ASPECTEN = ["heelheid", "reinheid", "stabiliteit", "functie"]
 
 
 def _systeem_prompt() -> str:
-    meetlatten = "\n".join(
-        f"- {w['meetlat']}: {w['vraag']} ({w['eenheid']})"
-        for w in GEBIEDS_WAARNEMINGEN)
+    """De prompt vraagt om detectieklasse plus drager, niet om een meetlat.
+
+    Een model ziet "hier zit graffiti op die nutskast", niet
+    "bekladding.nutskast". De vertaling naar de meetlat doet crow_schouw; hier
+    vragen we alleen wat er te zien is en waarop. Dat scheelt een lange lijst
+    codes in de prompt en levert betrouwbaardere antwoorden op.
+    """
+    klassen = "\n".join(
+        f"- {k['code']} ({k['naam']}): waarop -> {', '.join(k['dragers'])}"
+        for k in cs.detectieklassen())
     return f"""Je beoordeelt één beeld uit een schouw van de Nederlandse openbare ruimte.
 
 Je taak is waarnemen, niet oordelen. Meld wat je ziet en hoe zeker je bent.
 Wat je niet duidelijk kunt zien, laat je weg -- een lege lijst is een geldig
 antwoord en beter dan een gok.
 
-GEBIEDSWAARNEMINGEN (per meetlat, alleen als je het echt ziet):
-{meetlatten}
+WAT JE MAG MELDEN, met de drager waarop je het ziet:
+{klassen}
 
-OBJECTEN die je mag benoemen: {', '.join(OBJECT_TYPES)}
+De DRAGER is verplicht als je hem kunt zien. "Er zit graffiti" zonder te zeggen
+waarop is niet te verhelpen en niet te scoren. Zie je het niet zeker, laat de
+drager dan weg en zet de zekerheid laag.
+
+WAARDE:
+- bij afval en grofvuil: het aantal stuks dat je in beeld telt
+- bij onkruid, veegvuil, graffiti, blad en overgroei: het geschatte percentage
+  van het zichtbare oppervlak van die drager
+- bij gras: de geschatte hoogte in centimeters
+- bij scheefstand, markering en verharding geef je geen getal maar een letter in
+  "klasse": A (recht/strak), B (licht), C (duidelijk), D (sterk)
+
+OBJECTEN die je los mag benoemen: {', '.join(OBJECT_TYPES)}
 Per object mag je per aspect ({', '.join(_OBJECT_ASPECTEN)}) melden of er iets
-opvalt. Beoordeel alleen wat zichtbaar is: een scheve mast, een gedeukt bord,
-een volle afvalbak, een beklad paneel. Beoordeel niet of iets aan een norm
+opvalt. Beoordeel alleen wat zichtbaar is. Beoordeel niet of iets aan een norm
 voldoet, of iets veilig is, of hoe oud het is.
 
 ZEKERHEID is een getal tussen 0 en 1. Wees streng: geef 0.9 of hoger alleen bij
@@ -110,10 +108,13 @@ Antwoord met uitsluitend geldige JSON, zonder toelichting eromheen:
   "bruikbaar": true,
   "reden_onbruikbaar": null,
   "gebied": [
-    {{"meetlat": "zwerfafval", "waarde": 3, "zekerheid": 0.86, "toelichting": "drie blikjes in de berm"}}
+    {{"klasse": "afval_los", "drager": "elementenverharding", "waarde": 3,
+      "zekerheid": 0.86, "toelichting": "drie blikjes op het trottoir"}},
+    {{"klasse": "scheefstand", "drager": "lichtmast", "klasse_niveau": "C",
+      "zekerheid": 0.74, "toelichting": "mast helt duidelijk"}}
   ],
   "objecten": [
-    {{"type": "lichtmast", "aspect": "stabiliteit", "waarneming": "mast staat scheef",
+    {{"type": "afvalbak", "aspect": "reinheid", "waarneming": "bak zit vol",
       "zekerheid": 0.72}}
   ]
 }}
@@ -148,28 +149,43 @@ def _parse(ruw: str) -> dict:
 
 
 def _schoon(rauw: dict) -> dict:
-    """Antwoord opschonen: onbekende meetlatten en objecttypen eruit.
+    """Antwoord opschonen en vertalen naar meetlatten.
 
-    Een model dat een meetlat verzint die crow_schouw niet kent, levert een
-    waarneming op die nooit gescoord kan worden. Die filteren we weg in plaats
-    van hem mee te slepen tot hij ergens anders een fout veroorzaakt.
+    Een waarneming zonder herleidbare meetlat -- verzonnen klasse, of graffiti
+    zonder drager -- verdwijnt niet, maar krijgt `meetlat: None` en
+    `beoordeling_nodig: True`. Dan ziet iemand hem in de beoordeellijst en kan
+    hij de drager alsnog invullen. Weggooien zou betekenen dat de AI iets zag en
+    niemand het te weten komt.
     """
-    bekende_meetlatten = {m["meetlat"] for m in GEBIEDS_WAARNEMINGEN}
-
     gebied = []
     for w in (rauw.get("gebied") or []):
-        code = w.get("meetlat")
-        if code not in bekende_meetlatten or cs.meetlat(code) is None:
+        klasse = w.get("klasse")
+        if klasse not in cs.DETECTIEKLASSEN:
             continue
+        drager = w.get("drager") or None
+        try:
+            code = cs.meetlat_voor(klasse, drager)
+        except cs.OnbekendeDrager:
+            code, drager = None, None      # drager past niet; laat beoordelen
+        m = cs.meetlat(code) if code else None
+
         zekerheid = _getal(w.get("zekerheid"), 0.0, 1.0)
+        niveau = w.get("klasse_niveau")
+        if niveau not in ("A+", "A", "B", "C", "D"):
+            niveau = None
+
         gebied.append({
+            "klasse": klasse,
+            "drager": drager,
             "meetlat": code,
-            "naam": cs.meetlat(code)["naam"],
-            "eenheid": cs.meetlat(code)["eenheid"],
+            "naam": m["naam"] if m else cs.DETECTIEKLASSEN[klasse]["naam"],
+            "eenheid": m["eenheid"] if m else None,
             "waarde": _getal(w.get("waarde")),
+            "klasse_niveau": niveau,
             "zekerheid": zekerheid,
             "toelichting": (w.get("toelichting") or "")[:300] or None,
-            "beoordeling_nodig": zekerheid is None or zekerheid < DREMPEL_AUTOMATISCH,
+            "beoordeling_nodig": (code is None or zekerheid is None
+                                  or zekerheid < DREMPEL_AUTOMATISCH),
         })
 
     objecten = []
@@ -312,29 +328,45 @@ def bundel_tot_waarnemingen(frames: list[dict],
     veegwagen moet er hoe dan ook heen. Dat sluit ook aan op de
     slechtste-aspect-regel binnen een vak.
 
+    Getallen komen terug onder ``waarnemingen``, letters onder
+    ``directe_klassen`` -- scheefstand en markering meet je niet, die zie je.
+    Beide gaan zo rechtstreeks in ``crow_schouw.beoordeel_vak``.
+
     ``alleen_zeker`` laat waarnemingen onder de drempel buiten de score. Ze
-    verdwijnen niet: ze komen terug onder ``te_beoordelen``, zodat iemand ze kan
-    nakijken in plaats van dat ze stilletjes wegvallen.
+    verdwijnen niet: ze komen terug onder ``te_beoordelen``, samen met alles wat
+    geen meetlat kreeg omdat de drager ontbrak.
     """
     waarden: dict[str, float] = {}
+    niveaus: dict[str, str] = {}
     te_beoordelen: list[dict] = []
     onbruikbaar = 0
+    _rang = {"A+": 5, "A": 4, "B": 3, "C": 2, "D": 1}
 
     for f in frames:
         if not f.get("bruikbaar"):
             onbruikbaar += 1
             continue
         for w in (f.get("gebied") or []):
-            if w.get("waarde") is None:
-                continue
             if alleen_zeker and w.get("beoordeling_nodig"):
                 te_beoordelen.append(w)
                 continue
-            code = w["meetlat"]
-            waarden[code] = max(waarden.get(code, 0.0), float(w["waarde"]))
+            code = w.get("meetlat")
+            if not code:
+                te_beoordelen.append(w)
+                continue
+            if w.get("waarde") is not None:
+                waarden[code] = max(waarden.get(code, 0.0), float(w["waarde"]))
+            elif w.get("klasse_niveau"):
+                # Ook hier het slechtste, niet het laatste.
+                huidig = niveaus.get(code)
+                if huidig is None or _rang[w["klasse_niveau"]] < _rang[huidig]:
+                    niveaus[code] = w["klasse_niveau"]
+            else:
+                te_beoordelen.append(w)
 
     return {
         "waarnemingen": waarden,
+        "directe_klassen": niveaus,
         "te_beoordelen": te_beoordelen,
         "frames": len(frames),
         "onbruikbare_frames": onbruikbaar,
