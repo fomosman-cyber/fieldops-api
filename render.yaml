@@ -1,41 +1,184 @@
+# FieldOps op Render — volledige blueprint, regio Frankfurt.
+#
+# Waarom dit bestand compleet is: de vorige versie declareerde 18 van de 56
+# variabelen die de code werkelijk leest, had geen `region:` (waardoor de
+# productie-omgeving in Virginia terechtkwam terwijl de compliance-pagina
+# Frankfurt belooft) en kende de backup-cronjob niet — die stond alleen als
+# handmatige stap in CRON-BACKUP-SETUP.md.
+#
+# ─────────────────────────────────────────────────────────────────────────
+# TWEE DINGEN DIE JE MOET WETEN VOOR JE DIT UITROLT
+#
+# 1. SECRET_KEY MOET JE OVERNEMEN, NIET LATEN GENEREREN.
+#    Hij stond eerder op `generateValue: true`. Bij een nieuwe omgeving zou
+#    Render dan een verse sleutel maken, en dat doet twee dingen: alle
+#    uitstaande JWT's worden ongeldig (niet erg, iedereen logt opnieuw in) en
+#    de opgeslagen Google-/Microsoft-tokens worden ONLEESBAAR. crypto_fields.py
+#    valt namelijk terug op SECRET_KEY als TOKEN_ENCRYPTION_KEY leeg is, dus de
+#    huidige productie versleutelt die tokens met SECRET_KEY. Kopieer de
+#    bestaande waarde uit de oude service voordat je iets anders doet.
+#
+# 2. DE SERVICES HEBBEN NIEUWE NAMEN (-eu).
+#    Render kan de regio van een bestaande service niet wijzigen, dus dit maakt
+#    nieuwe services naast de oude. Namen moeten uniek zijn binnen de workspace.
+#    Hernoemen kan later, als de oude weg zijn.
+# ─────────────────────────────────────────────────────────────────────────
+
+databases:
+  - name: fieldops-db-eu
+    plan: basic-256mb
+    databaseName: fieldops
+    user: fieldops
+    region: frankfurt
+
 services:
+  # ── API + portaal ─────────────────────────────────────────────────────
   - type: web
-    name: fieldops-api
+    name: fieldops-api-eu
     runtime: python
     plan: starter
+    region: frankfurt
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    # Zonder dit stuurt Render verkeer naar een instantie die nog aan het
+    # opstarten is; main.py:1470 serveert /api/health.
+    healthCheckPath: /api/health
     envVars:
-      - key: SECRET_KEY
-        generateValue: true
-      - key: DATABASE_URL
-        fromDatabase:
-          name: fieldops-db
-          property: connectionString
+      # ── Basis ────────────────────────────────────────────────────────
       - key: ENV
         value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fieldops-db-eu
+          property: connectionString
+      # ZIE PUNT 1 HIERBOVEN — overnemen uit de oude service, niet genereren.
+      - key: SECRET_KEY
+        sync: false
+      # Expliciet zetten zodat de versleuteling van OAuth-tokens niet stil
+      # meelift op SECRET_KEY (crypto_fields.py:32). Neem bij de verhuizing de
+      # HUIDIGE SECRET_KEY-waarde over, anders zijn bestaande tokens onleesbaar.
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "1440"
+      # ALLOW_INSECURE_DEV_KEY hoort hier NIET te staan. Die vlag laat auth.py
+      # terugvallen op een bekende sleutel en is alleen voor lokaal werk.
+
+      # ── Adressen ─────────────────────────────────────────────────────
       - key: FRONTEND_URL
         value: https://fieldopsapp.nl
+      - key: PORTAAL_URL
+        value: https://portaal.fieldopsapp.nl
+      - key: PUBLIC_HOST
+        value: portaal.fieldopsapp.nl
       - key: CORS_ORIGINS
         sync: false
-      - key: SMTP_HOST
-        value: smtp.gmail.com
-      - key: SMTP_PORT
-        value: "587"
+
+      # ── Betalen (Mollie) ─────────────────────────────────────────────
+      # Zonder deze twee geven alle betaalroutes 503.
+      - key: MOLLIE_API_KEY
+        sync: false
+      # LET OP: deze token zit in het webhook-pad en Mollie legt die URL per
+      # abonnement vast. Wijzigen breekt de incasso van bestaande klanten.
+      - key: MOLLIE_WEBHOOK_TOKEN
+        sync: false
+      - key: FIELDOPS_TARIEF_PER_GEBRUIKER
+        value: "9.00"
+
+      # ── Webshop ──────────────────────────────────────────────────────
+      - key: SHOPIFY_API_SECRET
+        sync: false
+
+      # ── E-mail ───────────────────────────────────────────────────────
+      - key: RESEND_API_KEY
+        sync: false
+      - key: FROM_EMAIL
+        value: noreply@fieldopsapp.nl
+      - key: ADMIN_NOTIFICATION_EMAIL
+        value: info@fieldopsapp.nl
+      # email_service.py kent een SMTP-terugval; alleen invullen als je die wilt.
       - key: SMTP_USER
         sync: false
       - key: SMTP_PASS
         sync: false
-      - key: FROM_EMAIL
-        value: noreply@fieldopsapp.nl
-      - key: FROM_NAME
-        value: FieldOps
-      - key: SHOPIFY_STORE
-        value: fieldops-2
-      - key: SHOPIFY_API_KEY
+
+      # ── Foto-opslag (S3 / R2) ────────────────────────────────────────
+      # Zonder deze blijven foto's als base64 in de database staan.
+      - key: S3_BUCKET
         sync: false
-      - key: SHOPIFY_API_SECRET
+      - key: S3_REGION
+        value: eu-central-1
+      # Leeg laten voor AWS; invullen voor een S3-compatibele opslag (R2, Wasabi).
+      - key: S3_ENDPOINT_URL
         sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      # Moet exact gelijk blijven aan wat productie nu gebruikt, anders
+      # staan bestaande foto's onder een pad dat niemand meer leest.
+      - key: S3_PHOTO_PREFIX
+        value: photos
+      - key: S3_PHOTO_CDN_BASE
+        sync: false
+      - key: PHOTO_OFFLOAD_MIN_BYTES
+        value: "10240"
+
+      # ── AI ───────────────────────────────────────────────────────────
+      # Zonder sleutel valt de inspectie-analyse terug op een sjabloon.
+      # Let op: inspections.py:499 stuurt foto's naar api.anthropic.com (VS).
+      # Dat hoort in je sub-verwerkerslijst en privacyverklaring te staan.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODEL
+        value: claude-sonnet-4-6
+      - key: TOOLBOX_MODEL
+        value: claude-opus-5
+
+      # ── Monitoring ───────────────────────────────────────────────────
+      # Stond niet op productie: /api/status/detailed gaf "not_configured",
+      # dus elke fout verdween stil.
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_PUBLIC_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: SENTRY_TRACES_RATE
+        value: "0.1"
+      - key: SENTRY_PROFILES_RATE
+        value: "0.1"
+
+      # ── Kaarten en koppelingen ───────────────────────────────────────
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        value: https://portaal.fieldopsapp.nl/api/google/callback
+      - key: MS_OAUTH_CLIENT_ID
+        sync: false
+      - key: MS_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: MS_OAUTH_REDIRECT_URI
+        value: https://portaal.fieldopsapp.nl/api/microsoft/callback
+      - key: MS_OAUTH_TENANT
+        value: common
+
+      # ── Push ─────────────────────────────────────────────────────────
+      # De oude VAPID-sleutel lag publiek; gebruik het nieuwe paar.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        value: mailto:info@fieldopsapp.nl
+
+      # ── Eerste eigenaar ──────────────────────────────────────────────
       - key: BOOTSTRAP_OWNER
         sync: false
       - key: OWNER_EMAIL
@@ -43,8 +186,41 @@ services:
       - key: OWNER_PASSWORD
         sync: false
 
-databases:
-  - name: fieldops-db
-    plan: basic-256mb
-    databaseName: fieldops
-    user: fieldops
+  # ── Nachtelijke back-up ───────────────────────────────────────────────
+  # Stond nergens als code: de planning bestond alleen als handmatige stap in
+  # CRON-BACKUP-SETUP.md, dus niemand kon zien of hij bestond of slaagde.
+  # 01:00 UTC = 03:00 in de Nederlandse zomertijd, 02:00 in de wintertijd.
+  - type: cron
+    name: fieldops-backup-eu
+    runtime: python
+    region: frankfurt
+    plan: starter
+    schedule: "0 1 * * *"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m backup_service
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fieldops-db-eu
+          property: connectionString
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        value: eu-central-1
+      - key: S3_ENDPOINT_URL
+        sync: false
+      # Zelfde reden als S3_PHOTO_PREFIX: bestaande back-ups staan hieronder.
+      - key: S3_BACKUP_PREFIX
+        value: backups/fieldops
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+
+# Weggelaten omdat de code ze nooit leest: SMTP_HOST, SMTP_PORT, FROM_NAME,
+# SHOPIFY_STORE en SHOPIFY_API_KEY. Ze stonden wel in de oude blueprint en
+# wekten de indruk dat er iets geconfigureerd was.
+#
+# Zet Render zelf: RENDER, RENDER_EXTERNAL_URL, RENDER_GIT_COMMIT.
+# Alleen voor de seed-scripts, niet nodig op productie: DEMO_PASSWORD,
+# WORKSHOP_PASSWORD.
