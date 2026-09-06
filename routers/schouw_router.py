@@ -2,6 +2,8 @@
 
 Endpoints:
   GET    /api/schouw/catalogus              Detectieklassen, dragers, gebiedstypen
+  GET    /api/schouw/drempels               Grenswaarden van deze organisatie
+  PUT    /api/schouw/drempels               Grenswaarden vastleggen
   GET    /api/schouw/ritten                 Lijst van ritten
   POST   /api/schouw/ritten                 Rit starten
   GET    /api/schouw/ritten/{id}            Detail met waarnemingen en tussenstand
@@ -85,6 +87,16 @@ class WaarnemingIn(BaseModel):
     photo_url: Optional[str] = None
 
 
+class DrempelsIn(BaseModel):
+    """Grenswaarden, per verschijnsel en optioneel per losse meetlat.
+
+    Vorm: ``{"zwerfafval": {"A+": 0, "A": 2, "B": 5, "C": 10}}``. Een grens is de
+    bovengrens van dat niveau; alles boven de laatste grens wordt D.
+    """
+    per_verschijnsel: dict[str, dict[str, float]] = Field(default_factory=dict)
+    per_meetlat: dict[str, dict[str, float]] = Field(default_factory=dict)
+
+
 class WaarnemingUpdate(BaseModel):
     bevestigd: Optional[bool] = None
     afgewezen: Optional[bool] = None
@@ -137,14 +149,53 @@ def _telt_mee(w: Schouwwaarneming) -> bool:
 
 
 def _drempels_voor(org) -> cs.Drempels:
-    """Grenswaarden van de organisatie.
+    """Grenswaarden van de organisatie, uit haar eigen instellingen.
 
-    Nog niet instelbaar per organisatie -- dat hoort in het bestek en komt als
-    er een eerste klant is die zijn eigen grenzen aanlevert. Tot die tijd leeg,
-    en dan komt elke meetlat terug onder `niet_beoordeeld`. Dat is bewust: geen
-    verzonnen score is beter dan een score die niemand heeft afgesproken.
+    Leeg bij een nieuwe organisatie, en dan komt elke meetlat terug onder
+    `niet_beoordeeld`. Dat is bewust: geen verzonnen score is beter dan een
+    score die niemand heeft afgesproken. Deze getallen staan in het bestek van
+    de opdrachtgever en horen daar vandaan te komen.
     """
-    return cs.Drempels()
+    import json
+    ruw = getattr(org, "schouw_drempels", None)
+    if not ruw:
+        return cs.Drempels()
+    try:
+        data = json.loads(ruw)
+    except Exception:  # noqa: BLE001 -- kapotte instelling mag de schouw niet slopen
+        return cs.Drempels()
+    return cs.Drempels(per_meetlat=data.get("per_meetlat") or {},
+                       per_verschijnsel=data.get("per_verschijnsel") or {})
+
+
+def _controleer_grenzen(blok: dict[str, dict[str, float]],
+                        *, geldige_sleutels: set, wat: str) -> None:
+    """Een reeks grenswaarden moet oplopend zijn van A+ naar D.
+
+    Staat B lager dan A, dan is er geen enkele waarde die B oplevert en valt een
+    heel niveau stilzwijgend weg. Beter meteen weigeren dan een schouw die
+    maandenlang een niveau overslaat zonder dat iemand het merkt.
+    """
+    for sleutel, grenzen in (blok or {}).items():
+        if sleutel not in geldige_sleutels:
+            raise HTTPException(status_code=400,
+                                detail=f"Onbekend {wat}: {sleutel}")
+        vorige = None
+        for klasse in cs.KLASSE_CODES:
+            if klasse not in grenzen:
+                continue
+            waarde = grenzen[klasse]
+            if waarde < 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{sleutel}: grenswaarde voor {klasse} is negatief")
+            if vorige is not None and waarde < vorige:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{sleutel}: de grens voor {klasse} ligt onder die van "
+                           f"het strengere niveau. Dan is er geen enkele waarde "
+                           f"die {klasse} oplevert.")
+            vorige = waarde
 
 
 def _tussenstand(r: Schouwrit) -> dict:
@@ -251,6 +302,78 @@ def catalogus():
         "zekerheidsdrempel": sv.DREMPEL_AUTOMATISCH,
         "privacy_modi": sorted(TOEGESTANE_PRIVACY_MODI),
     }
+
+
+@router.get("/drempels")
+def drempels_lezen(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Wat deze organisatie heeft afgesproken, en wat er nog ontbreekt.
+
+    `zonder_grenzen` is het nuttigste veld: die meetlatten leveren wel
+    waarnemingen op maar geen score, en dat wil je zien voordat je het veld in
+    gaat.
+    """
+    import json
+    org = current_user.organization
+    ruw = getattr(org, "schouw_drempels", None) if org else None
+    data = {}
+    if ruw:
+        try:
+            data = json.loads(ruw)
+        except Exception:  # noqa: BLE001
+            data = {}
+
+    d = _drempels_voor(org)
+    zonder = [m["code"] for m in cs.MEETLATTEN if not d.grenzen_voor(m["code"])]
+    return {
+        "per_verschijnsel": data.get("per_verschijnsel") or {},
+        "per_meetlat": data.get("per_meetlat") or {},
+        "verschijnselen": cs.VERSCHIJNSELEN,
+        "klassen": cs.KLASSE_CODES,
+        "meetlatten_totaal": len(cs.MEETLATTEN),
+        "zonder_grenzen": zonder,
+    }
+
+
+@router.put("/drempels")
+def drempels_vastleggen(
+    payload: DrempelsIn,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Grenswaarden vastleggen. Alleen de org-admin.
+
+    Deze getallen bepalen waar een aannemer op wordt afgerekend, dus ze horen
+    niet bij iedereen die kan schouwen te liggen.
+    """
+    import json
+    if not current_user.is_org_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Alleen een beheerder kan de grenswaarden vastleggen")
+    org = current_user.organization
+    if org is None:
+        raise HTTPException(status_code=404, detail="Geen organisatie gevonden")
+
+    _controleer_grenzen(payload.per_verschijnsel,
+                        geldige_sleutels=set(cs.VERSCHIJNSELEN), wat="verschijnsel")
+    _controleer_grenzen(payload.per_meetlat,
+                        geldige_sleutels={m["code"] for m in cs.MEETLATTEN},
+                        wat="meetlat")
+
+    org.schouw_drempels = json.dumps({
+        "per_verschijnsel": payload.per_verschijnsel,
+        "per_meetlat": payload.per_meetlat,
+    })
+    db.commit()
+    log_action(db, request, current_user, action="schouw.drempels",
+               entity_type="organization", entity_id=org.id,
+               after={"verschijnselen": sorted(payload.per_verschijnsel),
+                      "meetlatten": sorted(payload.per_meetlat)})
+    return drempels_lezen(current_user=current_user, db=db)
 
 
 @router.get("/ritten")
