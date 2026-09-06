@@ -163,6 +163,7 @@ PORTAL_MODULES: dict[str, str] = {
     "mijn-dag":    "Mijn dag",
     "dagboek":     "Werkdagboek",
     "veiligheid":  "Veiligheid (toolbox)",
+    "bouw":        "Bouw (BOEI-gebouwinspectie)",
 }
 
 
@@ -1593,3 +1594,166 @@ class WerkplekinspectieAntwoord(Base):
 
     inspectie = relationship("Werkplekinspectie", back_populates="antwoorden")
     actiehouder = relationship("User", foreign_keys=[actiehouder_id])
+
+
+class BouwInspectie(Base):
+    """Een BOEI-inspectie: conditie- en risico-opname van een gebouw.
+
+    BOEI is de methodiek van het Rijksvastgoedbedrijf die gemeenten,
+    provincies, corporaties en zorginstellingen hebben overgenomen. Vier
+    pijlers in een rondgang: Brandveiligheid, Onderhoud (conditiemeting
+    volgens NEN 2767-1), Energie en Inzicht in wet- en regelgeving. De
+    vragenlijst staat in ``bouw_boei.py``.
+
+    **Per asset of per straat.** Een opname hangt aan een gebouw (`asset_id`)
+    of aan een straat (`straatnaam`), en precies aan een van beide. Dat is geen
+    modelleerluxe: een schoolgebouw inspecteer je als object, maar een rij
+    identieke portiekwoningen of een bedrijventerrein loopt een inspecteur per
+    straat af. Wie dat tot een gebouw dwingt, krijgt vijftig losse opnames die
+    niemand meer bij elkaar zoekt. De keuze wordt afgedwongen in de router, niet
+    hier -- een database-constraint over twee kolommen is in SQLite en Postgres
+    niet gelijk te krijgen zonder migratieproblemen.
+
+    Status-flow gelijk aan de werkplekinspectie:
+        concept    -> opname bezig, alles nog aan te passen
+        afgerond   -> vastgezet; score berekend, niets wijzigt nog
+    """
+
+    __tablename__ = "bouw_inspecties"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+
+    # Het object van de opname -- een van beide, zie de docstring.
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)
+    straatnaam = Column(String(255), nullable=True, index=True)
+    plaats = Column(String(120), nullable=True)
+
+    gebouw_type = Column(String(40), nullable=True, index=True)   # sleutel uit GEBOUW_TYPES
+    bouwjaar = Column(Integer, nullable=True)                     # bepaalt o.a. de asbestvraag
+
+    datum = Column(DateTime, nullable=True)
+    inspecteur_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    inspecteur_naam = Column(String(120), nullable=True)          # gedenormaliseerd voor de PDF
+
+    status = Column(String(30), nullable=False, default="concept", index=True)
+
+    # Welke pijlers zijn opgenomen: JSON-array met sleutels uit PIJLERS. Een
+    # opname mag beperkt zijn tot bijvoorbeeld alleen B -- dat is in de praktijk
+    # de meest gevraagde losse ronde.
+    pijlers = Column(Text, nullable=True)
+
+    # Versie van de vragenlijst. Zonder dit kun je een score van vorig jaar niet
+    # meer duiden.
+    checklist_versie = Column(String(40), nullable=True)
+
+    algemene_indruk = Column(Text, nullable=True)
+    score_pct = Column(Integer, nullable=True)                    # bij afronden vastgezet
+    aantal_aandachtspunten = Column(Integer, nullable=True)
+    # Hoogste (= slechtste) conditiescore over de opgenomen elementen. Dat is
+    # het getal waar een gebouwbeheerder op stuurt.
+    conditie_hoogste = Column(Integer, nullable=True)
+
+    afgerond_op = Column(DateTime, nullable=True)
+    pdf_generated_at = Column(DateTime, nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    organization = relationship("Organization")
+    project = relationship("Project", foreign_keys=[project_id])
+    asset = relationship("Asset", foreign_keys=[asset_id])
+    inspecteur = relationship("User", foreign_keys=[inspecteur_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    antwoorden = relationship("BouwAntwoord", back_populates="inspectie",
+                              cascade="all, delete-orphan",
+                              order_by="BouwAntwoord.order_index")
+    condities = relationship("BouwElementConditie", back_populates="inspectie",
+                             cascade="all, delete-orphan",
+                             order_by="BouwElementConditie.order_index")
+
+
+class BouwAntwoord(Base):
+    """Een beantwoorde BOEI-vraag binnen een gebouwinspectie.
+
+    De vraagtekst wordt gesnapshot, net als bij WerkplekinspectieAntwoord.
+    Wijzigt de lijst later, dan blijft een oude opname tonen wat er destijds
+    gevraagd is -- anders is de audit-trail niets waard.
+
+    ``bewijs_aanwezig`` staat los van ``antwoord``. Bij de I-pijler is de vraag
+    namelijk tweeledig: is het in orde, en kun je dat aantonen. Een keuring die
+    is uitgevoerd maar waarvan het rapport zoek is, is bij een controle net zo
+    goed een bevinding.
+    """
+
+    __tablename__ = "bouw_antwoorden"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    bouw_inspectie_id = Column(String, ForeignKey("bouw_inspecties.id", ondelete="CASCADE"),
+                               nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    question_code = Column(String(40), nullable=False, index=True)
+    question_version = Column(String(40), nullable=False)
+    question_text_snapshot = Column(String(500), nullable=True)
+    pijler = Column(String(4), nullable=True, index=True)          # B, O, E of I
+
+    # ja = in orde, nee = aandachtspunt, nvt = niet van toepassing
+    antwoord = Column(String(4), nullable=True)
+    waarde = Column(String(80), nullable=True)                     # voor vragen van het type getal
+    toelichting = Column(Text, nullable=True)
+    photo_url = Column(Text, nullable=True)
+
+    # I-pijler: het document dat erbij hoort.
+    bewijs_aanwezig = Column(Boolean, nullable=True)
+    bewijs_geldig_tot = Column(DateTime, nullable=True)
+
+    actie = Column(Text, nullable=True)
+    actiehouder_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    actiehouder_naam = Column(String(120), nullable=True)
+    actie_gereed = Column(Boolean, default=False, nullable=False)
+
+    order_index = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    inspectie = relationship("BouwInspectie", back_populates="antwoorden")
+    actiehouder = relationship("User", foreign_keys=[actiehouder_id])
+
+
+class BouwElementConditie(Base):
+    """Conditiescore van een bouwkundig of installatie-element (O-pijler).
+
+    Ernst, intensiteit en omvang worden vastgelegd; de conditiescore volgt
+    daaruit via ``nen2767_scoring.defect_to_score``. Die wordt hier opgeslagen
+    zodat een afgeronde opname niet verandert als de rekenkern later wordt
+    bijgesteld -- dezelfde reden waarom de vraagtekst wordt gesnapshot.
+    """
+
+    __tablename__ = "bouw_element_condities"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    bouw_inspectie_id = Column(String, ForeignKey("bouw_inspecties.id", ondelete="CASCADE"),
+                               nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    element_code = Column(String(20), nullable=False, index=True)  # bv. GEV.01
+    element_naam_snapshot = Column(String(160), nullable=True)
+    groep = Column(String(40), nullable=True, index=True)
+
+    gebrek = Column(String(160), nullable=True)
+    ernst = Column(Integer, nullable=True)                         # 1-3
+    intensiteit = Column(Integer, nullable=True)                   # 1-3
+    omvang_klasse = Column(Integer, nullable=True)                 # 1-5
+    conditie = Column(Integer, nullable=True, index=True)          # 1-6, berekend
+    scoring_versie = Column(String(60), nullable=True)
+
+    toelichting = Column(Text, nullable=True)
+    photo_url = Column(Text, nullable=True)
+
+    order_index = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    inspectie = relationship("BouwInspectie", back_populates="condities")

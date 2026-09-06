@@ -1364,6 +1364,9 @@
         <a data-page="veiligheid" onclick="navigateTo('veiligheid')">
           <span class="icon">&#129506;</span> <span data-i18n="nav_veiligheid">Veiligheid</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
         </a>
+        <a data-page="bouw" onclick="navigateTo('bouw')">
+          <span class="icon">&#127970;</span> <span data-i18n="nav_bouw">Bouw</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
+        </a>
         <a data-page="kaart" onclick="navigateTo('kaart')">
           <span class="icon">&#127758;</span> <span data-i18n="kaart">Kaart</span>
         </a>
@@ -4130,6 +4133,67 @@
       </div>
     </div>
 
+    <!-- ═══════ BOUW (BOEI-gebouwinspectie) ═══════ -->
+    <div class="page-section" id="page-bouw">
+      <div class="page-header">
+        <div>
+          <h1>Bouw</h1>
+          <p class="subtitle">BOEI-inspectie van gebouwen: brandveiligheid, onderhoud, energie en wet- en regelgeving.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header"><h3>Nieuwe opname</h3></div>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px;">
+          Kies een gebouw of een straat. Een schoolgebouw neem je op als object; een rij
+          portiekwoningen loop je per straat af.
+        </p>
+
+        <div style="display:flex;gap:8px;margin-bottom:14px;">
+          <button class="btn-secondary" id="bouwModeGebouwBtn" onclick="bouwZetMode('gebouw')">Per gebouw</button>
+          <button class="btn-secondary" id="bouwModeStraatBtn" onclick="bouwZetMode('straat')">Per straat</button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
+          <div id="bouwVeldGebouw">
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Gebouw</label>
+            <select id="bouwAsset" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+              <option value="">Kies een gebouw</option>
+            </select>
+          </div>
+          <div id="bouwVeldStraat" style="display:none;">
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Straatnaam</label>
+            <input id="bouwStraat" type="text" placeholder="bv. Prins Hendrikkade" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+          </div>
+          <div>
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Gebouwtype</label>
+            <select id="bouwType" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+              <option value="">Niet opgegeven</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Bouwjaar</label>
+            <input id="bouwJaar" type="number" min="1000" max="2100" placeholder="bv. 1978" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+          </div>
+        </div>
+
+        <div style="margin-top:14px;">
+          <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:6px;">Pijlers</label>
+          <div id="bouwPijlers" style="display:flex;gap:14px;flex-wrap:wrap;font-size:13.5px;"></div>
+          <p style="font-size:12px;color:var(--text-dim);margin:6px 0 0;">Niets aanvinken betekent alle vier.</p>
+        </div>
+
+        <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+          <button class="btn-primary" onclick="startBouw()">Start opname</button>
+        </div>
+        <p id="bouwStartMelding" style="display:none;margin:12px 0 0;font-size:13px;"></p>
+      </div>
+
+      <div class="card" id="bouwList">
+        <div class="loading-spinner"></div>
+      </div>
+    </div>
+
     <!-- Footer -->
     <footer class="main-footer">
       <p>&copy; 2026 FieldOps. Alle rechten voorbehouden.</p>
@@ -4141,6 +4205,57 @@
     </footer>
 
   </main>
+
+  <!-- ═══════ BOUW-OPNAME MODAL ═══════ -->
+  <div class="modal-overlay" id="bouwModal">
+    <div class="modal" style="max-width:900px;">
+      <button class="modal-close" onclick="bouwModalSluiten()">&times;</button>
+      <h2>Gebouwinspectie</h2>
+      <p class="subtitle" id="bouwModalSub"></p>
+
+      <div id="bouwVoortgang" style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
+
+      <div class="form-group">
+        <label>Algemene indruk</label>
+        <textarea id="bouwIndruk" rows="2" onchange="bouwBewaarKop()"></textarea>
+      </div>
+
+      <h3 style="font-size:15px;margin:18px 0 10px;">Conditiemeting (NEN 2767-1)</h3>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;align-items:end;margin-bottom:10px;">
+        <div>
+          <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:3px;">Element</label>
+          <select id="bouwElement" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;font-size:13px;"></select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:3px;">Ernst 1-3</label>
+          <input id="bouwErnst" type="number" min="1" max="3" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;font-size:13px;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:3px;">Intensiteit 1-3</label>
+          <input id="bouwIntens" type="number" min="1" max="3" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;font-size:13px;">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text-dim);display:block;margin-bottom:3px;">Omvang 1-5</label>
+          <input id="bouwOmvang" type="number" min="1" max="5" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;font-size:13px;">
+        </div>
+        <div>
+          <button class="btn-secondary" style="width:100%;" onclick="bouwConditieOpslaan()">Vastleggen</button>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">
+        De conditiescore wordt berekend uit ernst, intensiteit en omvang. Je kiest hem niet zelf.
+      </p>
+      <div id="bouwConditieLijst" style="margin-bottom:20px;"></div>
+
+      <h3 style="font-size:15px;margin:18px 0 10px;">Controlevragen</h3>
+      <div id="bouwVragen"></div>
+
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn-primary" id="bouwAfrondBtn" onclick="bouwAfronden()">Afronden</button>
+      </div>
+      <p id="bouwModalMelding" style="display:none;margin:12px 0 0;font-size:13px;"></p>
+    </div>
+  </div>
 
   <!-- ═══════ OPLEVERING MODAL (header) ═══════ -->
   <div class="modal-overlay" id="opleveringModal">
@@ -8779,7 +8894,7 @@
     // models.py. Basis-onderdelen (dashboard/projecten/assets/meldingen/kaart)
     // staan hier niet in — die heeft iedere org altijd. De backend weigert
     // uitgeschakelde modules óók (require_module), dit is alleen de UI-laag.
-    var MODULE_PAGES = ['kunstwerken', 'predictive', 'clusters', 'opleveren', 'mijn-dag', 'dagboek', 'veiligheid'];
+    var MODULE_PAGES = ['kunstwerken', 'predictive', 'clusters', 'opleveren', 'mijn-dag', 'dagboek', 'veiligheid', 'bouw'];
     var MODULE_LABELS = {
       'kunstwerken': 'Inspecties (CROW / NEN 2767)',
       'predictive':  'Voorspeller',
@@ -8787,7 +8902,8 @@
       'opleveren':   'Opleveren',
       'mijn-dag':    'Mijn dag',
       'dagboek':     'Werkdagboek',
-      'veiligheid':  'Veiligheid (toolbox)'
+      'veiligheid':  'Veiligheid (toolbox)',
+      'bouw':        'Bouw (BOEI-gebouwinspectie)'
     };
     var orgEnabledModules = null; // null = alles aan (default / platform-org)
 
@@ -8807,6 +8923,279 @@
           a.style.display = moduleEnabled(page) ? '' : 'none';
         });
       });
+    }
+
+
+    // ── Bouw (BOEI-gebouwinspectie) ──────────────────────────────────
+    // De vragenlijst en de elementenlijst komen van de server, niet uit een
+    // kopie hier. Zo blijft het scherm kloppen als bouw_boei.py verandert.
+    var _bouwChecklist = null;
+    var _bouwHuidig = null;
+    var _bouwMode = 'gebouw';
+
+    function bouwModalSluiten() {
+      document.getElementById('bouwModal').classList.remove('active');
+    }
+
+    function _bouwMeld(el, tekst, soort) {
+      var p = document.getElementById(el);
+      if (!p) return;
+      p.style.display = tekst ? '' : 'none';
+      p.textContent = tekst || '';
+      p.style.color = soort === 'fout' ? 'var(--danger, #dc2626)' : 'var(--text-muted)';
+    }
+
+    function bouwZetMode(mode) {
+      _bouwMode = mode;
+      var gebouw = mode === 'gebouw';
+      document.getElementById('bouwVeldGebouw').style.display = gebouw ? '' : 'none';
+      document.getElementById('bouwVeldStraat').style.display = gebouw ? 'none' : '';
+      document.getElementById('bouwModeGebouwBtn').className = gebouw ? 'btn-primary' : 'btn-secondary';
+      document.getElementById('bouwModeStraatBtn').className = gebouw ? 'btn-secondary' : 'btn-primary';
+    }
+
+    function loadBouw() {
+      bouwZetMode(_bouwMode);
+      var klaar = _bouwChecklist ? Promise.resolve(_bouwChecklist)
+                                 : api('GET', '/api/bouw/checklist');
+      klaar.then(function (cl) {
+        _bouwChecklist = cl;
+        var typeSel = document.getElementById('bouwType');
+        if (typeSel && typeSel.options.length <= 1) {
+          Object.keys(cl.gebouw_types).forEach(function (k) {
+            var o = document.createElement('option');
+            o.value = k; o.textContent = cl.gebouw_types[k];
+            typeSel.appendChild(o);
+          });
+        }
+        var pij = document.getElementById('bouwPijlers');
+        if (pij && !pij.children.length) {
+          cl.pijlers.forEach(function (p) {
+            var l = document.createElement('label');
+            l.style.cursor = 'pointer';
+            l.innerHTML = '<input type="checkbox" value="' + p.code + '" style="margin-right:5px;">'
+              + p.code + ' &middot; ' + p.naam;
+            l.title = p.uitleg;
+            pij.appendChild(l);
+          });
+        }
+        var el = document.getElementById('bouwElement');
+        if (el && !el.options.length) {
+          cl.elementen.forEach(function (e) {
+            var o = document.createElement('option');
+            o.value = e.code;
+            o.textContent = e.code + ' - ' + e.naam;
+            el.appendChild(o);
+          });
+        }
+      }).catch(function () { /* checklist mislukt: het formulier blijft bruikbaar */ });
+
+      api('GET', '/api/assets').then(function (res) {
+        var lijst = Array.isArray(res) ? res : (res && res.items) || [];
+        var sel = document.getElementById('bouwAsset');
+        if (!sel) return;
+        sel.innerHTML = '<option value="">Kies een gebouw</option>';
+        lijst.forEach(function (a) {
+          var o = document.createElement('option');
+          o.value = a.id;
+          o.textContent = (a.code || '') + (a.name ? ' - ' + a.name : '');
+          sel.appendChild(o);
+        });
+      }).catch(function () { /* geen assets: dan blijft alleen 'per straat' over */ });
+
+      api('GET', '/api/bouw/').then(_bouwRenderLijst).catch(function (e) {
+        document.getElementById('bouwList').innerHTML =
+          '<p style="color:var(--text-muted);">' + (e.message || 'Laden mislukt') + '</p>';
+      });
+    }
+
+    function _bouwRenderLijst(rijen) {
+      var box = document.getElementById('bouwList');
+      if (!rijen.length) {
+        box.innerHTML = '<div style="text-align:center;padding:30px 10px;">'
+          + '<p style="font-weight:600;margin-bottom:4px;">Nog geen gebouwinspectie</p>'
+          + '<p style="color:var(--text-muted);font-size:13.5px;">Start hierboven een opname per gebouw of per straat.</p></div>';
+        return;
+      }
+      box.innerHTML = rijen.map(function (b) {
+        var waar = b.straatnaam ? ('Straat: ' + b.straatnaam) : ('Gebouw: ' + (b.asset_id || '-'));
+        var score = b.score_pct === null || b.score_pct === undefined ? '-' : (b.score_pct + '%');
+        var cond = b.conditie_hoogste ? ('conditie ' + b.conditie_hoogste) : 'geen conditiescore';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;'
+          + 'padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="openBouw(\'' + b.id + '\')">'
+          + '<div><div style="font-weight:600;">' + _esc(waar) + '</div>'
+          + '<div style="font-size:12.5px;color:var(--text-muted);">'
+          + _esc(b.gebouw_type_label || 'geen type') + ' &middot; ' + _esc(cond)
+          + ' &middot; ' + b.aantal_elementen + (b.aantal_elementen === 1 ? ' element' : ' elementen') + '</div></div>'
+          + '<div style="text-align:right;font-size:12.5px;">'
+          + '<div style="font-weight:600;">' + score + '</div>'
+          + '<div style="color:var(--text-muted);">' + _esc(b.status) + '</div></div></div>';
+      }).join('');
+    }
+
+    function _esc(s) {
+      var d = document.createElement('div');
+      d.textContent = s === null || s === undefined ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    function startBouw() {
+      var body = {};
+      if (_bouwMode === 'gebouw') {
+        body.asset_id = document.getElementById('bouwAsset').value;
+        if (!body.asset_id) { _bouwMeld('bouwStartMelding', 'Kies een gebouw', 'fout'); return; }
+      } else {
+        body.straatnaam = document.getElementById('bouwStraat').value.trim();
+        if (!body.straatnaam) { _bouwMeld('bouwStartMelding', 'Vul een straatnaam in', 'fout'); return; }
+      }
+      var type = document.getElementById('bouwType').value;
+      if (type) body.gebouw_type = type;
+      var jaar = document.getElementById('bouwJaar').value;
+      if (jaar) body.bouwjaar = parseInt(jaar, 10);
+      var gekozen = [];
+      document.querySelectorAll('#bouwPijlers input:checked').forEach(function (c) {
+        gekozen.push(c.value);
+      });
+      if (gekozen.length) body.pijlers = gekozen;
+
+      _bouwMeld('bouwStartMelding', 'Bezig...');
+      api('POST', '/api/bouw/', body).then(function (b) {
+        _bouwMeld('bouwStartMelding', '');
+        loadBouw();
+        _bouwToon(b);
+      }).catch(function (e) {
+        _bouwMeld('bouwStartMelding', e.message || 'Starten mislukt', 'fout');
+      });
+    }
+
+    function openBouw(id) {
+      api('GET', '/api/bouw/' + id).then(_bouwToon).catch(function (e) {
+        showToast(e.message || 'Laden mislukt', 'error');
+      });
+    }
+
+    function _bouwToon(b) {
+      _bouwHuidig = b;
+      var waar = b.straatnaam ? b.straatnaam : ('gebouw ' + (b.asset_id || ''));
+      document.getElementById('bouwModalSub').textContent =
+        waar + (b.gebouw_type_label ? ' - ' + b.gebouw_type_label : '')
+        + (b.status === 'afgerond' ? ' - afgerond' : '');
+      document.getElementById('bouwIndruk').value = b.algemene_indruk || '';
+      document.getElementById('bouwIndruk').disabled = b.status === 'afgerond';
+      document.getElementById('bouwAfrondBtn').style.display = b.status === 'afgerond' ? 'none' : '';
+
+      var v = b.voortgang;
+      // Alleen de pijlers die in deze opname zitten. Anders staat er "O: 0
+      // beoordeeld" bij iemand die bewust alleen brandveiligheid loopt, en dat
+      // leest als een gat in plaats van als een keuze.
+      var actief = {};
+      (b.antwoorden || []).forEach(function (a) { actief[a.pijler] = true; });
+      document.getElementById('bouwVoortgang').innerHTML = v
+        ? Object.keys(v.per_pijler).filter(function (k) { return actief[k]; })
+            .map(function (k) {
+              var p = v.per_pijler[k];
+              return '<strong>' + k + '</strong> ' + _esc(p.naam) + ': '
+                + p.beoordeeld + ' van ' + (p.beoordeeld + (p.nvt || 0)
+                  + ((b.antwoorden || []).filter(function (a) { return a.pijler === k && !a.antwoord; }).length))
+                + ' beoordeeld, ' + p.nee + ' aandachtspunt(en)';
+            }).join('<br>')
+        : ('Score ' + (b.score_pct === null ? '-' : b.score_pct + '%')
+           + ' &middot; ' + b.aantal_aandachtspunten + ' aandachtspunten'
+           + (b.conditie_hoogste ? ' &middot; hoogste conditie ' + b.conditie_hoogste : ''));
+
+      _bouwRenderCondities(b.condities || []);
+      _bouwRenderVragen(b);
+      document.getElementById('bouwModal').classList.add('active');
+    }
+
+    function _bouwRenderCondities(rijen) {
+      var box = document.getElementById('bouwConditieLijst');
+      if (!rijen.length) {
+        box.innerHTML = '<p style="font-size:13px;color:var(--text-muted);">Nog geen elementen beoordeeld.</p>';
+        return;
+      }
+      box.innerHTML = rijen.map(function (c) {
+        return '<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">'
+          + '<div><strong>' + _esc(c.element_code) + '</strong> ' + _esc(c.element || '')
+          + (c.gebrek ? '<div style="color:var(--text-muted);font-size:12px;">' + _esc(c.gebrek) + '</div>' : '')
+          + '</div>'
+          + '<div style="text-align:right;white-space:nowrap;">conditie <strong>' + (c.conditie || '-') + '</strong>'
+          + '<div style="color:var(--text-muted);font-size:12px;">' + _esc(c.conditie_label || '') + '</div></div></div>';
+      }).join('');
+    }
+
+    function _bouwRenderVragen(b) {
+      var box = document.getElementById('bouwVragen');
+      var afgerond = b.status === 'afgerond';
+      var perPijler = {};
+      (b.antwoorden || []).forEach(function (a) {
+        (perPijler[a.pijler] = perPijler[a.pijler] || []).push(a);
+      });
+      var labels = b.pijler_labels || {};
+      box.innerHTML = Object.keys(perPijler).map(function (k) {
+        return '<h4 style="font-size:13.5px;margin:16px 0 8px;color:var(--text-dim);">'
+          + k + ' &middot; ' + _esc(labels[k] || '') + '</h4>'
+          + perPijler[k].map(function (a) { return _bouwVraagRij(a, afgerond); }).join('');
+      }).join('');
+    }
+
+    function _bouwVraagRij(a, afgerond) {
+      var knoppen = ['ja', 'nee', 'nvt'].map(function (w) {
+        var actief = a.antwoord === w;
+        return '<button class="' + (actief ? 'btn-primary' : 'btn-secondary') + '"'
+          + ' style="padding:4px 12px;font-size:12px;"'
+          + (afgerond ? ' disabled' : '')
+          + ' onclick="bouwAntwoord(\'' + a.id + '\',\'' + w + '\')">' + w + '</button>';
+      }).join(' ');
+      return '<div style="padding:10px 0;border-bottom:1px solid var(--border);">'
+        + '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;">'
+        + '<div style="flex:1;"><span style="font-size:12px;color:var(--text-dim);">' + _esc(a.question_code) + '</span><br>'
+        + _esc(a.vraag) + '</div>'
+        + '<div style="white-space:nowrap;">' + knoppen + '</div></div></div>';
+    }
+
+    function bouwAntwoord(antwoordId, waarde) {
+      if (!_bouwHuidig) return;
+      api('PATCH', '/api/bouw/' + _bouwHuidig.id + '/antwoorden/' + antwoordId,
+          { antwoord: waarde })
+        .then(function () { return api('GET', '/api/bouw/' + _bouwHuidig.id); })
+        .then(_bouwToon)
+        .catch(function (e) { showToast(e.message || 'Opslaan mislukt', 'error'); });
+    }
+
+    function bouwBewaarKop() {
+      if (!_bouwHuidig) return;
+      api('PATCH', '/api/bouw/' + _bouwHuidig.id,
+          { algemene_indruk: document.getElementById('bouwIndruk').value })
+        .catch(function (e) { showToast(e.message || 'Opslaan mislukt', 'error'); });
+    }
+
+    function bouwConditieOpslaan() {
+      if (!_bouwHuidig) return;
+      var body = {
+        element_code: document.getElementById('bouwElement').value,
+        ernst: parseInt(document.getElementById('bouwErnst').value, 10) || null,
+        intensiteit: parseInt(document.getElementById('bouwIntens').value, 10) || null,
+        omvang_klasse: parseInt(document.getElementById('bouwOmvang').value, 10) || null
+      };
+      if (!body.element_code) { _bouwMeld('bouwModalMelding', 'Kies een element', 'fout'); return; }
+      api('POST', '/api/bouw/' + _bouwHuidig.id + '/condities', body)
+        .then(function () { return api('GET', '/api/bouw/' + _bouwHuidig.id); })
+        .then(function (b) { _bouwMeld('bouwModalMelding', ''); _bouwToon(b); })
+        .catch(function (e) { _bouwMeld('bouwModalMelding', e.message || 'Opslaan mislukt', 'fout'); });
+    }
+
+    function bouwAfronden() {
+      if (!_bouwHuidig) return;
+      if (!confirm('Hierna kan er niets meer worden gewijzigd. Doorgaan?')) return;
+      api('POST', '/api/bouw/' + _bouwHuidig.id + '/afronden')
+        .then(function (b) {
+          _bouwMeld('bouwModalMelding', '');
+          _bouwToon(b);
+          loadBouw();
+          showToast('Gebouwinspectie afgerond', 'success');
+        })
+        .catch(function (e) { _bouwMeld('bouwModalMelding', e.message || 'Afronden mislukt', 'fout'); });
     }
 
     function navigateTo(page) {
@@ -8856,6 +9245,7 @@
       if (page === 'dashboard') { loadDashboardStats(); loadDashboardPredictiveWidget(); }
       if (page === 'integraties') loadIntegrations();
       if (page === 'veiligheid') loadVeiligheid();
+      if (page === 'bouw') loadBouw();
       if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); loadOrgEditForm(); loadOrgAuditSummary(); refreshMfaStatus(); loadBillingCard(); }
       if (page === 'compliance') loadCompliance();
       if (page === 'dagboek') initDaybook();
