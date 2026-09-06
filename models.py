@@ -132,6 +132,13 @@ class Organization(Base):
     # deze org AAN heeft staan. NULL = alle modules aan (backward compat +
     # de platform-org). Alleen de platform-eigenaar wijzigt dit (admin-panel).
     enabled_modules = Column(Text, nullable=True)
+    # Grenswaarden voor de beeldkwaliteitsschouw, als JSON. Vorm:
+    #   {"per_verschijnsel": {"zwerfafval": {"A+":0,"A":2,"B":5,"C":10}, ...},
+    #    "per_meetlat":      {"bekladding.viaduct_brug": {...}}}
+    # Bewust leeg bij aanmaken: deze getallen staan in het bestek van de
+    # opdrachtgever en horen niet door ons verzonnen te worden. Zonder
+    # grenswaarden levert een schouw wel waarnemingen op maar geen A-D-score.
+    schouw_drempels = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     users = relationship("User", back_populates="organization")
