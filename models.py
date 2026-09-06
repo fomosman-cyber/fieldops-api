@@ -164,6 +164,7 @@ PORTAL_MODULES: dict[str, str] = {
     "dagboek":     "Werkdagboek",
     "veiligheid":  "Veiligheid (toolbox)",
     "bouw":        "Bouw (BOEI-gebouwinspectie)",
+    "schouw":      "Schouw (beeldkwaliteit openbare ruimte)",
 }
 
 
@@ -1770,3 +1771,124 @@ class BouwElementConditie(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     inspectie = relationship("BouwInspectie", back_populates="condities")
+
+
+class Schouwrit(Base):
+    """Een schouwronde: lopend of rijdend een gebied langs, beeld voor beeld.
+
+    De inspecteur opent de camera, loopt of rijdt een route, en het portaal
+    stuurt met een vast interval een beeld plus positie naar de server. Daar
+    kijkt `schouw_vision` ernaar en komen de waarnemingen terug. Geen upload
+    achteraf, geen videobestand: registratie op het moment zelf, zodat de
+    inspecteur ter plekke ziet wat er gevonden is en het meteen kan corrigeren.
+
+    **Privacy is een eigenschap van de rit, niet van een vinkje per beeld.**
+    `privacy_modus` legt vast hoe met herkenbare personen wordt omgegaan:
+
+        gericht   De inspecteur richt de camera bewust op een object of een
+                  stuk straat en is verantwoordelijk voor wat er in beeld komt.
+                  Dit is de enige modus die nu werkt.
+        rijdend   Doorlopend opnemen vanuit een voertuig. Vraagt automatisch
+                  blurren van gezichten en kentekens, en dat is nog niet
+                  gebouwd. De router weigert deze modus daarom -- liever een
+                  duidelijke weigering dan straatbeelden met omstanders erop
+                  naar een verwerker buiten de EU.
+
+    Het gebiedstype bepaalt de gangbare ambitie; die kan per rit worden
+    overschreven omdat een bestek vaak eigen afspraken kent.
+    """
+
+    __tablename__ = "schouwritten"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+
+    naam = Column(String(255), nullable=True)
+    gebied = Column(String(255), nullable=True, index=True)     # wijk, buurt of straat
+    gebiedstype = Column(String(40), nullable=True)             # sleutel uit GEBIEDSTYPEN
+    ambitie = Column(String(4), nullable=True)                  # A+ .. D
+
+    privacy_modus = Column(String(20), nullable=False, default="gericht")
+
+    inspecteur_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    inspecteur_naam = Column(String(120), nullable=True)
+
+    status = Column(String(30), nullable=False, default="bezig", index=True)
+
+    frames = Column(Integer, default=0, nullable=False)
+    frames_onbruikbaar = Column(Integer, default=0, nullable=False)
+
+    # Vastgezet bij afronden, zodat een afgeronde rit niet verandert als de
+    # drempels later worden bijgesteld.
+    beeldkwaliteit = Column(String(4), nullable=True)
+    voldoet = Column(Boolean, nullable=True)
+    schouw_versie = Column(String(60), nullable=True)
+
+    gestart_op = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    afgerond_op = Column(DateTime, nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    organization = relationship("Organization")
+    project = relationship("Project", foreign_keys=[project_id])
+    inspecteur = relationship("User", foreign_keys=[inspecteur_id])
+    waarnemingen = relationship("Schouwwaarneming", back_populates="rit",
+                                cascade="all, delete-orphan",
+                                order_by="Schouwwaarneming.created_at")
+
+
+class Schouwwaarneming(Base):
+    """Eén waarneming uit een schouwrit, op een plek.
+
+    Komt uit de beeldherkenning of van de inspecteur zelf. `bron` legt vast
+    welke van de twee, en dat blijft staan ook nadat iemand hem heeft
+    bevestigd -- bij een geschil met een aannemer wil je kunnen laten zien wat
+    de machine zag en wat een mens ervan maakte.
+
+    `bevestigd` is de kern van "de AI kijkt, jij beslist". Een waarneming met
+    een lage zekerheid telt pas mee in de score als iemand hem heeft bevestigd.
+    Een waarneming die is afgewezen blijft bestaan met `afgewezen = True`; hem
+    verwijderen zou het spoor wissen waarom een score veranderde.
+    """
+
+    __tablename__ = "schouwwaarnemingen"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    schouwrit_id = Column(String, ForeignKey("schouwritten.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    # Waar. Straatnaam vult de inspecteur of een latere koppeling in.
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    nauwkeurigheid_m = Column(Float, nullable=True)
+    straatnaam = Column(String(255), nullable=True, index=True)
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)
+
+    # Wat. Klasse en drager komen van de herkenning; meetlat is de vertaling.
+    detectieklasse = Column(String(40), nullable=True, index=True)
+    drager = Column(String(40), nullable=True)
+    meetlat = Column(String(60), nullable=True, index=True)
+    waarde = Column(Float, nullable=True)
+    klasse_niveau = Column(String(4), nullable=True)      # bij scheefstand e.d.
+    toelichting = Column(Text, nullable=True)
+
+    zekerheid = Column(Float, nullable=True)
+    bron = Column(String(10), nullable=False, default="ai")   # ai | mens
+    bevestigd = Column(Boolean, default=False, nullable=False)
+    afgewezen = Column(Boolean, default=False, nullable=False)
+    bevestigd_door_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    photo_url = Column(Text, nullable=True)
+    melding_id = Column(String, nullable=True, index=True)   # als er een melding uit volgde
+
+    model_id = Column(String(80), nullable=True)
+    vision_versie = Column(String(60), nullable=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    rit = relationship("Schouwrit", back_populates="waarnemingen")

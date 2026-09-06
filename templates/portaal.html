@@ -1367,6 +1367,9 @@
         <a data-page="bouw" onclick="navigateTo('bouw')">
           <span class="icon">&#127970;</span> <span data-i18n="nav_bouw">Bouw</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
         </a>
+        <a data-page="schouw" onclick="navigateTo('schouw')">
+          <span class="icon">&#128248;</span> <span data-i18n="nav_schouw">Schouw</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
+        </a>
         <a data-page="kaart" onclick="navigateTo('kaart')">
           <span class="icon">&#127758;</span> <span data-i18n="kaart">Kaart</span>
         </a>
@@ -4217,6 +4220,84 @@
       </div>
     </div>
 
+    <!-- ═══════ SCHOUW (live beeldkwaliteit) ═══════ -->
+    <div class="page-section" id="page-schouw">
+      <div class="page-header">
+        <div>
+          <h1>Schouw</h1>
+          <p class="subtitle">Camera aan en lopen. Wat er gevonden wordt zie je meteen, en je corrigeert het terwijl je er nog staat.</p>
+        </div>
+      </div>
+
+      <!-- Starten -->
+      <div class="card" id="schouwStart" style="margin-bottom:16px;">
+        <div class="card-header"><h3>Nieuwe schouwronde</h3></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
+          <div>
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Gebied</label>
+            <input id="schouwGebied" type="text" placeholder="bv. Coolsingel of Blijdorp" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+          </div>
+          <div>
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Gebiedstype</label>
+            <select id="schouwGebiedstype" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;"></select>
+          </div>
+          <div>
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Ambitie</label>
+            <select id="schouwRondeAmbitie" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+              <option value="">Volgt het gebiedstype</option>
+            </select>
+          </div>
+        </div>
+        <p style="font-size:12.5px;color:var(--text-muted);margin:12px 0 0;">
+          Je richt de camera zelf op wat je wilt beoordelen. Doorlopend filmen vanuit
+          een auto kan nog niet: dat vraagt automatisch blurren van gezichten en
+          kentekens, en dat is er nog niet.
+        </p>
+        <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+          <button class="btn-primary" onclick="schouwStart()">Start schouwronde</button>
+        </div>
+        <p id="schouwStartMelding" style="display:none;margin:12px 0 0;font-size:13px;"></p>
+      </div>
+
+      <!-- Lopende ronde -->
+      <div class="card" id="schouwActief" style="display:none;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+          <div>
+            <strong id="schouwActiefGebied" style="font-size:15px;"></strong>
+            <div id="schouwActiefMeta" style="font-size:12.5px;color:var(--text-muted);margin-top:2px;"></div>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-secondary" id="schouwPauzeBtn" onclick="schouwPauze()">Pauze</button>
+            <button class="btn-secondary" onclick="schouwAfronden()">Afronden</button>
+          </div>
+        </div>
+
+        <div style="position:relative;margin:14px 0;border-radius:12px;overflow:hidden;background:#000;">
+          <video id="schouwVideo" playsinline muted autoplay
+                 style="width:100%;max-height:46vh;object-fit:cover;display:block;"></video>
+          <div id="schouwBadge" style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);
+               color:#fff;border-radius:999px;padding:4px 10px;font-size:12px;">camera starten…</div>
+        </div>
+        <canvas id="schouwCanvas" style="display:none;"></canvas>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <button class="btn-primary" style="flex:1;min-width:150px;" onclick="schouwNu()">Nu vastleggen</button>
+          <button class="btn-secondary" style="flex:1;min-width:150px;" onclick="openSchouwHandmatig()">Zelf invoeren</button>
+        </div>
+
+        <div id="schouwTussenstand" style="background:var(--card-bg);border:1px solid var(--border);
+             border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:12px;"></div>
+
+        <h4 style="font-size:13.5px;margin:0 0 8px;color:var(--text-dim);">Gevonden</h4>
+        <div id="schouwWaarnemingen"></div>
+        <p id="schouwMelding" style="display:none;margin:12px 0 0;font-size:13px;"></p>
+      </div>
+
+      <div class="card" id="schouwList">
+        <div class="loading-spinner"></div>
+      </div>
+    </div>
+
     <!-- Footer -->
     <footer class="main-footer">
       <p>&copy; 2026 FieldOps. Alle rechten voorbehouden.</p>
@@ -4228,6 +4309,35 @@
     </footer>
 
   </main>
+
+  <!-- ═══════ SCHOUW HANDMATIG ═══════ -->
+  <div class="modal-overlay" id="schouwHandmatigModal">
+    <div class="modal" style="max-width:520px;">
+      <button class="modal-close" onclick="document.getElementById('schouwHandmatigModal').classList.remove('active')">&times;</button>
+      <h2>Zelf vastleggen</h2>
+      <p class="subtitle">Voor wat de camera niet ziet of oversloeg.</p>
+      <div class="form-group">
+        <label>Wat zie je</label>
+        <select id="schouwHmKlasse" onchange="schouwHmDragers()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;"></select>
+      </div>
+      <div class="form-group">
+        <label>Waarop</label>
+        <select id="schouwHmDrager" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;"></select>
+      </div>
+      <div class="form-group">
+        <label>Aantal of percentage</label>
+        <input id="schouwHmWaarde" type="number" step="0.1" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+      </div>
+      <div class="form-group">
+        <label>Toelichting</label>
+        <textarea id="schouwHmToelichting" rows="2"></textarea>
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;">
+        <button class="btn-primary" onclick="schouwHandmatigOpslaan()">Vastleggen</button>
+      </div>
+      <p id="schouwHmMelding" style="display:none;margin:12px 0 0;font-size:13px;"></p>
+    </div>
+  </div>
 
   <!-- ═══════ BOUW-OPNAME MODAL ═══════ -->
   <div class="modal-overlay" id="bouwModal">
@@ -8917,7 +9027,7 @@
     // models.py. Basis-onderdelen (dashboard/projecten/assets/meldingen/kaart)
     // staan hier niet in — die heeft iedere org altijd. De backend weigert
     // uitgeschakelde modules óók (require_module), dit is alleen de UI-laag.
-    var MODULE_PAGES = ['kunstwerken', 'predictive', 'clusters', 'opleveren', 'mijn-dag', 'dagboek', 'veiligheid', 'bouw'];
+    var MODULE_PAGES = ['kunstwerken', 'predictive', 'clusters', 'opleveren', 'mijn-dag', 'dagboek', 'veiligheid', 'bouw', 'schouw'];
     var MODULE_LABELS = {
       'kunstwerken': 'Inspecties (CROW / NEN 2767)',
       'predictive':  'Voorspeller',
@@ -8926,7 +9036,8 @@
       'mijn-dag':    'Mijn dag',
       'dagboek':     'Werkdagboek',
       'veiligheid':  'Veiligheid (toolbox)',
-      'bouw':        'Bouw (BOEI-gebouwinspectie)'
+      'bouw':        'Bouw (BOEI-gebouwinspectie)',
+      'schouw':      'Schouw (beeldkwaliteit openbare ruimte)'
     };
     var orgEnabledModules = null; // null = alles aan (default / platform-org)
 
@@ -9217,6 +9328,362 @@
         .catch(function (e) { _bouwMeld('bouwModalMelding', e.message || 'Afronden mislukt', 'fout'); });
     }
 
+
+    // ── Schouw (live beeldkwaliteit) ─────────────────────────────────
+    // Camera aan, elke paar seconden een beeld naar de server, waarnemingen
+    // meteen terug. Het interval staat ruim: elk beeld is een vision-aanroep
+    // en die kosten geld, en een inspecteur loopt geen meter per seconde.
+    var SCHOUW_INTERVAL_MS = 6000;
+    var _schouwCatalogus = null;
+    var _schouwRit = null;
+    var _schouwStream = null;
+    var _schouwTimer = null;
+    var _schouwPositie = null;
+    var _schouwWatch = null;
+    var _schouwBezig = false;
+
+    function _schouwMeld(el, tekst, soort) {
+      var p = document.getElementById(el);
+      if (!p) return;
+      p.style.display = tekst ? '' : 'none';
+      p.textContent = tekst || '';
+      p.style.color = soort === 'fout' ? 'var(--danger, #dc2626)' : 'var(--text-muted)';
+    }
+
+    function loadSchouw() {
+      var klaar = _schouwCatalogus ? Promise.resolve(_schouwCatalogus)
+                                   : api('GET', '/api/schouw/catalogus');
+      klaar.then(function (c) {
+        _schouwCatalogus = c;
+        var gt = document.getElementById('schouwGebiedstype');
+        if (gt && !gt.options.length) {
+          Object.keys(c.gebiedstypen).forEach(function (k) {
+            var o = document.createElement('option');
+            o.value = k;
+            o.textContent = c.gebiedstypen[k].naam + ' (' + c.gebiedstypen[k].gangbare_ambitie + ')';
+            gt.appendChild(o);
+          });
+          gt.value = 'woonwijk';
+        }
+        var amb = document.getElementById('schouwRondeAmbitie');
+        if (amb && amb.options.length <= 1) {
+          c.klassen.forEach(function (k) {
+            var o = document.createElement('option');
+            o.value = k; o.textContent = k;
+            amb.appendChild(o);
+          });
+        }
+        var hk = document.getElementById('schouwHmKlasse');
+        if (hk && !hk.options.length) {
+          c.detectieklassen.forEach(function (d) {
+            var o = document.createElement('option');
+            o.value = d.code; o.textContent = d.naam;
+            hk.appendChild(o);
+          });
+          schouwHmDragers();
+        }
+        if (!c.ai_beschikbaar) {
+          _schouwMeld('schouwStartMelding',
+            'Let op: er is geen AI ingesteld op deze omgeving. Je kunt wel schouwen, maar beelden leveren geen waarnemingen op.', 'fout');
+        }
+      }).catch(function () { /* catalogus mislukt: handmatig werkt nog */ });
+
+      api('GET', '/api/schouw/ritten').then(_schouwRenderLijst).catch(function (e) {
+        document.getElementById('schouwList').innerHTML =
+          '<p style="color:var(--text-muted);">' + (e.message || 'Laden mislukt') + '</p>';
+      });
+    }
+
+    function _schouwRenderLijst(rijen) {
+      var box = document.getElementById('schouwList');
+      if (!rijen.length) {
+        box.innerHTML = '<div style="text-align:center;padding:30px 10px;">'
+          + '<p style="font-weight:600;margin-bottom:4px;">Nog geen schouwronde</p>'
+          + '<p style="color:var(--text-muted);font-size:13.5px;">Start er hierboven een.</p></div>';
+        return;
+      }
+      box.innerHTML = rijen.map(function (r) {
+        return '<div style="display:flex;justify-content:space-between;gap:12px;padding:12px 0;'
+          + 'border-bottom:1px solid var(--border);cursor:pointer;" onclick="openSchouwRit(\'' + r.id + '\')">'
+          + '<div><div style="font-weight:600;">' + _esc(r.gebied || r.naam || 'Schouwronde') + '</div>'
+          + '<div style="font-size:12.5px;color:var(--text-muted);">'
+          + _esc(r.gebiedstype_label || '') + ' &middot; ambitie ' + _esc(r.ambitie)
+          + ' &middot; ' + r.frames + ' beelden &middot; ' + r.waarnemingen_totaal + ' waarnemingen</div></div>'
+          + '<div style="text-align:right;font-size:12.5px;white-space:nowrap;">'
+          + '<div style="font-weight:600;">' + (r.beeldkwaliteit || '-') + '</div>'
+          + '<div style="color:var(--text-muted);">' + _esc(r.status) + '</div></div></div>';
+      }).join('');
+    }
+
+    function schouwStart() {
+      var body = {
+        gebied: (document.getElementById('schouwGebied').value || '').trim(),
+        gebiedstype: document.getElementById('schouwGebiedstype').value || null,
+        privacy_modus: 'gericht'
+      };
+      var amb = document.getElementById('schouwRondeAmbitie').value;
+      if (amb) body.ambitie = amb;
+      if (!body.gebied) { _schouwMeld('schouwStartMelding', 'Vul een gebied in', 'fout'); return; }
+
+      _schouwMeld('schouwStartMelding', 'Bezig...');
+      api('POST', '/api/schouw/ritten', body).then(function (r) {
+        _schouwMeld('schouwStartMelding', '');
+        _schouwRit = r;
+        document.getElementById('schouwStart').style.display = 'none';
+        document.getElementById('schouwActief').style.display = '';
+        _schouwToonKop();
+        _schouwCameraAan();
+        _schouwGpsAan();
+        loadSchouw();
+      }).catch(function (e) {
+        _schouwMeld('schouwStartMelding', e.message || 'Starten mislukt', 'fout');
+      });
+    }
+
+    function _schouwToonKop() {
+      if (!_schouwRit) return;
+      document.getElementById('schouwActiefGebied').textContent =
+        _schouwRit.gebied || 'Schouwronde';
+      document.getElementById('schouwActiefMeta').textContent =
+        (_schouwRit.gebiedstype_label || '') + ' · ambitie ' + _schouwRit.ambitie
+        + ' · ' + _schouwRit.frames + ' beelden';
+    }
+
+    function _schouwCameraAan() {
+      var video = document.getElementById('schouwVideo');
+      var badge = document.getElementById('schouwBadge');
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        badge.textContent = 'camera niet beschikbaar in deze browser';
+        return;
+      }
+      navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' },
+                 width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      }).then(function (stream) {
+        _schouwStream = stream;
+        video.srcObject = stream;
+        badge.textContent = 'opname loopt';
+        _schouwTimerAan();
+      }).catch(function (e) {
+        // Geen camera is geen ramp: handmatig vastleggen werkt nog.
+        badge.textContent = 'geen toegang tot de camera';
+        _schouwMeld('schouwMelding',
+          'Geen toegang tot de camera (' + (e.name || 'fout') + '). Je kunt wel zelf waarnemingen invoeren.', 'fout');
+      });
+    }
+
+    function _schouwTimerAan() {
+      if (_schouwTimer) clearInterval(_schouwTimer);
+      _schouwTimer = setInterval(schouwNu, SCHOUW_INTERVAL_MS);
+      document.getElementById('schouwPauzeBtn').textContent = 'Pauze';
+    }
+
+    function schouwPauze() {
+      var knop = document.getElementById('schouwPauzeBtn');
+      if (_schouwTimer) {
+        clearInterval(_schouwTimer); _schouwTimer = null;
+        knop.textContent = 'Hervatten';
+        document.getElementById('schouwBadge').textContent = 'gepauzeerd';
+      } else {
+        _schouwTimerAan();
+        document.getElementById('schouwBadge').textContent = 'opname loopt';
+      }
+    }
+
+    function _schouwGpsAan() {
+      if (!navigator.geolocation) return;
+      _schouwWatch = navigator.geolocation.watchPosition(function (pos) {
+        _schouwPositie = pos;
+      }, function () { /* geen GPS: waarnemingen komen zonder positie binnen */ },
+        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
+    }
+
+    function schouwNu() {
+      if (!_schouwRit || _schouwBezig) return;
+      var video = document.getElementById('schouwVideo');
+      if (!video || !video.videoWidth) return;
+
+      _schouwBezig = true;
+      document.getElementById('schouwBadge').textContent = 'analyseren…';
+
+      var canvas = document.getElementById('schouwCanvas');
+      // Verkleinen: 1280 breed is ruim genoeg voor herkenning en scheelt fors
+      // in uploadtijd op een 4G-verbinding in het veld.
+      var breedte = Math.min(video.videoWidth, 1280);
+      var schaal = breedte / video.videoWidth;
+      canvas.width = breedte;
+      canvas.height = Math.round(video.videoHeight * schaal);
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      var body = { image_data_url: canvas.toDataURL('image/jpeg', 0.8) };
+      if (_schouwPositie) {
+        body.lat = _schouwPositie.coords.latitude;
+        body.lng = _schouwPositie.coords.longitude;
+        body.nauwkeurigheid_m = _schouwPositie.coords.accuracy;
+      }
+
+      api('POST', '/api/schouw/ritten/' + _schouwRit.id + '/frame', body)
+        .then(function (res) {
+          _schouwRit = res.rit;
+          _schouwToonKop();
+          _schouwTussenstand(res.rit.tussenstand);
+          if (res.gevonden && res.gevonden.length) _schouwVoegToe(res.gevonden);
+          document.getElementById('schouwBadge').textContent =
+            res.bruikbaar ? 'opname loopt' : ('overgeslagen: ' + (res.reden_onbruikbaar || 'onbruikbaar'));
+          _schouwMeld('schouwMelding', '');
+        })
+        .catch(function (e) {
+          _schouwMeld('schouwMelding', e.message || 'Analyse mislukt', 'fout');
+          document.getElementById('schouwBadge').textContent = 'opname loopt';
+        })
+        .then(function () { _schouwBezig = false; });
+    }
+
+    function _schouwTussenstand(t) {
+      var box = document.getElementById('schouwTussenstand');
+      if (!t) { box.textContent = ''; return; }
+      var aantal = Object.keys(t.per_meetlat || {}).length;
+      box.innerHTML = '<strong>' + (t.beeldkwaliteit || 'nog geen oordeel') + '</strong>'
+        + ' &middot; ambitie ' + _esc(t.ambitie)
+        + ' &middot; ' + aantal + ' meetlat(ten) beoordeeld'
+        + ((t.niet_beoordeeld || []).length
+            ? ' &middot; <span style="color:var(--text-dim);">'
+              + t.niet_beoordeeld.length + ' zonder afgesproken grenswaarde</span>'
+            : '');
+    }
+
+    function _schouwVoegToe(nieuwe) {
+      var box = document.getElementById('schouwWaarnemingen');
+      var html = nieuwe.map(_schouwRij).join('');
+      box.innerHTML = html + box.innerHTML;
+    }
+
+    function _schouwRij(w) {
+      var zeker = w.zekerheid === null || w.zekerheid === undefined
+        ? '' : Math.round(w.zekerheid * 100) + '%';
+      var status = w.afgewezen ? 'afgewezen'
+        : (w.telt_mee ? 'telt mee' : 'wacht op bevestiging');
+      var knoppen = w.afgewezen || w.telt_mee ? ''
+        : '<button class="btn-primary" style="padding:3px 10px;font-size:12px;"'
+          + ' onclick="schouwBevestig(\'' + w.id + '\',true)">Klopt</button> '
+          + '<button class="btn-secondary" style="padding:3px 10px;font-size:12px;"'
+          + ' onclick="schouwBevestig(\'' + w.id + '\',false)">Niet</button>';
+      return '<div id="sw-' + w.id + '" style="padding:9px 0;border-bottom:1px solid var(--border);">'
+        + '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">'
+        + '<div style="flex:1;"><div style="font-weight:600;font-size:13.5px;">' + _esc(w.naam) + '</div>'
+        + '<div style="font-size:12px;color:var(--text-muted);">'
+        + (w.waarde !== null && w.waarde !== undefined ? w.waarde + ' &middot; ' : '')
+        + (w.klasse_niveau ? w.klasse_niveau + ' &middot; ' : '')
+        + zeker + ' &middot; ' + status
+        + (w.meetlat ? '' : ' &middot; drager onbekend')
+        + '</div></div>'
+        + '<div style="white-space:nowrap;">' + knoppen + '</div></div></div>';
+    }
+
+    function schouwBevestig(id, akkoord) {
+      api('PATCH', '/api/schouw/waarnemingen/' + id,
+          akkoord ? { bevestigd: true } : { afgewezen: true })
+        .then(function (w) {
+          var rij = document.getElementById('sw-' + w.id);
+          if (rij) rij.outerHTML = _schouwRij(w);
+          return api('GET', '/api/schouw/ritten/' + _schouwRit.id);
+        })
+        .then(function (r) { _schouwRit = r; _schouwTussenstand(r.tussenstand); })
+        .catch(function (e) { showToast(e.message || 'Bijwerken mislukt', 'error'); });
+    }
+
+    function openSchouwHandmatig() {
+      document.getElementById('schouwHandmatigModal').classList.add('active');
+    }
+
+    function schouwHmDragers() {
+      if (!_schouwCatalogus) return;
+      var code = document.getElementById('schouwHmKlasse').value;
+      var klasse = (_schouwCatalogus.detectieklassen || []).filter(function (d) {
+        return d.code === code;
+      })[0];
+      var sel = document.getElementById('schouwHmDrager');
+      sel.innerHTML = '';
+      if (!klasse) return;
+      klasse.dragers.forEach(function (d) {
+        var o = document.createElement('option');
+        o.value = d;
+        o.textContent = _schouwCatalogus.dragers[d] || d;
+        sel.appendChild(o);
+      });
+    }
+
+    function schouwHandmatigOpslaan() {
+      if (!_schouwRit) return;
+      var body = {
+        detectieklasse: document.getElementById('schouwHmKlasse').value,
+        drager: document.getElementById('schouwHmDrager').value || null,
+        toelichting: document.getElementById('schouwHmToelichting').value || null
+      };
+      var w = document.getElementById('schouwHmWaarde').value;
+      if (w !== '') body.waarde = parseFloat(w);
+      if (_schouwPositie) {
+        body.lat = _schouwPositie.coords.latitude;
+        body.lng = _schouwPositie.coords.longitude;
+      }
+      api('POST', '/api/schouw/ritten/' + _schouwRit.id + '/waarneming', body)
+        .then(function (res) {
+          _schouwVoegToe([res]);
+          document.getElementById('schouwHandmatigModal').classList.remove('active');
+          document.getElementById('schouwHmWaarde').value = '';
+          document.getElementById('schouwHmToelichting').value = '';
+          return api('GET', '/api/schouw/ritten/' + _schouwRit.id);
+        })
+        .then(function (r) { _schouwRit = r; _schouwTussenstand(r.tussenstand); })
+        .catch(function (e) {
+          _schouwMeld('schouwHmMelding', e.message || 'Vastleggen mislukt', 'fout');
+        });
+    }
+
+    function _schouwStop() {
+      if (_schouwTimer) { clearInterval(_schouwTimer); _schouwTimer = null; }
+      if (_schouwWatch !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(_schouwWatch);
+        _schouwWatch = null;
+      }
+      if (_schouwStream) {
+        _schouwStream.getTracks().forEach(function (tr) { tr.stop(); });
+        _schouwStream = null;
+      }
+    }
+
+    function schouwAfronden() {
+      if (!_schouwRit) return;
+      if (!confirm('Hierna kun je niets meer toevoegen aan deze ronde. Doorgaan?')) return;
+      api('POST', '/api/schouw/ritten/' + _schouwRit.id + '/afronden')
+        .then(function (r) {
+          _schouwStop();
+          _schouwRit = null;
+          document.getElementById('schouwActief').style.display = 'none';
+          document.getElementById('schouwStart').style.display = '';
+          document.getElementById('schouwWaarnemingen').innerHTML = '';
+          showToast('Schouwronde afgerond' + (r.beeldkwaliteit ? ': ' + r.beeldkwaliteit : ''), 'success');
+          loadSchouw();
+        })
+        .catch(function (e) { _schouwMeld('schouwMelding', e.message || 'Afronden mislukt', 'fout'); });
+    }
+
+    function openSchouwRit(id) {
+      api('GET', '/api/schouw/ritten/' + id).then(function (r) {
+        document.getElementById('schouwWaarnemingen').innerHTML =
+          (r.waarnemingen || []).map(_schouwRij).join('')
+          || '<p style="color:var(--text-muted);font-size:13px;">Geen waarnemingen.</p>';
+        document.getElementById('schouwActief').style.display = '';
+        document.getElementById('schouwActiefGebied').textContent = r.gebied || 'Schouwronde';
+        document.getElementById('schouwActiefMeta').textContent =
+          (r.gebiedstype_label || '') + ' · ' + r.status + ' · ' + r.frames + ' beelden';
+        _schouwTussenstand(r.tussenstand);
+        // Een afgeronde ronde bekijk je alleen; camera en timer blijven uit.
+        if (r.status !== 'bezig') { _schouwStop(); _schouwRit = null; }
+      }).catch(function (e) { showToast(e.message || 'Laden mislukt', 'error'); });
+    }
+
     function navigateTo(page) {
       // RBAC: weiger admin-only paginas voor niet-org-admins
       if (ADMIN_ONLY_PAGES.indexOf(page) !== -1) {
@@ -9265,6 +9732,7 @@
       if (page === 'integraties') loadIntegrations();
       if (page === 'veiligheid') loadVeiligheid();
       if (page === 'bouw') loadBouw();
+      if (page === 'schouw') loadSchouw();
       if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); loadOrgEditForm(); loadOrgAuditSummary(); refreshMfaStatus(); loadBillingCard(); }
       if (page === 'compliance') loadCompliance();
       if (page === 'dagboek') initDaybook();
