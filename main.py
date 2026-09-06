@@ -277,6 +277,7 @@ def _run_migrations():
                 "billing_seats":                    "INTEGER",
                 "paid_until":                       "TIMESTAMP",
                 "schouw_drempels":                  "TEXT",
+                "billing_waarschuwing_op":          "TIMESTAMP",
             }
             org_missing = [c for c in org_extra if c not in ocols]
             if org_missing:

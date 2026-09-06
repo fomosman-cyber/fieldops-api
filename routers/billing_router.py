@@ -38,7 +38,7 @@ import mollie
 from auth import get_current_user
 from database import get_db
 from models import AccountStatus, Invoice, Organization, Payment, User
-from permissions import is_platform_owner, require_org_admin
+from permissions import is_platform_owner, require_org_admin, require_platform_owner
 
 router = APIRouter(prefix="/api/billing", tags=["Abonnement"])
 
@@ -613,6 +613,24 @@ def zeg_abonnement_op(
         "status": "opgezegd",
         "toegang_tot": org.paid_until.isoformat() if org.paid_until else None,
     }
+
+
+@router.post("/reconciliatie")
+def reconciliatie(
+    toepassen: bool = False,
+    current_user: User = Depends(require_platform_owner),
+    db: Session = Depends(get_db),
+):
+    """De nachtelijke controle nu draaien.
+
+    Zonder ``toepassen`` is dit een droogloop: je ziet welke organisaties zouden
+    verlopen en waar het aantal gebruikers niet klopt, zonder dat er iets
+    verandert. Handig voordat je een klant afsluit.
+
+    Alleen voor de platform-eigenaar: dit kan organisaties op verlopen zetten.
+    """
+    import billing_reconciliatie
+    return billing_reconciliatie.reconcilieer(db, toepassen=toepassen)
 
 
 @router.get("/facturen")

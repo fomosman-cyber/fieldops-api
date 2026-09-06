@@ -99,6 +99,9 @@ class Organization(Base):
     billing_status = Column(String(30), nullable=True)
     billing_seats = Column(Integer, nullable=True)
     paid_until = Column(DateTime, nullable=True)
+    # Wanneer we voor het laatst hebben gewaarschuwd dat de termijn afloopt.
+    # Zonder deze rem stuurt de nachtelijke controle elke nacht dezelfde mail.
+    billing_waarschuwing_op = Column(DateTime, nullable=True)
     # Self-service contact-velden (org-admin kan zelf bijwerken)
     contact_email = Column(String(255), nullable=True)
     contact_phone = Column(String(50), nullable=True)
