@@ -4408,6 +4408,7 @@
       <div id="bouwVragen"></div>
 
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn-secondary" onclick="bouwPdf()">PDF</button>
         <button class="btn-primary" id="bouwAfrondBtn" onclick="bouwAfronden()">Afronden</button>
       </div>
       <p id="bouwModalMelding" style="display:none;margin:12px 0 0;font-size:13px;"></p>
@@ -9337,6 +9338,40 @@
         .then(function () { return api('GET', '/api/bouw/' + _bouwHuidig.id); })
         .then(function (b) { _bouwMeld('bouwModalMelding', ''); _bouwToon(b); })
         .catch(function (e) { _bouwMeld('bouwModalMelding', e.message || 'Opslaan mislukt', 'fout'); });
+    }
+
+    function bouwPdf() {
+      // Zelfde patroon als de toolbox- en WPI-export: fetch met de token en
+      // dan een blob-download, want een gewone link stuurt geen
+      // Authorization-header mee.
+      if (!_bouwHuidig) return;
+      fetch(API_URL + '/api/bouw/' + _bouwHuidig.id + '/export.pdf',
+            { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function (res) {
+          if (!res.ok) {
+            return res.text().then(function (x) {
+              throw new Error('Server fout ' + res.status + ': ' + x.substring(0, 120));
+            });
+          }
+          return res.blob().then(function (blob) {
+            var disp = res.headers.get('Content-Disposition') || '';
+            var m = disp.match(/filename="?([^";]+)"?/);
+            var blobUrl = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = m ? m[1] : 'gebouwinspectie.pdf';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function () {
+              document.body.removeChild(a);
+              URL.revokeObjectURL(blobUrl);
+            }, 100);
+            showToast('PDF gedownload', 'success');
+          });
+        })
+        .catch(function (err) {
+          _bouwMeld('bouwModalMelding', err.message || 'PDF mislukt', 'fout');
+        });
     }
 
     function bouwAfronden() {

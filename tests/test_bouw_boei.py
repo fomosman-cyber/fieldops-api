@@ -328,3 +328,63 @@ def test_opname_van_andere_organisatie_geeft_404(client, admin_user, org):
 
     assert client.get(f"/api/bouw/{vreemd_id}",
                       headers=auth(admin_user)).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PDF-rapport
+# ---------------------------------------------------------------------------
+
+def test_pdf_bevat_de_kop_en_is_een_echte_pdf(client, admin_user):
+    bouw_id = _start(client, admin_user, gebouw_naam="Gemeentehuis",
+                     straatnaam="Coolsingel", huisnummer="40",
+                     gebouw_type="publiek", pijlers=["E"]).json()["id"]
+    r = client.get(f"/api/bouw/{bouw_id}/export.pdf", headers=auth(admin_user))
+    assert r.status_code == 200, r.text
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.content.startswith(b"%PDF")
+    # Bestandsnaam draagt het gebouw, niet alleen een uuid.
+    assert "Gemeentehuis" in r.headers.get("content-disposition", "")
+
+
+def test_pdf_werkt_ook_bij_een_lopende_opname(client, admin_user):
+    """Een concept moet je kunnen meenemen naar een overleg."""
+    bouw_id = _start(client, admin_user, straatnaam="Westblaak",
+                     pijlers=["B"]).json()["id"]
+    assert client.get(f"/api/bouw/{bouw_id}/export.pdf",
+                      headers=auth(admin_user)).status_code == 200
+
+
+def test_conditiescores_en_aandachtspunten_landen_in_de_pdf(client, admin_user):
+    """Relatief vergelijken, want fpdf2 comprimeert en absolute maten zeggen niets.
+
+    Twee identieke opnames; bij de tweede leggen we een conditiescore en een
+    aandachtspunt met actie vast. Die moet meetbaar meer inhoud opleveren.
+    """
+    def pdf_voor(naam, met_inhoud):
+        bouw_id = _start(client, admin_user, gebouw_naam=naam,
+                         gebouw_type="sport", pijlers=["B"]).json()["id"]
+        d = client.get(f"/api/bouw/{bouw_id}", headers=auth(admin_user)).json()
+        for a in d["antwoorden"]:
+            client.patch(f"/api/bouw/{bouw_id}/antwoorden/{a['id']}",
+                         headers=auth(admin_user), json={"antwoord": "ja"})
+        if met_inhoud:
+            client.post(f"/api/bouw/{bouw_id}/condities", headers=auth(admin_user),
+                        json={"element_code": "DAK.01", "gebrek": "blaasvorming",
+                              "ernst": 3, "intensiteit": 2, "omvang_klasse": 4})
+            client.patch(f"/api/bouw/{bouw_id}/antwoorden/{d['antwoorden'][0]['id']}",
+                         headers=auth(admin_user),
+                         json={"antwoord": "nee",
+                               "toelichting": "gang staat vol opgeslagen dozen",
+                               "actie": "opruimen voor vrijdag"})
+        r = client.get(f"/api/bouw/{bouw_id}/export.pdf", headers=auth(admin_user))
+        assert r.status_code == 200, r.text
+        return r.content
+
+    kaal = pdf_voor("Zwembad leeg", False)
+    gevuld = pdf_voor("Zwembad gevuld", True)
+    assert len(gevuld) > len(kaal) + 200
+
+
+def test_pdf_van_andere_organisatie_geeft_404(client, admin_user):
+    assert client.get("/api/bouw/bestaat-niet/export.pdf",
+                      headers=auth(admin_user)).status_code == 404

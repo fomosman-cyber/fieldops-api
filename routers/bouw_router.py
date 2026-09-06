@@ -11,6 +11,7 @@ Endpoints:
   DELETE /api/bouw/{id}/condities/{cid}      Conditieregel verwijderen
   POST   /api/bouw/{id}/afronden             Vastzetten en scores berekenen
   DELETE /api/bouw/{id}                      Verwijderen
+  GET    /api/bouw/{id}/export.pdf           Rapport voor de opdrachtgever
   GET    /api/bouw/acties/open               Openstaande acties over alle opnames
 
 **Het gebouw benoem je zelf.** Een inspecteur staat voor een pand en legt het
@@ -37,6 +38,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -46,7 +48,7 @@ from audit import log_action
 from auth import get_current_user
 from database import get_db
 from models import (Asset, BouwAntwoord, BouwElementConditie, BouwInspectie,
-                    Project, User)
+                    Organization, Project, User)
 from permissions import can_manage_toolbox, require_module
 
 router = APIRouter(prefix="/api/bouw", tags=["Bouw"],
@@ -618,3 +620,223 @@ def verwijderen(
     log_action(db, request, current_user, action="bouw.delete",
                entity_type="bouw_inspectie", entity_id=bouw_id)
     return {"status": "verwijderd"}
+
+
+@router.get("/{bouw_id}/export.pdf")
+def export_pdf(
+    bouw_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Rapport van de gebouwinspectie.
+
+    Opzet volgt de volgorde waarin een lezer het wil weten: eerst wat en waar,
+    dan de conditiescores, dan de aandachtspunten per pijler, en tot slot de
+    documenten die ontbraken. Die laatste lijst is bij een controle vaak het
+    eerste dat gevraagd wordt, dus die staat er apart in plaats van verstopt
+    tussen de antwoorden.
+    """
+    try:
+        from fpdf import FPDF
+    except ImportError:
+        return StreamingResponse(
+            iter([b"PDF-generator niet geinstalleerd: pip install fpdf2"]),
+            status_code=500, media_type="text/plain",
+        )
+
+    b = _get_or_404(db, bouw_id, current_user)
+    org = db.query(Organization).filter(
+        Organization.id == current_user.organization_id).first()
+    org_naam = org.name if org else "-"
+
+    def safe(v) -> str:
+        """fpdf2 schrijft latin-1; alles daarbuiten vervangen we netjes."""
+        if v is None:
+            return ""
+        s = str(v)
+        for k, r in (("\u20ac", "EUR "), ("\u2013", "-"), ("\u2014", "-"),
+                     ("\u2022", "-"), ("\u2019", "'"), ("\u2018", "'"),
+                     ("\u201c", '"'), ("\u201d", '"'), ("\u2026", "..."),
+                     ("\u2192", "->"), ("\u00d7", "x"), ("\u00b7", "-")):
+            s = s.replace(k, r)
+        return s.encode("latin-1", "replace").decode("latin-1")
+
+    def _hex_rgb(hexstr: str, default=(2, 132, 199)):
+        try:
+            h = (hexstr or "").lstrip("#")
+            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+        except Exception:  # noqa: BLE001
+            return default
+
+    BRAND = _hex_rgb(getattr(org, "brand_color", None) or "")
+
+    class _BouwPDF(FPDF):
+        def footer(self):
+            self.set_y(-12)
+            self.set_font("Helvetica", "I", 7)
+            self.set_text_color(120, 120, 120)
+            self.set_x(15)
+            self.cell(120, 5, safe(f"{org_naam} - gebouwinspectie (BOEI)"))
+            self.cell(0, 5, f"Pagina {self.page_no()}/{{nb}}", align="R")
+            self.set_text_color(0, 0, 0)
+
+    pdf = _BouwPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.alias_nb_pages()
+    pdf.add_page()
+
+    pdf.set_fill_color(*BRAND)
+    pdf.rect(0, 0, 210, 34, "F")
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_xy(15, 9)
+    pdf.set_font("Helvetica", "B", 18)
+    pdf.cell(0, 9, "Gebouwinspectie")
+    pdf.set_xy(15, 19)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 6, safe(_omschrijving(b)))
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_y(42)
+
+    def regel(label, waarde):
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_x(15)
+        pdf.cell(42, 6, safe(label))
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(0, 6, safe(waarde), new_x="LMARGIN", new_y="NEXT")
+
+    def kop(tekst, ruimte=4):
+        pdf.ln(ruimte)
+        pdf.set_x(15)
+        pdf.set_font("Helvetica", "B", 12)
+        pdf.cell(0, 7, safe(tekst), new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Helvetica", "", 9)
+
+    adres = " ".join(x for x in ((b.straatnaam or ""), (b.huisnummer or "")) if x)
+    regel("Gebouw", b.gebouw_naam or "-")
+    regel("Adres", ", ".join(x for x in (adres, b.postcode or "", b.plaats or "") if x) or "-")
+    regel("Eigenaar", b.eigenaar or "-")
+    regel("Gebouwtype", bb.GEBOUW_TYPES.get(b.gebouw_type or "") or "-")
+    regel("Bouwjaar", b.bouwjaar or "-")
+    regel("Datum", b.datum.strftime("%d-%m-%Y") if b.datum else "-")
+    regel("Inspecteur", b.inspecteur_naam or "-")
+    regel("Status", "afgerond" if b.status == "afgerond" else "concept")
+    regel("Vragenlijst", b.checklist_versie or "-")
+
+    antwoorden = list(b.antwoorden or [])
+    resultaat = bb.bereken_score(
+        [{"code": a.question_code, "antwoord": a.antwoord} for a in antwoorden])
+
+    # ── Samenvatting per pijler ─────────────────────────────────────
+    gebruikt = {a.pijler for a in antwoorden if a.pijler}
+    if gebruikt:
+        kop("Samenvatting")
+        for code in bb.PIJLERS:
+            if code not in gebruikt:
+                continue
+            blok = resultaat["per_pijler"][code]
+            score = ("-" if blok["score_pct"] is None
+                     else f"{blok['score_pct']}% in orde")
+            regel(f"{code} - {bb.PIJLERS[code]['naam']}",
+                  f"{blok['beoordeeld']} beoordeeld, {blok['nee']} aandachtspunt(en), {score}")
+
+    # ── Conditiemeting ──────────────────────────────────────────────
+    condities = list(b.condities or [])
+    if condities:
+        kop("Conditiemeting (NEN 2767-1)")
+        pdf.set_x(15)
+        pdf.set_font("Helvetica", "B", 8)
+        for breedte, titel in ((22, "Code"), (58, "Element"), (48, "Gebrek"),
+                               (12, "E"), (12, "I"), (12, "O"), (16, "Conditie")):
+            pdf.cell(breedte, 6, titel, border="B")
+        pdf.ln(6)
+        pdf.set_font("Helvetica", "", 8)
+        for c in condities:
+            pdf.set_x(15)
+            pdf.cell(22, 5.5, safe(c.element_code))
+            pdf.cell(58, 5.5, safe((c.element_naam_snapshot or "")[:34]))
+            pdf.cell(48, 5.5, safe((c.gebrek or "-")[:28]))
+            pdf.cell(12, 5.5, safe(c.ernst or "-"))
+            pdf.cell(12, 5.5, safe(c.intensiteit or "-"))
+            pdf.cell(12, 5.5, safe(c.omvang_klasse or "-"))
+            label = scoring.CONDITIE_LABELS.get(c.conditie, "") if c.conditie else ""
+            pdf.cell(16, 5.5, safe(f"{c.conditie or '-'} {label}"[:14]),
+                     new_x="LMARGIN", new_y="NEXT")
+        if b.conditie_hoogste:
+            pdf.ln(1)
+            pdf.set_x(15)
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.cell(0, 6, safe(
+                f"Hoogste conditiescore: {b.conditie_hoogste} "
+                f"({scoring.CONDITIE_LABELS.get(b.conditie_hoogste, '')})"),
+                new_x="LMARGIN", new_y="NEXT")
+
+    # ── Aandachtspunten ─────────────────────────────────────────────
+    punten = [a for a in antwoorden if a.antwoord == "nee"]
+    kop("Aandachtspunten")
+    if not punten:
+        pdf.set_x(15)
+        pdf.multi_cell(180, 5, safe("Geen. Alle beoordeelde vragen zijn in orde."))
+    for a in punten:
+        pdf.set_x(15)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.multi_cell(180, 5, safe(f"{a.question_code}  {a.question_text_snapshot or ''}"))
+        pdf.set_font("Helvetica", "", 8.5)
+        v = bb.vraag(a.question_code) or {}
+        if v.get("norm_ref"):
+            pdf.set_x(18)
+            pdf.set_text_color(110, 110, 110)
+            pdf.multi_cell(177, 4.5, safe(v["norm_ref"]))
+            pdf.set_text_color(0, 0, 0)
+        if a.toelichting:
+            pdf.set_x(18)
+            pdf.multi_cell(177, 4.5, safe(a.toelichting))
+        if a.actie:
+            pdf.set_x(18)
+            pdf.multi_cell(177, 4.5, safe(
+                "Actie: " + a.actie
+                + (f" ({a.actiehouder_naam})" if a.actiehouder_naam else "")
+                + (" - gereed" if a.actie_gereed else "")))
+        pdf.ln(1)
+
+    # ── Ontbrekende documenten ──────────────────────────────────────
+    # Bij een controle is dit het eerste dat gevraagd wordt, dus apart.
+    per_code = {a.question_code: a for a in antwoorden}
+    ontbreekt = []
+    for stuk in bb.bewijsstukken():
+        a = per_code.get(stuk["code"])
+        if a is None:
+            continue
+        if a.bewijs_aanwezig is False or (a.antwoord == "nee" and a.bewijs_aanwezig is None):
+            ontbreekt.append((stuk["bewijs"], stuk["norm_ref"]))
+    if ontbreekt:
+        kop("Documenten die ontbreken of verlopen zijn")
+        for naam, norm in ontbreekt:
+            pdf.set_x(15)
+            pdf.set_font("Helvetica", "", 9)
+            pdf.multi_cell(180, 5, safe(f"- {naam}  ({norm})"))
+
+    kop("Verantwoording", 6)
+    pdf.set_x(15)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(110, 110, 110)
+    pdf.multi_cell(180, 4.5, safe(
+        "Opgesteld volgens de BOEI-methodiek: Brandveiligheid, Onderhoud, Energie "
+        "en Inzicht in wet- en regelgeving. Conditiescores volgen NEN 2767-1; "
+        "ernst, intensiteit en omvang zijn vastgelegd en de score is daaruit "
+        f"berekend met {b.condities[0].scoring_versie if b.condities else scoring.SCORING_VERSION}. "
+        "De vraagteksten zijn vastgelegd zoals ze bij deze opname luidden, ook als "
+        "de vragenlijst later is gewijzigd."))
+    pdf.set_text_color(0, 0, 0)
+
+    b.pdf_generated_at = datetime.now(timezone.utc)
+    db.commit()
+    log_action(db, request, current_user, action="bouw.export.pdf",
+               entity_type="bouw_inspectie", entity_id=b.id)
+
+    inhoud = bytes(pdf.output())
+    naam = f"gebouwinspectie-{(b.gebouw_naam or b.straatnaam or b.id)[:40]}.pdf"
+    naam = "".join(c if c.isalnum() or c in "-_." else "-" for c in naam)
+    return StreamingResponse(
+        iter([inhoud]), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{naam}"'})
