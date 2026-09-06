@@ -1605,14 +1605,20 @@ class BouwInspectie(Base):
     volgens NEN 2767-1), Energie en Inzicht in wet- en regelgeving. De
     vragenlijst staat in ``bouw_boei.py``.
 
-    **Per asset of per straat.** Een opname hangt aan een gebouw (`asset_id`)
-    of aan een straat (`straatnaam`), en precies aan een van beide. Dat is geen
-    modelleerluxe: een schoolgebouw inspecteer je als object, maar een rij
+    **Het gebouw benoem je zelf.** Een inspecteur staat voor een pand en moet
+    dat kunnen vastleggen zonder dat het eerst als asset in het systeem bestaat:
+    naam, straat, huisnummer, postcode, plaats en eigenaar zijn vrije velden.
+    Wie het gebouw wel in zijn areaal heeft staan kan het koppelen via
+    `asset_id`, maar dat is een gemak en geen voorwaarde.
+
+    **Per gebouw of per straat.** Een schoolgebouw neem je op als object; een rij
     identieke portiekwoningen of een bedrijventerrein loopt een inspecteur per
-    straat af. Wie dat tot een gebouw dwingt, krijgt vijftig losse opnames die
-    niemand meer bij elkaar zoekt. De keuze wordt afgedwongen in de router, niet
-    hier -- een database-constraint over twee kolommen is in SQLite en Postgres
-    niet gelijk te krijgen zonder migratieproblemen.
+    straat af. Het verschil zit in het huisnummer: met huisnummer is het een
+    pand, zonder huisnummer een straat. Minimaal een gebouwnaam of een straat is
+    verplicht, want een opname zonder plek is later niet terug te vinden. Dat
+    wordt afgedwongen in de router -- een database-constraint over meerdere
+    kolommen is in SQLite en Postgres niet gelijk te krijgen zonder
+    migratieproblemen.
 
     Status-flow gelijk aan de werkplekinspectie:
         concept    -> opname bezig, alles nog aan te passen
@@ -1625,10 +1631,17 @@ class BouwInspectie(Base):
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
     project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
 
-    # Het object van de opname -- een van beide, zie de docstring.
-    asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)
+    # Het object van de opname. Een inspecteur die voor een pand staat moet het
+    # kunnen benoemen zonder dat er eerst een asset bestaat, dus dit zijn vrije
+    # velden. `asset_id` is een optionele koppeling voor wie het gebouw wel in
+    # zijn areaal heeft staan, geen voorwaarde.
+    gebouw_naam = Column(String(255), nullable=True, index=True)
     straatnaam = Column(String(255), nullable=True, index=True)
+    huisnummer = Column(String(20), nullable=True)
+    postcode = Column(String(12), nullable=True, index=True)
     plaats = Column(String(120), nullable=True)
+    eigenaar = Column(String(255), nullable=True)
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)
 
     gebouw_type = Column(String(40), nullable=True, index=True)   # sleutel uit GEBOUW_TYPES
     bouwjaar = Column(Integer, nullable=True)                     # bepaalt o.a. de asbestvraag
