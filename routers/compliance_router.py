@@ -14,6 +14,7 @@ Endpoints:
   GET /api/compliance/security-posture  Security-overzicht voor aanbestedingen
 """
 from __future__ import annotations
+import os
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends
@@ -285,12 +286,50 @@ def iso_readiness(current_user: User = Depends(get_current_user)):
     }
 
 
+def _aangetoond(variabele: str, omschrijving: str) -> dict:
+    """Een organisatorische claim die niet uit de code te lezen is.
+
+    Zolang de variabele leeg is, staat er "niet aangetoond". Dat is bewust: dit
+    overzicht gaat mee als bijlage bij een aanbesteding, en een claim die je
+    niet kunt onderbouwen is daar erger dan een eerlijk nee. Vul de variabele
+    pas als het ook echt zo is, met een datum of een verwijzing naar het bewijs.
+    """
+    waarde = (os.getenv(variabele) or "").strip()
+    return {
+        "wat": omschrijving,
+        "status": waarde or "niet aangetoond",
+        "aangetoond": bool(waarde),
+        "instelbaar_via": variabele,
+    }
+
+
 @router.get("/security-posture")
 def security_posture(current_user: User = Depends(get_current_user)):
-    """Compact security-overzicht voor aanbestedings-bijlage."""
+    """Compact security-overzicht voor een aanbestedingsbijlage.
+
+    **Wat hier staat, staat er omdat de code het waarmaakt.** Dit overzicht
+    stond vol hardgecodeerde waarden die niet klopten: een sessieduur van 30
+    minuten terwijl een token 24 uur geldig is, een wachtwoordminimum van twaalf
+    tekens terwijl het er acht zijn, wekelijkse scans met Dependabot en Snyk
+    terwijl er geen enkele scanconfiguratie in de repository staat, en anomaly
+    detection die nergens bestaat.
+
+    Dat is gevaarlijker dan het lijkt. Een inkoper leest dit naast de eigen
+    /compliance-pagina, die eerlijk zegt dat er geen deelbaar pentestrapport is.
+    Twee documenten die elkaar tegenspreken kosten je het dossier -- en terecht,
+    want dan weet niemand meer welke van de twee waar is.
+
+    Alles wat uit de code te lezen valt wordt nu ook uit de code gelezen. Wat
+    organisatorisch is en dus niet te verifieren, staat op "niet aangetoond"
+    tot iemand de bijbehorende variabele vult.
+    """
+    from auth import (ACCESS_TOKEN_EXPIRE_MINUTES, LOGIN_RATE_LIMIT_PER_EMAIL,
+                      LOGIN_RATE_LIMIT_WINDOW_MIN, MIN_PASSWORD_LENGTH)
+
+    import backup_service
+
     return {
-        "organization": "FieldOps B.V.",
-        "scope": "FieldOps Platform — SaaS voor publieke ruimte beheer",
+        "organization": os.getenv("FIELDOPS_BEDRIJFSNAAM") or "FieldOps",        "scope": "FieldOps Platform — SaaS voor publieke ruimte beheer",
         "data_residency": {
             "primary_region": "Frankfurt EU (eu-central-1)",
             "backup_region": "EU west (Ireland) — cross-region replication",
@@ -305,39 +344,68 @@ def security_posture(current_user: User = Depends(get_current_user)):
         },
         "access_control": {
             "rbac": True,
-            "multi_factor_auth": "Beschikbaar (TOTP) — niet afgedwongen per plan",
-            "sso_saml": "Op de roadmap — nog niet beschikbaar",
-            "session_timeout_min": 30,
-            "password_policy_strength": "12 chars + 3 of 4 character classes",
-            "failed_login_lockout": "5 attempts → 15 min lockout",
+            "multi_factor_auth": "Beschikbaar (TOTP), niet afgedwongen",
+            "sso_saml": "Niet beschikbaar",
+            "session_timeout_min": ACCESS_TOKEN_EXPIRE_MINUTES,
+            "password_policy": (
+                f"minimaal {MIN_PASSWORD_LENGTH} tekens, 3 van de 4 categorieen "
+                "(kleine letter, hoofdletter, cijfer, symbool)"),
+            "failed_login_lockout": (
+                f"{LOGIN_RATE_LIMIT_PER_EMAIL} pogingen per e-mailadres binnen "
+                f"{LOGIN_RATE_LIMIT_WINDOW_MIN} minuten"),
         },
         "monitoring": {
-            "audit_log": "Append-only, 5-year retention",
-            "anomaly_detection": True,
-            "rate_limiting": "100 req/min per IP for public endpoints",
-            "vulnerability_scanning": "Weekly (Dependabot + Snyk)",
-            "penetration_testing": "Annual external (Q3 2026 planned)",
+            "audit_log": "Append-only; geen automatische opschoning ingesteld",
+            "error_tracking": ("Sentry" if os.getenv("SENTRY_DSN")
+                               else "niet geconfigureerd"),
+            "rate_limiting": "Per IP en per e-mailadres op login, wachtwoordreset "
+                             "en publieke formulieren",
+            "anomaly_detection": _aangetoond(
+                "COMPLIANCE_ANOMALY_DETECTION",
+                "Detectie van afwijkend gebruik"),
+            "vulnerability_scanning": _aangetoond(
+                "COMPLIANCE_KWETSBAARHEIDSSCAN",
+                "Periodieke scan op kwetsbare afhankelijkheden"),
+            "penetration_testing": _aangetoond(
+                "COMPLIANCE_PENTEST",
+                "Externe penetratietest"),
         },
         "incident_response": {
-            "documented_procedure": True,
-            "incident_commander_24x7": True,
-            "datalek_notification_to_customer_max": "24 hours",
-            "datalek_notification_to_ap_max": "72 hours (via customer as controller)",
+            "documented_procedure": _aangetoond(
+                "COMPLIANCE_INCIDENTPROCEDURE",
+                "Vastgelegde incidentprocedure"),
+            "bereikbaarheid": _aangetoond(
+                "COMPLIANCE_PIKET",
+                "Bereikbaarheid buiten kantoortijden"),
+            "datalek_melding_aan_klant_max": "24 uur",
+            "datalek_melding_aan_ap_max": "72 uur (via de klant als verwerkings"
+                                          "verantwoordelijke)",
         },
         "business_continuity": {
-            "rto_hours": 4,
-            "rpo_hours": 1,
-            "backup_frequency": "daily",
-            "backup_retention_days": 30,
-            "disaster_recovery_tested": "Quarterly",
+            "backup_geconfigureerd": backup_service.is_configured(),
+            "backup_frequentie": _aangetoond(
+                "COMPLIANCE_BACKUP_FREQUENTIE",
+                "Frequentie waarmee de back-upjob draait"),
+            "backup_retentie": _aangetoond(
+                "COMPLIANCE_BACKUP_RETENTIE",
+                "Bewaartermijn van back-ups"),
+            "restore_getest": _aangetoond(
+                "COMPLIANCE_RESTORE_GETEST",
+                "Datum waarop een back-up is teruggezet"),
+            "opmerking": ("RTO en RPO worden bewust niet genoemd zolang een "
+                          "teruggezette back-up niet is aangetoond. Een hersteltijd "
+                          "die je nooit hebt gemeten is een aanname."),
         },
         "compliance_certifications": {
-            "avg_gdpr": "Compliant — DPA template + Sub-processor list + SCCs",
-            "iso_27001": "Aligned (self-assessment, certification target Q3 2027)",
-            "iso_27017_cloud": "Aligned via Render + AWS sub-processors",
-            "iso_27018_pii": "Aligned via sub-processors",
-            "nen_7510_healthcare": "Not applicable (no health data)",
-            "soc_2": "Via sub-processors (Render, Cloudflare, AWS, Resend)",
+            "avg_gdpr": "Verwerkersovereenkomst en sub-verwerkerslijst beschikbaar; "
+                        "export en verwijdering per gebruiker geimplementeerd",
+            "iso_27001": _aangetoond("COMPLIANCE_ISO27001",
+                                     "ISO 27001-certificering"),
+            "soc_2": _aangetoond("COMPLIANCE_SOC2", "SOC 2-rapportage"),
+            "nen_7510": "Niet van toepassing: geen medische gegevens",
+            "opmerking": ("Certificeringen van onze sub-verwerkers zijn niet "
+                          "overdraagbaar op FieldOps zelf. Wat hier op 'niet "
+                          "aangetoond' staat, is niet aangetoond."),
         },
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "note": "Detailed documentation available on request: compliance@fieldopsapp.nl",
