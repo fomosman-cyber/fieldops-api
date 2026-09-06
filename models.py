@@ -1498,3 +1498,98 @@ class Incident(Base):
     betrokkene = relationship("User", foreign_keys=[betrokkene_user_id])
     afhandelaar = relationship("User", foreign_keys=[afgehandeld_door])
     melder = relationship("User", foreign_keys=[created_by])
+
+
+class Werkplekinspectie(Base):
+    """Een werkplekinspectie (WPI): de rondgang over de werkplek langs een
+    vaste lijst controlevragen.
+
+    VCA-gecertificeerde bedrijven moeten er een aantoonbaar aantal per periode
+    doen. Hangt daarom verplicht aan een project -- een WPI zonder werkplek
+    bestaat niet -- en krijgt bij afronden een score, zodat je over de tijd
+    kunt zien of het beter of slechter wordt.
+
+    Status-flow:
+        concept    -> rondgang bezig, antwoorden nog aan te passen
+        afgerond   -> vastgezet; score berekend, niets wijzigt nog
+    """
+
+    __tablename__ = "werkplekinspecties"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=False, index=True)
+
+    datum = Column(DateTime, nullable=True)
+    locatie = Column(String(255), nullable=True)
+
+    inspecteur_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    inspecteur_naam = Column(String(120), nullable=True)     # gedenormaliseerd voor de PDF
+
+    status = Column(String(30), nullable=False, default="concept", index=True)
+
+    # Versie van de vragenlijst waarmee deze rondgang is gelopen. Zonder dit
+    # kun je een score van vorig jaar niet meer duiden.
+    checklist_versie = Column(String(40), nullable=True)
+
+    algemene_indruk = Column(Text, nullable=True)
+    score_pct = Column(Integer, nullable=True)               # bij afronden vastgezet
+    aantal_niet_in_orde = Column(Integer, nullable=True)
+
+    afgerond_op = Column(DateTime, nullable=True)
+    pdf_generated_at = Column(DateTime, nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    organization = relationship("Organization")
+    project = relationship("Project", foreign_keys=[project_id])
+    inspecteur = relationship("User", foreign_keys=[inspecteur_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    antwoorden = relationship("WerkplekinspectieAntwoord", back_populates="inspectie",
+                              cascade="all, delete-orphan",
+                              order_by="WerkplekinspectieAntwoord.order_index")
+
+
+class WerkplekinspectieAntwoord(Base):
+    """Een beantwoorde controlevraag binnen een werkplekinspectie.
+
+    De vraagtekst wordt hier gesnapshot, net als bij InspectionAnswer. Wijzigt
+    de checklist later, dan blijft een oude inspectie tonen wat er destijds
+    daadwerkelijk gevraagd is -- anders is een audit-trail niets waard.
+
+    Een NEE is het aandachtspunt en hoort een toelichting en liefst een actie
+    te krijgen. Vandaar de actie-velden hier en niet in een losse tabel: een
+    actie zonder de vraag waar hij uit voortkomt is niet te plaatsen.
+    """
+
+    __tablename__ = "werkplekinspectie_antwoorden"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    wpi_id = Column(String, ForeignKey("werkplekinspecties.id", ondelete="CASCADE"),
+                    nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    question_code = Column(String(40), nullable=False, index=True)
+    question_version = Column(String(40), nullable=False)
+    question_text_snapshot = Column(String(500), nullable=True)
+    categorie = Column(String(40), nullable=True, index=True)
+
+    # ja = in orde, nee = niet in orde, nvt = niet van toepassing
+    antwoord = Column(String(4), nullable=True)
+    toelichting = Column(Text, nullable=True)
+    photo_url = Column(Text, nullable=True)                  # base64 data-URL of externe URL
+
+    # Wat er moet gebeuren als het niet in orde is.
+    actie = Column(Text, nullable=True)
+    actiehouder_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    actiehouder_naam = Column(String(120), nullable=True)
+    actie_gereed = Column(Boolean, default=False, nullable=False)
+
+    order_index = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    inspectie = relationship("Werkplekinspectie", back_populates="antwoorden")
+    actiehouder = relationship("User", foreign_keys=[actiehouder_id])
