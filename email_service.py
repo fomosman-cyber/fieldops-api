@@ -598,7 +598,8 @@ Je ontvangt deze email omdat een collega je heeft toegewezen aan een melding. Wi
 
 # --- Abonnement (Mollie) ---
 
-def send_abonnement_actief(user, org, *, seats: int, maandbedrag: str) -> bool:
+def send_abonnement_actief(user, org, *, seats: int, maandbedrag: str,
+                          bedrag_excl: str = "", bedrag_btw: str = "") -> bool:
     """Bevestiging dat het abonnement loopt en de machtiging is afgegeven.
 
     Bewust concreet over het bedrag en de eerste incassodatum: dat is precies
@@ -607,6 +608,14 @@ def send_abonnement_actief(user, org, *, seats: int, maandbedrag: str) -> bool:
     naam = getattr(user, "first_name", "") or ""
     org_naam = getattr(org, "name", "je organisatie")
     gebruikers = "1 gebruiker" if seats == 1 else f"{seats} gebruikers"
+
+    # Het tarief op de website is exclusief BTW; wat er van de rekening gaat is
+    # inclusief. Die twee bedragen naast elkaar zetten scheelt een supportvraag
+    # per klant, en de boekhouder van de klant heeft de splitsing toch nodig.
+    splitsing = ""
+    if bedrag_excl and bedrag_btw:
+        splitsing = (f"Subtotaal: <strong>&euro; {bedrag_excl}</strong> excl. BTW<br>"
+                     f"BTW 21%: <strong>&euro; {bedrag_btw}</strong><br>")
 
     content = f"""
 <h2 style="color:#1e293b;font-size:22px;margin:0 0 8px;">Je abonnement is actief</h2>
@@ -621,7 +630,7 @@ toegang tot FieldOps &mdash; alle inspectiemodules, onbeperkt projecten en asset
 <p style="margin:0 0 10px;color:#1e293b;font-size:14px;font-weight:600;">Wat je gaat betalen</p>
 <p style="margin:0;color:#64748b;font-size:14px;line-height:1.7;">
 Nu in rekening gebracht: <strong>{gebruikers}</strong><br>
-Maandbedrag: <strong>&euro; {maandbedrag}</strong><br>
+{splitsing}Maandbedrag: <strong>&euro; {maandbedrag}</strong><br>
 Eerste incasso: <strong>over een maand</strong> &mdash; deze maand is gratis
 </p>
 </td></tr></table>

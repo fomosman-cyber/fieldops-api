@@ -3464,6 +3464,7 @@
             <div>
               <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Tarief</label>
               <div style="font-size:16px;font-weight:500;"><span id="billTarief">-</span> per gebruiker / maand</div>
+              <div style="font-size:11.5px;color:var(--text-dim);margin-top:2px;">excl. BTW</div>
             </div>
             <div>
               <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Actieve gebruikers</label>
@@ -3472,6 +3473,7 @@
             <div>
               <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Maandbedrag</label>
               <div style="font-size:20px;font-weight:700;" id="billBedrag">-</div>
+              <div style="font-size:11.5px;color:var(--text-dim);margin-top:2px;" id="billSplitsing"></div>
             </div>
             <div>
               <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Status</label>
@@ -21000,6 +21002,13 @@
         document.getElementById('billTarief').textContent = '\u20ac ' + st.tarief_per_gebruiker;
         document.getElementById('billGebruikers').textContent = st.actieve_gebruikers;
         document.getElementById('billBedrag').textContent = '\u20ac ' + st.maandbedrag;
+        var splits = document.getElementById('billSplitsing');
+        if (st.maandbedrag_excl && st.maandbedrag_btw) {
+          splits.textContent = '\u20ac ' + st.maandbedrag_excl + ' excl. + \u20ac '
+            + st.maandbedrag_btw + ' BTW';
+        } else {
+          splits.textContent = '';
+        }
 
         var statusTekst = {
           'active': 'Actief',

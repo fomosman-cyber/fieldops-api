@@ -54,10 +54,15 @@ def test_status_rekent_maandbedrag_uit_actieve_gebruikers(client, admin_user):
     r = client.get("/api/billing/status", headers=auth(admin_user))
     assert r.status_code == 200
     data = r.json()
+    # Het tarief op de website is exclusief BTW.
     assert data["tarief_per_gebruiker"] == "9.00"
+    assert data["btw_percentage"] == "21"
     # één actieve gebruiker in deze organisatie
     assert data["actieve_gebruikers"] == 1
-    assert data["maandbedrag"] == "9.00"
+    assert data["maandbedrag_excl"] == "9.00"
+    assert data["maandbedrag_btw"] == "1.89"
+    # `maandbedrag` is wat er van de rekening gaat, dus inclusief BTW.
+    assert data["maandbedrag"] == "10.89"
     assert data["heeft_abonnement"] is False
 
 
@@ -65,7 +70,23 @@ def test_maandbedrag_schaalt_met_gebruikers(client, admin_user, viewer_user):
     r = client.get("/api/billing/status", headers=auth(admin_user))
     data = r.json()
     assert data["actieve_gebruikers"] == 2
-    assert data["maandbedrag"] == "18.00"
+    assert data["maandbedrag_excl"] == "18.00"
+    assert data["maandbedrag_btw"] == "3.78"
+    assert data["maandbedrag"] == "21.78"
+
+
+def test_btw_telt_altijd_op_tot_het_incassobedrag(client, admin_user, viewer_user):
+    """Excl + BTW moet exact incl zijn, anders klopt een factuur niet.
+
+    De BTW wordt over het totaal berekend en niet per gebruiker; bij drie
+    gebruikers van 9,00 scheelt dat een cent met de andere volgorde.
+    """
+    from decimal import Decimal
+
+    data = client.get("/api/billing/status", headers=auth(admin_user)).json()
+    excl = Decimal(data["maandbedrag_excl"])
+    btw = Decimal(data["maandbedrag_btw"])
+    assert excl + btw == Decimal(data["maandbedrag"])
 
 
 def test_gewone_gebruiker_mag_de_status_niet_zien(client, viewer_user):
@@ -208,8 +229,9 @@ def test_eerste_betaling_start_abonnement_en_activeert_organisatie(
     assert r.status_code == 200
     assert r.json()["status"] == "abonnement gestart"
 
-    # Het abonnement rekent het aantal gebruikers, niet een vast pakket.
-    assert gemaakt["bedrag"] == "9.00"
+    # Het abonnement rekent het aantal gebruikers, niet een vast pakket, en
+    # incasseert inclusief BTW: 9,00 excl. wordt 10,89.
+    assert gemaakt["bedrag"] == "10.89"
     assert gemaakt["interval"] == "1 month"
     assert gemaakt["mandate_id"] == "mdt_1"
 
@@ -301,6 +323,58 @@ def test_mislukte_incasso_sluit_niet_meteen_af(client, org, monkeypatch):
     assert ververst.status == AccountStatus.ACTIVE
 
 
+@pytest.mark.parametrize("status", ["open", "pending", "authorized"])
+def test_incasso_onderweg_is_geen_mislukte_incasso(client, org, monkeypatch, status):
+    """Een SEPA-incasso staat dagen op "open" voordat hij "paid" wordt.
+
+    De webhook behandelde iedere niet-"paid" status als mislukking. Gevolg: de
+    klant kreeg op de dag van de incasso een "incasso mislukt"-mail terwijl het
+    geld gewoon onderweg was, en zijn organisatie ging naar past_due. Dit is de
+    regressietest op precies dat pad -- hij vuurt op de eerste echte incasso,
+    dus niet in productie ontdekken.
+    """
+    _zet_org(org.id, mollie_customer_id="cst_1", mollie_subscription_id="sub_1",
+             paid_until=datetime.utcnow() + timedelta(days=10),
+             billing_status="active", status=AccountStatus.ACTIVE)
+
+    gemaild = []
+    import email_service
+    monkeypatch.setattr(email_service, "send_incasso_mislukt",
+                        lambda *a, **kw: gemaild.append(kw) or True)
+
+    monkeypatch.setattr(mollie, "haal_betaling", lambda pid: {
+        "id": pid, "status": status, "sequenceType": "recurring",
+        "amount": {"currency": "EUR", "value": "10.89"},
+        "customerId": "cst_1", "metadata": {"organization_id": org.id},
+    })
+
+    r = client.post(f"/api/billing/webhook/{WEBHOOK_TOKEN}", data={"id": f"tr_ow_{status}"})
+    assert r.status_code == 200
+
+    ververst = _org_uit_db(org.id)
+    assert ververst.billing_status == "active", (
+        f"status '{status}' betekent onderweg, niet mislukt")
+    assert ververst.status == AccountStatus.ACTIVE
+    assert gemaild == [], "de klant hoort geen storingsmail te krijgen"
+
+
+@pytest.mark.parametrize("status", ["failed", "canceled", "expired"])
+def test_definitief_mislukte_incasso_zet_wel_past_due(client, org, monkeypatch, status):
+    """De keerzijde: deze drie betekenen wél dat het geld niet komt."""
+    _zet_org(org.id, mollie_customer_id="cst_1", mollie_subscription_id="sub_1",
+             paid_until=datetime.utcnow() + timedelta(days=10),
+             billing_status="active", status=AccountStatus.ACTIVE)
+
+    monkeypatch.setattr(mollie, "haal_betaling", lambda pid: {
+        "id": pid, "status": status, "sequenceType": "recurring",
+        "amount": {"currency": "EUR", "value": "10.89"},
+        "customerId": "cst_1", "metadata": {"organization_id": org.id},
+    })
+
+    client.post(f"/api/billing/webhook/{WEBHOOK_TOKEN}", data={"id": f"tr_dm_{status}"})
+    assert _org_uit_db(org.id).billing_status == "past_due"
+
+
 def test_mislukte_incasso_na_verlopen_termijn_zet_op_verlopen(
         client, org, monkeypatch):
     _zet_org(org.id, mollie_customer_id="cst_1", mollie_subscription_id="sub_1",
@@ -360,7 +434,7 @@ def test_seats_sync_past_het_bedrag_aan(client, admin_user, viewer_user, org,
     r = client.post("/api/billing/seats/sync", headers=auth(admin_user))
     assert r.status_code == 200
     assert r.json()["actieve_gebruikers"] == 2
-    assert gewijzigd["bedrag"] == "18.00"
+    assert gewijzigd["bedrag"] == "21.78"
     assert _org_uit_db(org.id).billing_seats == 2
 
 
