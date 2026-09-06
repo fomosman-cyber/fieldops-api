@@ -1361,6 +1361,9 @@
         <a data-page="kunstwerken" onclick="navigateTo('kunstwerken')">
           <span class="icon">&#128269;</span> <span data-i18n="nav_kunstwerken">Inspecties</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
         </a>
+        <a data-page="veiligheid" onclick="navigateTo('veiligheid')">
+          <span class="icon">&#129506;</span> <span data-i18n="nav_veiligheid">Veiligheid</span> <span class="nav-badge-new" data-i18n="badge_nieuw">NIEUW</span>
+        </a>
         <a data-page="kaart" onclick="navigateTo('kaart')">
           <span class="icon">&#127758;</span> <span data-i18n="kaart">Kaart</span>
         </a>
@@ -4035,6 +4038,41 @@
       </div>
     </div>
 
+
+    <!-- ═══ VEILIGHEID ═══
+         Kopje met voorlopig een onderdeel: toolbox. LMRA, incidenten en
+         certificaten komen hier straks naast, vandaar de tabbalk. -->
+    <div class="page-section" id="page-veiligheid">
+      <div class="page-header">
+        <div>
+          <h1 data-i18n="vg_title">Veiligheid</h1>
+          <p data-i18n="vg_sub">Toolboxen en presentielijsten van je ploeg.</p>
+        </div>
+        <button class="btn-primary" onclick="openToolboxModal()" data-i18n="vg_new">+ Nieuwe toolbox</button>
+      </div>
+
+      <div class="tab-row" style="display:flex;gap:8px;border-bottom:1px solid var(--border);margin-bottom:20px;">
+        <button class="int-tab active" data-tab="toolbox" onclick="switchVeiligheidTab('toolbox')" data-i18n="vg_tab_toolbox">Toolbox</button>
+      </div>
+
+      <div id="vg-tab-toolbox">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+          <select id="tbFilterProject" onchange="loadToolboxen()" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+            <option value="" data-i18n="vg_all_projects">Alle projecten</option>
+          </select>
+          <select id="tbFilterStatus" onchange="loadToolboxen()" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+            <option value="">Alle statussen</option>
+            <option value="concept">Concept</option>
+            <option value="gehouden">Gehouden</option>
+            <option value="afgesloten">Afgesloten</option>
+          </select>
+        </div>
+        <div class="card" id="toolboxList">
+          <div class="loading-spinner"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Footer -->
     <footer class="main-footer">
       <p>&copy; 2026 FieldOps. Alle rechten voorbehouden.</p>
@@ -5238,6 +5276,107 @@
   </div>
 
   <!-- ═══════ TOAST ═══════ -->
+
+  <!-- ═══ TOOLBOX AANMAKEN ═══ -->
+  <div class="modal-overlay" id="toolboxModal">
+    <div class="modal" style="max-width:720px;">
+      <button class="modal-close" onclick="closeToolboxModal()" aria-label="Sluiten">&times;</button>
+      <h2 data-i18n="tb_new_title">Nieuwe toolbox</h2>
+      <p class="subtitle" data-i18n="tb_new_sub">Kies het project en het onderwerp. Laat er een voorstel bij maken en pas het aan naar wat je op deze plek ziet.</p>
+
+      <div class="form-group">
+        <label data-i18n="tb_project">Project</label>
+        <select id="tbProject"><option value="">Kies een project...</option></select>
+      </div>
+      <div class="form-group">
+        <label data-i18n="tb_onderwerp">Onderwerp</label>
+        <input id="tbOnderwerp" type="text" placeholder="Bijvoorbeeld: werken langs de rijbaan">
+      </div>
+
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+        <button class="btn-secondary" id="tbGenBtn" onclick="genereerToolbox()" data-i18n="tb_generate">Voorstel opstellen</button>
+        <span id="tbGenHint" style="font-size:12px;color:var(--text-dim);"></span>
+      </div>
+
+      <div class="form-group">
+        <label data-i18n="tb_inleiding">Waar gaat het over</label>
+        <textarea id="tbInleiding" rows="3"></textarea>
+      </div>
+      <div class="form-group">
+        <label data-i18n="tb_risicos">Risico's (een per regel)</label>
+        <textarea id="tbRisicos" rows="5"></textarea>
+      </div>
+      <div class="form-group">
+        <label data-i18n="tb_maatregelen">Maatregelen (een per regel)</label>
+        <textarea id="tbMaatregelen" rows="5"></textarea>
+      </div>
+      <div class="form-group">
+        <label data-i18n="tb_bespreekpunten">Bespreekpunten (een per regel)</label>
+        <textarea id="tbBespreekpunten" rows="4"></textarea>
+      </div>
+
+      <div class="form-actions" style="display:flex;gap:10px;justify-content:flex-end;">
+        <button class="btn-secondary" onclick="closeToolboxModal()" data-i18n="annuleren">Annuleren</button>
+        <button class="btn-primary" onclick="saveToolbox()" data-i18n="opslaan">Opslaan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TOOLBOX DETAIL + PRESENTIELIJST ═══ -->
+  <div class="modal-overlay" id="toolboxDetailModal">
+    <div class="modal" style="max-width:760px;">
+      <button class="modal-close" onclick="closeToolboxDetail()" aria-label="Sluiten">&times;</button>
+      <h2 id="tbdTitel">Toolbox</h2>
+      <p class="subtitle" id="tbdSub"></p>
+      <div id="tbdInhoud"></div>
+
+      <h3 style="font-size:15px;margin:22px 0 10px;" data-i18n="tb_presentielijst">Presentielijst</h3>
+      <div id="tbdDeelnemers"></div>
+
+      <div id="tbdToevoegen" style="border-top:1px solid var(--border);margin-top:14px;padding-top:14px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="flex:1 1 190px;">
+            <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="tb_eigen_medewerker">Eigen medewerker</label>
+            <select id="tbdUser" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;"><option value="">Kies...</option></select>
+          </div>
+          <button class="btn-secondary" onclick="tbAddDeelnemer(false)" data-i18n="tb_add">Toevoegen</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px;">
+          <div style="flex:1 1 150px;">
+            <label style="font-size:12px;color:var(--text-muted);font-weight:600;display:block;margin-bottom:4px;" data-i18n="tb_extern">Externe deelnemer</label>
+            <input id="tbdNaam" type="text" placeholder="Naam" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+          </div>
+          <div style="flex:1 1 130px;">
+            <input id="tbdBedrijf" type="text" placeholder="Bedrijf" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--text);font-family:inherit;">
+          </div>
+          <button class="btn-secondary" onclick="tbAddDeelnemer(true)" data-i18n="tb_add">Toevoegen</button>
+        </div>
+      </div>
+
+      <div class="form-actions" style="display:flex;gap:10px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap;">
+        <button class="btn-secondary" onclick="downloadToolboxPdf()" data-i18n="tb_pdf">PDF</button>
+        <button class="btn-secondary" id="tbdAfsluitBtn" onclick="sluitToolboxAf()" data-i18n="tb_afsluiten">Afsluiten</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ TOOLBOX HANDTEKENING ═══ -->
+  <div class="modal-overlay" id="tbSignModal">
+    <div class="modal" style="max-width:560px;">
+      <button class="modal-close" onclick="closeTbSign()" aria-label="Sluiten">&times;</button>
+      <h2 data-i18n="tb_sign_title">Tekenen voor deelname</h2>
+      <p class="subtitle" id="tbSignWie"></p>
+      <canvas id="tbSignCanvas" style="width:100%;height:180px;border:1px solid var(--border);border-radius:8px;background:#fff;touch-action:none;cursor:crosshair;"></canvas>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="tbSignClear()" data-i18n="kws_clear">Wissen</button>
+      </div>
+      <div class="form-actions" style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px;">
+        <button class="btn-secondary" onclick="closeTbSign()" data-i18n="annuleren">Annuleren</button>
+        <button class="btn-primary" onclick="tbSignSubmit()" data-i18n="tb_sign_save">Handtekening opslaan</button>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <!-- ═══════ LEAFLET JS ═══════ -->
@@ -5261,7 +5400,8 @@
       nl: {
         // Nav & Sidebar
         dashboard: 'Dashboard', projecten: 'Projecten', meldingen: 'Meldingen', kaart: 'Kaart', gebruikers: 'Gebruikers',
-        beheer: 'Beheer', admin_overzicht: 'Admin Overzicht', instellingen: 'Instellingen', overig: 'Overig', hoofdmenu: 'Hoofdmenu', compliance: 'Compliance', handleiding: 'Handleiding', rondleiding: 'Rondleiding',
+        beheer: 'Beheer', admin_overzicht: 'Admin Overzicht', instellingen: 'Instellingen', overig: 'Overig', hoofdmenu: 'Hoofdmenu',
+        nav_veiligheid: 'Veiligheid', vg_title: 'Veiligheid', vg_sub: 'Toolboxen en presentielijsten van je ploeg.', vg_new: '+ Nieuwe toolbox', vg_tab_toolbox: 'Toolbox', vg_all_projects: 'Alle projecten', vg_leeg_titel: 'Nog geen toolbox', vg_leeg_tekst: 'Maak er een aan voordat het werk begint.', tb_new_title: 'Nieuwe toolbox', tb_new_sub: 'Kies het project en het onderwerp. Laat er een voorstel bij maken en pas het aan naar wat je op deze plek ziet.', tb_project: 'Project', tb_onderwerp: 'Onderwerp', tb_generate: 'Voorstel opstellen', tb_inleiding: 'Waar gaat het over', tb_risicos: 'Risico\'s (een per regel)', tb_maatregelen: 'Maatregelen (een per regel)', tb_bespreekpunten: 'Bespreekpunten (een per regel)', tb_risicos_kop: 'Risico\'s', tb_maatregelen_kop: 'Maatregelen', tb_bespreekpunten_kop: 'Bespreekpunten', tb_presentielijst: 'Presentielijst', tb_eigen_medewerker: 'Eigen medewerker', tb_extern: 'Externe deelnemer', tb_add: 'Toevoegen', tb_kies: 'Kies', tb_pdf: 'PDF', tb_afsluiten: 'Afsluiten', tb_teken: 'Tekenen', tb_sign_title: 'Tekenen voor deelname', tb_sign_save: 'Handtekening opslaan', tb_getekend: 'Getekend', tb_getekend_op: 'getekend op', tb_niet_getekend: 'niet getekend', tb_geen_deelnemers: 'Nog niemand op de lijst.', tb_extern_badge: 'extern', tb_kies_project: 'Kies eerst een project', tb_kies_onderwerp: 'Vul een onderwerp in', tb_kies_medewerker: 'Kies een medewerker', tb_naam_verplicht: 'Naam is verplicht', tb_bezig: 'Bezig...', tb_bron_ai: 'Opgesteld met AI uit de projectcontext', tb_bron_sjabloon: 'Sjabloon gebruikt (geen AI beschikbaar) - loop het zelf na', tb_open_meldingen: 'open meldingen', tb_gen_mislukt: 'Voorstel mislukt', tb_opgeslagen: 'Toolbox opgeslagen', tb_opslaan_mislukt: 'Opslaan mislukt', tb_add_mislukt: 'Toevoegen mislukt', tb_getekend_toast: 'Handtekening opgeslagen', tb_afgesloten: 'Toolbox afgesloten', tb_afsluiten_vraag: 'Hierna kan er niets meer worden gewijzigd. Doorgaan?', tb_pdf_klaar: 'PDF gedownload', tb_pdf_mislukt: 'PDF mislukt', datum: 'Datum', fout_laden: 'Laden mislukt', compliance: 'Compliance', handleiding: 'Handleiding', rondleiding: 'Rondleiding',
         uitloggen: 'Uitloggen',
         // Dashboard
         welkom_terug: 'Welkom terug',
@@ -5800,7 +5940,8 @@
       },
       en: {
         dashboard: 'Dashboard', projecten: 'Projects', meldingen: 'Reports', kaart: 'Map', gebruikers: 'Users',
-        beheer: 'Management', admin_overzicht: 'Admin Overview', instellingen: 'Settings', overig: 'Other', hoofdmenu: 'Main menu', compliance: 'Compliance', handleiding: 'Manual', rondleiding: 'Tour',
+        beheer: 'Management', admin_overzicht: 'Admin Overview', instellingen: 'Settings', overig: 'Other', hoofdmenu: 'Main menu',
+        nav_veiligheid: 'Safety', vg_title: 'Safety', vg_sub: 'Toolbox talks and attendance lists for your crew.', vg_new: '+ New toolbox talk', vg_tab_toolbox: 'Toolbox', vg_all_projects: 'All projects', vg_leeg_titel: 'No toolbox talk yet', vg_leeg_tekst: 'Create one before work starts.', tb_new_title: 'New toolbox talk', tb_new_sub: 'Pick the project and the subject. Have a draft written and adjust it to what you see on site.', tb_project: 'Project', tb_onderwerp: 'Subject', tb_generate: 'Write a draft', tb_inleiding: 'What it is about', tb_risicos: 'Risks (one per line)', tb_maatregelen: 'Controls (one per line)', tb_bespreekpunten: 'Discussion points (one per line)', tb_risicos_kop: 'Risks', tb_maatregelen_kop: 'Controls', tb_bespreekpunten_kop: 'Discussion points', tb_presentielijst: 'Attendance list', tb_eigen_medewerker: 'Own employee', tb_extern: 'External attendee', tb_add: 'Add', tb_kies: 'Select', tb_pdf: 'PDF', tb_afsluiten: 'Close', tb_teken: 'Sign', tb_sign_title: 'Sign for attendance', tb_sign_save: 'Save signature', tb_getekend: 'Signed', tb_getekend_op: 'signed on', tb_niet_getekend: 'not signed', tb_geen_deelnemers: 'Nobody on the list yet.', tb_extern_badge: 'external', tb_kies_project: 'Select a project first', tb_kies_onderwerp: 'Enter a subject', tb_kies_medewerker: 'Select an employee', tb_naam_verplicht: 'Name is required', tb_bezig: 'Working...', tb_bron_ai: 'Drafted with AI from the project context', tb_bron_sjabloon: 'Template used (no AI available) - review it yourself', tb_open_meldingen: 'open reports', tb_gen_mislukt: 'Draft failed', tb_opgeslagen: 'Toolbox talk saved', tb_opslaan_mislukt: 'Saving failed', tb_add_mislukt: 'Could not add', tb_getekend_toast: 'Signature saved', tb_afgesloten: 'Toolbox talk closed', tb_afsluiten_vraag: 'Nothing can be changed after this. Continue?', tb_pdf_klaar: 'PDF downloaded', tb_pdf_mislukt: 'PDF failed', datum: 'Date', fout_laden: 'Loading failed', compliance: 'Compliance', handleiding: 'Manual', rondleiding: 'Tour',
         uitloggen: 'Logout',
         welkom_terug: 'Welcome back',
         overzicht_subtitle: 'Overview of all projects and reports',
@@ -6277,7 +6418,8 @@
       },
       de: {
         dashboard: 'Dashboard', projecten: 'Projekte', meldingen: 'Meldungen', kaart: 'Karte', gebruikers: 'Benutzer',
-        beheer: 'Verwaltung', admin_overzicht: 'Admin Übersicht', instellingen: 'Einstellungen', overig: 'Sonstiges', hoofdmenu: 'Hauptmenü', compliance: 'Compliance', handleiding: 'Handbuch', rondleiding: 'Rundgang',
+        beheer: 'Verwaltung', admin_overzicht: 'Admin Übersicht', instellingen: 'Einstellungen', overig: 'Sonstiges', hoofdmenu: 'Hauptmenü',
+        nav_veiligheid: 'Sicherheit', vg_title: 'Sicherheit', vg_sub: 'Sicherheitsunterweisungen und Anwesenheitslisten.', vg_new: '+ Neue Unterweisung', vg_tab_toolbox: 'Unterweisung', vg_all_projects: 'Alle Projekte', vg_leeg_titel: 'Noch keine Unterweisung', vg_leeg_tekst: 'Legen Sie eine an, bevor die Arbeit beginnt.', tb_new_title: 'Neue Unterweisung', tb_new_sub: 'Projekt und Thema wählen. Entwurf erstellen lassen und an die Baustelle anpassen.', tb_project: 'Projekt', tb_onderwerp: 'Thema', tb_generate: 'Entwurf erstellen', tb_inleiding: 'Worum geht es', tb_risicos: 'Gefahren (eine pro Zeile)', tb_maatregelen: 'Maßnahmen (eine pro Zeile)', tb_bespreekpunten: 'Besprechungspunkte (einer pro Zeile)', tb_risicos_kop: 'Gefahren', tb_maatregelen_kop: 'Maßnahmen', tb_bespreekpunten_kop: 'Besprechungspunkte', tb_presentielijst: 'Anwesenheitsliste', tb_eigen_medewerker: 'Eigener Mitarbeiter', tb_extern: 'Externer Teilnehmer', tb_add: 'Hinzufügen', tb_kies: 'Wählen', tb_pdf: 'PDF', tb_afsluiten: 'Abschließen', tb_teken: 'Unterschreiben', tb_sign_title: 'Teilnahme unterschreiben', tb_sign_save: 'Unterschrift speichern', tb_getekend: 'Unterschrieben', tb_getekend_op: 'unterschrieben am', tb_niet_getekend: 'nicht unterschrieben', tb_geen_deelnemers: 'Noch niemand auf der Liste.', tb_extern_badge: 'extern', tb_kies_project: 'Wählen Sie zuerst ein Projekt', tb_kies_onderwerp: 'Thema eingeben', tb_kies_medewerker: 'Mitarbeiter wählen', tb_naam_verplicht: 'Name ist erforderlich', tb_bezig: 'Bitte warten...', tb_bron_ai: 'Mit KI aus dem Projektkontext erstellt', tb_bron_sjabloon: 'Vorlage verwendet (keine KI verfügbar) - bitte selbst prüfen', tb_open_meldingen: 'offene Meldungen', tb_gen_mislukt: 'Entwurf fehlgeschlagen', tb_opgeslagen: 'Unterweisung gespeichert', tb_opslaan_mislukt: 'Speichern fehlgeschlagen', tb_add_mislukt: 'Hinzufügen fehlgeschlagen', tb_getekend_toast: 'Unterschrift gespeichert', tb_afgesloten: 'Unterweisung abgeschlossen', tb_afsluiten_vraag: 'Danach kann nichts mehr geändert werden. Fortfahren?', tb_pdf_klaar: 'PDF heruntergeladen', tb_pdf_mislukt: 'PDF fehlgeschlagen', datum: 'Datum', fout_laden: 'Laden fehlgeschlagen', compliance: 'Compliance', handleiding: 'Handbuch', rondleiding: 'Rundgang',
         uitloggen: 'Abmelden',
         welkom_terug: 'Willkommen zurück',
         overzicht_subtitle: 'Übersicht aller Projekte und Meldungen',
@@ -6754,7 +6896,8 @@
       },
       fr: {
         dashboard: 'Tableau de bord', projecten: 'Projets', meldingen: 'Signalements', kaart: 'Carte', gebruikers: 'Utilisateurs',
-        beheer: 'Gestion', admin_overzicht: 'Vue admin', instellingen: 'Paramètres', overig: 'Autre', hoofdmenu: 'Menu principal', compliance: 'Conformité', handleiding: 'Manuel', rondleiding: 'Visite guidée',
+        beheer: 'Gestion', admin_overzicht: 'Vue admin', instellingen: 'Paramètres', overig: 'Autre', hoofdmenu: 'Menu principal',
+        nav_veiligheid: 'Sécurité', vg_title: 'Sécurité', vg_sub: 'Causeries sécurité et listes de présence de votre équipe.', vg_new: '+ Nouvelle causerie', vg_tab_toolbox: 'Causerie', vg_all_projects: 'Tous les projets', vg_leeg_titel: 'Aucune causerie', vg_leeg_tekst: 'Créez-en une avant le début des travaux.', tb_new_title: 'Nouvelle causerie', tb_new_sub: 'Choisissez le projet et le sujet. Faites rédiger une proposition et adaptez-la au chantier.', tb_project: 'Projet', tb_onderwerp: 'Sujet', tb_generate: 'Rédiger une proposition', tb_inleiding: 'De quoi il s’agit', tb_risicos: 'Risques (un par ligne)', tb_maatregelen: 'Mesures (une par ligne)', tb_bespreekpunten: 'Points à aborder (un par ligne)', tb_risicos_kop: 'Risques', tb_maatregelen_kop: 'Mesures', tb_bespreekpunten_kop: 'Points à aborder', tb_presentielijst: 'Liste de présence', tb_eigen_medewerker: 'Collaborateur interne', tb_extern: 'Participant externe', tb_add: 'Ajouter', tb_kies: 'Choisir', tb_pdf: 'PDF', tb_afsluiten: 'Clôturer', tb_teken: 'Signer', tb_sign_title: 'Signer la présence', tb_sign_save: 'Enregistrer la signature', tb_getekend: 'Signé', tb_getekend_op: 'signé le', tb_niet_getekend: 'non signé', tb_geen_deelnemers: 'Personne sur la liste.', tb_extern_badge: 'externe', tb_kies_project: 'Sélectionnez d\'abord un projet', tb_kies_onderwerp: 'Saisissez un sujet', tb_kies_medewerker: 'Choisissez un collaborateur', tb_naam_verplicht: 'Le nom est obligatoire', tb_bezig: 'En cours...', tb_bron_ai: 'Rédigé par l\'IA à partir du contexte du projet', tb_bron_sjabloon: 'Modèle utilisé (IA indisponible) - relisez-le vous-même', tb_open_meldingen: 'signalements ouverts', tb_gen_mislukt: 'Échec de la proposition', tb_opgeslagen: 'Causerie enregistrée', tb_opslaan_mislukt: 'Échec de l\'enregistrement', tb_add_mislukt: 'Échec de l\'ajout', tb_getekend_toast: 'Signature enregistrée', tb_afgesloten: 'Causerie clôturée', tb_afsluiten_vraag: 'Plus rien ne pourra être modifié ensuite. Continuer ?', tb_pdf_klaar: 'PDF téléchargé', tb_pdf_mislukt: 'Échec du PDF', datum: 'Date', fout_laden: 'Échec du chargement', compliance: 'Conformité', handleiding: 'Manuel', rondleiding: 'Visite guidée',
         uitloggen: 'Déconnexion',
         welkom_terug: 'Bon retour',
         overzicht_subtitle: 'Aperçu de tous les projets et signalements',
@@ -7231,7 +7374,8 @@
       },
       tr: {
         dashboard: 'Kontrol Paneli', projecten: 'Projeler', meldingen: 'Bildirimler', kaart: 'Harita', gebruikers: 'Kullanıcılar',
-        beheer: 'Yönetim', admin_overzicht: 'Admin Genel Bakış', instellingen: 'Ayarlar', overig: 'Diğer', hoofdmenu: 'Ana menü', compliance: 'Uyumluluk', handleiding: 'Kılavuz', rondleiding: 'Tanıtım turu',
+        beheer: 'Yönetim', admin_overzicht: 'Admin Genel Bakış', instellingen: 'Ayarlar', overig: 'Diğer', hoofdmenu: 'Ana menü',
+        nav_veiligheid: 'Güvenlik', vg_title: 'Güvenlik', vg_sub: 'Ekibiniz için güvenlik toplantıları ve katılım listeleri.', vg_new: '+ Yeni toplantı', vg_tab_toolbox: 'Toplantı', vg_all_projects: 'Tüm projeler', vg_leeg_titel: 'Henüz toplantı yok', vg_leeg_tekst: 'İş başlamadan önce bir tane oluşturun.', tb_new_title: 'Yeni güvenlik toplantısı', tb_new_sub: 'Proje ve konuyu seçin. Taslak hazırlatın ve sahaya göre uyarlayın.', tb_project: 'Proje', tb_onderwerp: 'Konu', tb_generate: 'Taslak hazırla', tb_inleiding: 'Konu nedir', tb_risicos: 'Riskler (her satıra bir)', tb_maatregelen: 'Önlemler (her satıra bir)', tb_bespreekpunten: 'Görüşülecek noktalar (her satıra bir)', tb_risicos_kop: 'Riskler', tb_maatregelen_kop: 'Önlemler', tb_bespreekpunten_kop: 'Görüşülecek noktalar', tb_presentielijst: 'Katılım listesi', tb_eigen_medewerker: 'Kendi çalışanımız', tb_extern: 'Dış katılımcı', tb_add: 'Ekle', tb_kies: 'Seç', tb_pdf: 'PDF', tb_afsluiten: 'Kapat', tb_teken: 'İmzala', tb_sign_title: 'Katılım için imza', tb_sign_save: 'İmzayı kaydet', tb_getekend: 'İmzalandı', tb_getekend_op: 'imza tarihi', tb_niet_getekend: 'imzalanmadı', tb_geen_deelnemers: 'Listede henüz kimse yok.', tb_extern_badge: 'dış', tb_kies_project: 'Önce bir proje seçin', tb_kies_onderwerp: 'Bir konu girin', tb_kies_medewerker: 'Bir çalışan seçin', tb_naam_verplicht: 'İsim zorunludur', tb_bezig: 'Çalışıyor...', tb_bron_ai: 'Proje bağlamından yapay zeka ile hazırlandı', tb_bron_sjabloon: 'Şablon kullanıldı (yapay zeka yok) - kendiniz gözden geçirin', tb_open_meldingen: 'açık bildirim', tb_gen_mislukt: 'Taslak başarısız', tb_opgeslagen: 'Toplantı kaydedildi', tb_opslaan_mislukt: 'Kaydetme başarısız', tb_add_mislukt: 'Eklenemedi', tb_getekend_toast: 'İmza kaydedildi', tb_afgesloten: 'Toplantı kapatıldı', tb_afsluiten_vraag: 'Bundan sonra hiçbir şey değiştirilemez. Devam edilsin mi?', tb_pdf_klaar: 'PDF indirildi', tb_pdf_mislukt: 'PDF başarısız', datum: 'Tarih', fout_laden: 'Yükleme başarısız', compliance: 'Uyumluluk', handleiding: 'Kılavuz', rondleiding: 'Tanıtım turu',
         uitloggen: 'Çıkış',
         welkom_terug: 'Tekrar hoş geldiniz',
         overzicht_subtitle: 'Tüm proje ve bildirimlerin genel görünümü',
@@ -8449,14 +8593,15 @@
     // models.py. Basis-onderdelen (dashboard/projecten/assets/meldingen/kaart)
     // staan hier niet in — die heeft iedere org altijd. De backend weigert
     // uitgeschakelde modules óók (require_module), dit is alleen de UI-laag.
-    var MODULE_PAGES = ['kunstwerken', 'predictive', 'clusters', 'opleveren', 'mijn-dag', 'dagboek'];
+    var MODULE_PAGES = ['kunstwerken', 'predictive', 'clusters', 'opleveren', 'mijn-dag', 'dagboek', 'veiligheid'];
     var MODULE_LABELS = {
       'kunstwerken': 'Inspecties (CROW / NEN 2767)',
       'predictive':  'Voorspeller',
       'clusters':    'Clusters (AI-route)',
       'opleveren':   'Opleveren',
       'mijn-dag':    'Mijn dag',
-      'dagboek':     'Werkdagboek'
+      'dagboek':     'Werkdagboek',
+      'veiligheid':  'Veiligheid (toolbox)'
     };
     var orgEnabledModules = null; // null = alles aan (default / platform-org)
 
@@ -8524,6 +8669,7 @@
       // meldingen die in Mijn Dag zijn afgerond meteen kloppen op het Dashboard.
       if (page === 'dashboard') { loadDashboardStats(); loadDashboardPredictiveWidget(); }
       if (page === 'integraties') loadIntegrations();
+      if (page === 'veiligheid') loadVeiligheid();
       if (page === 'instellingen') { refreshGoogleStatus(); refreshMicrosoftStatus(); loadProfileForm(); loadOrgEditForm(); loadOrgAuditSummary(); refreshMfaStatus(); loadBillingCard(); }
       if (page === 'compliance') loadCompliance();
       if (page === 'dagboek') initDaybook();
@@ -23188,6 +23334,366 @@
       body { padding-bottom: env(safe-area-inset-bottom); }
     }
   </style>
+
+
+  <!-- ═══════ VEILIGHEID — TOOLBOX ═══════ -->
+  <script>
+    var _tbHuidig = null;         // toolbox die openstaat in het detailscherm
+    var _tbSignDeelnemer = null;  // deelnemer die op dit moment tekent
+    var _tbSigCtx = null;
+    var _tbSigDrawing = false;
+    var _tbProjecten = [];
+    var _tbGebruikers = [];
+
+    function _tbEsc(s) {
+      return String(s === null || s === undefined ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function _tbRegels(tekst) {
+      return String(tekst || '').split('\n')
+        .map(function (r) { return r.trim(); })
+        .filter(function (r) { return r.length > 0; });
+    }
+
+    function switchVeiligheidTab(tab) {
+      // Voorlopig een tab; LMRA, incidenten en certificaten komen hiernaast.
+      document.querySelectorAll('#page-veiligheid .int-tab').forEach(function (b) {
+        b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+      });
+    }
+
+    function loadVeiligheid() {
+      // Projecten en collega's ophalen voor de keuzelijsten, daarna de lijst.
+      api('GET', '/api/projects').then(function (projecten) {
+        _tbProjecten = Array.isArray(projecten) ? projecten : (projecten && projecten.items) || [];
+        var opties = _tbProjecten.map(function (p) {
+          return '<option value="' + _tbEsc(p.id) + '">' + _tbEsc(p.name) + '</option>';
+        }).join('');
+        var filter = document.getElementById('tbFilterProject');
+        if (filter) filter.innerHTML = '<option value="">' + t('vg_all_projects') + '</option>' + opties;
+        var kies = document.getElementById('tbProject');
+        if (kies) kies.innerHTML = '<option value="">' + t('tb_project') + '...</option>' + opties;
+      }).catch(function () { /* lijst blijft leeg; de fout toont zich bij opslaan */ });
+
+      api('GET', '/api/users').then(function (users) {
+        _tbGebruikers = Array.isArray(users) ? users : (users && users.items) || [];
+      }).catch(function () { _tbGebruikers = []; });
+
+      loadToolboxen();
+    }
+
+    function loadToolboxen() {
+      var doel = document.getElementById('toolboxList');
+      if (!doel) return;
+      doel.innerHTML = '<div class="loading-spinner"></div>';
+
+      var qs = [];
+      var p = document.getElementById('tbFilterProject');
+      var s = document.getElementById('tbFilterStatus');
+      if (p && p.value) qs.push('project_id=' + encodeURIComponent(p.value));
+      if (s && s.value) qs.push('status=' + encodeURIComponent(s.value));
+
+      api('GET', '/api/toolbox/' + (qs.length ? '?' + qs.join('&') : ''))
+        .then(function (items) {
+          if (!items || !items.length) {
+            doel.innerHTML = '<div class="empty-state"><div class="empty-icon">&#129506;</div>' +
+              '<h3>' + t('vg_leeg_titel') + '</h3><p>' + t('vg_leeg_tekst') + '</p></div>';
+            return;
+          }
+          var rijen = items.map(function (tb) {
+            var kleur = tb.status === 'afgesloten' ? 'var(--green)'
+                      : tb.status === 'gehouden' ? 'var(--accent)' : 'var(--text-dim)';
+            return '<tr style="cursor:pointer;" onclick="openToolboxDetail(\'' + _tbEsc(tb.id) + '\')">' +
+              '<td><strong>' + _tbEsc(tb.onderwerp) + '</strong>' +
+                (tb.ai_gegenereerd ? ' <span class="nav-badge-new">AI</span>' : '') + '</td>' +
+              '<td>' + _tbEsc(tb.project_name || '-') + '</td>' +
+              '<td>' + _tbEsc((tb.datum || '').slice(0, 10)) + '</td>' +
+              '<td>' + tb.getekend_count + ' / ' + tb.deelnemers_count + '</td>' +
+              '<td style="color:' + kleur + ';font-weight:600;">' + _tbEsc(tb.status) + '</td>' +
+              '</tr>';
+          }).join('');
+          doel.innerHTML = '<table class="data-table"><thead><tr>' +
+            '<th>' + t('tb_onderwerp') + '</th><th>' + t('tb_project') + '</th>' +
+            '<th>' + t('datum') + '</th><th>' + t('tb_getekend') + '</th><th>Status</th>' +
+            '</tr></thead><tbody>' + rijen + '</tbody></table>';
+        })
+        .catch(function (err) {
+          doel.innerHTML = '<div class="error-state"><h3>' + t('fout_laden') + '</h3><p>' +
+            _tbEsc(err && err.message) + '</p></div>';
+        });
+    }
+
+    // ── Aanmaken ──────────────────────────────────────────────────────
+    function openToolboxModal() {
+      ['tbOnderwerp', 'tbInleiding', 'tbRisicos', 'tbMaatregelen', 'tbBespreekpunten'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      var hint = document.getElementById('tbGenHint');
+      if (hint) hint.textContent = '';
+      document.getElementById('toolboxModal').classList.add('active');
+    }
+
+    function closeToolboxModal() {
+      document.getElementById('toolboxModal').classList.remove('active');
+    }
+
+    function genereerToolbox() {
+      var project = document.getElementById('tbProject').value;
+      var onderwerp = document.getElementById('tbOnderwerp').value.trim();
+      if (!project) { showToast(t('tb_kies_project'), 'error'); return; }
+      if (!onderwerp) { showToast(t('tb_kies_onderwerp'), 'error'); return; }
+
+      var knop = document.getElementById('tbGenBtn');
+      var hint = document.getElementById('tbGenHint');
+      knop.disabled = true;
+      knop.textContent = t('tb_bezig');
+      if (hint) hint.textContent = '';
+
+      api('POST', '/api/toolbox/genereer', { project_id: project, onderwerp: onderwerp })
+        .then(function (v) {
+          document.getElementById('tbInleiding').value = v.inleiding || '';
+          document.getElementById('tbRisicos').value = (v.risicos || []).join('\n');
+          document.getElementById('tbMaatregelen').value = (v.maatregelen || []).join('\n');
+          document.getElementById('tbBespreekpunten').value = (v.bespreekpunten || []).join('\n');
+          // Eerlijk tonen waar dit vandaan komt: een sjabloon is geen maatwerk.
+          if (hint) {
+            var ctx = v.context_gebruikt || {};
+            hint.textContent = v.bron === 'claude'
+              ? t('tb_bron_ai') + ' (' + ctx.open_meldingen + ' ' + t('tb_open_meldingen') + ')'
+              : t('tb_bron_sjabloon');
+          }
+          document.getElementById('tbGenBtn').setAttribute('data-bron', v.bron || '');
+          document.getElementById('tbGenBtn').setAttribute('data-model', v.model_id || '');
+          document.getElementById('tbGenBtn').setAttribute('data-promptversie', v.prompt_versie || '');
+        })
+        .catch(function (err) { showToast(t('tb_gen_mislukt') + ': ' + (err.message || ''), 'error'); })
+        .then(function () {
+          knop.disabled = false;
+          knop.textContent = t('tb_generate');
+        });
+    }
+
+    function saveToolbox() {
+      var project = document.getElementById('tbProject').value;
+      var onderwerp = document.getElementById('tbOnderwerp').value.trim();
+      if (!project) { showToast(t('tb_kies_project'), 'error'); return; }
+      if (!onderwerp) { showToast(t('tb_kies_onderwerp'), 'error'); return; }
+
+      var knop = document.getElementById('tbGenBtn');
+      var bron = knop ? knop.getAttribute('data-bron') : '';
+
+      api('POST', '/api/toolbox/', {
+        project_id: project,
+        onderwerp: onderwerp,
+        inleiding: document.getElementById('tbInleiding').value.trim(),
+        risicos: _tbRegels(document.getElementById('tbRisicos').value),
+        maatregelen: _tbRegels(document.getElementById('tbMaatregelen').value),
+        bespreekpunten: _tbRegels(document.getElementById('tbBespreekpunten').value),
+        ai_gegenereerd: bron === 'claude',
+        ai_model: knop ? knop.getAttribute('data-model') : null,
+        ai_prompt_versie: knop ? knop.getAttribute('data-promptversie') : null
+      }).then(function (tb) {
+        showToast(t('tb_opgeslagen'), 'success');
+        closeToolboxModal();
+        loadToolboxen();
+        openToolboxDetail(tb.id);
+      }).catch(function (err) {
+        showToast(t('tb_opslaan_mislukt') + ': ' + (err.message || ''), 'error');
+      });
+    }
+
+    // ── Detail + presentielijst ───────────────────────────────────────
+    function openToolboxDetail(id) {
+      api('GET', '/api/toolbox/' + id).then(function (tb) {
+        _tbHuidig = tb;
+        document.getElementById('tbdTitel').textContent = tb.onderwerp;
+        document.getElementById('tbdSub').textContent =
+          (tb.project_name || '-') + ' · ' + (tb.datum || '').slice(0, 10) +
+          ' · ' + (tb.houder_naam || '');
+
+        var stuk = '';
+        function blok(kop, regels) {
+          if (!regels || !regels.length) return '';
+          return '<h3 style="font-size:14px;margin:16px 0 6px;">' + _tbEsc(kop) + '</h3><ul style="margin-left:18px;font-size:14px;line-height:1.7;">' +
+            regels.map(function (r) { return '<li>' + _tbEsc(r) + '</li>'; }).join('') + '</ul>';
+        }
+        if (tb.inleiding) stuk += '<p style="font-size:14px;line-height:1.6;">' + _tbEsc(tb.inleiding) + '</p>';
+        stuk += blok(t('tb_risicos_kop'), tb.risicos);
+        stuk += blok(t('tb_maatregelen_kop'), tb.maatregelen);
+        stuk += blok(t('tb_bespreekpunten_kop'), tb.bespreekpunten);
+        document.getElementById('tbdInhoud').innerHTML = stuk;
+
+        var opties = _tbGebruikers.map(function (u) {
+          var naam = ((u.first_name || '') + ' ' + (u.last_name || '')).trim() || u.email;
+          return '<option value="' + _tbEsc(u.id) + '">' + _tbEsc(naam) + '</option>';
+        }).join('');
+        var sel = document.getElementById('tbdUser');
+        if (sel) sel.innerHTML = '<option value="">' + t('tb_kies') + '...</option>' + opties;
+
+        var afgesloten = tb.status === 'afgesloten';
+        document.getElementById('tbdToevoegen').style.display = afgesloten ? 'none' : '';
+        document.getElementById('tbdAfsluitBtn').style.display = afgesloten ? 'none' : '';
+
+        tekenDeelnemers();
+        document.getElementById('toolboxDetailModal').classList.add('active');
+      }).catch(function (err) {
+        showToast(t('fout_laden') + ': ' + (err.message || ''), 'error');
+      });
+    }
+
+    function tekenDeelnemers() {
+      var doel = document.getElementById('tbdDeelnemers');
+      if (!doel || !_tbHuidig) return;
+      var lijst = _tbHuidig.deelnemers || [];
+      if (!lijst.length) {
+        doel.innerHTML = '<p style="font-size:13px;color:var(--text-dim);">' + t('tb_geen_deelnemers') + '</p>';
+        return;
+      }
+      var afgesloten = _tbHuidig.status === 'afgesloten';
+      doel.innerHTML = '<table class="data-table"><tbody>' + lijst.map(function (d) {
+        var actie = d.getekend
+          ? '<span style="color:var(--green);font-weight:600;">&#10003; ' + t('tb_getekend_op') + ' ' + _tbEsc((d.signed_at || '').slice(0, 10)) + '</span>'
+          : (afgesloten ? '<span style="color:var(--text-dim);">' + t('tb_niet_getekend') + '</span>'
+                        : '<button class="btn-secondary" style="font-size:12px;padding:5px 10px;" onclick="openTbSign(\'' + _tbEsc(d.id) + '\', \'' + _tbEsc(d.naam) + '\')">' + t('tb_teken') + '</button>');
+        var verwijder = (afgesloten || d.getekend) ? ''
+          : '<button class="btn-secondary" style="font-size:12px;padding:5px 8px;margin-left:6px;" onclick="tbVerwijderDeelnemer(\'' + _tbEsc(d.id) + '\')">&times;</button>';
+        return '<tr><td><strong>' + _tbEsc(d.naam) + '</strong>' +
+          (d.bedrijf ? '<br><span style="font-size:12px;color:var(--text-dim);">' + _tbEsc(d.bedrijf) + '</span>' : '') +
+          (d.extern ? ' <span class="nav-badge-new">' + t('tb_extern_badge') + '</span>' : '') +
+          '</td><td style="text-align:right;">' + actie + verwijder + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    }
+
+    function tbAddDeelnemer(extern) {
+      if (!_tbHuidig) return;
+      var body = {};
+      if (extern) {
+        var naam = document.getElementById('tbdNaam').value.trim();
+        if (!naam) { showToast(t('tb_naam_verplicht'), 'error'); return; }
+        body.naam = naam;
+        body.bedrijf = document.getElementById('tbdBedrijf').value.trim();
+      } else {
+        var uid = document.getElementById('tbdUser').value;
+        if (!uid) { showToast(t('tb_kies_medewerker'), 'error'); return; }
+        body.user_id = uid;
+      }
+      api('POST', '/api/toolbox/' + _tbHuidig.id + '/deelnemers', body)
+        .then(function () {
+          document.getElementById('tbdNaam').value = '';
+          document.getElementById('tbdBedrijf').value = '';
+          return api('GET', '/api/toolbox/' + _tbHuidig.id);
+        })
+        .then(function (tb) { _tbHuidig = tb; tekenDeelnemers(); loadToolboxen(); })
+        .catch(function (err) { showToast(err.message || t('tb_add_mislukt'), 'error'); });
+    }
+
+    function tbVerwijderDeelnemer(id) {
+      if (!_tbHuidig) return;
+      api('DELETE', '/api/toolbox/' + _tbHuidig.id + '/deelnemers/' + id)
+        .then(function () { return api('GET', '/api/toolbox/' + _tbHuidig.id); })
+        .then(function (tb) { _tbHuidig = tb; tekenDeelnemers(); loadToolboxen(); })
+        .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function closeToolboxDetail() {
+      document.getElementById('toolboxDetailModal').classList.remove('active');
+      _tbHuidig = null;
+    }
+
+    function sluitToolboxAf() {
+      if (!_tbHuidig) return;
+      if (!confirm(t('tb_afsluiten_vraag'))) return;
+      api('POST', '/api/toolbox/' + _tbHuidig.id + '/afsluiten')
+        .then(function (tb) {
+          _tbHuidig = tb;
+          showToast(t('tb_afgesloten'), 'success');
+          openToolboxDetail(tb.id);
+          loadToolboxen();
+        })
+        .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    // ── Handtekening ──────────────────────────────────────────────────
+    function openTbSign(deelnemerId, naam) {
+      _tbSignDeelnemer = deelnemerId;
+      document.getElementById('tbSignWie').textContent = naam;
+      document.getElementById('tbSignModal').classList.add('active');
+      setTimeout(function () {
+        var canvas = document.getElementById('tbSignCanvas');
+        if (!canvas) return;
+        canvas.width = canvas.offsetWidth;
+        canvas.height = canvas.offsetHeight;
+        _tbSigCtx = canvas.getContext('2d');
+        _tbSigCtx.fillStyle = '#fff';
+        _tbSigCtx.fillRect(0, 0, canvas.width, canvas.height);
+        _tbSigCtx.lineWidth = 2;
+        _tbSigCtx.strokeStyle = '#0f172a';
+        _tbSigCtx.lineCap = 'round';
+        canvas.onmousedown = function (e) { _tbSigDrawing = true; var r = canvas.getBoundingClientRect(); _tbSigCtx.beginPath(); _tbSigCtx.moveTo(e.clientX - r.left, e.clientY - r.top); };
+        canvas.onmousemove = function (e) { if (!_tbSigDrawing) return; var r = canvas.getBoundingClientRect(); _tbSigCtx.lineTo(e.clientX - r.left, e.clientY - r.top); _tbSigCtx.stroke(); };
+        canvas.onmouseup = function () { _tbSigDrawing = false; };
+        canvas.onmouseleave = function () { _tbSigDrawing = false; };
+        canvas.ontouchstart = function (e) { e.preventDefault(); _tbSigDrawing = true; var r = canvas.getBoundingClientRect(); var p = e.touches[0]; _tbSigCtx.beginPath(); _tbSigCtx.moveTo(p.clientX - r.left, p.clientY - r.top); };
+        canvas.ontouchmove = function (e) { e.preventDefault(); if (!_tbSigDrawing) return; var r = canvas.getBoundingClientRect(); var p = e.touches[0]; _tbSigCtx.lineTo(p.clientX - r.left, p.clientY - r.top); _tbSigCtx.stroke(); };
+        canvas.ontouchend = function () { _tbSigDrawing = false; };
+      }, 100);
+    }
+
+    function closeTbSign() {
+      document.getElementById('tbSignModal').classList.remove('active');
+      _tbSignDeelnemer = null;
+    }
+
+    function tbSignClear() {
+      var canvas = document.getElementById('tbSignCanvas');
+      if (canvas && _tbSigCtx) {
+        _tbSigCtx.fillStyle = '#fff';
+        _tbSigCtx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    function tbSignSubmit() {
+      if (!_tbHuidig || !_tbSignDeelnemer) return;
+      var canvas = document.getElementById('tbSignCanvas');
+      api('POST', '/api/toolbox/' + _tbHuidig.id + '/deelnemers/' + _tbSignDeelnemer + '/sign',
+          { signature_data_url: canvas.toDataURL('image/png') })
+        .then(function () {
+          closeTbSign();
+          showToast(t('tb_getekend_toast'), 'success');
+          return api('GET', '/api/toolbox/' + _tbHuidig.id);
+        })
+        .then(function (tb) { _tbHuidig = tb; tekenDeelnemers(); loadToolboxen(); })
+        .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    // ── PDF ───────────────────────────────────────────────────────────
+    function downloadToolboxPdf() {
+      if (!_tbHuidig) return;
+      // Een gewone <a href> kan geen Authorization-header meesturen, dus
+      // fetch + blob, net als bij de MJOP-export.
+      fetch(API_URL + '/api/toolbox/' + _tbHuidig.id + '/export.pdf',
+            { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function (res) {
+          if (!res.ok) return res.text().then(function (x) { throw new Error('Server fout ' + res.status + ': ' + x.substring(0, 120)); });
+          return res.blob().then(function (blob) {
+            var disp = res.headers.get('Content-Disposition') || '';
+            var m = disp.match(/filename="?([^";]+)"?/);
+            var blobUrl = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = m ? m[1] : 'toolbox.pdf';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); }, 100);
+            showToast(t('tb_pdf_klaar'), 'success');
+          });
+        })
+        .catch(function (err) { showToast(t('tb_pdf_mislukt') + ': ' + (err.message || ''), 'error'); });
+    }
+  </script>
 
   <div id="pwaInstallBanner" role="dialog" aria-label="App installeren">
     <div class="pwa-text">

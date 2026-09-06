@@ -30,6 +30,7 @@ from models import (  # noqa: E402
     WebhookEndpoint, WebhookDelivery, IncomingWebhook, PasswordResetToken,
     Invitation, DemoRequest, AccountStatus, SubscriptionPlan, UserRole,
     Inspection, InspectionElement, InspectionDefect, InspectionAnswer,
+    Toolbox, ToolboxDeelnemer,
 )
 from auth import hash_password, create_access_token  # noqa: E402
 
@@ -51,6 +52,7 @@ def clean_db():
         for model in (
             WebhookDelivery, WebhookEndpoint, IncomingWebhook,
             InspectionAnswer, InspectionDefect, InspectionElement, Inspection,
+            ToolboxDeelnemer, Toolbox,
             AIAnalysis, AuditLog, PasswordResetToken,
             Melding, Asset, Project, Invitation, DemoRequest,
             User, Organization,

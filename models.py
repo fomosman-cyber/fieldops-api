@@ -162,6 +162,7 @@ PORTAL_MODULES: dict[str, str] = {
     "opleveren":   "Opleveren",
     "mijn-dag":    "Mijn dag",
     "dagboek":     "Werkdagboek",
+    "veiligheid":  "Veiligheid (toolbox)",
 }
 
 
@@ -1320,3 +1321,99 @@ class Payment(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class Toolbox(Base):
+    """Een toolbox: de korte veiligheidsbespreking die een uitvoerder op de
+    bouwplaats houdt voordat het werk begint.
+
+    Hangt verplicht aan een project — dat is niet alleen administratie maar ook
+    de voeding voor de AI-generatie: de assets en openstaande meldingen van dat
+    project bepalen waar de bespreking over hoort te gaan.
+
+    Status-flow:
+        concept    -> opgesteld, nog niet gehouden
+        gehouden   -> besproken; deelnemers kunnen tekenen
+        afgesloten -> presentielijst definitief, niets wijzigt nog
+
+    De inhoudsvelden staan als JSON-arrays in Text-kolommen, net als
+    Organization.enabled_modules en public_meld_categories. Geen aparte
+    tabel per risico: het is een momentopname die als geheel hoort te blijven
+    zoals hij besproken is.
+    """
+
+    __tablename__ = "toolboxen"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=False, index=True)
+
+    onderwerp = Column(String(255), nullable=False)
+    datum = Column(DateTime, nullable=True)
+
+    houder_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    houder_naam = Column(String(120), nullable=True)          # gedenormaliseerd voor de PDF
+
+    status = Column(String(30), nullable=False, default="concept", index=True)
+
+    # Inhoud van de bespreking — JSON-arrays van strings, behalve de vrije tekst.
+    inleiding = Column(Text, nullable=True)
+    risicos = Column(Text, nullable=True)                     # JSON: ["passerend verkeer", ...]
+    maatregelen = Column(Text, nullable=True)                 # JSON: ["CROW 96b-opstelling", ...]
+    bespreekpunten = Column(Text, nullable=True)              # JSON: ["Wie bewaakt de afzetting?", ...]
+    afspraken = Column(Text, nullable=True)                   # vrije tekst, ingevuld tijdens de bespreking
+
+    # Herkomst van de inhoud — een inspecteur moet kunnen zien of dit door een
+    # model is opgesteld en met welk model, net als bij de AI-analyses.
+    ai_gegenereerd = Column(Boolean, default=False, nullable=False)
+    ai_model = Column(String(64), nullable=True)
+    ai_prompt_versie = Column(String(32), nullable=True)
+
+    pdf_generated_at = Column(DateTime, nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    organization = relationship("Organization")
+    project = relationship("Project", foreign_keys=[project_id])
+    houder = relationship("User", foreign_keys=[houder_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    deelnemers = relationship("ToolboxDeelnemer", back_populates="toolbox",
+                              cascade="all, delete-orphan",
+                              order_by="ToolboxDeelnemer.order_index")
+
+
+class ToolboxDeelnemer(Base):
+    """Een regel op de presentielijst van een toolbox.
+
+    user_id is optioneel: een onderaannemer of ZZP'er staat niet als gebruiker
+    in FieldOps maar moet wel kunnen tekenen. Daarom is `naam` altijd gevuld —
+    voor eigen medewerkers gedenormaliseerd uit het account, voor externen
+    handmatig ingevoerd. Dezelfde opzet als Inspection.inspecteur_id naast
+    Inspection.inspecteur_naam.
+    """
+
+    __tablename__ = "toolbox_deelnemers"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    toolbox_id = Column(String, ForeignKey("toolboxen.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    naam = Column(String(120), nullable=False)
+    bedrijf = Column(String(120), nullable=True)               # gevuld bij externen
+
+    aanwezig = Column(Boolean, default=True, nullable=False)
+    # Text, niet String(500): een handtekening-canvas levert een base64 data-URI
+    # die in een VARCHAR(500) wordt afgekapt (zie de fotokolom-migratie in main.py).
+    signature_data_url = Column(Text, nullable=True)
+    signed_at = Column(DateTime, nullable=True)
+
+    order_index = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    toolbox = relationship("Toolbox", back_populates="deelnemers")
+    user = relationship("User", foreign_keys=[user_id])
