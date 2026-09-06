@@ -518,8 +518,14 @@ async def lifespan(app: FastAPI):
 
     # Start keep-alive taak
     ping_task = asyncio.create_task(keep_alive_ping())
+    # En de nachtelijke abonnementscontrole. Die hoort hier en niet in een
+    # aparte cron-service, omdat die een tweede kopie van de omgeving nodig
+    # heeft die daarna uit de pas gaat lopen -- zie billing_planner.
+    import billing_planner
+    billing_task = asyncio.create_task(billing_planner.reconciliatie_lus())
     yield
     ping_task.cancel()
+    billing_task.cancel()
 
 
 _OPENAPI_DESCRIPTION = """\
