@@ -1,5 +1,6 @@
 import json
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from database import get_db
 from models import Project, User, Melding
@@ -8,6 +9,23 @@ from auth import get_current_user, require_admin
 from audit import log_action, ACTION
 
 router = APIRouter(prefix="/api/projects", tags=["Projecten"])
+
+
+def _check_duplicate_name(db: Session, *, organization_id: str, name: str,
+                          exclude_id: str = None) -> None:
+    """409 als er binnen de org al een actief project met deze naam bestaat.
+
+    Case-insensitive; gearchiveerde projecten tellen niet mee. Bij update
+    wordt het project zelf uitgesloten (rename naar eigen naam mag)."""
+    q = db.query(Project).filter(
+        Project.organization_id == organization_id,
+        Project.status != "archived",
+        func.lower(Project.name) == (name or "").lower(),
+    )
+    if exclude_id:
+        q = q.filter(Project.id != exclude_id)
+    if q.first():
+        raise HTTPException(status_code=409, detail="Er bestaat al een project met deze naam")
 
 
 def _project_to_dict(p):
@@ -57,6 +75,8 @@ def create_project(
     db: Session = Depends(get_db),
 ):
     """Nieuw project aanmaken."""
+    _check_duplicate_name(db, organization_id=current_user.organization_id,
+                          name=data.name)
     project = Project(
         name=data.name,
         description=data.description,
@@ -108,7 +128,12 @@ def update_project(
     if not current_user.is_org_admin and project.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="Geen rechten om dit project te wijzigen")
 
-    for field, value in update.model_dump(exclude_unset=True).items():
+    update_data = update.model_dump(exclude_unset=True)
+    if "name" in update_data:
+        _check_duplicate_name(db, organization_id=current_user.organization_id,
+                              name=update_data["name"], exclude_id=project.id)
+
+    for field, value in update_data.items():
         if field == "categories" and value is not None:
             setattr(project, field, json.dumps(value))
         else:

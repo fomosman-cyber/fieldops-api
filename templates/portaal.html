@@ -1518,7 +1518,7 @@
       <!-- COMPLIANCE & INSPECTIE-CYCLUS STRIP — auto-bijgewerkt via NEN/CROW
            cyclus-regels. Klikbaar voor detail-overzicht. -->
       <div id="complianceStrip" style="background:linear-gradient(135deg,#fefce8,#fff7ed);border:1px solid #fde68a;border-radius:14px;padding:14px 20px;margin-bottom:24px;display:none;" class="compliance-strip">
-        <div style="display:grid;grid-template-columns:auto 1fr repeat(4,auto);gap:24px;align-items:center;">
+        <div style="display:grid;grid-template-columns:auto 1fr repeat(5,auto);gap:24px;align-items:center;">
           <!-- Icon + label -->
           <div style="display:flex;align-items:center;gap:10px;">
             <div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#d97706);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;">📅</div>
@@ -1542,6 +1542,11 @@
           <div style="text-align:center;padding:6px 16px;border-left:1px solid rgba(146,64,14,0.15);min-width:90px;">
             <div style="font-size:26px;font-weight:800;color:#16a34a;line-height:1;" id="cycCompliantCount">0</div>
             <div style="font-size:10px;color:#92400e;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;font-weight:700;" data-i18n="comp_compliant">Compliant</div>
+          </div>
+          <!-- Ongepland tile (grijs) — assets zonder next_inspection_due -->
+          <div style="text-align:center;padding:6px 16px;border-left:1px solid rgba(146,64,14,0.15);min-width:90px;">
+            <div style="font-size:26px;font-weight:800;color:#6b7280;line-height:1;" id="cycUnscheduledCount">0</div>
+            <div style="font-size:10px;color:#92400e;letter-spacing:0.05em;text-transform:uppercase;margin-top:4px;font-weight:700;" data-i18n="comp_unscheduled">Ongepland</div>
           </div>
           <!-- Compliance % + report-link + MJOP-export -->
           <div style="text-align:right;padding-left:16px;border-left:1px solid rgba(146,64,14,0.15);">
@@ -9018,6 +9023,13 @@
           if (invBtn) invBtn.style.display = '';
           if (tabInv) tabInv.style.display = '';
         }
+        // Admin-tab (platform-beheer) alleen voor de super-admin: de backend
+        // (require_owner) eist org-admin BINNEN de FieldOps-org, dus voor
+        // gewone klant-org-admins zou de tab alleen maar 403's opleveren.
+        if (currentUser && currentUser.is_super_admin) {
+          var navAdmin = document.getElementById('topNavAdmin');
+          if (navAdmin) navAdmin.style.display = '';
+        }
       }).catch(function(err) {
         console.error('Data laden mislukt:', err);
       });
@@ -9042,9 +9054,9 @@
     }
 
     // ── Navigation ──
-    // Pages die alleen voor org-admins zichtbaar zijn — defensieve laag
-    // bovenop het verbergen van de top-nav links (die kan iemand met
-    // direct URL/hash bypassen, daarom check ook hier).
+    // Pages die alleen voor de super-admin (platform-eigenaar) zichtbaar
+    // zijn — defensieve laag bovenop het verbergen van de top-nav links
+    // (die kan iemand met direct URL/hash bypassen, daarom check ook hier).
     var ADMIN_ONLY_PAGES = ['admin'];
 
     // ── Module-toggles per organisatie ──
@@ -9830,10 +9842,11 @@
     }
 
     function navigateTo(page) {
-      // RBAC: weiger admin-only paginas voor niet-org-admins
+      // RBAC: weiger admin-only paginas voor niet-super-admins (backend
+      // require_owner geeft daar toch 403 op voor gewone org-admins)
       if (ADMIN_ONLY_PAGES.indexOf(page) !== -1) {
-        if (!currentUser || !currentUser.is_org_admin) {
-          showToast('Geen toegang — alleen voor org-admins', 'error');
+        if (!currentUser || !currentUser.is_super_admin) {
+          showToast('Geen toegang — alleen voor platform-beheer', 'error');
           page = 'dashboard';
         }
       }
@@ -10748,19 +10761,27 @@
       var empty = document.getElementById('projectenEmpty');
       var list = document.getElementById('projectenList');
       var cards = document.getElementById('projectCards');
+      // Als het project-detail open is: alleen de data + kaarten verversen,
+      // maar de lijst niet over het detail heen schuiven.
+      function detailOpen() {
+        var d = document.getElementById('projectDetail');
+        return !!(d && d.style.display === 'block');
+      }
       empty.style.display = 'none';
-      list.style.display = 'block';
+      if (!detailOpen()) list.style.display = 'block';
       cards.innerHTML = '<div class="loading-spinner">'+t('projecten_laden')+'</div>';
       api('GET', '/api/projects/').then(function(projects) {
         allProjects = projects || [];
         updateProjectFilter();
         if (allProjects.length === 0) {
-          empty.style.display = 'flex';
-          list.style.display = 'none';
+          if (!detailOpen()) {
+            empty.style.display = 'flex';
+            list.style.display = 'none';
+          }
           return;
         }
         empty.style.display = 'none';
-        list.style.display = 'block';
+        if (!detailOpen()) list.style.display = 'block';
         cards.innerHTML = allProjects.map(function(p) {
           var statusColors = { active: 'green', completed: 'blue', archived: 'red' };
           var statusLabels = { active: t('actief'), completed: t('afgerond'), archived: t('gearchiveerd') };
@@ -10996,6 +11017,12 @@
       api(method, url, data).then(function(project) {
         showToast(editId ? t('project_opgeslagen') : t('project_aangemaakt'), 'success');
         closeProjectModal();
+        if (editId && project && project.id) {
+          // Cache eerst verversen met de PUT-response, anders toont
+          // openProjectDetail() hieronder nog de oude (stale) gegevens.
+          var idx = allProjects.findIndex(function(p) { return p.id === project.id; });
+          if (idx !== -1) allProjects[idx] = project;
+        }
         loadProjects();
         loadDashboardStats();
         if (editId && currentDetailProject) {
@@ -11557,13 +11584,16 @@
         var s = r.summary;
         var strip = document.getElementById('complianceStrip');
         if (!strip) return;
-        // Toon strip alleen als er assets met cyclus bestaan
-        if (s.total_assets > 0 && (s.compliant + s.due_soon + s.overdue) > 0) {
+        // Toon strip zodra er cyclus-plichtige assets zijn — ook als alles
+        // nog ongepland is (anders is de MJOP-knop onbereikbaar bij data
+        // zonder next_inspection_due).
+        if (s.total_assets > 0) {
           strip.style.display = 'block';
         }
         document.getElementById('cycOverdueCount').textContent = s.overdue || 0;
         document.getElementById('cycSoonCount').textContent = s.due_soon || 0;
         document.getElementById('cycCompliantCount').textContent = s.compliant || 0;
+        document.getElementById('cycUnscheduledCount').textContent = s.unscheduled || 0;
         document.getElementById('cycPct').textContent = (s.compliance_pct || 0) + '%';
         // Kleur het % afhankelijk van waarde
         var pctEl = document.getElementById('cycPct');
@@ -12009,7 +12039,13 @@
         .then(function(res){ if (!res.ok) throw new Error('thumb'); return res.blob(); })
         .then(function(blob){
           var url = URL.createObjectURL(blob);
-          el.innerHTML = '<img src="' + url + '" alt="" style="width:100%;height:100%;object-fit:cover;" onload="URL.revokeObjectURL(this.src)">';
+          var img = document.createElement('img');
+          img.src = url;
+          img.alt = '';
+          img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+          img.onload = function(){ URL.revokeObjectURL(url); };
+          el.textContent = '';
+          el.appendChild(img);
         })
         .catch(function(){ /* placeholder 📷 laten staan */ });
     }
@@ -12347,7 +12383,22 @@
           updateMeldingCategories();
           setTimeout(function(){
             var catSel = document.getElementById('meldingCategory');
-            if (catSel && m.category) catSel.value = m.category;
+            if (!catSel || !m.category) return;
+            // De dropdown bevat alleen de categorieën van het gekozen project.
+            // Staat de huidige categorie daar niet tussen (ouder project,
+            // import, gewijzigde projectcategorieën), dan blijft de select op
+            // "" staan en wist het opslaan de categorie stil. Daarom de
+            // bestaande waarde toevoegen voordat we hem selecteren.
+            var bestaat = Array.prototype.some.call(catSel.options, function(o){
+              return o.value === m.category;
+            });
+            if (!bestaat) {
+              var opt = document.createElement('option');
+              opt.value = m.category;
+              opt.textContent = m.category;
+              catSel.insertBefore(opt, catSel.options[1] || null);
+            }
+            catSel.value = m.category;
           }, 50);
           if (m.project_id) loadAssetsForMelding(m.asset_id);
           // Norm-specifieke velden herstellen op basis van asset-type (#16)
@@ -14016,7 +14067,9 @@
           var payload = {}; payload[field] = value;
           var ok = 0, fail = 0, done = 0;
           ids.forEach(function(id){
-            api('PATCH', '/api/assets/' + id, payload).then(function(){ ok++; })
+            // PUT — backend kent geen PATCH; update_asset gebruikt
+            // exclude_unset dus een partiële payload werkt gewoon.
+            api('PUT', '/api/assets/' + id, payload).then(function(){ ok++; })
               .catch(function(){ fail++; })
               .finally(function(){
                 done++;
@@ -14044,6 +14097,7 @@
         onConfirm: function() {
           var ok = 0, fail = 0, done = 0;
           ids.forEach(function(id){
+            // DELETE zonder ?hard = soft-archive (er is geen /archive-pad)
             api('DELETE', '/api/assets/' + id).then(function(){ ok++; })
               .catch(function(){ fail++; })
               .finally(function(){
@@ -14070,6 +14124,7 @@
         onConfirm: function() {
           var ok = 0, fail = 0, done = 0;
           ids.forEach(function(id){
+            // ?hard=true = écht permanent (zonder is DELETE alleen archiveren)
             api('DELETE', '/api/assets/' + id + '?hard=true').then(function(){ ok++; })
               .catch(function(){ fail++; })
               .finally(function(){
@@ -14280,6 +14335,7 @@
       var legacy = document.getElementById('assetTypeLegacy');
       if (!typeCode) return;
       var found = findImborType(typeCode);
+      groepSel.required = true;  // reset: een eerdere edit kan dit hebben uitgezet
       if (found) {
         groepSel.value = found.groep;
         onImborGroepChange();
@@ -14291,6 +14347,35 @@
         document.getElementById('assetType').value = typeCode;
         legacy.textContent = '⚠️ Bestaand type "' + typeCode + '" — niet in IMBOR-taxonomie. Kies hoofdgroep om te migreren.';
         legacy.style.display = 'block';
+        // Bekende legacy types → hoofdgroep alvast voorselecteren, anders
+        // blokkeert het verplichte hoofdgroep-veld de submit stil (native
+        // browservalidatie op een leeg required-select).
+        var LEGACY_HG = { wegvak:'wegen', brug:'kunstwerken', viaduct:'kunstwerken',
+                          tunnel:'kunstwerken', sluis:'kunstwerken', duiker:'kunstwerken',
+                          kademuur:'kunstwerken', kunstwerk:'kunstwerken',
+                          gemaal:'riolering', speeltoestel:'speel_sport',
+                          // Korte codes uit oudere imports/seeds; IMBOR kent ze
+                          // als lichtmast / put_riool / boom_laan.
+                          lantaarnpaal:'verlichting', armatuur:'verlichting',
+                          put:'riolering', kolk_put:'riolering', rioolput:'riolering',
+                          boom:'groen', haag:'groen', beplanting:'groen',
+                          bank:'meubilair', afvalbak:'meubilair',
+                          bord:'bewegwijzering', verkeersbord:'bewegwijzering' };
+        var hg = LEGACY_HG[typeCode];
+        if (hg && IMBOR_TREE && IMBOR_TREE[hg]) {
+          groepSel.value = hg;
+          onImborGroepChange();
+          // onImborGroepChange() wist assetType + verbergt de legacy-notitie:
+          // beide herstellen zodat het legacy-type behouden blijft.
+          document.getElementById('assetType').value = typeCode;
+          legacy.style.display = 'block';
+        } else {
+          // Onbekend legacy-type dat we niet kunnen mappen: laat hoofdgroep
+          // los, anders blokkeert de native required-validatie het opslaan
+          // zonder enige melding (dode Opslaan-knop). Het type zelf blijft
+          // bewaard; de notitie hierboven vraagt om handmatige migratie.
+          groepSel.required = false;
+        }
       }
     }
 
@@ -14306,7 +14391,7 @@
       // Reset IMBOR-dropdowns + laad tree als nog niet ingeladen
       var groepSel = document.getElementById('assetHoofdgroep');
       var typeSel = document.getElementById('assetImborType');
-      if (groepSel) groepSel.value = '';
+      if (groepSel) { groepSel.value = ''; groepSel.required = true; }
       if (typeSel) { typeSel.innerHTML = '<option value="">— Eerst hoofdgroep —</option>'; typeSel.disabled = true; }
       document.getElementById('assetImborHint').style.display = 'none';
       document.getElementById('assetTypeLegacy').style.display = 'none';
@@ -14387,6 +14472,13 @@
       var btn = document.getElementById('assetSubmitBtn');
       btn.disabled = true; var orig = btn.textContent; btn.textContent = 'Bezig...';
       var editId = document.getElementById('assetEditId').value;
+      // Vangnet: bij bewerken mag asset_type nooit leeg ge-PUT worden
+      // (zou het bestaande type wissen zonder feedback).
+      if (editId && !document.getElementById('assetType').value) {
+        showToast('Kies eerst een asset-type (hoofdgroep + type)', 'error');
+        btn.disabled = false; btn.textContent = orig;
+        return;
+      }
       var payload = {
         code: document.getElementById('assetCode').value,
         name: document.getElementById('assetName').value || null,

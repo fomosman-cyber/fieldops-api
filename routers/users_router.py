@@ -776,6 +776,12 @@ def accept_invitation(
     if expires_at < datetime.now(timezone.utc):
         raise HTTPException(status_code=400, detail="Deze uitnodiging is verlopen")
 
+    # Bestaat er al een account met dit e-mailadres? Zonder deze check knalt de
+    # unique-constraint op User.email eruit als een 500 met stacktrace, en dat
+    # is voor iemand die een uitnodiging accepteert een doodlopende weg.
+    if db.query(User).filter(User.email == inv.email).first():
+        raise HTTPException(status_code=400, detail="Dit e-mailadres is al in gebruik")
+
     # Opnieuw controleren, niet alleen bij het versturen: tussen uitnodigen en
     # accepteren kan het abonnement zijn verlaagd of kunnen andere uitnodigingen
     # eerder zijn geaccepteerd. Deze uitnodiging telt al mee in _bezette_seats,
@@ -801,8 +807,7 @@ def accept_invitation(
     db.commit()
     db.refresh(user)
 
-    # Stuur welkom email
-    org = db.query(Organization).filter(Organization.id == inv.organization_id).first()
+    # Stuur welkom email (org is hierboven al opgehaald voor de seat-check)
     send_welcome_email(
         to_email=user.email,
         user_name=f"{user.first_name} {user.last_name}".strip(),
