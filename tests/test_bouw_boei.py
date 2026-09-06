@@ -2,9 +2,10 @@
 
 De twee dingen die hier echt bewaakt worden:
 
-1. **Een opname hangt aan precies één object.** Een gebouw of een straat, nooit
-   allebei en nooit geen van beide. Zonder die regel krijg je opnames waarvan
-   niemand weet waar ze bij horen, en dubbeltellingen in de rapportage.
+1. **Een opname heeft altijd een herkenbare plek.** Minimaal een gebouwnaam of
+   een straat; de rest mag leeg blijven. Een inspecteur staat in de regen en
+   vult in wat hij weet, maar een opname zonder plek is over een jaar niet meer
+   terug te vinden en dan is de conditiemeting waardeloos.
 2. **De conditiescore komt uit de NEN 2767-rekenkern**, niet uit een cijfer dat
    iemand zelf kiest. Dat is het hele punt van conditiemeting.
 """
@@ -88,43 +89,92 @@ def test_bewijsstukken_zijn_uniek_en_verwijzen_naar_een_vraag(client, admin_user
 # Per gebouw of per straat -- precies één
 # ---------------------------------------------------------------------------
 
-def test_opname_per_gebouw(client, admin_user, org):
-    asset_id = _asset(org.id, admin_user.id)
-    r = _start(client, admin_user, asset_id=asset_id, gebouw_type="publiek")
+def test_gebouw_met_de_hand_benoemen(client, admin_user):
+    """Een inspecteur staat voor een pand; dat hoeft niet eerst een asset te zijn.
+
+    Zou dat wel moeten, dan moet je voor elke opname eerst je areaal bijwerken --
+    en dan gebeurt de opname niet.
+    """
+    r = _start(client, admin_user,
+               gebouw_naam="Gemeentehuis", straatnaam="Coolsingel",
+               huisnummer="40", postcode="3011ad", plaats="Rotterdam",
+               eigenaar="Gemeente Rotterdam", gebouw_type="publiek",
+               bouwjaar=1920)
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["asset_id"] == asset_id
-    assert d["straatnaam"] is None
-    assert d["status"] == "concept"
+    assert d["gebouw_naam"] == "Gemeentehuis"
+    assert d["huisnummer"] == "40"
+    assert d["postcode"] == "3011AD"          # genormaliseerd naar hoofdletters
+    assert d["eigenaar"] == "Gemeente Rotterdam"
+    assert d["asset_id"] is None
+    assert d["omschrijving"] == "Gemeentehuis - Coolsingel 40"
     assert len(d["antwoorden"]) > 20
 
 
 def test_opname_per_straat(client, admin_user):
-    """Een rij portiekwoningen loop je per straat, niet per pand."""
+    """Een rij portiekwoningen loop je per straat, niet per pand.
+
+    Het verschil met een pand is het huisnummer, niet een apart soort opname.
+    """
     r = _start(client, admin_user, straatnaam="Prins Hendrikkade", plaats="Rotterdam")
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["straatnaam"] == "Prins Hendrikkade"
-    assert d["asset_id"] is None
+    assert d["huisnummer"] is None
+    assert d["omschrijving"] == "Prins Hendrikkade"
 
 
-def test_gebouw_en_straat_tegelijk_wordt_geweigerd(client, admin_user, org):
-    r = _start(client, admin_user, asset_id=_asset(org.id, admin_user.id, code="GEB-002"),
-               straatnaam="Coolsingel")
+def test_gebouw_op_een_straat_mag_gewoon(client, admin_user):
+    """Naam en adres samen is de normale situatie, geen conflict."""
+    r = _start(client, admin_user, gebouw_naam="De Doelen",
+               straatnaam="Schouwburgplein", huisnummer="50")
+    assert r.status_code == 200, r.text
+
+
+def test_zonder_plek_wordt_geweigerd(client, admin_user):
+    """Alleen een postcode of alleen een eigenaar is niet genoeg."""
+    r = _start(client, admin_user, postcode="3011AD", eigenaar="Iemand",
+               gebouw_type="school")
     assert r.status_code == 400
-    assert "niet allebei" in r.text
+    assert "gebouwnaam of een straatnaam" in r.text
 
 
-def test_zonder_object_wordt_geweigerd(client, admin_user):
-    r = _start(client, admin_user, gebouw_type="school")
-    assert r.status_code == 400
+def test_koppelen_aan_een_bestaand_asset_mag(client, admin_user, org):
+    """Wie het pand wel in zijn areaal heeft, koppelt het -- gemak, geen eis."""
+    asset_id = _asset(org.id, admin_user.id)
+    r = _start(client, admin_user, gebouw_naam="Gemeentehuis",
+               asset_id=asset_id, gebouw_type="publiek")
+    assert r.status_code == 200, r.text
+    assert r.json()["asset_id"] == asset_id
 
 
 def test_asset_van_andere_organisatie_is_onvindbaar(client, admin_user):
     """Tenant-isolatie: een asset-id uit een andere organisatie geeft 404,
     geen opname die stilletjes aan het verkeerde gebouw hangt."""
-    r = _start(client, admin_user, asset_id="bestaat-niet-of-andere-org")
+    r = _start(client, admin_user, gebouw_naam="Iets",
+               asset_id="bestaat-niet-of-andere-org")
     assert r.status_code == 404
+
+
+def test_inspecteur_is_overschrijfbaar(client, admin_user):
+    """Een bureau laat een ingehuurde inspecteur onder eigen naam werken."""
+    eigen = _start(client, admin_user, straatnaam="Westersingel").json()
+    ingehuurd = _start(client, admin_user, straatnaam="Westersingel",
+                       inspecteur_naam="J. de Vries (extern)").json()
+    assert eigen["inspecteur_naam"] != "J. de Vries (extern)"
+    assert ingehuurd["inspecteur_naam"] == "J. de Vries (extern)"
+
+
+def test_plek_mag_bijgewerkt_maar_niet_gewist(client, admin_user):
+    bouw_id = _start(client, admin_user, straatnaam="Coolsingel").json()["id"]
+    ok = client.patch(f"/api/bouw/{bouw_id}", headers=auth(admin_user),
+                      json={"gebouw_naam": "Stadhuis", "postcode": "3011ad"})
+    assert ok.status_code == 200
+    assert ok.json()["postcode"] == "3011AD"
+
+    leeg = client.patch(f"/api/bouw/{bouw_id}", headers=auth(admin_user),
+                        json={"gebouw_naam": "", "straatnaam": ""})
+    assert leeg.status_code == 400
 
 
 def test_alleen_gekozen_pijlers_worden_aangemaakt(client, admin_user):
@@ -139,7 +189,8 @@ def test_alleen_gekozen_pijlers_worden_aangemaakt(client, admin_user):
 
 def test_conditie_wordt_berekend_niet_ingevoerd(client, admin_user, org):
     """Ernst, intensiteit en omvang gaan erin; de conditie komt eruit."""
-    bouw_id = _start(client, admin_user, asset_id=_asset(org.id, admin_user.id, code="GEB-003"),
+    bouw_id = _start(client, admin_user, gebouw_naam="Basisschool De Klimop",
+                     asset_id=_asset(org.id, admin_user.id, code="GEB-003"),
                      gebouw_type="school").json()["id"]
 
     r = client.post(f"/api/bouw/{bouw_id}/condities", headers=auth(admin_user), json={
@@ -195,7 +246,8 @@ def test_afronden_vereist_dat_alles_beantwoord_is(client, admin_user):
 
 
 def test_afronden_zet_score_en_hoogste_conditie_vast(client, admin_user, org):
-    bouw_id = _start(client, admin_user, asset_id=_asset(org.id, admin_user.id, code="GEB-004"),
+    bouw_id = _start(client, admin_user, gebouw_naam="Verpleeghuis Zonnehof",
+                     asset_id=_asset(org.id, admin_user.id, code="GEB-004"),
                      gebouw_type="zorg", pijlers=["B"]).json()["id"]
     client.post(f"/api/bouw/{bouw_id}/condities", headers=auth(admin_user), json={
         "element_code": "DAK.01", "ernst": 3, "intensiteit": 3, "omvang_klasse": 5,

@@ -4145,25 +4145,39 @@
       <div class="card" style="margin-bottom:16px;">
         <div class="card-header"><h3>Nieuwe opname</h3></div>
         <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px;">
-          Kies een gebouw of een straat. Een schoolgebouw neem je op als object; een rij
-          portiekwoningen loop je per straat af.
+          Benoem het pand zelf; het hoeft niet eerst in je areaal te staan. Laat het
+          huisnummer leeg als je een hele straat opneemt, bijvoorbeeld bij een rij
+          portiekwoningen.
         </p>
 
-        <div style="display:flex;gap:8px;margin-bottom:14px;">
-          <button class="btn-secondary" id="bouwModeGebouwBtn" onclick="bouwZetMode('gebouw')">Per gebouw</button>
-          <button class="btn-secondary" id="bouwModeStraatBtn" onclick="bouwZetMode('straat')">Per straat</button>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;">
-          <div id="bouwVeldGebouw">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;">
+          <div style="grid-column:1/-1;">
             <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Gebouw</label>
-            <select id="bouwAsset" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
-              <option value="">Kies een gebouw</option>
-            </select>
+            <input id="bouwNaam" type="text" placeholder="bv. Gemeentehuis of Basisschool De Klimop" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
           </div>
-          <div id="bouwVeldStraat" style="display:none;">
+          <div>
             <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Straatnaam</label>
-            <input id="bouwStraat" type="text" placeholder="bv. Prins Hendrikkade" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+            <input id="bouwStraat" type="text" placeholder="bv. Coolsingel" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+          </div>
+          <div>
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Huisnummer</label>
+            <input id="bouwHuisnr" type="text" placeholder="bv. 40" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+          </div>
+          <div>
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Postcode</label>
+            <input id="bouwPostcode" type="text" placeholder="bv. 3011 AD" autocapitalize="characters" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+          </div>
+          <div>
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Plaats</label>
+            <input id="bouwPlaats" type="text" placeholder="bv. Rotterdam" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+          </div>
+          <div>
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Eigenaar</label>
+            <input id="bouwEigenaar" type="text" placeholder="bv. Gemeente Rotterdam" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+          </div>
+          <div>
+            <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Inspecteur</label>
+            <input id="bouwInspecteur" type="text" placeholder="jijzelf" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
           </div>
           <div>
             <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Gebouwtype</label>
@@ -4176,6 +4190,15 @@
             <input id="bouwJaar" type="number" min="1000" max="2100" placeholder="bv. 1978" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
           </div>
         </div>
+
+        <details style="margin-top:12px;">
+          <summary style="cursor:pointer;font-size:12.5px;color:var(--text-dim);">Koppelen aan een bestaand object in je areaal (optioneel)</summary>
+          <div style="margin-top:8px;">
+            <select id="bouwAsset" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+              <option value="">Niet koppelen</option>
+            </select>
+          </div>
+        </details>
 
         <div style="margin-top:14px;">
           <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:6px;">Pijlers</label>
@@ -8931,7 +8954,6 @@
     // kopie hier. Zo blijft het scherm kloppen als bouw_boei.py verandert.
     var _bouwChecklist = null;
     var _bouwHuidig = null;
-    var _bouwMode = 'gebouw';
 
     function bouwModalSluiten() {
       document.getElementById('bouwModal').classList.remove('active');
@@ -8945,17 +8967,7 @@
       p.style.color = soort === 'fout' ? 'var(--danger, #dc2626)' : 'var(--text-muted)';
     }
 
-    function bouwZetMode(mode) {
-      _bouwMode = mode;
-      var gebouw = mode === 'gebouw';
-      document.getElementById('bouwVeldGebouw').style.display = gebouw ? '' : 'none';
-      document.getElementById('bouwVeldStraat').style.display = gebouw ? 'none' : '';
-      document.getElementById('bouwModeGebouwBtn').className = gebouw ? 'btn-primary' : 'btn-secondary';
-      document.getElementById('bouwModeStraatBtn').className = gebouw ? 'btn-secondary' : 'btn-primary';
-    }
-
     function loadBouw() {
-      bouwZetMode(_bouwMode);
       var klaar = _bouwChecklist ? Promise.resolve(_bouwChecklist)
                                  : api('GET', '/api/bouw/checklist');
       klaar.then(function (cl) {
@@ -8994,14 +9006,14 @@
         var lijst = Array.isArray(res) ? res : (res && res.items) || [];
         var sel = document.getElementById('bouwAsset');
         if (!sel) return;
-        sel.innerHTML = '<option value="">Kies een gebouw</option>';
+        sel.innerHTML = '<option value="">Niet koppelen</option>';
         lijst.forEach(function (a) {
           var o = document.createElement('option');
           o.value = a.id;
           o.textContent = (a.code || '') + (a.name ? ' - ' + a.name : '');
           sel.appendChild(o);
         });
-      }).catch(function () { /* geen assets: dan blijft alleen 'per straat' over */ });
+      }).catch(function () { /* geen assets: koppelen is toch optioneel */ });
 
       api('GET', '/api/bouw/').then(_bouwRenderLijst).catch(function (e) {
         document.getElementById('bouwList').innerHTML =
@@ -9018,7 +9030,7 @@
         return;
       }
       box.innerHTML = rijen.map(function (b) {
-        var waar = b.straatnaam ? ('Straat: ' + b.straatnaam) : ('Gebouw: ' + (b.asset_id || '-'));
+        var waar = b.omschrijving || 'Naamloze opname';
         var score = b.score_pct === null || b.score_pct === undefined ? '-' : (b.score_pct + '%');
         var cond = b.conditie_hoogste ? ('conditie ' + b.conditie_hoogste) : 'geen conditiescore';
         return '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;'
@@ -9041,13 +9053,19 @@
 
     function startBouw() {
       var body = {};
-      if (_bouwMode === 'gebouw') {
-        body.asset_id = document.getElementById('bouwAsset').value;
-        if (!body.asset_id) { _bouwMeld('bouwStartMelding', 'Kies een gebouw', 'fout'); return; }
-      } else {
-        body.straatnaam = document.getElementById('bouwStraat').value.trim();
-        if (!body.straatnaam) { _bouwMeld('bouwStartMelding', 'Vul een straatnaam in', 'fout'); return; }
+      [['bouwNaam', 'gebouw_naam'], ['bouwStraat', 'straatnaam'],
+       ['bouwHuisnr', 'huisnummer'], ['bouwPostcode', 'postcode'],
+       ['bouwPlaats', 'plaats'], ['bouwEigenaar', 'eigenaar'],
+       ['bouwInspecteur', 'inspecteur_naam']].forEach(function (paar) {
+        var v = (document.getElementById(paar[0]).value || '').trim();
+        if (v) body[paar[1]] = v;
+      });
+      if (!body.gebouw_naam && !body.straatnaam) {
+        _bouwMeld('bouwStartMelding', 'Vul minimaal een gebouwnaam of een straatnaam in', 'fout');
+        return;
       }
+      var asset = document.getElementById('bouwAsset').value;
+      if (asset) body.asset_id = asset;
       var type = document.getElementById('bouwType').value;
       if (type) body.gebouw_type = type;
       var jaar = document.getElementById('bouwJaar').value;
@@ -9076,9 +9094,10 @@
 
     function _bouwToon(b) {
       _bouwHuidig = b;
-      var waar = b.straatnaam ? b.straatnaam : ('gebouw ' + (b.asset_id || ''));
+      var waar = b.omschrijving || 'Naamloze opname';
       document.getElementById('bouwModalSub').textContent =
-        waar + (b.gebouw_type_label ? ' - ' + b.gebouw_type_label : '')
+        waar + (b.plaats ? ', ' + b.plaats : '')
+        + (b.gebouw_type_label ? ' - ' + b.gebouw_type_label : '')
         + (b.status === 'afgerond' ? ' - afgerond' : '');
       document.getElementById('bouwIndruk').value = b.algemene_indruk || '';
       document.getElementById('bouwIndruk').disabled = b.status === 'afgerond';

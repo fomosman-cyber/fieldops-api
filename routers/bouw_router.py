@@ -13,11 +13,17 @@ Endpoints:
   DELETE /api/bouw/{id}                      Verwijderen
   GET    /api/bouw/acties/open               Openstaande acties over alle opnames
 
-**Per gebouw of per straat.** Een opname hangt aan een asset (het gebouw) of aan
-een straatnaam, en aan precies een van de twee. Een schoolgebouw neem je op als
-object; een rij portiekwoningen of een bedrijventerrein loopt een inspecteur per
-straat af. Beide toestaan in hetzelfde model voorkomt dat iemand vijftig losse
-opnames maakt die niemand meer bij elkaar zoekt.
+**Het gebouw benoem je zelf.** Een inspecteur staat voor een pand en legt het
+vast met naam, straat, huisnummer, postcode, plaats en eigenaar. Het gebouw hoeft
+niet eerst als asset te bestaan -- dat zou betekenen dat je voor elke opname
+eerst het areaal moet bijwerken, en dan gebeurt de opname niet. Wie het pand wel
+in zijn areaal heeft kan het koppelen via `asset_id`; dat is gemak, geen
+voorwaarde.
+
+**Per gebouw of per straat.** Het verschil zit in het huisnummer: mét huisnummer
+is het een pand, zonder huisnummer een straat. Een rij portiekwoningen of een
+bedrijventerrein loop je per straat af. Minimaal een gebouwnaam of een straat is
+verplicht -- een opname zonder plek is later niet terug te vinden.
 
 De conditiescores gaan door dezelfde motor als de infrastructuur-inspecties:
 ``nen2767_scoring``. NEN 2767 is een methodiek voor gebouwen (-1) en
@@ -50,12 +56,20 @@ router = APIRouter(prefix="/api/bouw", tags=["Bouw"],
 # ── Schemas ──────────────────────────────────────────────────────────
 
 class BouwIn(BaseModel):
-    # Precies een van deze twee; zie _eis_object.
+    # Minimaal een van gebouw_naam of straatnaam; zie _eis_plek.
+    gebouw_naam: Optional[str] = Field(default=None, max_length=255)
+    straatnaam: Optional[str] = Field(default=None, max_length=255)
+    huisnummer: Optional[str] = Field(default=None, max_length=20)
+    postcode: Optional[str] = Field(default=None, max_length=12)
+    plaats: Optional[str] = Field(default=None, max_length=120)
+    eigenaar: Optional[str] = Field(default=None, max_length=255)
+    # Optionele koppeling aan een bestaand areaal-object.
     asset_id: Optional[str] = None
-    straatnaam: Optional[str] = None
+    # Wie de opname doet. Standaard de ingelogde gebruiker, maar overschrijfbaar
+    # -- een bureau laat een ingehuurde inspecteur onder eigen naam werken.
+    inspecteur_naam: Optional[str] = Field(default=None, max_length=120)
 
     project_id: Optional[str] = None
-    plaats: Optional[str] = None
     gebouw_type: Optional[str] = None
     bouwjaar: Optional[int] = Field(default=None, ge=1000, le=2100)
     datum: Optional[datetime] = None
@@ -64,8 +78,13 @@ class BouwIn(BaseModel):
 
 
 class BouwUpdate(BaseModel):
-    straatnaam: Optional[str] = None
-    plaats: Optional[str] = None
+    gebouw_naam: Optional[str] = Field(default=None, max_length=255)
+    straatnaam: Optional[str] = Field(default=None, max_length=255)
+    huisnummer: Optional[str] = Field(default=None, max_length=20)
+    postcode: Optional[str] = Field(default=None, max_length=12)
+    plaats: Optional[str] = Field(default=None, max_length=120)
+    eigenaar: Optional[str] = Field(default=None, max_length=255)
+    inspecteur_naam: Optional[str] = Field(default=None, max_length=120)
     gebouw_type: Optional[str] = None
     bouwjaar: Optional[int] = Field(default=None, ge=1000, le=2100)
     datum: Optional[datetime] = None
@@ -103,22 +122,31 @@ def _eis_beheer(current_user: User) -> None:
             detail="Alleen een beheerder of manager kan een gebouwinspectie invullen")
 
 
-def _eis_object(asset_id: Optional[str], straatnaam: Optional[str]) -> None:
-    """Precies een van beide, en niet allebei.
+def _eis_plek(gebouw_naam: Optional[str], straatnaam: Optional[str]) -> None:
+    """Minimaal een gebouwnaam of een straat.
 
-    Allebei toestaan levert opnames op waarvan niemand weet of ze bij het
-    gebouw of bij de straat horen -- en dus dubbeltellingen in de rapportage.
+    Alleen een postcode of alleen een eigenaar is niet genoeg: een opname zonder
+    herkenbare plek is over een jaar niet meer terug te vinden, en dan is de
+    conditiemeting waardeloos. Alles daarboven mag leeg blijven -- een inspecteur
+    die in de regen staat vult in wat hij weet.
     """
-    heeft_asset = bool(asset_id)
-    heeft_straat = bool(straatnaam and straatnaam.strip())
-    if heeft_asset and heeft_straat:
+    if not (gebouw_naam or "").strip() and not (straatnaam or "").strip():
         raise HTTPException(
             status_code=400,
-            detail="Kies een gebouw of een straat, niet allebei")
-    if not heeft_asset and not heeft_straat:
-        raise HTTPException(
-            status_code=400,
-            detail="Geef een gebouw (asset_id) of een straatnaam op")
+            detail="Geef minimaal een gebouwnaam of een straatnaam op")
+
+
+def _omschrijving(b) -> str:
+    """Een leesbare aanduiding voor lijsten en de PDF.
+
+    Valt terug op wat er is: naam, anders adres, anders straat. Nooit een leeg
+    label, want dan staat er een regel in de lijst waar niemand iets aan heeft.
+    """
+    adres = " ".join(x for x in ((b.straatnaam or "").strip(),
+                                 (b.huisnummer or "").strip()) if x)
+    if b.gebouw_naam and adres:
+        return f"{b.gebouw_naam} - {adres}"
+    return (b.gebouw_naam or adres or b.straatnaam or "Naamloze opname").strip()
 
 
 def _antwoord_to_dict(a: BouwAntwoord) -> dict:
@@ -165,9 +193,14 @@ def _inspectie_to_dict(b: BouwInspectie, *, detail: bool = False) -> dict:
     condities = list(b.condities or [])
     uit = {
         "id": b.id,
-        "asset_id": b.asset_id,
+        "omschrijving": _omschrijving(b),
+        "gebouw_naam": b.gebouw_naam,
         "straatnaam": b.straatnaam,
+        "huisnummer": b.huisnummer,
+        "postcode": b.postcode,
         "plaats": b.plaats,
+        "eigenaar": b.eigenaar,
+        "asset_id": b.asset_id,
         "project_id": b.project_id,
         "gebouw_type": b.gebouw_type,
         "gebouw_type_label": bb.GEBOUW_TYPES.get(b.gebouw_type or ""),
@@ -270,6 +303,7 @@ def lijst(
     status: Optional[str] = None,
     asset_id: Optional[str] = None,
     straatnaam: Optional[str] = None,
+    postcode: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -281,6 +315,8 @@ def lijst(
         q = q.filter(BouwInspectie.asset_id == asset_id)
     if straatnaam:
         q = q.filter(BouwInspectie.straatnaam == straatnaam)
+    if postcode:
+        q = q.filter(BouwInspectie.postcode == postcode.strip().upper())
     rijen = q.order_by(BouwInspectie.created_at.desc()).limit(200).all()
     return [_inspectie_to_dict(b) for b in rijen]
 
@@ -300,7 +336,7 @@ def start(
     een gemeentewerf leidt alleen maar af.
     """
     _eis_beheer(current_user)
-    _eis_object(payload.asset_id, payload.straatnaam)
+    _eis_plek(payload.gebouw_naam, payload.straatnaam)
 
     asset = None
     if payload.asset_id:
@@ -329,13 +365,19 @@ def start(
         gekozen = list(bb.PIJLERS)
 
     import json
-    naam = " ".join(x for x in (current_user.first_name, current_user.last_name) if x).strip()
+    eigen_naam = " ".join(
+        x for x in (current_user.first_name, current_user.last_name) if x).strip()
+    naam = (payload.inspecteur_naam or "").strip() or eigen_naam
     b = BouwInspectie(
         organization_id=current_user.organization_id,
         project_id=payload.project_id,
         asset_id=payload.asset_id,
+        gebouw_naam=(payload.gebouw_naam or "").strip() or None,
         straatnaam=(payload.straatnaam or "").strip() or None,
+        huisnummer=(payload.huisnummer or "").strip() or None,
+        postcode=(payload.postcode or "").strip().upper() or None,
         plaats=payload.plaats,
+        eigenaar=(payload.eigenaar or "").strip() or None,
         gebouw_type=payload.gebouw_type,
         bouwjaar=payload.bouwjaar,
         datum=payload.datum or datetime.now(timezone.utc),
@@ -366,7 +408,7 @@ def start(
     db.refresh(b)
     log_action(db, request, current_user, action="bouw.create",
                entity_type="bouw_inspectie", entity_id=b.id,
-               after={"asset_id": b.asset_id, "straatnaam": b.straatnaam,
+               after={"omschrijving": _omschrijving(b), "asset_id": b.asset_id,
                       "pijlers": gekozen, "vragen": len(vragen)})
     return _inspectie_to_dict(b, detail=True)
 
@@ -394,14 +436,12 @@ def bijwerken(
     velden = payload.model_dump(exclude_unset=True)
     if "gebouw_type" in velden and velden["gebouw_type"] not in (None, *bb.GEBOUW_TYPES):
         raise HTTPException(status_code=400, detail="Onbekend gebouwtype")
-    # Een straatopname mag hernoemd worden, maar niet omgekat naar een gebouw:
-    # de vragenlijst is dan al op het verkeerde type aangemaakt.
-    if "straatnaam" in velden and b.asset_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Deze opname hangt aan een gebouw; een straatnaam hoort daar niet bij")
     for k, v in velden.items():
         setattr(b, k, v)
+    # De plek mag je bijwerken, maar niet weggommen.
+    _eis_plek(b.gebouw_naam, b.straatnaam)
+    if b.postcode:
+        b.postcode = b.postcode.strip().upper()
     db.commit()
     db.refresh(b)
     return _inspectie_to_dict(b, detail=True)

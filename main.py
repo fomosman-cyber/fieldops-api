@@ -285,6 +285,25 @@ def _run_migrations():
                     for col in org_missing:
                         conn.execute(_sql_text(f"ALTER TABLE organizations ADD COLUMN {col} {org_extra[col]}"))
 
+        # Bouw (BOEI) — adresvelden zodat een gebouw met de hand te benoemen is
+        # in plaats van alleen als asset te selecteren.
+        if "bouw_inspecties" in insp.get_table_names():
+            bcols = [c["name"] for c in insp.get_columns("bouw_inspecties")]
+            bouw_extra = {
+                "gebouw_naam": "VARCHAR(255)",
+                "huisnummer":  "VARCHAR(20)",
+                "postcode":    "VARCHAR(12)",
+                "eigenaar":    "VARCHAR(255)",
+            }
+            bouw_missing = [c for c in bouw_extra if c not in bcols]
+            if bouw_missing:
+                print(f"[migration] bouw_inspecties adresvelden toevoegen: {bouw_missing}")
+                from sqlalchemy import text as _sql_text
+                with engine.begin() as conn:
+                    for col in bouw_missing:
+                        conn.execute(_sql_text(
+                            f"ALTER TABLE bouw_inspecties ADD COLUMN {col} {bouw_extra[col]}"))
+
         # Inspecties — inspectie_soort (grote CROW vs klein onderhoud)
         if "inspections" in insp.get_table_names():
             icols = [c["name"] for c in insp.get_columns("inspections")]
