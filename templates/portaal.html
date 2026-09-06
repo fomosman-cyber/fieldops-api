@@ -1894,6 +1894,7 @@
           <input type="file" id="assetCsvInput" accept=".csv" style="display:none;" onchange="importAssetsCsv(event)">
           <button class="btn-secondary" onclick="openGeojsonImportWizard()" title="Importeer wegvakken uit GeoJSON of shapefile (.zip) — GBI/BGT-export met automatische IMBOR-classificatie" style="display:inline-flex;align-items:center;gap:6px;">🗺️ Import GeoJSON/SHP <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.05em;">NIEUW</span></button>
           <button class="btn-secondary" onclick="openNwbZoekModal()" style="display:inline-flex;align-items:center;gap:6px;">🛣️ Wegvakken uit NWB <span style="background:linear-gradient(135deg,#0284c7,#16a34a);color:#fff;font-size:9px;padding:1px 6px;border-radius:6px;font-weight:700;letter-spacing:.05em;">NIEUW</span></button>
+          <button class="btn-secondary" onclick="exportAssetsGeojson()" title="Exporteer alle assets als GeoJSON — te openen in QGIS of een beheerpakket">&#128229; Export GeoJSON</button>
           <button class="btn-primary" onclick="openAssetModal()">+ Nieuw Asset</button>
         </div>
       </div>
@@ -10290,6 +10291,35 @@
         .catch(function(err) {
           showToast('PDF mislukt: ' + (err.message || 'Onbekend'), 'error');
         });
+    }
+
+    function exportAssetsGeojson() {
+      // Neem de filters over die op het scherm staan, zodat je exporteert wat
+      // je ziet in plaats van altijd alles.
+      var qs = [];
+      var p = document.getElementById('assetFilterProject');
+      var t2 = document.getElementById('assetFilterType');
+      if (p && p.value) qs.push('project_id=' + encodeURIComponent(p.value));
+      if (t2 && t2.value) qs.push('asset_type=' + encodeURIComponent(t2.value));
+
+      fetch(API_URL + '/api/assets/export.geojson' + (qs.length ? '?' + qs.join('&') : ''),
+            { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function (res) {
+          if (!res.ok) return res.text().then(function (x) { throw new Error('Server fout ' + res.status + ': ' + x.substring(0, 120)); });
+          return res.blob().then(function (blob) {
+            var disp = res.headers.get('Content-Disposition') || '';
+            var m = disp.match(/filename="?([^";]+)"?/);
+            var blobUrl = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = m ? m[1] : 'fieldops-assets.geojson';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(blobUrl); }, 100);
+            showToast('GeoJSON gedownload', 'success');
+          });
+        })
+        .catch(function (err) { showToast('Export mislukt: ' + (err.message || ''), 'error'); });
     }
 
     function downloadMjopCsv(years) {

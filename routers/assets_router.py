@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
@@ -538,6 +538,103 @@ def predictive_backfill(
         "lifespan_set": lifespan_set,
         "condition_estimated": condition_estimated,
     }
+
+
+@router.get("/export.geojson")
+def export_assets_geojson(
+    project_id: Optional[str] = None,
+    asset_type: Optional[str] = None,
+    include_archived: bool = Query(False),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Exporteer assets als GeoJSON FeatureCollection.
+
+    De tegenhanger van /import/geojson, en het sluitstuk van "geen lock-in":
+    je haalt je eigen objecten er in hetzelfde formaat weer uit, klaar om in
+    QGIS of een beheerpakket te openen.
+
+    Geometrie per asset, in deze volgorde:
+      1. geometry_geojson als die er is -- wegvakken uit NWB/BGT zijn LineStrings
+         en die mogen niet tot een punt worden platgeslagen;
+      2. anders een Point uit lat/lng;
+      3. anders null. Dat is geldig GeoJSON en beter dan de asset weglaten:
+         een object zonder coordinaten bestaat wel degelijk.
+
+    LET OP voor wie deze route verplaatst: hij moet VOOR `GET /{asset_id}`
+    blijven staan. Dat pad is ook een enkel segment en vangt /export.geojson
+    anders af met "Asset niet gevonden".
+    """
+    q = db.query(Asset).filter(Asset.organization_id == current_user.organization_id)
+    if not include_archived:
+        q = q.filter(Asset.archived_at.is_(None))
+    if project_id:
+        q = q.filter(Asset.project_id == project_id)
+    if asset_type:
+        q = q.filter(Asset.asset_type == asset_type)
+
+    assets = q.order_by(Asset.code).all()
+
+    features = []
+    for a in assets:
+        geometry = None
+        if a.geometry_geojson:
+            try:
+                geometry = json.loads(a.geometry_geojson)
+            except (json.JSONDecodeError, TypeError):
+                geometry = None
+        if geometry is None and a.lat is not None and a.lng is not None:
+            geometry = {"type": "Point", "coordinates": [a.lng, a.lat]}
+
+        props = {
+            "code": a.code,
+            "name": a.name,
+            "asset_type": a.asset_type,
+            "location_description": a.location_description,
+            "project_id": a.project_id,
+            "condition_score": a.condition_score,
+            "installed_at": a.installed_at.isoformat() if a.installed_at else None,
+            "last_inspection_at": a.last_inspection_at.isoformat() if a.last_inspection_at else None,
+            "next_inspection_due": a.next_inspection_due.isoformat() if a.next_inspection_due else None,
+            "inspection_cycle_months": a.inspection_cycle_months,
+            "expected_lifespan_years": a.expected_lifespan_years,
+            "length_m": a.length_m,
+            "is_segment": bool(a.is_segment),
+            "nwb_wvk_id": a.nwb_wvk_id,
+            "archived": a.archived_at is not None,
+        }
+        # Eigen velden van de klant blijven behouden, maar mogen de vaste
+        # kolommen niet overschrijven -- anders verandert een import/export-ronde
+        # stilletjes de betekenis van bijvoorbeeld `code`.
+        if a.properties_json:
+            try:
+                extra = json.loads(a.properties_json)
+                if isinstance(extra, dict):
+                    for k, v in extra.items():
+                        props.setdefault(k, v)
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        features.append({
+            "type": "Feature",
+            "id": a.id,
+            "geometry": geometry,
+            "properties": props,
+        })
+
+    inhoud = {
+        "type": "FeatureCollection",
+        # WGS84 is de standaard voor GeoJSON (RFC 7946); expliciet vermeld
+        # omdat Nederlandse beheerpakketten vaak in RD (EPSG:28992) werken.
+        "crs": {"type": "name", "properties": {"name": "urn:ogc:def:crs:OGC:1.3/CRS84"}},
+        "features": features,
+    }
+    naam = f"fieldops-assets-{datetime.now(timezone.utc).date().isoformat()}.geojson"
+    return Response(
+        content=json.dumps(inhoud, ensure_ascii=False),
+        media_type="application/geo+json",
+        headers={"Content-Disposition": f'attachment; filename="{naam}"'},
+    )
 
 
 @router.get("/{asset_id}", response_model=AssetResponse)
