@@ -31,6 +31,7 @@ MODULE_ENDPOINTS = {
     "dagboek":     "/api/daybook/summary",
     "mijn-dag":    "/api/users/me/clusters",
     "veiligheid":  "/api/toolbox/",
+    "bouw":        "/api/bouw/",
 }
 
 
