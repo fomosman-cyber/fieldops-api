@@ -611,6 +611,12 @@ _OPENAPI_TAGS = [
 ]
 
 
+# Moment van opstarten, zodat /api/version laat zien hoe lang deze instantie al
+# draait. Handig bij het uitrollen: een oude starttijd betekent dat de nieuwe
+# versie er nog niet is, ook als de commit toevallig gelijk lijkt.
+_GESTART_OP = datetime.now(timezone.utc)
+
+
 app = FastAPI(
     title="FieldOps API",
     description=_OPENAPI_DESCRIPTION,
@@ -1502,6 +1508,28 @@ pre{{margin:14px 0;}}</style></head>
 def health_check():
     """Eenvoudig 200-OK voor load-balancers / liveness-probes."""
     return {"status": "ok"}
+
+
+@app.get("/api/version")
+def version():
+    """Welke commit hier draait.
+
+    Bewust publiek en zonder auth: dit is de enige manier om van buitenaf vast
+    te stellen of een merge ook echt is uitgerold. Zonder dit is een deploy
+    controleren giswerk -- je zoekt naar een toevallig zichtbaar neveneffect en
+    hoopt dat het klopt.
+
+    Een commit-hash verraadt niets: de repository is publiek en de hash staat
+    ook in de git-historie. Alles wat wél gevoelig is -- sleutels, configuratie,
+    de omgeving -- blijft hier bewust buiten.
+    """
+    commit = (os.getenv("RENDER_GIT_COMMIT") or "").strip()
+    return {
+        "commit": commit[:12] or None,
+        "commit_volledig": commit or None,
+        "branch": (os.getenv("RENDER_GIT_BRANCH") or "").strip() or None,
+        "gestart_op": _GESTART_OP.isoformat(),
+    }
 
 
 @app.get("/api/status/detailed")
