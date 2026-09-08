@@ -1607,6 +1607,106 @@ class WerkplekinspectieAntwoord(Base):
     actiehouder = relationship("User", foreign_keys=[actiehouder_id])
 
 
+class Lmra(Base):
+    """Een laatste-minuut risicoanalyse: de check vlak voor het werk begint.
+
+    Verschilt bewust van de werkplekinspectie hierboven. Een WPI is een
+    rondgang met een score die je over de tijd volgt; een LMRA is een
+    stopmoment van één minuut met maar twee uitkomsten: beginnen of niet.
+
+    Daarom geen concept-status. Een LMRA die half is ingevuld en blijft staan,
+    zegt niets over de situatie van dat moment, en dat moment is het enige wat
+    hij vastlegt. Hij wordt in één keer opgeslagen, met uitkomst en al.
+
+    Hangt niet verplicht aan een project. Iemand die op een melding afgaat,
+    staat op straat zonder projectnummer, en juist dan is dit instrument
+    bedoeld. Wel altijd aan een organisatie en een uitvoerder.
+
+    ``vorige_lmra_id`` maakt de keten na een stop zichtbaar: de gestopte
+    beoordeling blijft staan zoals hij was, en de nieuwe verwijst ernaar
+    terug. Een gestopte LMRA wordt nooit bijgewerkt naar veilig -- dan
+    verdwijnt precies het verloop dat na een incident onderzocht wordt.
+    """
+
+    __tablename__ = "lmras"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    # Alle drie optioneel: de aanleiding kan een project zijn, een object of
+    # een melding, en soms is het gewoon werk op straat.
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)
+    melding_id = Column(String, ForeignKey("meldingen.id"), nullable=True, index=True)
+
+    uitvoerder_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    uitvoerder_naam = Column(String(120), nullable=True)     # gedenormaliseerd
+
+    werkzaamheid = Column(String(255), nullable=False)       # wat ga je doen
+    locatie = Column(String(255), nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+
+    checklist_versie = Column(String(40), nullable=False)
+    uitkomst = Column(String(12), nullable=False, index=True)   # veilig | gestopt
+    aantal_nee = Column(Integer, default=0, nullable=False)
+
+    # Alleen bij een stop: wat er is gedaan om het op te lossen. Staat hier en
+    # niet bij de vervolg-LMRA, want de maatregel hoort bij het probleem.
+    maatregel = Column(Text, nullable=True)
+    maatregel_op = Column(DateTime, nullable=True)
+    maatregel_door_id = Column(String, ForeignKey("users.id"), nullable=True)
+
+    vorige_lmra_id = Column(String, ForeignKey("lmras.id"), nullable=True, index=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        nullable=False, index=True)
+
+    organization = relationship("Organization")
+    project = relationship("Project", foreign_keys=[project_id])
+    asset = relationship("Asset", foreign_keys=[asset_id])
+    uitvoerder = relationship("User", foreign_keys=[uitvoerder_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    vorige = relationship("Lmra", remote_side=[id])
+    antwoorden = relationship("LmraAntwoord", back_populates="lmra",
+                              cascade="all, delete-orphan",
+                              order_by="LmraAntwoord.order_index")
+
+
+class LmraAntwoord(Base):
+    """Eén beantwoorde vraag binnen een LMRA.
+
+    Een aparte tabel en geen JSON-veld, omdat de interessante vraag niet is
+    "wat stond er in deze ene LMRA" maar "waar stoppen mensen het vaakst op".
+    Dat is de vraag waar een KAM-functionaris iets mee kan, en die is met een
+    JSON-kolom niet te stellen.
+
+    De vraagtekst wordt gesnapshot, net als bij de werkplekinspectie. Wijzigt
+    de lijst later, dan blijft een oude LMRA tonen wat er destijds echt is
+    gevraagd.
+    """
+
+    __tablename__ = "lmra_antwoorden"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    lmra_id = Column(String, ForeignKey("lmras.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    question_code = Column(String(40), nullable=False, index=True)
+    question_version = Column(String(40), nullable=False)
+    question_text_snapshot = Column(String(500), nullable=True)
+
+    antwoord = Column(String(4), nullable=False)             # ja | nee | nvt
+    toelichting = Column(Text, nullable=True)                # verplicht bij nee
+
+    order_index = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    lmra = relationship("Lmra", back_populates="antwoorden")
+
+
 class BouwInspectie(Base):
     """Een BOEI-inspectie: conditie- en risico-opname van een gebouw.
 
