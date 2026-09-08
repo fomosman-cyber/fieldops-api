@@ -4073,6 +4073,7 @@
         <button class="int-tab active" data-tab="toolbox" onclick="switchVeiligheidTab('toolbox')" data-i18n="vg_tab_toolbox">Toolbox</button>
         <button class="int-tab" data-tab="incidenten" onclick="switchVeiligheidTab('incidenten')" data-i18n="vg_tab_incidenten">Incidenten</button>
         <button class="int-tab" data-tab="wpi" onclick="switchVeiligheidTab('wpi')" data-i18n="vg_tab_wpi">Werkplekinspectie</button>
+        <button class="int-tab" data-tab="lmra" onclick="switchVeiligheidTab('lmra')" data-i18n="vg_tab_lmra">LMRA</button>
       </div>
 
       <div id="vg-tab-toolbox">
@@ -4141,6 +4142,51 @@
         <div id="wpiActies" style="margin-bottom:16px;"></div>
 
         <div class="card" id="wpiList">
+          <div class="loading-spinner"></div>
+        </div>
+      </div>
+
+      <!-- LMRA: de check van één minuut, vlak voordat het werk begint.
+           Bewust geen modal en geen concept-status. Dit legt de situatie van
+           één moment vast, dus hij wordt in één keer ingevuld en opgeslagen.
+           De uitkomst rekent de server uit; het scherm laat hem alleen zien. -->
+      <div id="vg-tab-lmra" style="display:none;">
+        <div class="card" style="margin-bottom:16px;">
+          <div class="card-header"><h3>Laatste minuut, voordat je begint</h3></div>
+          <p style="font-size:13px;color:var(--text-muted);margin:0 0 14px;">
+            Acht vragen, ongeveer een minuut. Staat er iets op nee, dan begin je niet:
+            je legt vast wat er mis is, lost het op en beoordeelt daarna opnieuw.
+          </p>
+
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:14px;">
+            <div style="grid-column:1/-1;">
+              <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Wat ga je nu doen?</label>
+              <input id="lmraWerk" type="text" maxlength="255" placeholder="bv. Putdeksel vervangen op de Coolsingel"
+                     style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+            </div>
+            <div>
+              <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Project (optioneel)</label>
+              <select id="lmraProject" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;"><option value="">Geen project</option></select>
+            </div>
+            <div>
+              <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Locatie (optioneel)</label>
+              <input id="lmraLocatie" type="text" maxlength="255" placeholder="bv. hoek Meent"
+                     style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+            </div>
+          </div>
+
+          <div id="lmraVragen"></div>
+
+          <div id="lmraOordeel" style="display:none;margin-top:14px;padding:12px 14px;border-radius:10px;font-size:14px;font-weight:600;"></div>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+            <button class="btn-primary" id="lmraOpslaan" onclick="slaLmraOp()">LMRA vastleggen</button>
+            <button class="btn-secondary" onclick="resetLmra()">Leegmaken</button>
+            <span id="lmraHervat" style="display:none;font-size:12px;color:var(--text-muted);align-self:center;"></span>
+          </div>
+        </div>
+
+        <div class="card" id="lmraLijst">
           <div class="loading-spinner"></div>
         </div>
       </div>
@@ -24722,16 +24768,296 @@
         .filter(function (r) { return r.length > 0; });
     }
 
+
+    // ══════════ LMRA ══════════
+    // De laatste-minuut risicoanalyse. Alles hier draait om één regel: met een
+    // NEE begin je niet. Het scherm rekent die uitkomst mee zodat je hem ziet
+    // terwijl je invult, maar het oordeel dat wordt opgeslagen komt van de
+    // server. Twee plekken die hetzelfde uitrekenen lopen vroeg of laat uiteen,
+    // en dan is de vraag welke van de twee in het dossier staat.
+
+    var _lmraVragen = [];
+    var _lmraAntw = {};
+    var _lmraToel = {};
+    var _lmraVorige = null;      // id van de gestopte LMRA die we hernieuwen
+
+    function _lmraEsc(s) {
+      return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    async function laadLmraChecklist() {
+      if (_lmraVragen.length) return;
+      var d = await api('GET', '/api/lmra/checklist');
+      _lmraVragen = (d && d.vragen) || [];
+      tekenLmraVragen();
+    }
+
+    function tekenLmraVragen() {
+      var el = document.getElementById('lmraVragen');
+      if (!el) return;
+      el.innerHTML = _lmraVragen.map(function (v, i) {
+        var gekozen = _lmraAntw[v.code] || '';
+        var knoppen = [['ja', 'Ja'], ['nee', 'Nee']];
+        if (v.nvt_toegestaan) knoppen.push(['nvt', 'N.v.t.']);
+        return '' +
+          '<div style="padding:12px 0;border-bottom:1px solid var(--border);">' +
+            '<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;justify-content:space-between;">' +
+              '<div style="flex:1 1 260px;min-width:220px;">' +
+                '<div style="font-size:14px;font-weight:600;">' + (i + 1) + '. ' + _lmraEsc(v.vraag) + '</div>' +
+                '<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">' + _lmraEsc(v.uitleg) + '</div>' +
+              '</div>' +
+              '<div style="display:flex;gap:6px;">' +
+                knoppen.map(function (k) {
+                  var actief = gekozen === k[0];
+                  var kleur = k[0] === 'nee' ? '#dc2626' : (k[0] === 'ja' ? '#16a34a' : 'var(--text-muted)');
+                  return '<button type="button" onclick="zetLmraAntwoord(\'' + v.code + '\',\'' + k[0] + '\')" ' +
+                    'style="min-width:52px;padding:8px 12px;border-radius:8px;font-family:inherit;font-size:13px;cursor:pointer;' +
+                    'border:1px solid ' + (actief ? kleur : 'var(--border)') + ';' +
+                    'background:' + (actief ? kleur : 'var(--card-bg)') + ';' +
+                    'color:' + (actief ? '#fff' : 'var(--text)') + ';">' + k[1] + '</button>';
+                }).join('') +
+              '</div>' +
+            '</div>' +
+            (gekozen === 'nee' ?
+              '<textarea id="lmraToel_' + v.code + '" oninput="zetLmraToelichting(\'' + v.code + '\',this.value)" ' +
+              'placeholder="Wat is er niet in orde? Dit is verplicht." rows="2" ' +
+              'style="width:100%;margin-top:8px;padding:8px 10px;border:1px solid #dc2626;border-radius:8px;' +
+              'background:var(--card-bg);color:var(--text);font-family:inherit;font-size:13px;">' +
+              _lmraEsc(_lmraToel[v.code] || '') + '</textarea>' : '') +
+          '</div>';
+      }).join('');
+      werkLmraOordeelBij();
+    }
+
+    function zetLmraAntwoord(code, waarde) {
+      _lmraAntw[code] = waarde;
+      if (waarde !== 'nee') delete _lmraToel[code];
+      tekenLmraVragen();
+    }
+
+    function zetLmraToelichting(code, waarde) {
+      _lmraToel[code] = waarde;
+      werkLmraOordeelBij();
+    }
+
+    function werkLmraOordeelBij() {
+      var vak = document.getElementById('lmraOordeel');
+      if (!vak) return;
+      var open = _lmraVragen.filter(function (v) { return !_lmraAntw[v.code]; });
+      var nee = _lmraVragen.filter(function (v) { return _lmraAntw[v.code] === 'nee'; });
+
+      if (open.length) {
+        vak.style.display = '';
+        vak.style.background = 'var(--card-bg-hover)';
+        vak.style.color = 'var(--text-muted)';
+        vak.textContent = 'Nog ' + open.length + ' van de ' + _lmraVragen.length + ' vragen te beantwoorden.';
+        return;
+      }
+      vak.style.display = '';
+      if (nee.length) {
+        vak.style.background = 'rgba(220,38,38,.12)';
+        vak.style.color = '#dc2626';
+        vak.textContent = nee.length === 1
+          ? 'Niet beginnen. Eén punt is niet in orde.'
+          : 'Niet beginnen. ' + nee.length + ' punten zijn niet in orde.';
+      } else {
+        vak.style.background = 'rgba(22,163,74,.12)';
+        vak.style.color = '#16a34a';
+        vak.textContent = 'Veilig om te beginnen.';
+      }
+    }
+
+    function resetLmra() {
+      _lmraAntw = {};
+      _lmraToel = {};
+      _lmraVorige = null;
+      var w = document.getElementById('lmraWerk');
+      var l = document.getElementById('lmraLocatie');
+      if (w) w.value = '';
+      if (l) l.value = '';
+      var h = document.getElementById('lmraHervat');
+      if (h) h.style.display = 'none';
+      tekenLmraVragen();
+    }
+
+    // Locatie is prettig maar nooit blokkerend: iemand die de rechten weigert
+    // of onder een viaduct staat, moet gewoon door kunnen.
+    function _lmraPositie() {
+      return new Promise(function (klaar) {
+        if (!navigator.geolocation) return klaar(null);
+        var af = setTimeout(function () { klaar(null); }, 4000);
+        navigator.geolocation.getCurrentPosition(
+          function (p) { clearTimeout(af); klaar(p.coords); },
+          function () { clearTimeout(af); klaar(null); },
+          { enableHighAccuracy: true, timeout: 4000, maximumAge: 60000 }
+        );
+      });
+    }
+
+    async function slaLmraOp() {
+      var werk = (document.getElementById('lmraWerk') || {}).value || '';
+      if (werk.trim().length < 2) {
+        showToast('Vul in wat je gaat doen', 'error');
+        return;
+      }
+      var open = _lmraVragen.filter(function (v) { return !_lmraAntw[v.code]; });
+      if (open.length) {
+        showToast('Nog ' + open.length + ' vragen open', 'error');
+        return;
+      }
+      var zonderToelichting = _lmraVragen.filter(function (v) {
+        return _lmraAntw[v.code] === 'nee' && !(_lmraToel[v.code] || '').trim();
+      });
+      if (zonderToelichting.length) {
+        showToast('Vul in wat er niet in orde is', 'error');
+        return;
+      }
+
+      var knop = document.getElementById('lmraOpslaan');
+      if (knop) { knop.disabled = true; knop.textContent = 'Bezig...'; }
+      try {
+        var pos = await _lmraPositie();
+        var body = {
+          werkzaamheid: werk.trim(),
+          antwoorden: _lmraAntw,
+          toelichtingen: _lmraToel,
+          locatie: ((document.getElementById('lmraLocatie') || {}).value || '').trim() || null,
+          project_id: ((document.getElementById('lmraProject') || {}).value || '') || null,
+          latitude: pos ? pos.latitude : null,
+          longitude: pos ? pos.longitude : null,
+          vorige_lmra_id: _lmraVorige
+        };
+        var d = await api('POST', '/api/lmra', body);
+        showToast(d.uitkomst === 'veilig'
+          ? 'Vastgelegd. Veilig om te beginnen.'
+          : 'Vastgelegd als gestopt. Niet beginnen.',
+          d.uitkomst === 'veilig' ? 'success' : 'warning');
+        resetLmra();
+        laadLmras();
+      } catch (e) {
+        showToast(e.message || 'Opslaan mislukt', 'error');
+      } finally {
+        if (knop) { knop.disabled = false; knop.textContent = 'LMRA vastleggen'; }
+      }
+    }
+
+    async function laadLmras() {
+      var el = document.getElementById('lmraLijst');
+      if (!el) return;
+      try {
+        var d = await api('GET', '/api/lmra?limiet=50');
+        var rijen = (d && d.lmras) || [];
+        if (!rijen.length) {
+          el.innerHTML = '<div style="padding:22px;text-align:center;color:var(--text-muted);font-size:14px;">' +
+            'Nog geen LMRA vastgelegd.</div>';
+          return;
+        }
+        el.innerHTML =
+          '<div class="card-header"><h3>Vastgelegd</h3></div>' +
+          rijen.map(function (r) {
+            var gestopt = r.uitkomst === 'gestopt';
+            var kleur = gestopt ? '#dc2626' : '#16a34a';
+            var wanneer = r.created_at ? new Date(r.created_at).toLocaleString('nl-NL',
+              { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+            return '<div style="padding:12px 0;border-bottom:1px solid var(--border);">' +
+              '<div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;justify-content:space-between;">' +
+                '<div style="flex:1 1 240px;">' +
+                  '<div style="font-size:14px;font-weight:600;">' + _lmraEsc(r.werkzaamheid) + '</div>' +
+                  '<div style="font-size:12px;color:var(--text-muted);margin-top:2px;">' +
+                    _lmraEsc(r.uitvoerder || '') + ' · ' + wanneer +
+                    (r.locatie ? ' · ' + _lmraEsc(r.locatie) : '') + '</div>' +
+                  (r.maatregel ? '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">' +
+                    'Maatregel: ' + _lmraEsc(r.maatregel) + '</div>' : '') +
+                '</div>' +
+                '<div style="text-align:right;">' +
+                  '<span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;' +
+                  'background:' + kleur + '1f;color:' + kleur + ';">' + _lmraEsc(r.samenvatting) + '</span>' +
+                  (gestopt ? '<div style="margin-top:6px;display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;">' +
+                    (r.maatregel ? '' : '<button type="button" onclick="lmraMaatregel(\'' + r.id + '\')" ' +
+                      'style="padding:5px 10px;border:1px solid var(--border);border-radius:7px;background:var(--card-bg);' +
+                      'color:var(--text);font-family:inherit;font-size:12px;cursor:pointer;">Maatregel</button>') +
+                    '<button type="button" onclick="lmraOpnieuw(\'' + r.id + '\')" ' +
+                      'style="padding:5px 10px;border:1px solid var(--border);border-radius:7px;background:var(--card-bg);' +
+                      'color:var(--text);font-family:inherit;font-size:12px;cursor:pointer;">Opnieuw beoordelen</button>' +
+                    '</div>' : '') +
+                '</div>' +
+              '</div>' +
+            '</div>';
+          }).join('');
+      } catch (e) {
+        el.innerHTML = '<div style="padding:18px;color:var(--text-muted);font-size:13px;">' +
+          _lmraEsc(e.message || 'Laden mislukt') + '</div>';
+      }
+    }
+
+    async function lmraMaatregel(id) {
+      var tekst = prompt('Wat is er gedaan om het op te lossen?');
+      if (!tekst || tekst.trim().length < 3) return;
+      try {
+        await api('POST', '/api/lmra/' + id + '/maatregel', { maatregel: tekst.trim() });
+        showToast('Maatregel vastgelegd', 'success');
+        laadLmras();
+      } catch (e) {
+        showToast(e.message || 'Opslaan mislukt', 'error');
+      }
+    }
+
+    // De gestopte beoordeling blijft staan zoals hij was; dit begint een nieuwe
+    // die ernaar terugverwijst. Zo blijft in het dossier zichtbaar dat er iets
+    // is opgelost tussen die twee momenten.
+    async function lmraOpnieuw(id) {
+      try {
+        var oud = await api('GET', '/api/lmra/' + id);
+        _lmraVorige = id;
+        _lmraAntw = {};
+        _lmraToel = {};
+        var w = document.getElementById('lmraWerk');
+        if (w) w.value = oud.werkzaamheid || '';
+        var l = document.getElementById('lmraLocatie');
+        if (l) l.value = oud.locatie || '';
+        var h = document.getElementById('lmraHervat');
+        if (h) {
+          h.style.display = '';
+          h.textContent = 'Hernieuwde beoordeling na een stop.';
+        }
+        tekenLmraVragen();
+        var vak = document.getElementById('lmraVragen');
+        if (vak) vak.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (e) {
+        showToast(e.message || 'Laden mislukt', 'error');
+      }
+    }
+
+    function vulLmraProjecten() {
+      var sel = document.getElementById('lmraProject');
+      var bron = document.getElementById('tbFilterProject');
+      if (!sel || !bron) return;
+      var huidig = sel.value;
+      sel.innerHTML = '<option value="">Geen project</option>' +
+        Array.prototype.slice.call(bron.options)
+          .filter(function (o) { return o.value; })
+          .map(function (o) { return '<option value="' + _lmraEsc(o.value) + '">' + _lmraEsc(o.textContent) + '</option>'; })
+          .join('');
+      sel.value = huidig;
+    }
+
+    async function opentLmraTab() {
+      vulLmraProjecten();
+      await laadLmraChecklist();
+      laadLmras();
+    }
+
     function switchVeiligheidTab(tab) {
-      // LMRA en certificaten komen hier straks naast; de opzet is er al op
-      // gebouwd, dus dat is dan een knop en een paneel erbij.
       document.querySelectorAll('#page-veiligheid .int-tab').forEach(function (b) {
         b.classList.toggle('active', b.getAttribute('data-tab') === tab);
       });
-      ['toolbox', 'incidenten', 'wpi'].forEach(function (naam) {
+      ['toolbox', 'incidenten', 'wpi', 'lmra'].forEach(function (naam) {
         var paneel = document.getElementById('vg-tab-' + naam);
         if (paneel) paneel.style.display = (naam === tab) ? '' : 'none';
       });
+      if (tab === 'lmra') opentLmraTab();
       // De paginakop hoort bij het tabblad dat openstaat: een knop "Nieuwe
       // toolbox" boven de incidentenlijst leidt alleen maar af.
       var knop = document.getElementById('vgToolboxKnop');
@@ -24740,6 +25066,7 @@
       if (sub) {
         sub.textContent = tab === 'toolbox' ? t('vg_sub')
                         : tab === 'wpi' ? t('vg_sub_wpi')
+                        : tab === 'lmra' ? 'De check van een minuut, vlak voordat het werk begint.'
                         : t('vg_sub_incidenten');
       }
       if (tab === 'incidenten') loadIncidenten();
