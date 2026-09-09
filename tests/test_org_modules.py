@@ -25,6 +25,7 @@ from tests.conftest import auth
 # Per module één representatief GET-endpoint om de gate op te testen
 MODULE_ENDPOINTS = {
     "kunstwerken": "/api/kunstwerken-inspecties/",
+    "kwaliteit":   "/api/kwaliteit/keuringen",
     "predictive":  "/api/predictive/summary",
     "clusters":    "/api/clusters",
     "opleveren":   "/api/opleveringen/",

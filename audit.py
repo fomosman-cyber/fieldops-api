@@ -104,6 +104,24 @@ class ACTION:
     INSPECTION_DEFECT_TO_MELDING = "inspection.defect.to_melding"
     INSPECTION_ANSWER_UPDATE = "inspection.answer.update"
 
+    # Kwaliteit & keuringen
+    KWALITEIT_KEURING_CREATE   = "kwaliteit.keuring.create"
+    KWALITEIT_KEURING_UPDATE   = "kwaliteit.keuring.update"
+    KWALITEIT_KEURING_DELETE   = "kwaliteit.keuring.delete"
+    KWALITEIT_VELD_CREATE      = "kwaliteit.veld.create"
+    KWALITEIT_VELD_UPDATE      = "kwaliteit.veld.update"
+    KWALITEIT_VELD_DELETE      = "kwaliteit.veld.delete"
+    KWALITEIT_EIS_CREATE       = "kwaliteit.eis.create"
+    KWALITEIT_EIS_UPDATE       = "kwaliteit.eis.update"
+    KWALITEIT_EIS_DELETE       = "kwaliteit.eis.delete"
+    KWALITEIT_REG_CREATE       = "kwaliteit.registratie.create"
+    KWALITEIT_REG_ANSWER       = "kwaliteit.registratie.antwoord"
+    KWALITEIT_REG_SUBMIT       = "kwaliteit.registratie.indienen"
+    KWALITEIT_REG_REVIEW       = "kwaliteit.registratie.beoordeeld"
+    KWALITEIT_REG_DELETE       = "kwaliteit.registratie.delete"
+    KWALITEIT_BEWIJS_ADD       = "kwaliteit.bewijs.toegevoegd"
+    KWALITEIT_BEWIJS_DELETE    = "kwaliteit.bewijs.delete"
+
     # Compliance / GDPR
     AUDIT_EXPORT        = "audit.export.csv"       # admin downloadt audit-log
     DATA_EXPORT_SELF    = "user.data.export.self"  # GDPR Art.15 — DSAR door betrokkene

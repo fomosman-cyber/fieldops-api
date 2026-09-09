@@ -175,6 +175,7 @@ PORTAL_MODULES: dict[str, str] = {
     "veiligheid":  "Veiligheid (toolbox)",
     "bouw":        "Bouw (BOEI-gebouwinspectie)",
     "schouw":      "Schouw (beeldkwaliteit openbare ruimte)",
+    "kwaliteit":   "Kwaliteit & keuringen",
 }
 
 
@@ -2081,3 +2082,334 @@ class Invoice(Base):
     __table_args__ = (
         UniqueConstraint("jaar", "volgnummer", name="uq_invoice_jaar_volgnummer"),
     )
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Kwaliteit & keuringen
+# ═════════════════════════════════════════════════════════════════════════════
+# Zes tabellen, en het onderscheid tussen de eerste en de vierde is de hele
+# module: een QualityInspection is het sjabloon (wat moet er gecontroleerd
+# worden), een QualityRegistration is een keer uitvoeren daarvan op een werkvak.
+# Daarom hangen velden en eisen aan de keuring, en antwoorden en bewijs aan de
+# registratie.
+#
+# Waarom niet hergebruikt: Inspection (kunstwerken) is vastgeklonken aan een
+# asset en een vaste NEN-elementenlijst, BouwInspectie aan een pand met vier
+# BOEI-pijlers. Beide hebben hun vragen hardcoded in Python. Hier stelt de
+# beheerder de velden zelf samen, en dat is precies wat die twee niet kunnen.
+
+
+class QualityInspection(Base):
+    """Een keuring: het sjabloon dat buiten wordt ingevuld.
+
+    Draagt geen antwoorden -- die staan in QualityRegistration. Wel de
+    velddefinities, de eisen, en hoe vaak de keuring verwacht wordt. Dat laatste
+    (`frequentie` + `verwacht_aantal`) is wat de voortgang voedt: uitgevoerde
+    registraties tegenover verwachte registraties.
+    """
+    __tablename__ = "quality_inspections"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    naam = Column(String(255), nullable=False)
+    keuringsnummer = Column(String(60), nullable=True, index=True)
+    omschrijving = Column(Text, nullable=True)
+
+    werksoort = Column(String(20), nullable=False, default="algemeen", index=True)
+    # wegen | constructie | graafwerk | riool | algemeen
+
+    # Waar hoort de keuring bij. Alles optioneel: een keuring die pas bruikbaar
+    # is nadat het areaal is bijgewerkt, wordt niet gemaakt.
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)
+    werkvak = Column(String(160), nullable=True)      # vrij veld, bv. Werkvak 03 of N201 km 4,2
+    locatie = Column(String(255), nullable=True)
+    activiteit = Column(String(160), nullable=True)
+
+    verantwoordelijke_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    uitvoerder_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    controleur_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+
+    frequentie = Column(String(20), nullable=False, default="eenmalig")
+    frequentie_vrij = Column(String(160), nullable=True)   # bij frequentie 'vrij'
+    verwacht_aantal = Column(Integer, nullable=True)       # noemer van de voortgang
+
+    prioriteit = Column(String(20), nullable=False, default="normaal")  # laag|normaal|hoog|kritiek
+    status = Column(String(20), nullable=False, default="actief", index=True)
+    # actief | concept | gereed | gearchiveerd
+
+    # Waar dit sjabloon vandaan komt, als het uit de bibliotheek is gekopieerd.
+    # Alleen herkomst -- de kopie is daarna van de organisatie en mag afwijken.
+    template_code = Column(String(40), nullable=True, index=True)
+    template_versie = Column(String(40), nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    organization = relationship("Organization")
+    project = relationship("Project", foreign_keys=[project_id])
+    asset = relationship("Asset", foreign_keys=[asset_id])
+    verantwoordelijke = relationship("User", foreign_keys=[verantwoordelijke_id])
+    uitvoerder = relationship("User", foreign_keys=[uitvoerder_id])
+    controleur = relationship("User", foreign_keys=[controleur_id])
+    creator = relationship("User", foreign_keys=[created_by])
+
+    velden = relationship("QualityField", back_populates="keuring",
+                          cascade="all, delete-orphan",
+                          order_by="QualityField.order_index")
+    eisen = relationship("QualityRequirement", back_populates="keuring",
+                         cascade="all, delete-orphan",
+                         order_by="QualityRequirement.order_index")
+    registraties = relationship("QualityRegistration", back_populates="keuring",
+                                cascade="all, delete-orphan",
+                                order_by="QualityRegistration.created_at")
+
+
+class QualityRequirement(Base):
+    """Een eis: waaraan het werk moet voldoen, en waar dat vandaan komt.
+
+    `bewijs_vereist` is geen sierveld. Staat het aan, dan kan een registratie
+    niet worden ingediend zonder bewijsstuk bij deze eis. Dat is het verschil
+    tussen een afvinklijst en een dossier waar je over een jaar op terug kunt
+    vallen.
+    """
+    __tablename__ = "quality_requirements"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    keuring_id = Column(String, ForeignKey("quality_inspections.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    eisnummer = Column(String(20), nullable=False)     # 01, 02
+    titel = Column(String(255), nullable=False)
+    omschrijving = Column(Text, nullable=True)
+
+    norm = Column(String(255), nullable=True)          # bv. NEN-EN 1610
+    bron = Column(String(255), nullable=True)          # bv. bestek, Standaard RAW Bepalingen
+    referentie = Column(String(255), nullable=True)    # paragraaf, tekeningnummer
+    verplichting = Column(String(20), nullable=False, default="eis")  # eis | inspanning | advies
+    tolerantie = Column(String(120), nullable=True)    # vrije tekst, bv. -5 / +10 mm
+    meetmethode = Column(String(255), nullable=True)
+    bewijs_vereist = Column(Boolean, nullable=False, default=False)
+
+    order_index = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    keuring = relationship("QualityInspection", back_populates="eisen")
+
+
+class QualityField(Base):
+    """Een veld in de keuring -- wat de beheerder in de builder heeft gezet.
+
+    De norm staat hier en niet bij de eis, omdat het oordeel per meting valt:
+    de eis zegt "verdichting voldoet", het veld zegt "minimaal 98 met 1 speling".
+    Blijven norm_min en norm_max leeg, dan volgt er geen oordeel -- zie
+    ``kwaliteit.beoordeel_meetwaarde``.
+    """
+    __tablename__ = "quality_fields"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    keuring_id = Column(String, ForeignKey("quality_inspections.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    code = Column(String(60), nullable=False)          # stabiel binnen de keuring
+    label = Column(String(255), nullable=False)
+    veldtype = Column(String(20), nullable=False)      # zie kwaliteit.VELDTYPES
+    toelichting = Column(Text, nullable=True)          # hulptekst voor buiten
+
+    verplicht = Column(Boolean, nullable=False, default=False)
+    eenheid = Column(String(20), nullable=True)        # C, mm, %, m NAP
+    norm_min = Column(Float, nullable=True)
+    norm_max = Column(Float, nullable=True)
+    tolerantie = Column(Float, nullable=True)          # verruimt beide grenzen
+    opties = Column(Text, nullable=True)               # JSON-array bij keuze/checklist
+
+    # Optionele koppeling naar de eis waar dit veld het bewijs voor levert.
+    eis_id = Column(String, ForeignKey("quality_requirements.id", ondelete="SET NULL"),
+                    nullable=True, index=True)
+
+    order_index = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    keuring = relationship("QualityInspection", back_populates="velden")
+    eis = relationship("QualityRequirement", foreign_keys=[eis_id])
+
+    def opties_lijst(self) -> list:
+        if not self.opties:
+            return []
+        try:
+            waarde = json.loads(self.opties)
+        except (ValueError, TypeError):
+            return []
+        return waarde if isinstance(waarde, list) else []
+
+
+class QualityRegistration(Base):
+    """Een keer uitvoeren van een keuring, buiten, op een plek, op een dag.
+
+    Krijgt bij het starten meteen een lege antwoordrij per veld, net als de
+    LMRA en de BOEI-opname dat doen: dan staat de complete lijst op je scherm en
+    zie je wat je nog niet gehad hebt.
+    """
+    __tablename__ = "quality_registrations"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    keuring_id = Column(String, ForeignKey("quality_inspections.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    volgnummer = Column(Integer, nullable=True)        # 1e, 2e, .. registratie van deze keuring
+    datum = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    werkvak = Column(String(160), nullable=True)       # kan per registratie verschillen
+    locatie = Column(String(255), nullable=True)
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+
+    uitvoerder_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    uitvoerder_naam = Column(String(120), nullable=True)   # gedenormaliseerd voor rapport
+
+    status = Column(String(24), nullable=False, default="concept", index=True)
+    # concept | in_uitvoering | ingediend | in_beoordeling |
+    # goedgekeurd | afgekeurd | herziening_vereist
+    resultaat = Column(String(20), nullable=True, index=True)
+    # akkoord | niet_akkoord | deels_akkoord | niet_beoordeeld
+    afwijkend = Column(Boolean, nullable=False, default=False, index=True)
+    # server-side gezet zodat "toon mij de afwijkingen" een geindexeerde query
+    # is en niet een scan over alle antwoorden
+
+    opmerking = Column(Text, nullable=True)
+    handtekening_data_url = Column(Text, nullable=True)     # base64 PNG van het canvas
+    handtekening_naam = Column(String(120), nullable=True)
+
+    ingediend_op = Column(DateTime, nullable=True)
+    beoordeeld_op = Column(DateTime, nullable=True)
+    beoordeeld_door = Column(String, ForeignKey("users.id"), nullable=True)
+    beoordeling_reden = Column(Text, nullable=True)         # verplicht bij afkeuren
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    keuring = relationship("QualityInspection", back_populates="registraties")
+    uitvoerder = relationship("User", foreign_keys=[uitvoerder_id])
+    beoordelaar = relationship("User", foreign_keys=[beoordeeld_door])
+    creator = relationship("User", foreign_keys=[created_by])
+
+    antwoorden = relationship("QualityAnswer", back_populates="registratie",
+                              cascade="all, delete-orphan",
+                              order_by="QualityAnswer.order_index")
+    bewijs = relationship("QualityEvidence", back_populates="registratie",
+                          cascade="all, delete-orphan",
+                          order_by="QualityEvidence.created_at")
+
+
+class QualityAnswer(Base):
+    """Het antwoord op een veld binnen een registratie.
+
+    Getypte kolommen in plaats van een JSON-blob: filteren en rapporteren moet
+    werken op SQLite (tests) en PostgreSQL (productie), en die twee delen geen
+    JSON-operatoren. `answer_json` is er alleen voor meerkeuze en checklists,
+    waar de vorm nu eenmaal een lijst is.
+
+    `label_snapshot` en `veldtype_snapshot` staan er om dezelfde reden als bij
+    InspectionAnswer: bij een audit moet je kunnen zien welke vraag er stond
+    toen er werd geantwoord, ook als de beheerder het veld later hernoemt.
+    """
+    __tablename__ = "quality_answers"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    registratie_id = Column(String, ForeignKey("quality_registrations.id", ondelete="CASCADE"),
+                            nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    veld_id = Column(String, ForeignKey("quality_fields.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+
+    veld_code = Column(String(60), nullable=False)
+    label_snapshot = Column(String(255), nullable=True)
+    veldtype_snapshot = Column(String(20), nullable=False)
+    eenheid_snapshot = Column(String(20), nullable=True)
+
+    answer_number = Column(Float, nullable=True)
+    answer_bool = Column(Boolean, nullable=True)
+    answer_text = Column(Text, nullable=True)
+    answer_date = Column(DateTime, nullable=True)
+    answer_json = Column(Text, nullable=True)          # meerkeuze / checklist
+
+    # Norm zoals die gold op het moment van antwoorden, plus het oordeel dat
+    # daaruit volgde. Gesnapshot zodat een later gewijzigde norm het dossier
+    # niet met terugwerkende kracht herschrijft.
+    norm_min_snapshot = Column(Float, nullable=True)
+    norm_max_snapshot = Column(Float, nullable=True)
+    tolerantie_snapshot = Column(Float, nullable=True)
+    oordeel = Column(String(20), nullable=True, index=True)
+    # akkoord | niet_akkoord | niet_beoordeeld
+
+    toelichting = Column(Text, nullable=True)
+    photo_url = Column(Text, nullable=True)            # S3-URL of base64 (photo_storage)
+
+    beantwoord_op = Column(DateTime, nullable=True)
+    beantwoord_door = Column(String, ForeignKey("users.id"), nullable=True)
+
+    order_index = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    registratie = relationship("QualityRegistration", back_populates="antwoorden")
+    veld = relationship("QualityField", foreign_keys=[veld_id])
+
+
+class QualityEvidence(Base):
+    """Een bewijsstuk bij een registratie: foto, meetrapport, bon, certificaat.
+
+    Draagt zelf de koppelingen die het bewijs bruikbaar maken -- registratie,
+    eis, veld, wie en wanneer. Zonder die koppeling is een foto in een map niet
+    hetzelfde als bewijs: over een jaar weet niemand meer waar hij bij hoorde.
+
+    De inhoud gaat via ``photo_storage`` naar S3 als dat is geconfigureerd; dan
+    staat hier alleen de URL. Zonder S3 blijft het een base64 data-URL, net als
+    bij meldingen. Lijst-endpoints sturen `url` daarom nooit mee.
+    """
+    __tablename__ = "quality_evidence"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    registratie_id = Column(String, ForeignKey("quality_registrations.id", ondelete="CASCADE"),
+                            nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    eis_id = Column(String, ForeignKey("quality_requirements.id", ondelete="SET NULL"),
+                    nullable=True, index=True)
+    veld_id = Column(String, ForeignKey("quality_fields.id", ondelete="SET NULL"),
+                     nullable=True, index=True)
+
+    soort = Column(String(24), nullable=False, default="foto", index=True)
+    # foto | video | pdf | certificaat | meetrapport | tekening | bon |
+    # leveringsdocument | testresultaat | handtekening | locatie | overig
+    titel = Column(String(255), nullable=True)
+    omschrijving = Column(Text, nullable=True)
+
+    url = Column(Text, nullable=False)                 # S3-URL of base64 data-URL
+    mime = Column(String(80), nullable=True)
+    bytes_grootte = Column(Integer, nullable=True)
+    bestandsnaam = Column(String(255), nullable=True)
+
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    vastgelegd_op = Column(DateTime, nullable=True)    # wanneer de foto is gemaakt
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    registratie = relationship("QualityRegistration", back_populates="bewijs")
+    eis = relationship("QualityRequirement", foreign_keys=[eis_id])
+    veld = relationship("QualityField", foreign_keys=[veld_id])
+    creator = relationship("User", foreign_keys=[created_by])
