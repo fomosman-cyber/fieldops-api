@@ -670,6 +670,68 @@ def _get_csv(row: dict, mapping: dict, key: str) -> Optional[str]:
     return v.strip() if isinstance(v, str) and v.strip() else None
 
 
+@router.get("/map")
+def list_meldingen_for_map(
+    project_id: Optional[str] = Query(None, description="Filter op project"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Lichtgewicht endpoint voor de kaart. Spiegel van /api/assets/map.
+
+    De kaart heeft per melding maar acht velden nodig om een stip te zetten en
+    een popup te vullen. De gewone lijst stuurt er ruim dertig, inclusief de
+    CROW-classificatie, de omschrijving en de norm-JSON. Bij drieduizend
+    meldingen is dat 2,2 MB voor een scherm dat er 450 KB van gebruikt -- en dat
+    gaat over hetzelfde netwerk als waar de inspecteur buiten op staat te
+    wachten.
+
+    De omschrijving zit er wel in, afgekapt: de popup toont hem, en een tweede
+    ronde naar de server voor een regel tekst is zonde. Foto's nooit -- alleen
+    de vlag; de popup haalt de foto zelf op als je hem opent.
+    """
+    filters = [Melding.organization_id == current_user.organization_id]
+    if project_id:
+        filters.append(Melding.project_id == project_id)
+
+    rijen = (db.query(Melding.id, Melding.title, Melding.description,
+                      Melding.category, Melding.priority, Melding.status,
+                      Melding.lat, Melding.lng, Melding.project_id,
+                      Melding.norm_data_json,
+                      func.length(Melding.photo_url))
+               .filter(*filters)
+               .filter(Melding.lat.isnot(None), Melding.lng.isnot(None))
+               .order_by(Melding.created_at.desc())
+               .all())
+
+    uit = []
+    for (mid, titel, omschrijving, categorie, prioriteit, status,
+         lat, lng, proj, norm_json, foto_len) in rijen:
+        norm = None
+        if norm_json:
+            try:
+                geparsed = json.loads(norm_json)
+                # Alleen de asfaltsoort: dat is het enige norm-veld dat de
+                # kaart-popup als label toont.
+                if isinstance(geparsed, dict) and geparsed.get("asfaltsoort"):
+                    norm = {"asfaltsoort": geparsed["asfaltsoort"]}
+            except (ValueError, TypeError):
+                norm = None
+        uit.append({
+            "id": mid,
+            "title": titel,
+            "description": (omschrijving or "")[:240] or None,
+            "category": categorie,
+            "priority": prioriteit,
+            "status": status,
+            "lat": lat,
+            "lng": lng,
+            "project_id": proj,
+            "has_photo": bool(foto_len),
+            "norm_data": norm,
+        })
+    return uit
+
+
 @router.get("/export.csv")
 def export_meldingen_csv(
     status_filter: Optional[str] = Query(None, alias="status", description="Filter op status (open/in_behandeling/opgelost/afgerond)"),

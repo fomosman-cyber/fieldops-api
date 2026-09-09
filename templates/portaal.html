@@ -106,6 +106,11 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.css" />
+  <!-- Clustering: bij een heel areaal staan er duizenden meldingen op de kaart.
+       Zonder groeperen is dat een onleesbare vlek en zet de browser evenveel
+       DOM-knopen neer als er meldingen zijn. -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -6043,6 +6048,7 @@
   <!-- Heatmap-plugin voor density-visualisatie van meldingen + dagboek-entries -->
   <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
   <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <!-- ═══════ jsPDF voor rapportage ═══════ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -24271,6 +24277,11 @@
     var mapInitialized = false;
     var projectLayers = {};
     var meldingMarkers = [];
+    // Alle meldingstippen zitten in een clustergroep. Bij een heel areaal zijn
+    // dat er duizenden; los op de kaart is dat een onleesbare vlek en zet de
+    // browser evenveel DOM-knopen neer als er meldingen zijn. De groep vouwt ze
+    // samen tot genummerde cirkels die uit elkaar vallen als je inzoomt.
+    var meldingCluster = null;
     var drawnItems = null;
     var userLocationMarker = null;
     var userLocationCircle = null;
@@ -24537,7 +24548,7 @@
       projectLayers = {};
       Object.keys(assetWegvakLayers).forEach(function(k) { map.removeLayer(assetWegvakLayers[k]); });
       assetWegvakLayers = {};
-      meldingMarkers.forEach(function(m) { map.removeLayer(m); });
+      if (meldingCluster) { map.removeLayer(meldingCluster); meldingCluster = null; }
       meldingMarkers = [];
       // Heatmap ook verwijderen — wordt herbouwd als heatmapEnabled === true
       if (meldingHeatLayer) {
@@ -24553,8 +24564,18 @@
         renderWegvakkenOnMap(assets || []);
       }).catch(function(){});
 
-      // Load projects first, then meldingen (so project names are available for popups)
-      api('GET', '/api/projects/').then(function(projects) {
+      // Projecten en meldingen naast elkaar, niet achter elkaar. Ze hebben
+      // elkaar niet nodig om op te halen -- alleen om te tekenen, en dat
+      // gebeurt pas als allebei binnen zijn. Achter elkaar kostte dat twee
+      // volle round-trips voordat de eerste stip verscheen.
+      var meldingUrl = '/api/meldingen/map' +
+        (_kaartFilterProjectId ? ('?project_id=' + encodeURIComponent(_kaartFilterProjectId)) : '');
+      Promise.all([
+        api('GET', '/api/projects/'),
+        api('GET', meldingUrl)
+      ]).then(function(beide) {
+        var projects = beide[0] || [];
+        var kaartMeldingen = beide[1] || [];
         allProjects = projects || [];
         updateProjectFilter();
         projects.forEach(function(p) {
@@ -24570,73 +24591,119 @@
           }
         });
 
-        // Load meldingen after projects so project names are available
-        return api('GET', '/api/meldingen/');
-      }).then(function(meldingen) {
-        if (!meldingen) return;
-        allMeldingen = meldingen || [];
-        meldingen.forEach(function(m) {
-          if (m.lat && m.lng) {
-            var color = meldingKleur(m);
-            var projName = '';
-            if (m.project_id) {
-              var proj = allProjects.find(function(p) { return p.id === m.project_id; });
-              if (proj) projName = proj.name;
-            }
-            // Een effen gekleurd rondje, verder niets. Bij 156 punten op elkaar
-            // is een pictogram in de stip onleesbaar en verdwijnt juist de kleur
-            // die wel iets zegt -- die staat ook zo in de legenda. Wat de melding
-            // is, staat in de popup; de foto laadt daar pas als je hem opent.
-            var _hasPhoto = !!m.has_photo;
-            var icon = L.divIcon({
-              className: '',
-              html: '<div style="width:16px;height:16px;border-radius:50%;background:'+color+';border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.45);"></div>',
-              iconSize: [16, 16],
-              iconAnchor: [8, 8]
-            });
-            var _photoSlot = _hasPhoto
-              ? '<div class="mpopup-photo" data-mid="'+m.id+'" style="margin-bottom:6px;"><span style="color:#888;font-size:11px;">📷 foto laden…</span></div>'
-              : '';
-            var marker = L.marker([m.lat, m.lng], { icon: icon })
-              .bindPopup(
-                '<div style="min-width:200px;font-family:DM Sans,sans-serif;">' +
-                _photoSlot +
-                '<strong style="font-size:14px;">'+m.title+'</strong>' +
-                (projName ? '<br><span style="color:#00d4ff;font-size:11px;">📂 '+projName+'</span>' : '') +
-                '<br><span style="color:#888;font-size:12px;">'+(m.category||t('geen_categorie'))+'</span><br>' +
-                (asfaltsoortBadge(m) ? '<div style="margin-top:4px;">'+asfaltsoortBadge(m)+'</div>' : '') +
-                '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:'+color+'22;color:'+color+';font-weight:600;">'+m.priority+'</span> ' +
-                '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:#00d4ff22;color:#00d4ff;">'+m.status+'</span>' +
-                (m.description ? '<p style="margin-top:6px;font-size:12px;color:#666;">'+m.description+'</p>' : '') +
-                '</div>'
-              )
-              .addTo(map);
-            // Foto lazy laden zodra de popup opent (één GET per geopende melding).
-            if (_hasPhoto) {
-              marker.on('popupopen', function(e) {
-                var el = e.popup.getElement();
-                var slot = el && el.querySelector('.mpopup-photo[data-mid="'+m.id+'"]');
-                if (!slot || slot._loaded) return;
-                slot._loaded = true;
-                api('GET', '/api/meldingen/' + m.id).then(function(full) {
-                  if (full && full.photo_url) {
-                    slot.innerHTML = '<img src="'+full.photo_url+'" alt="" style="width:100%;max-height:150px;object-fit:cover;border-radius:8px;display:block;" onerror="this.parentNode.style.display=\'none\';">';
-                    if (e.popup.update) e.popup.update();
-                  } else {
-                    slot.style.display = 'none';
-                  }
-                }).catch(function(){ slot.style.display = 'none'; });
-              });
-            }
-            marker._meldingData = m;
-            meldingMarkers.push(marker);
-          }
-        });
-
+        tekenMeldingenOpKaart(kaartMeldingen);
         _fitAllVisibleLayers();
       }).catch(function(err) {
         console.error('Error loading map data:', err);
       });
+    }
+
+    // Het icoon van een samengevouwen groep. Het getal is hoeveel meldingen
+    // eronder zitten; de rand krijgt de kleur van de zwaarste melding in de
+    // groep. Zo zie je van ver waar het brandt zonder in te zoomen -- een
+    // cluster dat alles grijs maakt verstopt juist de kritieke punten.
+    var _CLUSTER_RANG = ['#ff5252', '#ffab40', '#22c55e', '#00d4ff', '#94a3b8', '#888'];
+
+    function maakClusterIcoon(cluster) {
+      var n = cluster.getChildCount();
+      var kleur = '#94a3b8';
+      var beste = _CLUSTER_RANG.length;
+      cluster.getAllChildMarkers().forEach(function (mk) {
+        var i = _CLUSTER_RANG.indexOf(mk._meldingKleur);
+        if (i !== -1 && i < beste) { beste = i; kleur = mk._meldingKleur; }
+      });
+      // Groter bij meer punten, maar met een plafond: anders bedekt een cluster
+      // van duizend het halve scherm.
+      var maat = n < 10 ? 34 : (n < 100 ? 40 : (n < 1000 ? 46 : 52));
+      var label = n < 1000 ? String(n) : (Math.round(n / 100) / 10) + 'k';
+      return L.divIcon({
+        className: 'fo-cluster',
+        html: '<div style="width:' + maat + 'px;height:' + maat + 'px;border-radius:50%;'
+            + 'background:rgba(15,20,32,.88);border:3px solid ' + kleur + ';color:#fff;'
+            + 'display:flex;align-items:center;justify-content:center;font-weight:700;'
+            + 'font-size:' + (n < 1000 ? 13 : 12) + 'px;font-family:inherit;'
+            + 'box-shadow:0 2px 10px rgba(0,0,0,.45);">' + label + '</div>',
+        iconSize: [maat, maat],
+        iconAnchor: [maat / 2, maat / 2]
+      });
+    }
+
+    // Zet de meldingstippen op de kaart. Twee aanroepers: het eerste laden
+    // en het projectfilter. Stond eerst inline in loadMapData, waardoor het
+    // filter de markers alleen kon verbergen in plaats van opnieuw ophalen.
+    function tekenMeldingenOpKaart(kaartMeldingen) {
+    // Bewust NIET allMeldingen zetten: dat is de volledige lijst van het
+    // dashboard. De kaart werkt met een lichte, eventueel gefilterde set,
+    // en die zou de dashboardcijfers stil laten liegen.
+    meldingCluster = L.markerClusterGroup({
+      chunkedLoading: true,          // in stukjes toevoegen, blokkeert het scherm niet
+      maxClusterRadius: 45,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      disableClusteringAtZoom: 17,   // van dichtbij wil je de losse stippen
+      iconCreateFunction: maakClusterIcoon
+    });
+    kaartMeldingen.forEach(function(m) {
+      if (m.lat && m.lng) {
+        var color = meldingKleur(m);
+        var projName = '';
+        if (m.project_id) {
+          var proj = allProjects.find(function(p) { return p.id === m.project_id; });
+          if (proj) projName = proj.name;
+        }
+        // Een effen gekleurd rondje, verder niets. Bij 156 punten op elkaar
+        // is een pictogram in de stip onleesbaar en verdwijnt juist de kleur
+        // die wel iets zegt -- die staat ook zo in de legenda. Wat de melding
+        // is, staat in de popup; de foto laadt daar pas als je hem opent.
+        var _hasPhoto = !!m.has_photo;
+        var icon = L.divIcon({
+          className: '',
+          html: '<div style="width:16px;height:16px;border-radius:50%;background:'+color+';border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.45);"></div>',
+          iconSize: [16, 16],
+          iconAnchor: [8, 8]
+        });
+        var _photoSlot = _hasPhoto
+          ? '<div class="mpopup-photo" data-mid="'+m.id+'" style="margin-bottom:6px;"><span style="color:#888;font-size:11px;">📷 foto laden…</span></div>'
+          : '';
+        var marker = L.marker([m.lat, m.lng], { icon: icon })
+          .bindPopup(
+            '<div style="min-width:200px;font-family:DM Sans,sans-serif;">' +
+            _photoSlot +
+            '<strong style="font-size:14px;">'+m.title+'</strong>' +
+            (projName ? '<br><span style="color:#00d4ff;font-size:11px;">📂 '+projName+'</span>' : '') +
+            '<br><span style="color:#888;font-size:12px;">'+(m.category||t('geen_categorie'))+'</span><br>' +
+            (asfaltsoortBadge(m) ? '<div style="margin-top:4px;">'+asfaltsoortBadge(m)+'</div>' : '') +
+            '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:'+color+'22;color:'+color+';font-weight:600;">'+m.priority+'</span> ' +
+            '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:#00d4ff22;color:#00d4ff;">'+m.status+'</span>' +
+            (m.description ? '<p style="margin-top:6px;font-size:12px;color:#666;">'+m.description+'</p>' : '') +
+            '</div>'
+          );
+        meldingCluster.addLayer(marker);
+        // Foto lazy laden zodra de popup opent (één GET per geopende melding).
+        if (_hasPhoto) {
+          marker.on('popupopen', function(e) {
+            var el = e.popup.getElement();
+            var slot = el && el.querySelector('.mpopup-photo[data-mid="'+m.id+'"]');
+            if (!slot || slot._loaded) return;
+            slot._loaded = true;
+            api('GET', '/api/meldingen/' + m.id).then(function(full) {
+              if (full && full.photo_url) {
+                slot.innerHTML = '<img src="'+full.photo_url+'" alt="" style="width:100%;max-height:150px;object-fit:cover;border-radius:8px;display:block;" onerror="this.parentNode.style.display=\'none\';">';
+                if (e.popup.update) e.popup.update();
+              } else {
+                slot.style.display = 'none';
+              }
+            }).catch(function(){ slot.style.display = 'none'; });
+          });
+        }
+        marker._meldingData = m;
+        marker._meldingKleur = color;
+        meldingMarkers.push(marker);
+      }
+    });
+
+    map.addLayer(meldingCluster);
+        _fitAllVisibleLayers();
     }
 
     function _fitAllVisibleLayers() {
@@ -24644,7 +24711,7 @@
       var layers = []
         .concat(Object.values(projectLayers))
         .concat(Object.values(assetWegvakLayers).filter(function(l) { return map.hasLayer(l); }))
-        .concat(meldingMarkers);
+        .concat(meldingCluster && map.hasLayer(meldingCluster) ? [meldingCluster] : []);
       if (!layers.length) return;
       try {
         var group = L.featureGroup(layers);
@@ -25047,14 +25114,16 @@
       var projectId = document.getElementById('kaartProjectFilter').value;
       _kaartFilterProjectId = projectId || '';
 
-      // Meldingen-markers tonen/verbergen
-      meldingMarkers.forEach(function(m) {
-        if (!projectId || (m._meldingData && m._meldingData.project_id === projectId)) {
-          m.addTo(map);
-        } else {
-          map.removeLayer(m);
-        }
-      });
+      // Meldingen serverkant filteren, net als de wegvakken hieronder. Alles
+      // ophalen en daarna verbergen betekende dat een filter op een klein
+      // project nog steeds de hele organisatie over de lijn trok.
+      if (meldingCluster) { map.removeLayer(meldingCluster); meldingCluster = null; }
+      meldingMarkers = [];
+      var mUrl = '/api/meldingen/map' +
+        (projectId ? ('?project_id=' + encodeURIComponent(projectId)) : '');
+      api('GET', mUrl).then(function(meldingen) {
+        tekenMeldingenOpKaart(meldingen || []);
+      }).catch(function(){});
 
       // Wegvakken: serverside filteren via /api/assets/map?project_id=...
       Object.keys(assetWegvakLayers).forEach(function(k) {
