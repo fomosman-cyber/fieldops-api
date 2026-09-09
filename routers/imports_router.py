@@ -4,6 +4,10 @@ Endpoints (multipart upload):
   POST /api/imports/geojson    — GeoJSON FeatureCollection
   POST /api/imports/shapefile  — shapefile als .zip (.shp + .dbf + .shx) of los .shp
 
+Daarnaast:
+  POST /api/imports/sok-amsterdam — het meegeleverde schouwbestand van
+  Amsterdam-Noord inladen in de eigen organisatie (alleen org-admin).
+
 Beide voeden dezelfde pipeline (_process_features). Per feature:
   - LineString / MultiLineString  -> wegvak-asset (is_segment=True) met lengte,
     bewaarde geometrie en bounding-box
@@ -26,6 +30,7 @@ import zipfile
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from audit import ACTION, log_action
@@ -33,7 +38,7 @@ from auth import get_current_user
 from database import get_db
 from imbor_taxonomy import get_type_info
 from models import Asset, User
-from permissions import can_manage_assets
+from permissions import can_manage_assets, is_org_admin
 # RD->WGS84 conversie hergebruiken van de CSV-importer (zelfde benadering).
 from routers.assets_router import _rd_to_wgs84
 from wegvak_geometry import linestring_length_m
@@ -457,3 +462,73 @@ async def import_shapefile(
         project_id=project_id, default_type=default_type,
         code_prefix=code_prefix, dry_run=dry_run, filename=file.filename, fmt="shapefile",
     )
+
+
+# ── SOK Amsterdam ─────────────────────────────────────────────────────────
+# Het schouwbestand van Amsterdam-Noord zit als dataset in de repository. Dit
+# endpoint laadt het in de organisatie van de ingelogde beheerder, zodat het
+# ook zonder shell-toegang kan — en zonder dat iemand een organisatie hoeft te
+# kiezen: het wordt altijd de eigen omgeving.
+
+
+class SokImportRequest(BaseModel):
+    met_fotos: bool = True
+    dry_run: bool = False
+    overschrijf: bool = False
+
+
+@router.post("/sok-amsterdam")
+def import_sok_amsterdam_dataset(
+    payload: SokImportRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Project, wegen en meldingen van 'SOK Amsterdam - Asfalt 2026' inladen.
+
+    Idempotent: matcht op projectnaam, asset-code en de bronreferentie per
+    melding. Een tweede aanroep maakt geen duplicaten en laat werk dat in het
+    portaal is gedaan (gekozen werksoort, verplaatste pin, eigen titel) staan.
+    """
+    if not is_org_admin(current_user):
+        raise HTTPException(status_code=403,
+                            detail="Alleen een beheerder van de organisatie kan dit inladen")
+
+    import import_sok_amsterdam as sok
+
+    try:
+        data = sok.laad_data()
+    except SystemExit as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    org = current_user.organization
+    project = sok.upsert_project(db, data, org, current_user)
+    assets = sok.upsert_wegen(db, data, org, current_user, project)
+    nieuw, bijgewerkt, met_foto = sok.upsert_meldingen(
+        db, data, org, current_user, project, assets,
+        overschrijf=payload.overschrijf, met_fotos=payload.met_fotos,
+        dry_run=payload.dry_run)
+
+    if payload.dry_run:
+        db.rollback()
+    else:
+        db.commit()
+        log_action(db, request, current_user,
+                   action=ACTION.ASSET_BULK_IMPORT, entity_type="project",
+                   entity_id=project.id,
+                   extra={"dataset": "sok-amsterdam", "wegen": len(assets),
+                          "meldingen_nieuw": nieuw, "meldingen_bijgewerkt": bijgewerkt,
+                          "met_foto": met_foto})
+
+    aandacht = [m["titel"] for m in data["meldingen"]
+                if m["lat"] is None or m.get("gps_waarschuwing")]
+    return {
+        "dry_run": payload.dry_run,
+        "project": project.name,
+        "project_id": None if payload.dry_run else project.id,
+        "wegen": len(assets),
+        "meldingen_nieuw": nieuw,
+        "meldingen_bijgewerkt": bijgewerkt,
+        "met_foto": met_foto,
+        "aandachtspunten": aandacht,
+    }

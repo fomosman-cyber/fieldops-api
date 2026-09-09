@@ -252,3 +252,80 @@ def test_overschrijf_zet_de_brongegevens_terug(org_en_user):
         assert m.title != "Eigen titel"
     finally:
         db.close()
+
+
+# ── Inladen vanuit het portaal ────────────────────────────────────────────
+# Niet iedereen heeft shell-toegang tot de server; de knop op de projectpagina
+# laadt dezelfde dataset in de organisatie van de ingelogde beheerder.
+
+def _token(user_id):
+    from auth import create_access_token
+    return {"Authorization": f"Bearer {create_access_token({'sub': user_id})}"}
+
+
+def test_endpoint_laadt_in_eigen_organisatie(client, org_en_user):
+    org_id, user_id = org_en_user
+    db = SessionLocal()
+    try:
+        db.get(User, user_id).is_org_admin = True
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.post("/api/imports/sok-amsterdam", json={"met_fotos": True},
+                    headers=_token(user_id))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["project"] == "SOK Amsterdam - Asfalt 2026"
+    assert (body["meldingen_nieuw"], body["wegen"], body["met_foto"]) == (156, 48, 156)
+
+    db = SessionLocal()
+    try:
+        project = db.query(Project).filter(Project.id == body["project_id"]).first()
+        assert project.organization_id == org_id
+        assert db.query(Melding).filter(Melding.project_id == project.id).count() == 156
+    finally:
+        db.close()
+
+    # Tweede keer: geen duplicaten.
+    r2 = client.post("/api/imports/sok-amsterdam", json={"met_fotos": True},
+                     headers=_token(user_id))
+    assert r2.json()["meldingen_nieuw"] == 0
+    assert r2.json()["meldingen_bijgewerkt"] == 156
+
+
+def test_endpoint_dry_run_schrijft_niets_weg(client, org_en_user):
+    org_id, user_id = org_en_user
+    db = SessionLocal()
+    try:
+        db.get(User, user_id).is_org_admin = True
+        db.commit()
+    finally:
+        db.close()
+
+    r = client.post("/api/imports/sok-amsterdam", json={"dry_run": True},
+                    headers=_token(user_id))
+    assert r.status_code == 200
+    assert r.json()["meldingen_nieuw"] == 156
+    assert r.json()["project_id"] is None
+
+    db = SessionLocal()
+    try:
+        assert db.query(Project).filter(Project.organization_id == org_id).count() == 0
+    finally:
+        db.close()
+
+
+def test_endpoint_alleen_voor_beheerder(client, org_en_user):
+    _, user_id = org_en_user           # is_org_admin blijft False
+    r = client.post("/api/imports/sok-amsterdam", json={}, headers=_token(user_id))
+    assert r.status_code == 403
+
+
+def test_knop_staat_op_de_projectpagina():
+    from pathlib import Path
+    html = (Path(__file__).resolve().parent.parent / "templates" / "portaal.html").read_text(encoding="utf-8")
+    assert 'id="sokImportBtn"' in html
+    assert "/api/imports/sok-amsterdam" in html
+    # Alleen zichtbaar voor een org-beheerder.
+    assert "sokBtn.style.display = (currentUser && currentUser.is_org_admin)" in html

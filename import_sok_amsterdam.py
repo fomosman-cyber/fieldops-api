@@ -65,6 +65,10 @@ FOTO_MAP = Path(__file__).parent / "data" / "sok_amsterdam_fotos"
 STATUS = "open"
 PRIORITEIT = "normaal"
 
+# Aantal meldingen per transactie. Klein genoeg om het geheugengebruik vlak te
+# houden, groot genoeg om niet 156 keer heen en weer te gaan.
+BLOKGROOTTE = 25
+
 
 # ── helpers ───────────────────────────────────────────────────────────────
 def foto_data_url(bestandsnaam: str | None) -> str | None:
@@ -201,7 +205,7 @@ REF_RE = re.compile(r"Bronreferentie:\s*(SOK-AMS-2026-\d+)")
 def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
                      project: Project, assets: dict[str, Asset],
                      overschrijf: bool = False, met_fotos: bool = True,
-                     dry_run: bool = False) -> tuple[int, int, int]:
+                     dry_run: bool = False, voortgang=None) -> tuple[int, int, int]:
     """Meldingen aanmaken/bijwerken.
 
     Gematcht op de bronreferentie onderaan de omschrijving, niet op de titel:
@@ -255,9 +259,11 @@ def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
         # In blokken wegschrijven houdt het geheugengebruik laag: de foto's
         # zijn samen enkele megabytes en de shell deelt zijn geheugen met de
         # draaiende webservice.
-        if not dry_run and (nieuw + bijgewerkt) % 25 == 0:
+        if not dry_run and (nieuw + bijgewerkt) % BLOKGROOTTE == 0:
             db.commit()
-            print(f"  ... {nieuw + bijgewerkt} van {len(data['meldingen'])} verwerkt")
+            db.expire_all()      # geeft de base64-foto's van dit blok weer vrij
+            if voortgang:
+                voortgang(nieuw + bijgewerkt, len(data["meldingen"]))
     db.flush()
     return nieuw, bijgewerkt, met_foto
 
@@ -345,7 +351,8 @@ def main() -> None:
         assets = upsert_wegen(db, data, org, user, project)
         nieuw, bijgewerkt, met_foto = upsert_meldingen(
             db, data, org, user, project, assets, overschrijf=args.overschrijf,
-            met_fotos=not args.zonder_fotos, dry_run=args.dry_run)
+            met_fotos=not args.zonder_fotos, dry_run=args.dry_run,
+            voortgang=lambda n, totaal: print(f"  ... {n} van {totaal} verwerkt"))
 
         zonder_gps = [m["titel"] for m in data["meldingen"] if m["lat"] is None]
         gemarkeerd = [m["titel"] for m in data["meldingen"] if m["gps_waarschuwing"]]

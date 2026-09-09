@@ -1693,7 +1693,10 @@
           <h1>Projecten</h1>
           <p>Beheer je <strong>onderhoudsprojecten</strong> en werkgebieden — langlopende contracten zoals KO Westland of A12-renovatie. Voor <strong>eenmalig werk</strong> (één-keer-oplevering zonder doorlopend onderhoud) gebruik je het tabblad <a href="#" onclick="event.preventDefault(); navigateTo('opleveren');" style="color:var(--accent);text-decoration:underline;">Opleveren</a>.</p>
         </div>
-        <button class="btn-primary" onclick="openProjectModal()">+ Nieuw Project</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn-secondary" id="sokImportBtn" onclick="importeerSokAmsterdam()" style="display:none;" title="Laadt het meegeleverde schouwbestand van Amsterdam-Noord in deze organisatie">Amsterdam-schouw inladen</button>
+          <button class="btn-primary" onclick="openProjectModal()">+ Nieuw Project</button>
+        </div>
       </div>
       <div id="projectenEmpty" class="empty-state">
         <div class="empty-icon">&#128193;</div>
@@ -10795,7 +10798,41 @@
     // ══════════════════════════════════════
     var allProjects = [];
 
+    // Laadt het meegeleverde Amsterdam-schouwbestand in de eigen organisatie.
+    // Bestaat als knop omdat niet iedereen shell-toegang tot de server heeft;
+    // de organisatie volgt uit de login, dus er valt niets verkeerd te kiezen.
+    function importeerSokAmsterdam() {
+      var btn = document.getElementById('sokImportBtn');
+      showConfirm({
+        title: 'Amsterdam-schouw inladen',
+        message: 'Dit maakt het project "SOK Amsterdam - Asfalt 2026" aan met 48 wegen '
+               + 'en 156 meldingen met foto, in deze organisatie. Opnieuw inladen maakt '
+               + 'geen duplicaten en laat je eigen wijzigingen staan.',
+        icon: '📍',
+        actionLabel: 'Inladen',
+        onConfirm: function() {
+          if (btn) { btn.disabled = true; btn.textContent = 'Bezig met inladen…'; }
+          api('POST', '/api/imports/sok-amsterdam', { met_fotos: true })
+            .then(function(r) {
+              showToast(r.meldingen_nieuw + ' meldingen aangemaakt, '
+                        + r.meldingen_bijgewerkt + ' bijgewerkt · '
+                        + r.wegen + ' wegen · ' + r.met_foto + ' met foto', 'success');
+              loadProjects();
+            })
+            .catch(function(err) {
+              showToast('Inladen mislukt: ' + (err.message || ''), 'error');
+            })
+            .finally(function() {
+              if (btn) { btn.disabled = false; btn.textContent = 'Amsterdam-schouw inladen'; }
+            });
+        }
+      });
+    }
+
     function loadProjects() {
+      var sokBtn = document.getElementById('sokImportBtn');
+      if (sokBtn) sokBtn.style.display = (currentUser && currentUser.is_org_admin) ? '' : 'none';
+
       var empty = document.getElementById('projectenEmpty');
       var list = document.getElementById('projectenList');
       var cards = document.getElementById('projectCards');
