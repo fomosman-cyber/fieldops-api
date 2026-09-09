@@ -268,7 +268,9 @@ def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
             melding.gw_maatregel = maatregel["gw_maatregel"]
             melding.gw_term = maatregel["gw_term"]
             melding.gw_kosten_orde = maatregel["gw_kosten_orde"]
-        # Maatvoering uit het rapport, zodat er mee gerekend kan worden.
+        # Maatvoering en asfaltsoort uit het rapport, zodat er mee gerekend kan
+        # worden. De asfaltsoort staat alleen ingevuld waar het rapport hem
+        # noemt — bij de rest is het geen "zwart", maar "niet vermeld".
         if vers or not melding.norm_data_json:
             melding.norm_data_json = json.dumps({
                 "oppervlakte_m2": m.get("oppervlakte_m2"),
@@ -277,6 +279,8 @@ def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
                 "aantal_vlakken": m.get("aantal_vlakken"),
                 "vlakken": m.get("vlakken"),
                 "maatvoering": m.get("maatvoering"),
+                "asfaltsoort": m.get("asfaltsoort"),
+                "aantal_fotos": m.get("aantal_fotos"),
             }, ensure_ascii=False)
         if vers or melding.lat is None:
             melding.lat = m["lat"]

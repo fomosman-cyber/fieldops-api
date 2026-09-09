@@ -278,11 +278,12 @@ def klasse_to_risk_points(klasse: str) -> int:
 # dat de "Mijn skills"-lijst gebruikt om per domein te groeperen).
 SKILL_CODES = {
     # ── Wegverharding — CROW 146 (asfalt + elementen) ──
-    "VULLEN_POLYMEER":      "Vullen polymeer (cold-pour scheurvulling)",
+    "VULLEN_POLYMEER":      "Scheuren herstellen (vullen polymeer, cold-pour)",
     "SLEMBEHANDELING":      "Slembehandeling (slurry-seal)",
     "VOEGVULLING":          "Voegvulling (lassen tussen banen)",
     "PLEKSGEWIJZE":         "Pleksgewijze reparatie (frees-vul)",
-    "ASFALT_DEKLAAG":       "Aanbrengen dicht asfaltbeton (deklaag)",
+    "HOTBOX":               "Hotbox (warm asfalt, plekgewijs herstel)",
+    "ASFALT_DEKLAAG":       "Asfalt machinaal (dicht asfaltbeton, deklaag)",
     "ASFALT_TUSSENDEKLAAG": "Tussen+deklaag asfaltbeton",
     "ASFALT_PROFIELCORR":   "Profielcorrectie SMA",
     "ASFALT_PROFIEL_VOL":   "Volledig profiel + fundering",
@@ -350,6 +351,7 @@ SKILL_DOMAIN = {
     # Wegverharding (CROW 146)
     "VULLEN_POLYMEER": "Wegverharding", "SLEMBEHANDELING": "Wegverharding",
     "VOEGVULLING": "Wegverharding", "PLEKSGEWIJZE": "Wegverharding",
+    "HOTBOX": "Wegverharding",
     "ASFALT_DEKLAAG": "Wegverharding", "ASFALT_TUSSENDEKLAAG": "Wegverharding",
     "ASFALT_PROFIELCORR": "Wegverharding", "ASFALT_PROFIEL_VOL": "Wegverharding",
     "ASFALT_RECONSTRUCTIE": "Wegverharding", "OPPERVLAKTEBEHANDELING": "Wegverharding",
@@ -386,6 +388,13 @@ SKILL_DOMAIN = {
 # Maatregel-naam (zoals in MAATREGEL_LOOKUP) → skill-code
 MAATREGEL_TO_SKILL = {
     "Vullen polymeer":                       "VULLEN_POLYMEER",
+    "Scheuren herstellen":                   "VULLEN_POLYMEER",
+    # Hotbox is geen eigen CROW-maatregel maar een uitvoeringsvorm van de
+    # pleksgewijze reparatie: warm asfalt uit de hotbox in plaats van frezen
+    # en koud vullen. Het is wel een eigen ploeg met eigen materieel, dus een
+    # eigen skill — anders komt hotbox-werk in hetzelfde cluster als het
+    # freeswerk en kan de planner het niet los inplannen.
+    "Hotbox reparatie":                      "HOTBOX",
     "Slembehandeling":                       "SLEMBEHANDELING",
     "Voegvulling":                           "VOEGVULLING",
     "Voegvulling + frees-vul":               "VOEGVULLING",
@@ -431,6 +440,10 @@ PRODUCTIVITY_PER_SKILL = {
     "SLEMBEHANDELING":      (0.020, "m²", 1.5),   # 50 m²/uur · 1.5u setup
     "VOEGVULLING":          (0.250, "voeg", 0.5),  # 4 voegen/uur
     "PLEKSGEWIJZE":         (1.500, "plek", 0.5),  # 1.5u/plek
+    # Hotbox is sneller per plek dan frezen-en-vullen (geen freesmachine,
+    # asfalt komt warm uit de wagen), maar kost meer omsteltijd per dag:
+    # de wagen moet 's ochtends op temperatuur zijn.
+    "HOTBOX":               (0.750, "plek", 1.5),  # ~8 plekken/dag per ploeg
     "OPPERVLAKTEBEHANDELING": (0.015, "m²", 2.0),  # 67 m²/uur · DGAD
     "ASFALT_DEKLAAG":       (0.012, "m²", 2.0),    # 83 m²/uur
     "ASFALT_TUSSENDEKLAAG": (0.020, "m²", 2.5),
