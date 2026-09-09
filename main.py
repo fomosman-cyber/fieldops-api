@@ -346,6 +346,28 @@ def _run_migrations():
         except Exception as e:
             print(f"[migration] photo-cols upgrade error: {e}")
 
+        # Een project permanent verwijderen liep stuk op toolboxen en
+        # werkplekinspecties: die verwezen met NOT NULL naar het project, dus
+        # Postgres weigerde de DELETE. Het zijn veiligheidsdossiers die moeten
+        # blijven bestaan, dus de koppeling wordt nulbaar in plaats van dat de
+        # rijen meeverdwijnen.
+        try:
+            from sqlalchemy import text as _sql_text
+            with engine.begin() as conn:
+                for tbl in ("toolboxen", "werkplekinspecties"):
+                    if tbl in insp.get_table_names():
+                        try:
+                            conn.execute(_sql_text(
+                                f"ALTER TABLE {tbl} ALTER COLUMN project_id DROP NOT NULL"
+                            ))
+                        except Exception as e:
+                            # SQLite kent geen ALTER COLUMN; daar maakt create_all
+                            # de tabel meteen goed aan.
+                            print(f"[migration] project_id nullable {tbl} skipped: {e}")
+            print("[migration] project_id nulbaar op toolboxen/werkplekinspecties.")
+        except Exception as e:
+            print(f"[migration] project_id nullable error: {e}")
+
         # NEN-EN 1176 — speeltoestel-classificatie velden (v3.6)
         if "inspections" in insp.get_table_names():
             icols = [c["name"] for c in insp.get_columns("inspections")]
