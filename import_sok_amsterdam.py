@@ -55,13 +55,14 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from models import Asset, Melding, Organization, Project, User, UserRole
-from werksoorten import ONBEPAALD
+from werksoorten import ONBEPAALD, maatregel_voor
 
 DATA_FILE = Path(__file__).parent / "data" / "sok_amsterdam_asfalt_2026.json"
 FOTO_MAP = Path(__file__).parent / "data" / "sok_amsterdam_fotos"
 
-# Alle meldingen komen als open werkvoorraad binnen. De rapporten kennen geen
-# urgentie toe, dus we verzinnen er ook geen: alles start op "normaal".
+# Alle meldingen komen als open werkvoorraad binnen. De prioriteit staat per
+# melding in de dataset: normaal, behalve waar het rapport met de hand "Prio"
+# vermeldt.
 STATUS = "open"
 PRIORITEIT = "normaal"
 
@@ -176,7 +177,7 @@ def upsert_project(db: Session, data: dict, org: Organization, user: User) -> Pr
 
 
 def upsert_wegen(db: Session, data: dict, org: Organization, user: User,
-                 project: Project) -> dict[str, Asset]:
+                 project: Project, overschrijf: bool = False) -> dict[str, Asset]:
     """Eén asset per weg. Match op asset-code binnen de organisatie."""
     codes = [w["code"] for w in data["wegen"]]
     bestaand = {a.code: a for a in db.query(Asset).filter(
@@ -194,6 +195,21 @@ def upsert_wegen(db: Session, data: dict, org: Organization, user: User,
         asset.lng = w["lng"]
         asset.location_description = w["locatie_omschrijving"]
         asset.project_id = project.id
+        # De MJOP rekent per asset met een conditie-score en een hoeveelheid;
+        # zonder die twee valt de weg volledig buiten de begroting. Beide komen
+        # uit de schouw: de score uit het geschouwde schadeoppervlak, de
+        # hoeveelheid is dat oppervlak zelf. Een echte NEN 2767-inspectie mag
+        # dit later overschrijven, vandaar dat de herkomst erbij staat.
+        if asset.condition_score is None or overschrijf:
+            asset.condition_score = w["conditie_score"]
+        asset.properties_json = json.dumps({
+            "oppervlakte_m2": w["schade_m2"],
+            "schade_lengte_m": w["schade_lengte_m"],
+            "aantal_schadepunten": w["aantal_meldingen"],
+            "werksoorten": w["werksoorten"],
+            "conditie_herkomst": "afgeleid uit de schouw: " + w["conditie_toelichting"],
+            "bron": "SOK Amsterdam - Asfalt 2026",
+        }, ensure_ascii=False)
         assets[w["code"]] = asset
     db.flush()
     return assets
@@ -241,9 +257,27 @@ def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
         if vers or not melding.description:
             melding.description = m["omschrijving"]
         if vers or not melding.category:
-            melding.category = ONBEPAALD
+            melding.category = m.get("categorie") or ONBEPAALD
         if vers or not melding.priority:
-            melding.priority = PRIORITEIT
+            melding.priority = m.get("prioriteit") or PRIORITEIT
+        # Zonder CROW-maatregel valt een melding buiten het clusteren — de
+        # job-orchestratie filtert op gw_term. De maatregel volgt uit de
+        # werksoort; zie werksoorten.py.
+        maatregel = maatregel_voor(melding.category)
+        if maatregel and (vers or not melding.gw_term):
+            melding.gw_maatregel = maatregel["gw_maatregel"]
+            melding.gw_term = maatregel["gw_term"]
+            melding.gw_kosten_orde = maatregel["gw_kosten_orde"]
+        # Maatvoering uit het rapport, zodat er mee gerekend kan worden.
+        if vers or not melding.norm_data_json:
+            melding.norm_data_json = json.dumps({
+                "oppervlakte_m2": m.get("oppervlakte_m2"),
+                "lengte_m": m.get("lengte_m"),
+                "kleinste_breedte_m": m.get("kleinste_breedte_m"),
+                "aantal_vlakken": m.get("aantal_vlakken"),
+                "vlakken": m.get("vlakken"),
+                "maatvoering": m.get("maatvoering"),
+            }, ensure_ascii=False)
         if vers or melding.lat is None:
             melding.lat = m["lat"]
             melding.lng = m["lng"]
@@ -290,7 +324,9 @@ def schrijf_csv(data: dict, map_pad: str) -> list[str]:
         w.writerow(["title", "description", "category", "priority",
                     "lat", "lng", "project", "asset_code", "foto"])
         for m in data["meldingen"]:
-            w.writerow([m["titel"], m["omschrijving"], ONBEPAALD, PRIORITEIT,
+            w.writerow([m["titel"], m["omschrijving"],
+                        m.get("categorie") or ONBEPAALD,
+                        m.get("prioriteit") or PRIORITEIT,
                         m["lat"] if m["lat"] is not None else "",
                         m["lng"] if m["lng"] is not None else "",
                         project_naam, m["asset_code"], m.get("foto") or ""])
@@ -348,7 +384,8 @@ def main() -> None:
         print(f"aanmaker    : {user.email}")
 
         project = upsert_project(db, data, org, user)
-        assets = upsert_wegen(db, data, org, user, project)
+        assets = upsert_wegen(db, data, org, user, project,
+                              overschrijf=args.overschrijf)
         nieuw, bijgewerkt, met_foto = upsert_meldingen(
             db, data, org, user, project, assets, overschrijf=args.overschrijf,
             met_fotos=not args.zonder_fotos, dry_run=args.dry_run,

@@ -6,6 +6,7 @@ die de klant op de kaart ziet — coordinaat, foto, weg, werksoort — kloppen.
 """
 import json
 import re
+from collections import Counter
 
 import pytest
 
@@ -123,9 +124,18 @@ def test_import_koppelt_project_wegen_en_meldingen(org_en_user):
 
         meldingen = db.query(Melding).filter(Melding.project_id == project_id).all()
         assert len(meldingen) == 156
-        # Alles hangt aan een weg, heeft de schouwfoto en de nog-in-te-delen werksoort.
+        # Alles hangt aan een weg en heeft de schouwfoto.
         assert all(m.asset_id for m in meldingen)
-        assert all(m.category == ONBEPAALD for m in meldingen)
+        # De werksoort komt uit de handgeschreven code in de kantlijn. Wat geen
+        # code had blijft "nog in te delen"; dat mag niet stilletjes groeien.
+        per_soort = Counter(m.category for m in meldingen)
+        assert per_soort["Hotbox werkzaamheden"] == 86
+        assert per_soort["Asfalt machinaal"] == 23
+        assert per_soort["Asfalt zwart (rijweg)"] == 8
+        assert per_soort["Asfalt rood (fiets-/voetpad)"] == 1
+        assert per_soort[ONBEPAALD] == 38
+        # Eén melding is in het rapport met de hand als voorrang aangemerkt.
+        assert sum(1 for m in meldingen if m.priority == "kritiek") == 1
         assert all((m.photo_url or "").startswith("data:image/") for m in meldingen)
         # De veldfoto is nog niet gemaakt — die plek moet vrij blijven.
         assert all(m.photo_after_url is None for m in meldingen)
@@ -329,3 +339,73 @@ def test_knop_staat_op_de_projectpagina():
     assert "/api/imports/sok-amsterdam" in html
     # Alleen zichtbaar voor een org-beheerder.
     assert "sokBtn.style.display = (currentUser && currentUser.is_org_admin)" in html
+
+
+# ── Clusteren ─────────────────────────────────────────────────────────────
+# De job-orchestratie pakt alleen meldingen op met `gw_term` gezet. Zonder die
+# maatregel leverde "genereer clusters" nul clusters op zonder te zeggen
+# waarom — precies wat er misging toen dit project net ingeladen was.
+
+def test_werksoort_draagt_de_crow_maatregel(org_en_user):
+    org_id, user_id = org_en_user
+    project_id, _ = _importeer(org_id, user_id)
+    db = SessionLocal()
+    try:
+        meldingen = db.query(Melding).filter(Melding.project_id == project_id).all()
+        met_werksoort = [m for m in meldingen if m.category != ONBEPAALD]
+        assert len(met_werksoort) == 118
+        assert all(m.gw_term and m.gw_maatregel for m in met_werksoort)
+        # Zonder werksoort hoort er ook geen maatregel te staan.
+        assert all(not m.gw_term for m in meldingen if m.category == ONBEPAALD)
+    finally:
+        db.close()
+
+
+def test_clusteren_levert_clusters_op(org_en_user):
+    from orchestration import generate_clusters
+    org_id, user_id = org_en_user
+    _importeer(org_id, user_id)
+    db = SessionLocal()
+    try:
+        r = generate_clusters(db, org_id, radius_km=1.0)
+    finally:
+        db.close()
+    assert r["clusters_created"] >= 5, r
+    assert r["meldingen_clustered"] >= 100, r
+    assert r["savings_percentage"] > 0
+
+
+def test_maatvoering_staat_bij_de_melding(org_en_user):
+    """De uitvoerder moet de maat zien, en de calculatie moet erop kunnen rekenen."""
+    org_id, user_id = org_en_user
+    project_id, _ = _importeer(org_id, user_id)
+    db = SessionLocal()
+    try:
+        meldingen = db.query(Melding).filter(Melding.project_id == project_id).all()
+        met_maat = [m for m in meldingen if m.norm_data_json
+                    and json.loads(m.norm_data_json).get("oppervlakte_m2")]
+        assert len(met_maat) == 146          # 10 meldingen noemen geen enkele maat
+        totaal = sum(json.loads(m.norm_data_json)["oppervlakte_m2"] for m in met_maat)
+        assert 2000 < totaal < 2200, totaal
+    finally:
+        db.close()
+
+
+def test_wegen_hebben_conditie_en_hoeveelheid_voor_de_mjop(org_en_user):
+    """De MJOP rekent per asset met conditie-score en hoeveelheid; zonder die
+    twee valt een weg volledig buiten de begroting."""
+    org_id, user_id = org_en_user
+    project_id, _ = _importeer(org_id, user_id)
+    db = SessionLocal()
+    try:
+        assets = db.query(Asset).filter(Asset.project_id == project_id).all()
+        assert all(1 <= a.condition_score <= 6 for a in assets)
+        met_opp = 0
+        for a in assets:
+            props = json.loads(a.properties_json)
+            assert "conditie_herkomst" in props
+            if props.get("oppervlakte_m2"):
+                met_opp += 1
+        assert met_opp >= 45
+    finally:
+        db.close()

@@ -1867,6 +1867,8 @@
               <option value="Hotbox werkzaamheden">🔥 Hotbox werkzaamheden</option>
               <option value="Asfalt machinaal">🚜 Asfalt machinaal</option>
               <option value="Scheuren vullen">🩹 Scheuren vullen</option>
+              <option value="Asfalt zwart (rijweg)">⬛ Asfalt zwart (rijweg)</option>
+              <option value="Asfalt rood (fiets-/voetpad)">🟥 Asfalt rood (fiets-/voetpad)</option>
               <option value="Asfalt – nog in te delen">🛣️ Nog in te delen</option>
             </select>
             <select id="bulkProjectSelect" style="padding:6px 10px;border-radius:8px;border:none;font-size:13px;background:rgba(255,255,255,0.95);color:var(--text);font-weight:500;cursor:pointer;">
@@ -2858,6 +2860,12 @@
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="openSkillsModal()">⚙️ Mijn skills</button>
+          <select id="clusterRadius" class="btn-secondary" style="cursor:pointer;" title="Hoe ver mag een ploeg binnen één cluster rijden? Kleiner = meer, compactere clusters.">
+            <option value="0.5">Werkstraal: 0,5 km — één buurt</option>
+            <option value="1" selected>Werkstraal: 1 km — wijkdeel</option>
+            <option value="2">Werkstraal: 2 km — stadsdeel</option>
+            <option value="5">Werkstraal: 5 km — heel werkgebied</option>
+          </select>
           <button class="btn-primary" onclick="generateClusters()" data-i18n="genereer_clusters">⚡ Optimaliseer vandaag</button>
         </div>
       </div>
@@ -3096,6 +3104,8 @@
             <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ff5252;"></div><span style="color:var(--text-muted);">🔥 Hotbox werkzaamheden</span></div>
             <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#22c55e;"></div><span style="color:var(--text-muted);">🚜 Asfalt machinaal</span></div>
             <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ffab40;"></div><span style="color:var(--text-muted);">🩹 Scheuren vullen</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#334155;"></div><span style="color:var(--text-muted);">⬛ Asfalt zwart (rijweg)</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#e11d48;"></div><span style="color:var(--text-muted);">🟥 Asfalt rood (fiets-/voetpad)</span></div>
             <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#94a3b8;"></div><span style="color:var(--text-muted);">🛣️ Nog in te delen</span></div>
           </div>
         </div>
@@ -10785,6 +10795,8 @@
       'Hotbox werkzaamheden': '#ff5252',
       'Asfalt machinaal': '#22c55e',
       'Scheuren vullen': '#ffab40',
+      'Asfalt zwart (rijweg)': '#334155',
+      'Asfalt rood (fiets-/voetpad)': '#e11d48',
       'Asfalt \u2013 nog in te delen': '#94a3b8'
     };
     var PRIORITEIT_KLEUREN = { kritiek: '#ff5252', hoog: '#ffab40', normaal: '#00d4ff', laag: '#888' };
@@ -16214,7 +16226,12 @@
               if (bits.length) showToast(bits.join(' · ') + ' — clusters genereren...', 'info');
             }
             // Stap 2: cluster-generate
-            return api('POST', '/api/clusters/generate', { radius_km: 5.0, min_cluster_size: 2 });
+            // Werkstraal uit de keuzelijst. Stond vast op 5 km, en dan valt een
+            // heel stadsdeel binnen één cluster — te groot om als dagploeg af te
+            // werken. Kleiner geeft meer, compactere clusters.
+            var _sel = document.getElementById('clusterRadius');
+            var _straal = _sel ? parseFloat(_sel.value) : 1.0;
+            return api('POST', '/api/clusters/generate', { radius_km: _straal, min_cluster_size: 2 });
           }).then(function(r){
             showToast(r.clusters_created + ' clusters gegenereerd · ' + r.total_savings_hours + ' u bespaard (' + r.savings_percentage + '%)', 'success');
             loadClusters();
@@ -24218,6 +24235,7 @@
           'Bestrating': '🧱', 'Verkeersborden': '🚧', 'Wateroverlast': '🌊', 'Geluidsoverlast': '🔊',
           'Kabels & Leidingen': '⚡', 'Constructie': '🏗️', 'Veiligheid': '🛡️', 'Milieu': '♻️',
           'Hotbox werkzaamheden': '🔥', 'Asfalt machinaal': '🚜', 'Scheuren vullen': '🩹',
+          'Asfalt zwart (rijweg)': '⬛', 'Asfalt rood (fiets-/voetpad)': '🟥',
           'Asfalt \u2013 nog in te delen': '🛣️'
         };
         meldingen.forEach(function(m) {
