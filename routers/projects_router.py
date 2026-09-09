@@ -196,7 +196,8 @@ def delete_project(
     # wordt.
     from models import (Asset, BouwInspectie, DaybookEntry, EmailInboxRoute,
                         Incident, IncomingWebhook, Inspection, Lmra, Oplevering,
-                        Organization, Schouwrit, Toolbox, Werkplekinspectie)
+                        Organization, QualityInspection, Schouwrit, Toolbox,
+                        Werkplekinspectie)
 
     losgemaakt = {}
     for label, model, kolom in (
@@ -213,6 +214,7 @@ def delete_project(
         ("incidenten",  Incident,         Incident.project_id),
         ("bouwinspecties", BouwInspectie, BouwInspectie.project_id),
         ("schouwritten", Schouwrit,       Schouwrit.project_id),
+        ("keuringen",   QualityInspection, QualityInspection.project_id),
     ):
         aantal = (db.query(model)
                     .filter(kolom == project_id)
