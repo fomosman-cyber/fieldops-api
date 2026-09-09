@@ -1859,6 +1859,13 @@
               <option value="normaal">Normaal</option>
               <option value="laag">Laag</option>
             </select>
+            <select id="bulkWerksoortSelect" style="padding:6px 10px;border-radius:8px;border:none;font-size:13px;background:rgba(255,255,255,0.95);color:var(--text);font-weight:500;cursor:pointer;">
+              <option value="">Werksoort wijzigen...</option>
+              <option value="Hotbox werkzaamheden">🔥 Hotbox werkzaamheden</option>
+              <option value="Asfalt machinaal">🚜 Asfalt machinaal</option>
+              <option value="Scheuren vullen">🩹 Scheuren vullen</option>
+              <option value="Asfalt – nog in te delen">🛣️ Nog in te delen</option>
+            </select>
             <select id="bulkProjectSelect" style="padding:6px 10px;border-radius:8px;border:none;font-size:13px;background:rgba(255,255,255,0.95);color:var(--text);font-weight:500;cursor:pointer;">
               <option value="">Project wijzigen...</option>
               <option value="__null__">— Geen project —</option>
@@ -3080,6 +3087,13 @@
             <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#00d4ff;"></div><span style="color:var(--text-muted);">Normaal</span></div>
             <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#888;"></div><span style="color:var(--text-muted);">Laag</span></div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:4px;"><div style="width:12px;height:12px;border:2px solid #00d4ff;border-radius:2px;"></div><span style="color:var(--text-muted);">Projectgebied</span></div>
+          </div>
+          <div style="font-weight:600;margin:12px 0 8px;color:var(--text);">Werksoort</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ff5252;"></div><span style="color:var(--text-muted);">🔥 Hotbox werkzaamheden</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#22c55e;"></div><span style="color:var(--text-muted);">🚜 Asfalt machinaal</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ffab40;"></div><span style="color:var(--text-muted);">🩹 Scheuren vullen</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#94a3b8;"></div><span style="color:var(--text-muted);">🛣️ Nog in te delen</span></div>
           </div>
         </div>
       </div>
@@ -10758,6 +10772,25 @@
     }
 
     // ══════════════════════════════════════
+    // ── MELDING-KLEUREN ──
+    // ══════════════════════════════════════
+    // Spiegel van werksoorten.py — tests/test_werksoorten.py bewaakt dat beide
+    // lijsten identiek blijven. Een melding met een werksoort als categorie
+    // kleurt op werksoort; al het andere blijft op prioriteit kleuren, zodat
+    // bestaande projecten hun vertrouwde kleurcodering houden.
+    var WERKSOORT_KLEUREN = {
+      'Hotbox werkzaamheden': '#ff5252',
+      'Asfalt machinaal': '#22c55e',
+      'Scheuren vullen': '#ffab40',
+      'Asfalt \u2013 nog in te delen': '#94a3b8'
+    };
+    var PRIORITEIT_KLEUREN = { kritiek: '#ff5252', hoog: '#ffab40', normaal: '#00d4ff', laag: '#888' };
+
+    function meldingKleur(m) {
+      return WERKSOORT_KLEUREN[m.category] || PRIORITEIT_KLEUREN[m.priority] || '#00d4ff';
+    }
+
+    // ══════════════════════════════════════
     // ── PROJECTEN ──
     // ══════════════════════════════════════
     var allProjects = [];
@@ -11109,10 +11142,9 @@
 
       // Show meldingen markers on this map
       api('GET', '/api/meldingen/?project_id=' + proj.id).then(function(meldingen) {
-        var prioColors = { kritiek:'#ff5252', hoog:'#ffab40', normaal:'#00d4ff', laag:'#888' };
         (meldingen || []).forEach(function(m) {
           if (m.lat && m.lng) {
-            var color = prioColors[m.priority] || '#00d4ff';
+            var color = meldingKleur(m);
             var icon = L.divIcon({
               className: '',
               html: '<div style="width:14px;height:14px;border-radius:50%;background:'+color+';border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>',
@@ -12254,6 +12286,13 @@
           bulkPrio._bound = true;
         }
         // Bulk-project dropdown — vul met huidige projecten + bind onchange
+        var bulkWerksoort = document.getElementById('bulkWerksoortSelect');
+        if (bulkWerksoort && !bulkWerksoort._bound) {
+          bulkWerksoort.addEventListener('change', function(e){
+            if (e.target.value) bulkUpdateMeldingen('category', e.target.value, 'Werksoort');
+          });
+          bulkWerksoort._bound = true;
+        }
         var bulkProj = document.getElementById('bulkProjectSelect');
         if (bulkProj) {
           // Bewaar huidige selectie + bewaar default 2 opties, vul rest met projects
@@ -12739,7 +12778,7 @@
       if (master) { master.checked = false; master.indeterminate = false; }
       updateBulkBar();
       // Reset alle dropdowns
-      ['bulkStatusSelect','bulkPrioritySelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
+      ['bulkStatusSelect','bulkPrioritySelect','bulkWerksoortSelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
         var s = document.getElementById(id); if (s) s.value = '';
       });
     }
@@ -12749,7 +12788,7 @@
       // value === null is geldig (ontkoppel project); andere falsy = no-op
       if (ids.length === 0 || (value === '' || value === undefined)) {
         // Reset dropdowns die misschien geselecteerd zijn maar geen actie deden
-        ['bulkStatusSelect','bulkPrioritySelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
+        ['bulkStatusSelect','bulkPrioritySelect','bulkWerksoortSelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
           var s = document.getElementById(id); if (s) s.value = '';
         });
         return;
@@ -12794,14 +12833,14 @@
           }).catch(function(err) {
             showToast('Bulk-update mislukt: ' + (err.message || ''), 'error');
             // Bij fout: alleen selectie behouden, dropdowns leegmaken
-            ['bulkStatusSelect','bulkPrioritySelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
+            ['bulkStatusSelect','bulkPrioritySelect','bulkWerksoortSelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
               var s = document.getElementById(id); if (s) s.value = '';
             });
           });
         },
         onCancel: function() {
           // Geannuleerd: alleen dropdowns resetten, selectie behouden
-          ['bulkStatusSelect','bulkPrioritySelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
+          ['bulkStatusSelect','bulkPrioritySelect','bulkWerksoortSelect','bulkProjectSelect','bulkAssignSelect'].forEach(function(id){
             var s = document.getElementById(id); if (s) s.value = '';
           });
         },
@@ -24137,15 +24176,16 @@
       }).then(function(meldingen) {
         if (!meldingen) return;
         allMeldingen = meldingen || [];
-        var prioColors = { kritiek:'#ff5252', hoog:'#ffab40', normaal:'#00d4ff', laag:'#888' };
         var catIcons = {
           'Wegdekschade': '🛣️', 'Riolering': '🚰', 'Groenvoorziening': '🌳', 'Verlichting': '💡',
           'Bestrating': '🧱', 'Verkeersborden': '🚧', 'Wateroverlast': '🌊', 'Geluidsoverlast': '🔊',
-          'Kabels & Leidingen': '⚡', 'Constructie': '🏗️', 'Veiligheid': '🛡️', 'Milieu': '♻️'
+          'Kabels & Leidingen': '⚡', 'Constructie': '🏗️', 'Veiligheid': '🛡️', 'Milieu': '♻️',
+          'Hotbox werkzaamheden': '🔥', 'Asfalt machinaal': '🚜', 'Scheuren vullen': '🩹',
+          'Asfalt \u2013 nog in te delen': '🛣️'
         };
         meldingen.forEach(function(m) {
           if (m.lat && m.lng) {
-            var color = prioColors[m.priority] || '#00d4ff';
+            var color = meldingKleur(m);
             var emoji = catIcons[m.category] || '📍';
             var projName = '';
             if (m.project_id) {
