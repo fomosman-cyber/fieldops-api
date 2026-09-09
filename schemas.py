@@ -129,6 +129,8 @@ class OrganizationResponse(BaseModel):
     streetview_provider_url_template: Optional[str] = None
     beheer_provider_label: Optional[str] = None
     beheer_provider_url_template: Optional[str] = None
+    # Indexpercentage per jaar voor het MJOP. None = niet indexeren.
+    mjop_index_pct: Optional[float] = None
     # Module-toggles: lijst van actieve PORTAL_MODULES-keys.
     # None = alles aan (default voor bestaande orgs).
     enabled_modules: Optional[list[str]] = None
@@ -169,6 +171,7 @@ class OrganizationUpdate(BaseModel):
     # Publiek meldpunt. Stonden wel in het instellingenformulier maar niet in
     # dit schema, waardoor Pydantic ze stilzwijgend weggooide: de gebruiker
     # kreeg "opgeslagen" te zien terwijl er niets veranderde.
+    mjop_index_pct: Optional[float] = None
     public_meld_slug: Optional[str] = None
     public_meld_enabled: Optional[bool] = None
     public_meld_intro_text: Optional[str] = None

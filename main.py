@@ -473,6 +473,16 @@ def _run_migrations():
                     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ai_analyses_crow_klasse ON ai_analyses(crow_klasse)"))
                     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ai_analyses_onderhoud ON ai_analyses(onderhoud_categorie)"))
                 print("[migration] ai_analyses CROW-kolommen toegevoegd.")
+
+            # MJOP-indexpercentage per organisatie. Nieuwe kolom op een
+            # bestaande tabel, dus create_all() maakt hem niet aan.
+            org_cols = [c["name"] for c in insp.get_columns("organizations")]
+            if "mjop_index_pct" not in org_cols:
+                print("[migration] organizations.mjop_index_pct toevoegen...")
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE organizations ADD COLUMN mjop_index_pct FLOAT"))
+                print("[migration] organizations.mjop_index_pct toegevoegd.")
     except Exception as e:
         print(f"[migration] Waarschuwing: {e}")
 
