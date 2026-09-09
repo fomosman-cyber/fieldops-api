@@ -32,10 +32,19 @@ def test_js_kleuren_gelijk_aan_python():
     assert _js_werksoort_kleuren() == WERKSOORT_KLEUREN
 
 
-def test_drie_werksoorten_plus_onbepaald():
+def test_werksoorten_en_hun_maatregel():
     labels = [w["label"] for w in WERKSOORTEN]
     assert labels[:3] == ["Hotbox werkzaamheden", "Asfalt machinaal", "Scheuren vullen"]
     assert ONBEPAALD in labels
+    # Zonder CROW-maatregel valt een melding buiten het clusteren; de
+    # job-orchestratie filtert op gw_term. Alleen "nog in te delen" mag leeg zijn.
+    import crow_kosten
+    for w in WERKSOORTEN:
+        if w["label"] == ONBEPAALD:
+            assert w["maatregel"] is None
+            continue
+        assert w["maatregel"] in crow_kosten.MAATREGEL_TO_SKILL, w["label"]
+        assert w["gw_term"] and w["kosten_orde"]
 
 
 def test_kleuren_zijn_rood_groen_oranje():
@@ -55,7 +64,7 @@ def test_legenda_toont_elke_werksoort():
     html = PORTAAL.read_text(encoding="utf-8")
     legenda = html.split('Werksoort</div>', 1)
     assert len(legenda) == 2, "werksoort-legenda ontbreekt op de kaart"
-    blok = legenda[1][:1200]
+    blok = legenda[1][:2400]
     for w in WERKSOORTEN:
         assert w["kleur"] in blok, f"kleur van {w['label']} ontbreekt in de legenda"
 
@@ -72,7 +81,7 @@ def test_bulkactie_biedt_elke_werksoort():
     html = PORTAAL.read_text(encoding="utf-8")
     keuze = html.split('id="bulkWerksoortSelect"', 1)
     assert len(keuze) == 2, "bulk-actie 'Werksoort wijzigen' ontbreekt"
-    blok = keuze[1][:1200]
+    blok = keuze[1][:2400]
     for w in WERKSOORTEN:
         # In een HTML-attribuut telt alleen het echte teken: een \\u2013-escape
         # wordt daar niet uitgelezen en zou een categorie opleveren die nergens

@@ -184,12 +184,19 @@ def delete_project(
     # In de praktijk raakte dat vrijwel elk actief project: het werkdagboek
     # vult zich dagelijks, en assets en inspecties hangen er per definitie aan.
     #
-    # Alle zeven verwijzingen zijn nulbaar, dus we maken ze los in plaats van
-    # ze mee te verwijderen. Dat past bij de bestaande keuze voor meldingen:
-    # de registratie blijft bestaan voor de audit, alleen de koppeling met het
+    # Alle verwijzingen zijn nulbaar, dus we maken ze los in plaats van ze mee
+    # te verwijderen. Dat past bij de bestaande keuze voor meldingen: de
+    # registratie blijft bestaan voor de audit, alleen de koppeling met het
     # project verdwijnt. Wie het project weggooit, gooit niet zijn historie weg.
-    from models import (Asset, DaybookEntry, EmailInboxRoute, IncomingWebhook,
-                        Inspection, Oplevering, Organization)
+    #
+    # Toolboxen en werkplekinspecties wezen tot voor kort met NOT NULL naar het
+    # project en blokkeerden de DELETE daarom alsnog. Die kolommen zijn nulbaar
+    # gemaakt in plaats van de rijen mee te verwijderen: het zijn
+    # veiligheidsdossiers die je niet kwijt wilt raken omdat een project opgeruimd
+    # wordt.
+    from models import (Asset, BouwInspectie, DaybookEntry, EmailInboxRoute,
+                        Incident, IncomingWebhook, Inspection, Oplevering,
+                        Organization, Schouwrit, Toolbox, Werkplekinspectie)
 
     losgemaakt = {}
     for label, model, kolom in (
@@ -200,6 +207,11 @@ def delete_project(
         ("werkdagboek", DaybookEntry,     DaybookEntry.project_id),
         ("e-mailroutes", EmailInboxRoute, EmailInboxRoute.default_project_id),
         ("webhooks",    IncomingWebhook,  IncomingWebhook.default_project_id),
+        ("toolboxen",   Toolbox,          Toolbox.project_id),
+        ("werkplekinspecties", Werkplekinspectie, Werkplekinspectie.project_id),
+        ("incidenten",  Incident,         Incident.project_id),
+        ("bouwinspecties", BouwInspectie, BouwInspectie.project_id),
+        ("schouwritten", Schouwrit,       Schouwrit.project_id),
     ):
         aantal = (db.query(model)
                     .filter(kolom == project_id)

@@ -14,9 +14,10 @@ valt dit hier om in plaats van bij een klant.
 from datetime import datetime, timezone
 
 from database import SessionLocal
-from models import (Asset, DaybookEntry, EmailInboxRoute, IncomingWebhook,
-                    Inspection, Melding, Oplevering, OpleveringPunt,
-                    Organization, Project)
+from models import (Asset, BouwInspectie, DaybookEntry, EmailInboxRoute,
+                    Incident, IncomingWebhook, Inspection, Melding, Oplevering,
+                    OpleveringPunt, Organization, Project, Schouwrit, Toolbox,
+                    Werkplekinspectie)
 
 from .conftest import auth
 
@@ -84,6 +85,19 @@ def test_project_met_alle_verwijzingen_is_verwijderbaar(client, admin_user, org)
         db.add(IncomingWebhook(organization_id=org.id, default_project_id=project_id,
                                token="tok-hook-1", name="hook",
                                created_by=admin_user.id))
+        # Veiligheidsdossiers. Deze wezen tot voor kort met NOT NULL naar het
+        # project en blokkeerden de DELETE daarom hard, met een 500 in beeld.
+        db.add(Toolbox(organization_id=org.id, project_id=project_id,
+                       onderwerp="Werken langs de weg", created_by=admin_user.id))
+        db.add(Werkplekinspectie(organization_id=org.id, project_id=project_id,
+                                 created_by=admin_user.id))
+        db.add(Incident(organization_id=org.id, project_id=project_id,
+                        soort="bijna-ongeval", omschrijving="Struikelen over kabel",
+                        created_by=admin_user.id))
+        db.add(BouwInspectie(organization_id=org.id, project_id=project_id,
+                             created_by=admin_user.id))
+        db.add(Schouwrit(organization_id=org.id, project_id=project_id,
+                         created_by=admin_user.id))
         # De verraderlijkste: de organisatie zelf wijst naar dit project.
         o = db.query(Organization).filter(Organization.id == org.id).first()
         o.public_meld_default_project_id = project_id
@@ -274,5 +288,64 @@ def test_kind_asset_blijft_bestaan(client, admin_user, org):
         k = db.query(Asset).filter(Asset.id == kind_id).first()
         assert k is not None
         assert k.parent_asset_id is None
+    finally:
+        db.close()
+
+
+def test_elke_verwijzing_naar_projects_wordt_opgeruimd():
+    """Vangnet tegen een nieuwe foreign key zonder opruimregel.
+
+    De vorige keer glipte er een door — toolboxen — en dat kwam pas bij een
+    klant boven water, met een ruwe Postgres-fout in het scherm. Deze test
+    leest de modellen en eist dat elke kolom die naar projects.id wijst ook
+    echt losgemaakt wordt in delete_project.
+    """
+    import re
+    from pathlib import Path
+
+    wortel = Path(__file__).resolve().parent.parent
+    modellen = (wortel / "models.py").read_text(encoding="utf-8")
+    router = (wortel / "routers" / "projects_router.py").read_text(encoding="utf-8")
+
+    verwijzingen = set()
+    huidige_klasse = None
+    for regel in modellen.split("\n"):
+        if (m := re.match(r"class (\w+)\(Base\):", regel)):
+            huidige_klasse = m.group(1)
+        if 'ForeignKey("projects.id")' in regel:
+            kolom = regel.strip().split(" =")[0]
+            verwijzingen.add(f"{huidige_klasse}.{kolom}")
+
+    assert len(verwijzingen) >= 13, verwijzingen
+    ontbreekt = sorted(v for v in verwijzingen if v not in router)
+    assert not ontbreekt, (
+        "Deze verwijzingen naar een project worden niet losgemaakt bij het "
+        f"verwijderen ervan, dus blokkeren ze de DELETE: {ontbreekt}")
+
+
+def test_toolbox_en_wpi_overleven_het_verwijderen_van_hun_project(client, admin_user, org):
+    """Een veiligheidsdossier verdwijnt niet omdat het project wordt opgeruimd."""
+    project_id = _project(org.id, admin_user.id, "Project met toolbox")
+    db = SessionLocal()
+    try:
+        t = Toolbox(organization_id=org.id, project_id=project_id,
+                    onderwerp="Hijsen en heffen", created_by=admin_user.id)
+        w = Werkplekinspectie(organization_id=org.id, project_id=project_id,
+                              created_by=admin_user.id)
+        db.add_all([t, w])
+        db.commit()
+        toolbox_id, wpi_id = t.id, w.id
+    finally:
+        db.close()
+
+    r = client.delete(f"/api/projects/{project_id}?hard=true", headers=auth(admin_user))
+    assert r.status_code == 200, r.text
+
+    db = SessionLocal()
+    try:
+        bewaard = db.get(Toolbox, toolbox_id)
+        assert bewaard is not None and bewaard.project_id is None
+        wpi = db.get(Werkplekinspectie, wpi_id)
+        assert wpi is not None and wpi.project_id is None
     finally:
         db.close()

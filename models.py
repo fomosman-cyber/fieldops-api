@@ -1358,7 +1358,10 @@ class Toolbox(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
-    project_id = Column(String, ForeignKey("projects.id"), nullable=False, index=True)
+    # Nulbaar sinds het permanent verwijderen van een project: dit is een
+    # veiligheidsdossier dat blijft bestaan als het project verdwijnt —
+    # alleen de koppeling vervalt. Bij aanmaken is een project verplicht.
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
 
     onderwerp = Column(String(255), nullable=False)
     datum = Column(DateTime, nullable=True)
@@ -1530,7 +1533,10 @@ class Werkplekinspectie(Base):
 
     id = Column(String, primary_key=True, default=generate_uuid)
     organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
-    project_id = Column(String, ForeignKey("projects.id"), nullable=False, index=True)
+    # Nulbaar sinds het permanent verwijderen van een project: dit is een
+    # veiligheidsdossier dat blijft bestaan als het project verdwijnt —
+    # alleen de koppeling vervalt. Bij aanmaken is een project verplicht.
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
 
     datum = Column(DateTime, nullable=True)
     locatie = Column(String(255), nullable=True)

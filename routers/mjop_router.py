@@ -23,6 +23,7 @@ begrotings-onderbouwing.
 from __future__ import annotations
 import csv
 import io
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -105,9 +106,14 @@ def _build_mjop_rows(db: Session, *, organization_id: str,
         if unit == "per m" and a.length_m:
             multiplier = float(a.length_m)
         elif unit == "per m2":
-            # We hebben geen aparte oppervlakte-kolom — fallback op length_m × 5m
-            # (rijbaan-breedte aanname) als geen specifieke breedte beschikbaar
-            multiplier = float(a.length_m or 0) * 5
+            # Een gemeten oppervlakte gaat voor. Zonder die maat viel de MJOP
+            # terug op length_m × 5 m — een aangenomen rijbaanbreedte, en nul
+            # zodra een asset ook geen lengte heeft. Assets die uit een schouw
+            # komen dragen hun oppervlakte in properties_json; die is gemeten en
+            # dus altijd te verkiezen boven de vuistregel.
+            multiplier = float(_oppervlakte_uit_properties(a) or 0)
+            if not multiplier:
+                multiplier = float(a.length_m or 0) * 5
 
         total = mjop.estimate_total(maatregel, multiplier=multiplier if multiplier else 1.0)
 
@@ -139,6 +145,28 @@ def _build_mjop_rows(db: Session, *, organization_id: str,
 # ─────────────────────────────────────────────────────────────────────────────
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _oppervlakte_uit_properties(asset) -> float | None:
+    """Gemeten oppervlakte van een asset, als die er is.
+
+    `properties_json` is een vrije JSON-string per asset-type. Assets die uit
+    een schouw of import komen zetten daar `oppervlakte_m2` in; zonder die maat
+    moet de MJOP terugvallen op een aangenomen breedte.
+    """
+    if not asset.properties_json:
+        return None
+    try:
+        props = json.loads(asset.properties_json)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(props, dict):
+        return None
+    waarde = props.get("oppervlakte_m2")
+    try:
+        return float(waarde) if waarde is not None else None
+    except (TypeError, ValueError):
+        return None
+
 
 @router.get("/preview")
 def preview_mjop(
