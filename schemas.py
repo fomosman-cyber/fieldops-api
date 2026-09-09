@@ -177,9 +177,18 @@ class OrganizationUpdate(BaseModel):
 
 
 class OrganizationBrandingUpdate(BaseModel):
-    """Huisstijl die de platform-eigenaar per klant-organisatie kan zetten."""
+    """Huisstijl en contactgegevens die de platform-eigenaar per klant zet.
+
+    Alles optioneel: een veld weglaten laat het ongemoeid, expliciet null wist
+    het. Zo kan het bedrijfsprofiel-scherm losse stukjes opslaan zonder de rest
+    te overschrijven.
+    """
     logo_data_url: Optional[str] = None
     brand_color: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    kvk_number: Optional[str] = None
+    btw_number: Optional[str] = None
 
 
 # Invitation

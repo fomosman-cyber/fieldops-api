@@ -81,6 +81,12 @@ def admin_overview(
             "max_users": o.max_users,
             "user_count": user_count,
             "enabled_modules": enabled_modules,
+            "brand_color": o.brand_color,
+            # Alleen of er een logo is, niet het logo zelf: dat is een base64-
+            # blob van soms honderden kilobytes en tien daarvan in een lijst is
+            # hoe deze API eerder onderuit ging. Ophalen kan per organisatie.
+            "heeft_logo": bool(o.logo_data_url),
+            "contact_email": o.contact_email,
             "created_at": o.created_at.isoformat() if o.created_at else None,
         })
 
@@ -229,6 +235,59 @@ def create_organization(
     }
 
 
+@router.get("/organizations/{org_id}")
+def get_organization(
+    org_id: str,
+    current_user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Eén bedrijfsprofiel, inclusief het logo.
+
+    Bestaat naast /overview omdat het logo een base64-blob is: in een lijst van
+    alle klanten hoort die niet thuis, in het profiel van één klant wel.
+    """
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organisatie niet gevonden")
+
+    try:
+        modules = json.loads(org.enabled_modules) if org.enabled_modules else None
+    except (ValueError, TypeError):
+        modules = None
+
+    gebruikers = (db.query(User)
+                    .filter(User.organization_id == org.id)
+                    .order_by(User.is_org_admin.desc(), User.email)
+                    .all())
+    return {
+        "id": org.id,
+        "name": org.name,
+        "plan": org.plan.value if org.plan else None,
+        "status": org.status.value if org.status else None,
+        "max_users": org.max_users,
+        "user_count": len(gebruikers),
+        "enabled_modules": modules,
+        "alle_modules": [{"key": k, "label": lb} for k, lb in PORTAL_MODULES.items()],
+        "logo_data_url": org.logo_data_url,
+        "brand_color": org.brand_color,
+        "contact_email": org.contact_email,
+        "contact_phone": org.contact_phone,
+        "kvk_number": org.kvk_number,
+        "btw_number": org.btw_number,
+        "public_meld_slug": org.public_meld_slug,
+        "public_meld_enabled": org.public_meld_enabled,
+        "created_at": org.created_at.isoformat() if org.created_at else None,
+        "gebruikers": [{
+            "id": u.id,
+            "naam": " ".join(x for x in (u.first_name, u.last_name) if x).strip() or u.email,
+            "email": u.email,
+            "rol": u.role.value if u.role else None,
+            "is_org_admin": u.is_org_admin,
+            "actief": u.is_active,
+        } for u in gebruikers],
+    }
+
+
 @router.put("/organizations/{org_id}")
 def update_organization(
     org_id: str,
@@ -332,6 +391,18 @@ def update_organization_branding(
         org.brand_color = valideer_kleur(data["brand_color"])
         after["brand_color"] = org.brand_color
 
+    # Contactgegevens horen bij het bedrijfsprofiel en gaan door hetzelfde
+    # scherm. Lege string telt als wissen, zodat een leeggemaakt veld in de
+    # UI ook echt leeg wordt en niet stilletjes de oude waarde houdt.
+    for veld, maxlen in (("contact_email", 255), ("contact_phone", 50),
+                         ("kvk_number", 20), ("btw_number", 30)):
+        if veld in data:
+            waarde = data[veld]
+            waarde = (waarde or "").strip()[:maxlen] or None
+            before[veld] = getattr(org, veld)
+            setattr(org, veld, waarde)
+            after[veld] = waarde
+
     db.commit()
     db.refresh(org)
     log_action(db, request, current_user,
@@ -342,6 +413,10 @@ def update_organization_branding(
         "name": org.name,
         "logo_data_url": org.logo_data_url,
         "brand_color": org.brand_color,
+        "contact_email": org.contact_email,
+        "contact_phone": org.contact_phone,
+        "kvk_number": org.kvk_number,
+        "btw_number": org.btw_number,
     }
 
 

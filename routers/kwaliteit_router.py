@@ -49,7 +49,8 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from sqlalchemy.orm import Session, selectinload
 
 import kwaliteit as kw
 from audit import ACTION, log_action
@@ -336,26 +337,75 @@ def _eis_to_dict(e: QualityRequirement) -> dict:
     }
 
 
-def _keuring_tellingen(db: Session, keuring_id: str) -> dict:
-    """Aantallen per status. Een query, geen loop over registraties."""
-    rijen = (db.query(QualityRegistration.status, QualityRegistration.resultaat)
-               .filter(QualityRegistration.keuring_id == keuring_id)
+_LEGE_TELLING = {"totaal": 0, "concept": 0, "ingediend": 0, "goedgekeurd": 0,
+                 "afgekeurd": 0, "afwijkend": 0, "uitgevoerd": 0}
+
+
+def _tellingen_voor(db: Session, keuring_ids: list[str]) -> dict[str, dict]:
+    """Statustellingen voor een hele pagina keuringen in één query.
+
+    Per keuring apart tellen kostte op een lijst van vijftig keuringen ook
+    vijftig queries. Lokaal op sqlite merk je dat niet; op Postgres is elke
+    query een round-trip over het netwerk, en dan is dat het verschil tussen
+    een lijst die meteen staat en een lijst waar je op wacht.
+    """
+    if not keuring_ids:
+        return {}
+    uit = {kid: dict(_LEGE_TELLING) for kid in keuring_ids}
+    rijen = (db.query(QualityRegistration.keuring_id,
+                      QualityRegistration.status,
+                      QualityRegistration.resultaat,
+                      func.count(QualityRegistration.id))
+               .filter(QualityRegistration.keuring_id.in_(keuring_ids))
+               .group_by(QualityRegistration.keuring_id,
+                         QualityRegistration.status,
+                         QualityRegistration.resultaat)
                .all())
-    afgerond = sum(1 for s, _ in rijen if s in ("ingediend", "in_beoordeling",
-                                                "goedgekeurd", "afgekeurd"))
-    return {
-        "totaal": len(rijen),
-        "concept": sum(1 for s, _ in rijen if s in ("concept", "in_uitvoering")),
-        "ingediend": sum(1 for s, _ in rijen if s in ("ingediend", "in_beoordeling")),
-        "goedgekeurd": sum(1 for s, _ in rijen if s == "goedgekeurd"),
-        "afgekeurd": sum(1 for s, _ in rijen if s == "afgekeurd"),
-        "afwijkend": sum(1 for _, r in rijen if r == "niet_akkoord"),
-        "uitgevoerd": afgerond,
-    }
+    for kid, status, resultaat, n in rijen:
+        t = uit.setdefault(kid, dict(_LEGE_TELLING))
+        t["totaal"] += n
+        if status in ("concept", "in_uitvoering"):
+            t["concept"] += n
+        if status in ("ingediend", "in_beoordeling"):
+            t["ingediend"] += n
+        if status == "goedgekeurd":
+            t["goedgekeurd"] += n
+        if status == "afgekeurd":
+            t["afgekeurd"] += n
+        if status in ("ingediend", "in_beoordeling", "goedgekeurd", "afgekeurd"):
+            t["uitgevoerd"] += n
+        if resultaat == "niet_akkoord":
+            t["afwijkend"] += n
+    return uit
 
 
-def _keuring_to_dict(db: Session, k: QualityInspection, *, detail: bool = False) -> dict:
-    tel = _keuring_tellingen(db, k.id)
+def _aantallen_voor(db: Session, keuring_ids: list[str]) -> dict[str, tuple[int, int]]:
+    """Aantal velden en eisen per keuring, twee queries voor de hele pagina."""
+    if not keuring_ids:
+        return {}
+    velden = dict(db.query(QualityField.keuring_id, func.count(QualityField.id))
+                    .filter(QualityField.keuring_id.in_(keuring_ids))
+                    .group_by(QualityField.keuring_id).all())
+    eisen = dict(db.query(QualityRequirement.keuring_id, func.count(QualityRequirement.id))
+                   .filter(QualityRequirement.keuring_id.in_(keuring_ids))
+                   .group_by(QualityRequirement.keuring_id).all())
+    return {kid: (velden.get(kid, 0), eisen.get(kid, 0)) for kid in keuring_ids}
+
+
+def _keuring_tellingen(db: Session, keuring_id: str) -> dict:
+    """Statustellingen voor één keuring — voor het detailscherm."""
+    return _tellingen_voor(db, [keuring_id]).get(keuring_id, dict(_LEGE_TELLING))
+
+
+def _keuring_to_dict(db: Session, k: QualityInspection, *, detail: bool = False,
+                    tellingen: Optional[dict] = None,
+                    aantallen: Optional[tuple[int, int]] = None) -> dict:
+    # In een lijst worden tellingen en aantallen voor de hele pagina in een
+    # paar queries opgehaald en hier doorgegeven; alleen het detailscherm valt
+    # terug op een eigen query.
+    tel = tellingen if tellingen is not None else _keuring_tellingen(db, k.id)
+    n_velden, n_eisen = (aantallen if aantallen is not None
+                         else (len(k.velden or []), len(k.eisen or [])))
     uit = {
         "id": k.id,
         "naam": k.naam,
@@ -382,8 +432,8 @@ def _keuring_to_dict(db: Session, k: QualityInspection, *, detail: bool = False)
         "prioriteit": k.prioriteit,
         "status": k.status,
         "template_code": k.template_code,
-        "aantal_velden": len(k.velden or []),
-        "aantal_eisen": len(k.eisen or []),
+        "aantal_velden": n_velden,
+        "aantal_eisen": n_eisen,
         "registraties": tel,
         "voortgang": kw.voortgang(tel["uitgevoerd"], k.verwacht_aantal),
         "created_at": k.created_at.isoformat() if k.created_at else None,
@@ -464,11 +514,44 @@ def _bewijs_to_dict(b: QualityEvidence, *, met_inhoud: bool = False) -> dict:
     return uit
 
 
-def _registratie_to_dict(db: Session, r: QualityRegistration, *, detail: bool = False) -> dict:
+def _registratie_aantallen(db: Session,
+                           registratie_ids: list[str]) -> dict[str, tuple[int, int, int]]:
+    """(velden, ingevuld, bewijsstukken) per registratie, in twee queries."""
+    if not registratie_ids:
+        return {}
+    uit = {rid: [0, 0, 0] for rid in registratie_ids}
+    for rid, totaal, ingevuld in db.query(
+            QualityAnswer.registratie_id,
+            func.count(QualityAnswer.id),
+            func.count(QualityAnswer.beantwoord_op)).filter(
+                QualityAnswer.registratie_id.in_(registratie_ids)).group_by(
+                    QualityAnswer.registratie_id).all():
+        uit[rid][0] = totaal
+        uit[rid][1] = ingevuld
+    for rid, n in db.query(
+            QualityEvidence.registratie_id,
+            func.count(QualityEvidence.id)).filter(
+                QualityEvidence.registratie_id.in_(registratie_ids)).group_by(
+                    QualityEvidence.registratie_id).all():
+        uit[rid][2] = n
+    return {rid: tuple(v) for rid, v in uit.items()}
+
+
+def _registratie_to_dict(db: Session, r: QualityRegistration, *, detail: bool = False,
+                        aantallen: Optional[tuple[int, int, int]] = None) -> dict:
     k = r.keuring
-    antwoorden = list(r.antwoorden or [])
-    bewijs = list(r.bewijs or [])
-    ingevuld = sum(1 for a in antwoorden if a.beantwoord_op is not None)
+    # In een lijst tellen we antwoorden en bewijs met een paar groepsqueries
+    # voor de hele pagina; per rij de relaties aanraken kostte een query per
+    # registratie per relatie. Alleen het detailscherm laadt ze echt.
+    if detail or aantallen is None:
+        antwoorden = list(r.antwoorden or [])
+        bewijs = list(r.bewijs or [])
+        n_velden = len(antwoorden)
+        n_ingevuld = sum(1 for a in antwoorden if a.beantwoord_op is not None)
+        n_bewijs = len(bewijs)
+    else:
+        antwoorden, bewijs = [], []
+        n_velden, n_ingevuld, n_bewijs = aantallen
     uit = {
         "id": r.id,
         "keuring_id": r.keuring_id,
@@ -491,9 +574,9 @@ def _registratie_to_dict(db: Session, r: QualityRegistration, *, detail: bool = 
         "opmerking": r.opmerking,
         "heeft_handtekening": bool(r.handtekening_data_url),
         "handtekening_naam": r.handtekening_naam,
-        "aantal_velden": len(antwoorden),
-        "aantal_ingevuld": ingevuld,
-        "aantal_bewijs": len(bewijs),
+        "aantal_velden": n_velden,
+        "aantal_ingevuld": n_ingevuld,
+        "aantal_bewijs": n_bewijs,
         "ingediend_op": r.ingediend_op.isoformat() if r.ingediend_op else None,
         "beoordeeld_op": r.beoordeeld_op.isoformat() if r.beoordeeld_op else None,
         "beoordelaar_naam": _volledige_naam(r.beoordelaar) if r.beoordelaar else None,
@@ -685,13 +768,24 @@ def lijst_keuringen(
         naald = f"%{zoek.strip()}%"
         q = q.filter(QualityInspection.naam.ilike(naald))
     totaal = q.count()
-    rijen = (q.order_by(QualityInspection.created_at.desc())
+    rijen = (q.options(selectinload(QualityInspection.project),
+                       selectinload(QualityInspection.verantwoordelijke),
+                       selectinload(QualityInspection.uitvoerder),
+                       selectinload(QualityInspection.controleur))
+              .order_by(QualityInspection.created_at.desc())
               .offset(offset).limit(limit).all())
+
+    ids = [k.id for k in rijen]
+    tellingen = _tellingen_voor(db, ids)
+    aantallen = _aantallen_voor(db, ids)
     return {
         "totaal": totaal,
         "limit": limit,
         "offset": offset,
-        "keuringen": [_keuring_to_dict(db, k) for k in rijen],
+        "keuringen": [_keuring_to_dict(db, k,
+                                       tellingen=tellingen.get(k.id),
+                                       aantallen=aantallen.get(k.id))
+                      for k in rijen],
     }
 
 
@@ -1256,13 +1350,20 @@ def lijst_registraties(
         q = q.filter(QualityRegistration.uitvoerder_id == uitvoerder_id)
 
     totaal = q.count()
-    rijen = (q.order_by(QualityRegistration.datum.desc())
+    rijen = (q.options(selectinload(QualityRegistration.keuring)
+                       .selectinload(QualityInspection.project),
+                       selectinload(QualityRegistration.beoordelaar))
+              .order_by(QualityRegistration.datum.desc())
               .offset(offset).limit(limit).all())
+
+    reg_ids = [r.id for r in rijen]
+    aantallen = _registratie_aantallen(db, reg_ids)
     return {
         "totaal": totaal,
         "limit": limit,
         "offset": offset,
-        "registraties": [_registratie_to_dict(db, r) for r in rijen],
+        "registraties": [_registratie_to_dict(db, r, aantallen=aantallen.get(r.id))
+                         for r in rijen],
     }
 
 

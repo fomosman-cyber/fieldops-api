@@ -192,3 +192,39 @@ def test_module_registry_consistent(client):
     # alleen een front-end-gordijn en blijft de data opvraagbaar.
     assert set(MODULE_ENDPOINTS) == set(PORTAL_MODULES), (
         f"zonder server-side gate: {set(PORTAL_MODULES) - set(MODULE_ENDPOINTS)}")
+
+
+def test_portaal_kent_dezelfde_modules_als_de_backend():
+    """De modulelijst in het portaal moet gelijk zijn aan PORTAL_MODULES.
+
+    Loopt die uit de pas, dan gebeurt er iets vervelends en stils: de backend
+    weigert de module netjes met een 403, maar het menu-item blijft staan omdat
+    de front-end de key niet als module herkent. De gebruiker klikt dan op een
+    tab die niet werkt, en de beheerder kan hem nergens uitzetten want hij staat
+    niet in het vinkjes-scherm.
+
+    Dat is precies wat er gebeurde toen 'kwaliteit' wel aan PORTAL_MODULES werd
+    toegevoegd maar niet aan MODULE_PAGES.
+    """
+    import pathlib
+    import re
+
+    portaal = (pathlib.Path(__file__).resolve().parent.parent
+               / "templates" / "portaal.html").read_text(encoding="utf-8")
+
+    m = re.search(r"var MODULE_PAGES = \[(.*?)\]", portaal, re.S)
+    assert m, "MODULE_PAGES niet gevonden in portaal.html"
+    pagina_keys = set(re.findall(r"'([^']+)'", m.group(1)))
+
+    assert pagina_keys == set(PORTAL_MODULES), (
+        "MODULE_PAGES in portaal.html wijkt af van PORTAL_MODULES in models.py. "
+        f"Alleen in de backend: {sorted(set(PORTAL_MODULES) - pagina_keys)}; "
+        f"alleen in het portaal: {sorted(pagina_keys - set(PORTAL_MODULES))}")
+
+    # Elke module heeft ook een leesbaar label nodig, anders staat er een
+    # technische key in het vinkjes-scherm van de beheerder.
+    lbl = re.search(r"var MODULE_LABELS = \{(.*?)\n    \};", portaal, re.S)
+    assert lbl, "MODULE_LABELS niet gevonden in portaal.html"
+    label_keys = set(re.findall(r"'([^']+)'\s*:", lbl.group(1)))
+    ontbreekt = set(PORTAL_MODULES) - label_keys
+    assert not ontbreekt, f"Geen label voor: {sorted(ontbreekt)}"

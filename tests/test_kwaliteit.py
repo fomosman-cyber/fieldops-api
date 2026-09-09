@@ -758,3 +758,99 @@ def test_keuring_overleeft_het_verwijderen_van_haar_project(client, admin_user):
     assert detail.status_code == 200
     assert detail.json()["project_id"] is None
     assert detail.json()["registraties"]["ingediend"] == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Snelheid: het aantal queries mag niet meegroeien met het aantal regels
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _tel_queries(client, pad, headers):
+    """Hoeveel SQL-statements een verzoek afvuurt."""
+    from sqlalchemy import event
+    from database import engine
+
+    aantal = {"n": 0}
+
+    def _tel(conn, cursor, statement, parameters, context, executemany):
+        aantal["n"] += 1
+
+    client.get(pad, headers=headers)          # opwarmen, buiten de telling
+    event.listen(engine, "before_cursor_execute", _tel)
+    try:
+        r = client.get(pad, headers=headers)
+    finally:
+        event.remove(engine, "before_cursor_execute", _tel)
+    assert r.status_code == 200, r.text
+    return aantal["n"], r.json()
+
+
+def test_lijsten_schalen_niet_met_het_aantal_regels(client, admin_user):
+    """Vangnet tegen een N+1 die terugsluipt.
+
+    Bij het bouwen vuurde /registraties 122 queries af voor 22 regels: per
+    registratie werden de keuring, de antwoorden en het bewijs los opgehaald.
+    Op sqlite merk je dat nauwelijks, maar op PostgreSQL is elke query een
+    round-trip over het netwerk -- daar wordt dat het verschil tussen een lijst
+    die meteen staat en een lijst waar je op wacht.
+
+    Daarom telt deze test niet de tijd maar het aantal queries, en eist hij dat
+    het aantal gelijk blijft als er drie keer zo veel regels bij komen.
+    """
+    kop = auth(admin_user)
+
+    def bouw(aantal_keuringen, registraties_per_keuring):
+        for i in range(aantal_keuringen):
+            k = _maak_keuring(client, admin_user, naam=f"Keuring {i}")
+            _veld(client, admin_user, k["id"], label="Verdichting",
+                  veldtype="meetwaarde", norm_min=98)
+            _veld(client, admin_user, k["id"], label="Foto", veldtype="foto")
+            for _ in range(registraties_per_keuring):
+                reg = _start(client, admin_user, k["id"])
+                client.post(f"/api/kwaliteit/registraties/{reg['id']}/bewijs",
+                            json={"url": "data:image/png;base64,iVBORw0KGgo="},
+                            headers=kop)
+
+    bouw(2, 2)
+    keuringen_klein, _ = _tel_queries(client, "/api/kwaliteit/keuringen", kop)
+    registraties_klein, _ = _tel_queries(client, "/api/kwaliteit/registraties", kop)
+
+    bouw(4, 4)                                 # 6 keuringen, 20 registraties
+    keuringen_groot, body_k = _tel_queries(client, "/api/kwaliteit/keuringen", kop)
+    registraties_groot, body_r = _tel_queries(client, "/api/kwaliteit/registraties", kop)
+
+    assert body_k["totaal"] == 6
+    assert body_r["totaal"] == 20
+
+    assert keuringen_groot == keuringen_klein, (
+        f"keuringenlijst: {keuringen_klein} queries bij 2 keuringen, "
+        f"{keuringen_groot} bij 6 -- dat groeit mee, dus er is een N+1 terug")
+    assert registraties_groot == registraties_klein, (
+        f"registratielijst: {registraties_klein} queries bij 4 registraties, "
+        f"{registraties_groot} bij 20 -- dat groeit mee, dus er is een N+1 terug")
+
+
+def test_lijst_telt_bewijs_en_ingevulde_velden_goed(client, admin_user):
+    """De groepsqueries moeten hetzelfde antwoord geven als het detailscherm."""
+    k = _maak_keuring(client, admin_user)
+    _veld(client, admin_user, k["id"], label="Verdichting", veldtype="meetwaarde",
+          norm_min=98)
+    _veld(client, admin_user, k["id"], label="Laagdikte", veldtype="meetwaarde")
+    _veld(client, admin_user, k["id"], label="Opmerking", veldtype="tekst_lang")
+    reg = _start(client, admin_user, k["id"])
+
+    client.patch(f"/api/kwaliteit/registraties/{reg['id']}/antwoorden/{_antwoord_id(reg, 'verdichting')}",
+                 json={"waarde": 99}, headers=auth(admin_user))
+    client.post(f"/api/kwaliteit/registraties/{reg['id']}/bewijs",
+                json={"url": "data:image/png;base64,iVBORw0KGgo="},
+                headers=auth(admin_user))
+
+    lijst = client.get("/api/kwaliteit/registraties", headers=auth(admin_user)).json()
+    rij = lijst["registraties"][0]
+    detail = client.get(f"/api/kwaliteit/registraties/{reg['id']}",
+                        headers=auth(admin_user)).json()
+
+    for veld in ("aantal_velden", "aantal_ingevuld", "aantal_bewijs"):
+        assert rij[veld] == detail[veld], f"{veld} loopt uiteen tussen lijst en detail"
+    assert rij["aantal_velden"] == 3
+    assert rij["aantal_ingevuld"] == 1
+    assert rij["aantal_bewijs"] == 1
