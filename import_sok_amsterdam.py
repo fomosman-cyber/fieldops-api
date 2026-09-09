@@ -87,24 +87,55 @@ def laad_data() -> dict:
 
 
 def kies_organisatie(db: Session, naam: str | None, org_id: str | None) -> Organization:
+    """Organisatie op id, op naam, of op het regelnummer uit de keuzelijst.
+
+    Dat laatste omdat namen als "Propane B.V." in een shell zonder werkende
+    plakfunctie lastig foutloos te typen zijn.
+    """
+    orgs = sorted(db.query(Organization).all(), key=lambda o: (o.name or "").lower())
+
+    def keuzelijst() -> str:
+        """Genummerde lijst met per organisatie een gebruiker, zodat je je
+        eigen omgeving herkent aan het e-mailadres waarmee je inlogt."""
+        regels = []
+        for i, o in enumerate(orgs, 1):
+            users = (db.query(User)
+                     .filter(User.organization_id == o.id, User.is_active == True)  # noqa: E712
+                     .order_by(User.role != UserRole.ADMIN, User.created_at)
+                     .limit(2).all())
+            wie = ", ".join(u.email for u in users) or "geen actieve gebruikers"
+            regels.append(f"  {i:2d})  {o.name}\n        {wie}")
+        return ("Kies je organisatie op nummer — herken hem aan het e-mailadres\n"
+                "waarmee jij inlogt. Bijvoorbeeld:\n\n"
+                "    python import_sok_amsterdam.py --dry-run --org 1\n\n"
+                + "\n".join(regels))
+
     if org_id:
         org = db.query(Organization).filter(Organization.id == org_id).first()
         if not org:
             sys.exit(f"Geen organisatie met id {org_id}")
         return org
+
     if naam:
-        org = db.query(Organization).filter(Organization.name == naam).first()
-        if not org:
-            beschikbaar = [o.name for o in db.query(Organization).all()]
-            sys.exit(f"Geen organisatie '{naam}'. Beschikbaar: {beschikbaar}")
-        return org
-    orgs = db.query(Organization).all()
+        gekozen = naam.strip()
+        if gekozen.isdigit():
+            nr = int(gekozen)
+            if not 1 <= nr <= len(orgs):
+                sys.exit(f"Kies een nummer tussen 1 en {len(orgs)}.")
+            return orgs[nr - 1]
+        for o in orgs:                       # exact, daarna hoofdletterloos
+            if (o.name or "").strip() == gekozen:
+                return o
+        for o in orgs:
+            if (o.name or "").strip().lower() == gekozen.lower():
+                return o
+        sys.exit(f"Geen organisatie '{gekozen}'.\n\n" + keuzelijst())
+
     if len(orgs) == 1:
         return orgs[0]
     if not orgs:
         sys.exit("Er staat nog geen organisatie in de database.")
-    sys.exit("Meerdere organisaties gevonden — kies er een met --org:\n  "
-             + "\n  ".join(f"{o.name}  (--org-id {o.id})" for o in orgs))
+    sys.exit("Meerdere organisaties gevonden.\n\n" + keuzelijst())
 
 
 def kies_gebruiker(db: Session, org: Organization, email: str | None) -> User:
@@ -169,7 +200,8 @@ REF_RE = re.compile(r"Bronreferentie:\s*(SOK-AMS-2026-\d+)")
 
 def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
                      project: Project, assets: dict[str, Asset],
-                     overschrijf: bool = False) -> tuple[int, int, int]:
+                     overschrijf: bool = False, met_fotos: bool = True,
+                     dry_run: bool = False) -> tuple[int, int, int]:
     """Meldingen aanmaken/bijwerken.
 
     Gematcht op de bronreferentie onderaan de omschrijving, niet op de titel:
@@ -212,13 +244,20 @@ def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
             melding.lat = m["lat"]
             melding.lng = m["lng"]
         # De schouwfoto komt uit het rapport en wordt wel steeds ververst.
-        if (foto := foto_data_url(m.get("foto"))):
+        if met_fotos and (foto := foto_data_url(m.get("foto"))):
             melding.photo_url = foto
         melding.project_id = project.id
         asset = assets.get(m["asset_code"])
         melding.asset_id = asset.id if asset else None
         if melding.photo_url:
             met_foto += 1
+
+        # In blokken wegschrijven houdt het geheugengebruik laag: de foto's
+        # zijn samen enkele megabytes en de shell deelt zijn geheugen met de
+        # draaiende webservice.
+        if not dry_run and (nieuw + bijgewerkt) % 25 == 0:
+            db.commit()
+            print(f"  ... {nieuw + bijgewerkt} van {len(data['meldingen'])} verwerkt")
     db.flush()
     return nieuw, bijgewerkt, met_foto
 
@@ -273,9 +312,20 @@ def main() -> None:
     ap.add_argument("--overschrijf", action="store_true",
                     help="zet ook velden terug die in het portaal zijn aangepast "
                          "(werksoort, titel, pin); standaard blijven die staan")
+    ap.add_argument("--zonder-fotos", action="store_true",
+                    help="importeer zonder de schouwfoto's — sneller en veel "
+                         "lichter; draai het script daarna nog eens zonder deze "
+                         "vlag om de foto's alsnog toe te voegen")
     ap.add_argument("--csv", metavar="MAP",
                     help="schrijf de import-CSV's naar deze map en stop")
     args = ap.parse_args()
+
+    # De Render-shell buffert stdout. Sneuvelt het proces daarna, dan gaat de
+    # hele buffer verloren en zie je geen enkele regel — ook geen foutmelding.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:                      # oudere Python
+        pass
 
     data = laad_data()
 
@@ -294,7 +344,8 @@ def main() -> None:
         project = upsert_project(db, data, org, user)
         assets = upsert_wegen(db, data, org, user, project)
         nieuw, bijgewerkt, met_foto = upsert_meldingen(
-            db, data, org, user, project, assets, overschrijf=args.overschrijf)
+            db, data, org, user, project, assets, overschrijf=args.overschrijf,
+            met_fotos=not args.zonder_fotos, dry_run=args.dry_run)
 
         zonder_gps = [m["titel"] for m in data["meldingen"] if m["lat"] is None]
         gemarkeerd = [m["titel"] for m in data["meldingen"] if m["gps_waarschuwing"]]
