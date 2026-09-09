@@ -56,6 +56,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Asset, Melding, Organization, Project, User, UserRole
 from werksoorten import ONBEPAALD, maatregel_voor
+from crow_kosten import klasse_to_categorie
 
 DATA_FILE = Path(__file__).parent / "data" / "sok_amsterdam_asfalt_2026.json"
 FOTO_MAP = Path(__file__).parent / "data" / "sok_amsterdam_fotos"
@@ -260,6 +261,17 @@ def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
             melding.category = m.get("categorie") or ONBEPAALD
         if vers or not melding.priority:
             melding.priority = m.get("prioriteit") or PRIORITEIT
+        # CROW 146 + NEN 2767 — geschat uit de schouwfoto, zie het veld
+        # crow_herkomst in de dataset. De maatregel komt hier bewust NIET uit:
+        # die volgt uit de werksoort, want die bepaalt welke ploeg gaat.
+        for veld in ("crow_schadegroep", "crow_schadebeeld", "crow_ernst",
+                     "crow_omvang", "crow_klasse"):
+            if m.get(veld) and (vers or not getattr(melding, veld)):
+                setattr(melding, veld, m[veld])
+        if m.get("nen_2767_conditie") and (vers or melding.nen_2767_conditie is None):
+            melding.nen_2767_conditie = m["nen_2767_conditie"]
+        if m.get("crow_klasse") and (vers or not melding.onderhoud_categorie):
+            melding.onderhoud_categorie = klasse_to_categorie(m["crow_klasse"])
         # Zonder CROW-maatregel valt een melding buiten het clusteren — de
         # job-orchestratie filtert op gw_term. De maatregel volgt uit de
         # werksoort; zie werksoorten.py.
@@ -268,7 +280,9 @@ def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
             melding.gw_maatregel = maatregel["gw_maatregel"]
             melding.gw_term = maatregel["gw_term"]
             melding.gw_kosten_orde = maatregel["gw_kosten_orde"]
-        # Maatvoering uit het rapport, zodat er mee gerekend kan worden.
+        # Maatvoering en asfaltsoort uit het rapport, zodat er mee gerekend kan
+        # worden. De asfaltsoort staat alleen ingevuld waar het rapport hem
+        # noemt — bij de rest is het geen "zwart", maar "niet vermeld".
         if vers or not melding.norm_data_json:
             melding.norm_data_json = json.dumps({
                 "oppervlakte_m2": m.get("oppervlakte_m2"),
@@ -277,6 +291,8 @@ def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
                 "aantal_vlakken": m.get("aantal_vlakken"),
                 "vlakken": m.get("vlakken"),
                 "maatvoering": m.get("maatvoering"),
+                "asfaltsoort": m.get("asfaltsoort"),
+                "aantal_fotos": m.get("aantal_fotos"),
             }, ensure_ascii=False)
         if vers or melding.lat is None:
             melding.lat = m["lat"]

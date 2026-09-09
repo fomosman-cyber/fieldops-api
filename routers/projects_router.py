@@ -195,7 +195,7 @@ def delete_project(
     # veiligheidsdossiers die je niet kwijt wilt raken omdat een project opgeruimd
     # wordt.
     from models import (Asset, BouwInspectie, DaybookEntry, EmailInboxRoute,
-                        Incident, IncomingWebhook, Inspection, Oplevering,
+                        Incident, IncomingWebhook, Inspection, Lmra, Oplevering,
                         Organization, Schouwrit, Toolbox, Werkplekinspectie)
 
     losgemaakt = {}
@@ -209,6 +209,7 @@ def delete_project(
         ("webhooks",    IncomingWebhook,  IncomingWebhook.default_project_id),
         ("toolboxen",   Toolbox,          Toolbox.project_id),
         ("werkplekinspecties", Werkplekinspectie, Werkplekinspectie.project_id),
+        ("lmra's",      Lmra,             Lmra.project_id),
         ("incidenten",  Incident,         Incident.project_id),
         ("bouwinspecties", BouwInspectie, BouwInspectie.project_id),
         ("schouwritten", Schouwrit,       Schouwrit.project_id),

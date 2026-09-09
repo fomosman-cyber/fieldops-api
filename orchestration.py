@@ -15,12 +15,14 @@ Productiviteit-economics:
 """
 
 from __future__ import annotations
+import json
 from math import radians, sin, cos, sqrt, atan2
 from typing import Iterable, Optional
 
 from sqlalchemy.orm import Session
 
 from models import Melding, User, UserSkill, JobCluster
+from werksoorten import WERKSOORT_SKILL, synchroniseer as werksoort_synchroniseer
 from crow_kosten import (
     maatregel_to_skill,
     estimate_cluster_hours,
@@ -172,11 +174,19 @@ def generate_clusters(
     """Hoofdfunctie: genereer JobCluster-records voor open meldingen.
 
     Strategie:
+    0. Trek de maatregel van elke melding gelijk aan zijn werksoort
     1. Pak alle open meldingen met `gw_term` gezet (CROW-classificatie compleet)
     2. Groepeer op gw_term
     3. Per groep: greedy geo-clustering binnen radius_km
     4. Cluster met >= min_cluster_size wordt een JobCluster
     5. Estimeer baseline + clustered uren via crow_kosten.estimate_cluster_hours
+
+    Stap 0 zorgt dat de clusterindeling dezelfde is als de werksoort-indeling
+    op de kaart: hotbox bij hotbox, machinaal bij machinaal, scheuren bij
+    scheuren. Wie een melding in het portaal van werksoort verandert, ziet dat
+    bij de eerstvolgende generatie terug zonder ergens anders iets te hoeven
+    doen. Meldingen zonder werksoort ("nog in te delen") hebben geen gw_term en
+    blijven bewust buiten de clusters — die moeten eerst ingedeeld worden.
 
     Returns een summary-dict met counts en savings.
     """
@@ -198,14 +208,25 @@ def generate_clusters(
     # Alleen 'opgelost' / 'afgerond' zijn klaar en hebben geen cluster nodig.
     ACTIVE_STATUSES = ("open", "nieuw", "in_behandeling", "in_uitvoering",
                        "gereed_uitvoering")
-    meldingen = (db.query(Melding)
-                   .filter(Melding.organization_id == organization_id,
-                           Melding.status.in_(ACTIVE_STATUSES),
-                           Melding.gw_term.isnot(None),
-                           Melding.job_cluster_id.is_(None))
-                   .all())
 
-    # Groep per gw_term
+    # Stap 0 — werksoort is leidend voor de maatregel. Zonder dit blijft een
+    # melding die in het portaal van werksoort is veranderd op zijn oude
+    # gw_term clusteren, en valt een melding die er net een heeft gekregen
+    # helemaal buiten de boot.
+    actief = (db.query(Melding)
+                .filter(Melding.organization_id == organization_id,
+                        Melding.status.in_(ACTIVE_STATUSES))
+                .all())
+    # Let op: geen any(...) met een generator — die stopt bij de eerste melding
+    # die verandert en laat de rest ongesynchroniseerd achter.
+    if [m for m in actief if werksoort_synchroniseer(m)]:
+        db.commit()
+
+    meldingen = [m for m in actief
+                 if m.gw_term is not None and m.job_cluster_id is None]
+
+    # Groep per gw_term. Elke werksoort heeft een eigen gw_term, dus de
+    # groepen zijn precies de werksoorten die de uitvoerder op de kaart ziet.
     by_term: dict[str, list[Melding]] = {}
     for m in meldingen:
         by_term.setdefault(m.gw_term, []).append(m)
@@ -215,14 +236,12 @@ def generate_clusters(
     total_clustered = 0.0
 
     for gw_term, group in by_term.items():
-        skill = maatregel_to_skill(group[0].gw_maatregel)
+        skill = _skill_voor_groep(group)
         for cluster_meldingen in _greedy_geo_clusters(group, radius_km=radius_km):
             if len(cluster_meldingen) < min_cluster_size:
                 continue
 
-            # Schat units (proxy: 50 m¹ per scheurvulling-melding, 30 m² per
-            # oppervlakte-behandeling, etc — heuristiek tot we echte units hebben)
-            units = _estimate_units(skill, len(cluster_meldingen))
+            units = _estimate_units(skill, cluster_meldingen)
             clustered_h, baseline_h = estimate_cluster_hours(skill, units) if skill else (0, 0)
 
             lat_min, lat_max, lng_min, lng_max = geo_bounding(cluster_meldingen)
@@ -266,18 +285,62 @@ def generate_clusters(
     }
 
 
-def _estimate_units(skill_code: Optional[str], melding_count: int) -> float:
-    """Heuristisch aantal eenheden (m¹/m²/voeg/plek) bij een N meldingen.
+def _skill_voor_groep(group: list[Melding]) -> Optional[str]:
+    """De skill die de meeste meldingen in deze groep vragen.
 
-    Tot we echte 'omvang in eenheden' op melding-niveau hebben, gebruiken we
-    een conservatieve schatting per skill — voldoende voor productivity-calc.
+    Eerst op werksoort — die is expliciet vastgesteld. Valt de categorie
+    daarbuiten, dan via de CROW-maatregel. Eerder werd alleen naar de eerste
+    melding gekeken; bij een groep waarvan juist die ene melding geen
+    maatregel had, kreeg het hele cluster geen skill en dus geen urenraming.
+    """
+    stemmen: dict[str, int] = {}
+    for m in group:
+        skill = (WERKSOORT_SKILL.get((m.category or "").strip())
+                 or maatregel_to_skill(m.gw_maatregel))
+        if skill:
+            stemmen[skill] = stemmen.get(skill, 0) + 1
+    if not stemmen:
+        return None
+    return max(stemmen.items(), key=lambda kv: kv[1])[0]
+
+
+def _maat_uit_melding(m: Melding) -> dict:
+    """Maatvoering die bij de melding is opgeslagen, of een leeg dict."""
+    if not m.norm_data_json:
+        return {}
+    try:
+        data = json.loads(m.norm_data_json)
+    except (ValueError, TypeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _estimate_units(skill_code: Optional[str], meldingen: list[Melding]) -> float:
+    """Aantal eenheden (m¹/m²/voeg/plek) in een cluster.
+
+    Waar de schouwer heeft gemeten rekenen we met die maat: het aantal vlakken
+    voor plekwerk, de lengte voor scheuren, het oppervlak voor machinaal werk.
+    Die maten staan in norm_data_json. Voor meldingen zonder maat valt de
+    schatting terug op het oude kengetal (een halve werkuur per melding,
+    teruggerekend via de productiviteit), zodat een half ingevulde dataset niet
+    ineens een cluster van nul uur oplevert.
     """
     if not skill_code:
         return 0.0
     rate, eenheid, _setup = PRODUCTIVITY_PER_SKILL.get(skill_code, (0.0, "", 0.0))
     # Aanname: gemiddelde melding ~30 min ruwe arbeid → afgeleid uit rate
-    avg_units_per_melding = (0.5 / rate) if rate > 0 else 50.0
-    return avg_units_per_melding * melding_count
+    terugval = (0.5 / rate) if rate > 0 else 50.0
+    veld = {"plek": "aantal_vlakken", "m¹": "lengte_m", "m²": "oppervlakte_m2"}.get(eenheid)
+
+    totaal = 0.0
+    for m in meldingen:
+        gemeten = _maat_uit_melding(m).get(veld) if veld else None
+        try:
+            gemeten = float(gemeten) if gemeten is not None else 0.0
+        except (TypeError, ValueError):
+            gemeten = 0.0
+        totaal += gemeten if gemeten > 0 else terugval
+    return totaal
 
 
 # ════════════════════════════════════════════════════════════

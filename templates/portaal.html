@@ -1867,8 +1867,6 @@
               <option value="Hotbox werkzaamheden">🔥 Hotbox werkzaamheden</option>
               <option value="Asfalt machinaal">🚜 Asfalt machinaal</option>
               <option value="Scheuren vullen">🩹 Scheuren vullen</option>
-              <option value="Asfalt zwart (rijweg)">⬛ Asfalt zwart (rijweg)</option>
-              <option value="Asfalt rood (fiets-/voetpad)">🟥 Asfalt rood (fiets-/voetpad)</option>
               <option value="Asfalt – nog in te delen">🛣️ Nog in te delen</option>
             </select>
             <select id="bulkProjectSelect" style="padding:6px 10px;border-radius:8px;border:none;font-size:13px;background:rgba(255,255,255,0.95);color:var(--text);font-weight:500;cursor:pointer;">
@@ -3104,9 +3102,13 @@
             <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ff5252;"></div><span style="color:var(--text-muted);">🔥 Hotbox werkzaamheden</span></div>
             <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#22c55e;"></div><span style="color:var(--text-muted);">🚜 Asfalt machinaal</span></div>
             <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ffab40;"></div><span style="color:var(--text-muted);">🩹 Scheuren vullen</span></div>
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#334155;"></div><span style="color:var(--text-muted);">⬛ Asfalt zwart (rijweg)</span></div>
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#e11d48;"></div><span style="color:var(--text-muted);">🟥 Asfalt rood (fiets-/voetpad)</span></div>
             <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#94a3b8;"></div><span style="color:var(--text-muted);">🛣️ Nog in te delen</span></div>
+          </div>
+          <div style="font-weight:600;margin:12px 0 8px;color:var(--text);">Asfaltsoort</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:2px;background:#334155;"></div><span style="color:var(--text-muted);">⬛ Zwart asfalt (rijweg)</span></div>
+            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:2px;background:#e11d48;"></div><span style="color:var(--text-muted);">🟥 Rood asfalt (fiets-/voetpad)</span></div>
+            <div style="color:var(--text-muted);font-size:11px;line-height:1.4;">Zegt wat er ligt, niet hoe het hersteld wordt — daarom geen kaartkleur maar een label bij de melding. Alleen ingevuld waar het rapport het noemt.</div>
           </div>
         </div>
       </div>
@@ -4100,6 +4102,7 @@
         <button class="int-tab active" data-tab="toolbox" onclick="switchVeiligheidTab('toolbox')" data-i18n="vg_tab_toolbox">Toolbox</button>
         <button class="int-tab" data-tab="incidenten" onclick="switchVeiligheidTab('incidenten')" data-i18n="vg_tab_incidenten">Incidenten</button>
         <button class="int-tab" data-tab="wpi" onclick="switchVeiligheidTab('wpi')" data-i18n="vg_tab_wpi">Werkplekinspectie</button>
+        <button class="int-tab" data-tab="lmra" onclick="switchVeiligheidTab('lmra')" data-i18n="vg_tab_lmra">LMRA</button>
       </div>
 
       <div id="vg-tab-toolbox">
@@ -4168,6 +4171,40 @@
         <div id="wpiActies" style="margin-bottom:16px;"></div>
 
         <div class="card" id="wpiList">
+          <div class="loading-spinner"></div>
+        </div>
+      </div>
+
+      <!-- LMRA — de laatste minuut voor de start. Bewust bovenaan een grote
+           startknop en verder niets: wie hier komt wil beginnen, niet lezen. -->
+      <div id="vg-tab-lmra" style="display:none;">
+        <div class="card" style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+          <div style="flex:1;min-width:240px;">
+            <strong style="font-size:15px;">Ga je zo beginnen?</strong>
+            <p style="font-size:13px;color:var(--text-muted);margin-top:2px;">Loop de laatste elf vragen langs. Staat er iets niet goed, dan begin je niet — je lost het op of je belt.</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="lmraProject" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;"><option value="">Zonder project</option></select>
+            <input id="lmraTaak" type="text" placeholder="Wat ga je doen?" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;min-width:200px;">
+            <button class="btn-primary" onclick="startLmra()">Start LMRA</button>
+          </div>
+        </div>
+
+        <div class="stats-grid" id="lmraStats" style="margin-bottom:16px;"></div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:center;">
+          <select id="lmraFilterStatus" onchange="loadLmra()" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+            <option value="">Alle statussen</option>
+            <option value="concept">Bezig</option>
+            <option value="veilig">Veilig gestart</option>
+            <option value="niet_gestart">Niet gestart</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text-muted);cursor:pointer;">
+            <input type="checkbox" id="lmraAlleenEigen" onchange="loadLmra()" style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer;"> Alleen die van mij
+          </label>
+        </div>
+
+        <div class="card" id="lmraList">
           <div class="loading-spinner"></div>
         </div>
       </div>
@@ -5836,6 +5873,40 @@
 
 
   <!-- ═══ WERKPLEKINSPECTIE — DE RONDGANG ═══ -->
+  <!-- LMRA-modal. De vragen staan gegroepeerd zoals je ze buiten afloopt; bij
+       een "nee" klapt het maatregel-veld open, want dat is waar het om draait. -->
+  <div class="modal-overlay" id="lmraModal">
+    <div class="modal" style="max-width:760px;">
+      <button class="modal-close" onclick="closeLmra()" aria-label="Sluiten">&times;</button>
+      <h2>LMRA — laatste minuut risico analyse</h2>
+      <p class="subtitle" id="lmraSub"></p>
+
+      <div id="lmraVoortgang" style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:13px;"></div>
+
+      <div class="form-group">
+        <label>Wat ga je doen?</label>
+        <input id="lmraModalTaak" type="text" onchange="lmraBewaarKop()">
+      </div>
+      <div class="form-group">
+        <label>Waar sta je?</label>
+        <input id="lmraModalLocatie" type="text" onchange="lmraBewaarKop()">
+      </div>
+
+      <div id="lmraVragen"></div>
+
+      <div class="form-group" style="margin-top:18px;">
+        <label>Welke maatregelen heb je genomen? (of waarom niet gestart)</label>
+        <textarea id="lmraMaatregelen" rows="3"></textarea>
+      </div>
+
+      <div class="form-actions" style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+        <button class="btn-secondary" onclick="closeLmra()">Sluiten</button>
+        <button class="btn-secondary" id="lmraNietStartenKnop" style="border-color:#ef4444;color:#ef4444;" onclick="lmraAfronden('niet_starten')">Niet starten</button>
+        <button class="btn-primary" id="lmraVeiligKnop" onclick="lmraAfronden('veilig')">Veilig — ik start</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="wpiModal">
     <div class="modal" style="max-width:760px;">
       <button class="modal-close" onclick="closeWpi()" aria-label="Sluiten">&times;</button>
@@ -10795,10 +10866,25 @@
       'Hotbox werkzaamheden': '#ff5252',
       'Asfalt machinaal': '#22c55e',
       'Scheuren vullen': '#ffab40',
-      'Asfalt zwart (rijweg)': '#334155',
-      'Asfalt rood (fiets-/voetpad)': '#e11d48',
       'Asfalt \u2013 nog in te delen': '#94a3b8'
     };
+    // Asfaltsoort is een tweede as: rood of zwart zegt wat er ligt, niet hoe het
+    // hersteld wordt. Daarom geen kaartkleur — anders zou een rood fietspad met
+    // hotbox-werk twee kleuren tegelijk moeten hebben — maar een label bij de
+    // melding. Spiegel van ASFALTSOORTEN in werksoorten.py.
+    var ASFALTSOORT_LABELS = {
+      zwart: { tekst: 'Zwart asfalt (rijweg)', emoji: '\u2b1b', kleur: '#334155' },
+      rood:  { tekst: 'Rood asfalt (fiets-/voetpad)', emoji: '\ud83d\udfe5', kleur: '#e11d48' }
+    };
+
+    function asfaltsoortBadge(m) {
+      var soort = (m && m.norm_data && m.norm_data.asfaltsoort) || '';
+      var info = ASFALTSOORT_LABELS[soort];
+      if (!info) return '';
+      return '<span style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:100px;'
+        + 'font-size:11px;font-weight:600;background:' + info.kleur + '1a;color:' + info.kleur + ';'
+        + 'border:1px solid ' + info.kleur + '55;">' + info.emoji + ' ' + info.tekst + '</span>';
+    }
     var PRIORITEIT_KLEUREN = { kritiek: '#ff5252', hoog: '#ffab40', normaal: '#00d4ff', laag: '#888' };
 
     function meldingKleur(m) {
@@ -24235,7 +24321,6 @@
           'Bestrating': '🧱', 'Verkeersborden': '🚧', 'Wateroverlast': '🌊', 'Geluidsoverlast': '🔊',
           'Kabels & Leidingen': '⚡', 'Constructie': '🏗️', 'Veiligheid': '🛡️', 'Milieu': '♻️',
           'Hotbox werkzaamheden': '🔥', 'Asfalt machinaal': '🚜', 'Scheuren vullen': '🩹',
-          'Asfalt zwart (rijweg)': '⬛', 'Asfalt rood (fiets-/voetpad)': '🟥',
           'Asfalt \u2013 nog in te delen': '🛣️'
         };
         meldingen.forEach(function(m) {
@@ -24270,6 +24355,7 @@
                 '<strong style="font-size:14px;">'+m.title+'</strong>' +
                 (projName ? '<br><span style="color:#00d4ff;font-size:11px;">📂 '+projName+'</span>' : '') +
                 '<br><span style="color:#888;font-size:12px;">'+emoji+' '+(m.category||t('geen_categorie'))+'</span><br>' +
+                (asfaltsoortBadge(m) ? '<div style="margin-top:4px;">'+asfaltsoortBadge(m)+'</div>' : '') +
                 '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:'+color+'22;color:'+color+';font-weight:600;">'+m.priority+'</span> ' +
                 '<span style="display:inline-block;margin-top:4px;padding:2px 8px;border-radius:10px;font-size:11px;background:#00d4ff22;color:#00d4ff;">'+m.status+'</span>' +
                 (m.description ? '<p style="margin-top:6px;font-size:12px;color:#666;">'+m.description+'</p>' : '') +
@@ -24818,12 +24904,12 @@
     }
 
     function switchVeiligheidTab(tab) {
-      // LMRA en certificaten komen hier straks naast; de opzet is er al op
-      // gebouwd, dus dat is dan een knop en een paneel erbij.
+      // Certificaten komen hier straks naast; dat is dan een knop en een
+      // paneel erbij.
       document.querySelectorAll('#page-veiligheid .int-tab').forEach(function (b) {
         b.classList.toggle('active', b.getAttribute('data-tab') === tab);
       });
-      ['toolbox', 'incidenten', 'wpi'].forEach(function (naam) {
+      ['toolbox', 'incidenten', 'wpi', 'lmra'].forEach(function (naam) {
         var paneel = document.getElementById('vg-tab-' + naam);
         if (paneel) paneel.style.display = (naam === tab) ? '' : 'none';
       });
@@ -24835,10 +24921,12 @@
       if (sub) {
         sub.textContent = tab === 'toolbox' ? t('vg_sub')
                         : tab === 'wpi' ? t('vg_sub_wpi')
+                        : tab === 'lmra' ? 'De laatste check voordat je begint. Iedereen doet zijn eigen LMRA.'
                         : t('vg_sub_incidenten');
       }
       if (tab === 'incidenten') loadIncidenten();
       if (tab === 'wpi') loadWpi();
+      if (tab === 'lmra') loadLmra();
     }
 
     function loadVeiligheid() {
@@ -25469,6 +25557,220 @@
         doel.innerHTML = '<div class="error-state"><h3>' + t('fout_laden') + '</h3><p>' +
           _tbEsc(err && err.message) + '</p></div>';
       });
+    }
+
+    // ── LMRA ───────────────────────────────────────────────────────────
+    // De laatste minuut voor de start. Anders dan de werkplekinspectie doet
+    // iedereen zijn eigen LMRA, en betekent een "nee" dat je niet begint tot
+    // je opgeschreven hebt wat je eraan gedaan hebt.
+    var _lmraHuidig = null;
+
+    function loadLmra() {
+      var kies = document.getElementById('lmraProject');
+      if (kies && _tbProjecten && _tbProjecten.length && kies.options.length <= 1) {
+        kies.innerHTML = '<option value="">Zonder project</option>' +
+          _tbProjecten.map(function (p) {
+            return '<option value="' + _tbEsc(p.id) + '">' + _tbEsc(p.name) + '</option>';
+          }).join('');
+      }
+
+      api('GET', '/api/lmra/statistiek').then(function (st) {
+        var vak = document.getElementById('lmraStats');
+        if (!vak || !st) return;
+        // Het getal dat telt is hoe vaak er niet gestart is. Een ploeg die
+        // honderden LMRA's doet en nooit stopt, vinkt af in plaats van te kijken.
+        vak.innerHTML =
+          _lmraStat('Uitgevoerd', st.afgerond, 'var(--accent)') +
+          _lmraStat('Veilig gestart', st.veilig, 'var(--green, #16a34a)') +
+          _lmraStat('Niet gestart', st.niet_gestart, '#ef4444') +
+          _lmraStat('Met aandachtspunt', st.met_aandachtspunt, 'var(--orange, #f59e0b)');
+      }).catch(function () { /* tellingen zijn extra */ });
+
+      var doel = document.getElementById('lmraList');
+      if (!doel) return;
+      doel.innerHTML = '<div class="loading-spinner"></div>';
+      var vraag = [];
+      var st = document.getElementById('lmraFilterStatus');
+      if (st && st.value) vraag.push('status=' + encodeURIComponent(st.value));
+      var eigen = document.getElementById('lmraAlleenEigen');
+      if (eigen && eigen.checked) vraag.push('alleen_eigen=true');
+      api('GET', '/api/lmra/' + (vraag.length ? '?' + vraag.join('&') : '')).then(function (items) {
+        if (!items || !items.length) {
+          doel.innerHTML = '<div class="empty-state"><div class="empty-icon">&#9995;</div>' +
+            '<h3>Nog geen LMRA gedaan</h3><p>Start er een vlak voordat je aan een taak begint.</p></div>';
+          return;
+        }
+        doel.innerHTML = '<table class="data-table"><thead><tr>' +
+          '<th>Datum</th><th>Taak</th><th>Wie</th><th>Aandachtspunten</th><th>Uitkomst</th>' +
+          '</tr></thead><tbody>' + items.map(function (l) {
+            var kleur = l.oordeel === 'niet_starten' ? '#ef4444'
+                      : l.oordeel === 'veilig' ? 'var(--green, #16a34a)' : 'var(--text-muted)';
+            var uitkomst = l.oordeel_label || 'Bezig';
+            return '<tr style="cursor:pointer;" onclick="openLmra(\'' + _tbEsc(l.id) + '\')">' +
+              '<td>' + _tbEsc((l.datum || '').slice(0, 10)) + '</td>' +
+              '<td><strong>' + _tbEsc(l.taak || '(geen taak ingevuld)') + '</strong>' +
+              (l.project_naam ? '<br><span style="font-size:12px;color:var(--text-dim);">' + _tbEsc(l.project_naam) + '</span>' : '') +
+              '</td>' +
+              '<td>' + _tbEsc(l.uitvoerder_naam || '') + '</td>' +
+              '<td>' + (l.aantal_niet_in_orde === null || l.aantal_niet_in_orde === undefined ? '-' : l.aantal_niet_in_orde) + '</td>' +
+              '<td><span style="color:' + kleur + ';font-weight:600;">' + _tbEsc(uitkomst) + '</span></td></tr>';
+          }).join('') + '</tbody></table>';
+      }).catch(function (err) {
+        doel.innerHTML = '<p style="color:var(--text-muted);">Kon de LMRA-lijst niet laden: ' + _tbEsc(err.message || '') + '</p>';
+      });
+    }
+
+    function _lmraStat(label, waarde, kleur) {
+      return '<div class="stat-card"><div class="stat-value" style="color:' + kleur + ';">' +
+        (waarde === null || waarde === undefined ? '-' : waarde) +
+        '</div><div class="stat-label">' + label + '</div></div>';
+    }
+
+    function startLmra() {
+      var body = {
+        project_id: document.getElementById('lmraProject').value || null,
+        taak: document.getElementById('lmraTaak').value || null
+      };
+      api('POST', '/api/lmra/', body)
+        .then(function (l) {
+          document.getElementById('lmraTaak').value = '';
+          _lmraHuidig = l; toonLmra(); loadLmra();
+        })
+        .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function openLmra(id) {
+      api('GET', '/api/lmra/' + id)
+        .then(function (l) { _lmraHuidig = l; toonLmra(); })
+        .catch(function (err) { showToast('Kon de LMRA niet laden: ' + (err.message || ''), 'error'); });
+    }
+
+    function closeLmra() {
+      document.getElementById('lmraModal').classList.remove('active');
+      _lmraHuidig = null;
+      loadLmra();
+    }
+
+    function toonLmra() {
+      var l = _lmraHuidig;
+      if (!l) return;
+      var klaar = l.status !== 'concept';
+      var antw = l.antwoorden || [];
+      var beantwoord = antw.filter(function (a) { return !!a.antwoord; }).length;
+      var nee = antw.filter(function (a) { return a.antwoord === 'nee'; }).length;
+
+      document.getElementById('lmraSub').textContent =
+        (l.uitvoerder_naam || '') + (l.project_naam ? ' · ' + l.project_naam : '') +
+        ' · ' + (l.datum || '').slice(0, 10);
+
+      var voortgang = document.getElementById('lmraVoortgang');
+      if (klaar) {
+        var goed = l.oordeel === 'veilig';
+        voortgang.innerHTML = '<strong style="color:' + (goed ? 'var(--green, #16a34a)' : '#ef4444') + ';">' +
+          _tbEsc(l.oordeel_label || '') + '</strong>' +
+          ' — afgesloten op ' + _tbEsc((l.afgerond_op || '').slice(0, 10)) +
+          ', ' + (l.aantal_niet_in_orde || 0) + ' aandachtspunt' + ((l.aantal_niet_in_orde || 0) === 1 ? '' : 'en');
+      } else {
+        voortgang.innerHTML = beantwoord + ' van de ' + antw.length + ' vragen beantwoord' +
+          (nee ? ' · <span style="color:#ef4444;font-weight:600;">' + nee + ' keer nee</span>' : '');
+      }
+
+      document.getElementById('lmraModalTaak').value = l.taak || '';
+      document.getElementById('lmraModalLocatie').value = l.locatie || '';
+      document.getElementById('lmraMaatregelen').value = l.maatregelen || '';
+      ['lmraModalTaak', 'lmraModalLocatie', 'lmraMaatregelen'].forEach(function (id) {
+        document.getElementById(id).disabled = klaar;
+      });
+      document.getElementById('lmraVeiligKnop').style.display = klaar ? 'none' : '';
+      document.getElementById('lmraNietStartenKnop').style.display = klaar ? 'none' : '';
+
+      var groepen = {};
+      antw.forEach(function (a) {
+        (groepen[a.categorie] = groepen[a.categorie] || []).push(a);
+      });
+      var labels = {
+        taak: 'De taak', mens: 'Mens en middelen', werkplek: 'Werkplek en verkeer',
+        omgeving: 'Omgeving en derden', noodgeval: 'Als het misgaat'
+      };
+      var html = '';
+      Object.keys(groepen).forEach(function (cat) {
+        html += '<div style="font-weight:700;font-size:13px;color:var(--text);margin:18px 0 6px;">' +
+          _tbEsc(labels[cat] || cat) + '</div>';
+        groepen[cat].forEach(function (a) {
+          var isNee = a.antwoord === 'nee';
+          html += '<div style="border:1px solid ' + (isNee ? '#ef444455' : 'var(--border)') +
+            ';border-radius:10px;padding:11px 13px;margin-bottom:8px;background:' +
+            (isNee ? '#ef44440d' : 'var(--card-bg)') + ';">' +
+            '<div style="font-size:14px;color:var(--text);margin-bottom:8px;">' + _tbEsc(a.vraag || '') + '</div>' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+            ['ja', 'nee', 'nvt'].map(function (keus) {
+              var aan = a.antwoord === keus;
+              var kleur = keus === 'ja' ? 'var(--green, #16a34a)' : keus === 'nee' ? '#ef4444' : 'var(--text-muted)';
+              return '<button type="button" ' + (klaar ? 'disabled' : '') +
+                ' onclick="lmraAntwoord(\'' + _tbEsc(a.id) + '\', \'' + keus + '\')" ' +
+                'style="padding:6px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:' +
+                (klaar ? 'default' : 'pointer') + ';border:1px solid ' + (aan ? kleur : 'var(--border)') +
+                ';background:' + (aan ? kleur : 'transparent') + ';color:' + (aan ? '#fff' : 'var(--text-muted)') + ';">' +
+                (keus === 'nvt' ? 'n.v.t.' : keus) + '</button>';
+            }).join('') +
+            '</div>' +
+            (isNee
+              ? '<div style="margin-top:9px;"><label style="font-size:12px;color:#ef4444;font-weight:600;">Wat heb je eraan gedaan?</label>' +
+                '<input type="text" value="' + _tbEsc(a.maatregel || '') + '" ' + (klaar ? 'disabled' : '') +
+                ' onchange="lmraMaatregel(\'' + _tbEsc(a.id) + '\', this.value)" ' +
+                'style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;margin-top:4px;"></div>'
+              : '') +
+            '</div>';
+        });
+      });
+      document.getElementById('lmraVragen').innerHTML = html;
+      document.getElementById('lmraModal').classList.add('active');
+    }
+
+    function lmraAntwoord(antwoordId, keus) {
+      if (!_lmraHuidig) return;
+      api('PATCH', '/api/lmra/' + _lmraHuidig.id + '/antwoorden/' + antwoordId, { antwoord: keus })
+        .then(function (a) {
+          (_lmraHuidig.antwoorden || []).forEach(function (x, i) {
+            if (x.id === a.id) _lmraHuidig.antwoorden[i] = a;
+          });
+          toonLmra();
+        })
+        .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function lmraMaatregel(antwoordId, tekst) {
+      if (!_lmraHuidig) return;
+      api('PATCH', '/api/lmra/' + _lmraHuidig.id + '/antwoorden/' + antwoordId, { maatregel: tekst })
+        .then(function (a) {
+          (_lmraHuidig.antwoorden || []).forEach(function (x, i) {
+            if (x.id === a.id) _lmraHuidig.antwoorden[i] = a;
+          });
+        })
+        .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function lmraBewaarKop() {
+      if (!_lmraHuidig || _lmraHuidig.status !== 'concept') return;
+      api('PATCH', '/api/lmra/' + _lmraHuidig.id, {
+        taak: document.getElementById('lmraModalTaak').value || null,
+        locatie: document.getElementById('lmraModalLocatie').value || null
+      }).catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function lmraAfronden(oordeel) {
+      if (!_lmraHuidig) return;
+      api('POST', '/api/lmra/' + _lmraHuidig.id + '/afronden', {
+        oordeel: oordeel,
+        maatregelen: document.getElementById('lmraMaatregelen').value || null
+      }).then(function (l) {
+        _lmraHuidig = l;
+        showToast(oordeel === 'veilig' ? 'LMRA afgerond — veilig om te starten'
+                                       : 'LMRA afgerond — niet starten', 
+                  oordeel === 'veilig' ? 'success' : 'info');
+        toonLmra();
+        loadLmra();
+      }).catch(function (err) { showToast(err.message || '', 'error'); });
     }
 
     function startWpi() {

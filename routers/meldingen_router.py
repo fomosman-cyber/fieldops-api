@@ -16,6 +16,7 @@ from database import get_db
 from models import Melding, Project, Asset, User, InspectionDefect
 from schemas import MeldingCreate, MeldingResponse, MeldingUpdate
 from melding_norm_forms import norm_form_voor, alle_norm_velden_keys
+from werksoorten import synchroniseer as werksoort_synchroniseer
 from auth import get_current_user
 from permissions import (
     can_create_meldingen, can_change_status, can_edit_melding_full,
@@ -236,9 +237,17 @@ def _enrich_classification(melding: Melding) -> bool:
     """Vul ontbrekende CROW/GW velden in op basis van category + priority.
 
     Returns True als er iets is aangevuld. Bestaande waarden blijven staan
-    (idempotent — kan veilig vaker worden aangeroepen).
+    (idempotent — kan veilig vaker worden aangeroepen), met een uitzondering:
+    is de categorie een werksoort, dan is die leidend en worden de
+    maatregelvelden erop gelijkgetrokken. Anders blijft een melding die van
+    werksoort verandert in het oude cluster hangen.
     """
-    changed = False
+    # De werksoorten uit werksoorten.py gaan voor. Die staan in dezelfde kolom
+    # (category), maar hun maatregel volgt uit de werksoort en niet uit een
+    # losse tabel — en hij moet ook meeveranderen als iemand de werksoort in
+    # het portaal aanpast. Daarom overschrijft deze stap wel, waar de generieke
+    # verrijking hieronder alleen lege velden vult.
+    changed = werksoort_synchroniseer(melding)
     if melding.category and not melding.gw_term:
         cat_key = melding.category.strip().lower()
         term = _CATEGORY_TO_GW_TERM.get(cat_key)
@@ -257,17 +266,39 @@ def _enrich_classification(melding: Melding) -> bool:
 router = APIRouter(prefix="/api/meldingen", tags=["Meldingen"])
 
 
-def _clean_norm_data(norm_data) -> Optional[str]:
+# Velden die niet uit een norm-formulier komen maar door een import zijn
+# vastgelegd: de maatvoering uit het schouwrapport en de asfaltsoort. Het
+# portaal stuurt ze niet mee bij het opslaan van een melding, want er staat
+# geen invoerveld voor op het scherm. Zonder deze uitzondering wist de eerste
+# de beste tekstcorrectie in het veld de gemeten oppervlakken — en daarmee de
+# onderbouwing van de MJOP en de urenraming van het cluster.
+BEWAARDE_IMPORTVELDEN = (
+    "oppervlakte_m2", "lengte_m", "kleinste_breedte_m", "aantal_vlakken",
+    "vlakken", "maatvoering", "asfaltsoort", "aantal_fotos",
+)
+
+
+def _clean_norm_data(norm_data, bestaand: Optional[str] = None) -> Optional[str]:
     """Sanitize norm_data (#16) → JSON-string, of None.
 
     Behoudt alleen bekende norm-veld-keys en niet-lege waarden, zodat de
-    opslag niet vervuild raakt met willekeurige client-velden.
+    opslag niet vervuild raakt met willekeurige client-velden. Wat een import
+    heeft vastgelegd (zie BEWAARDE_IMPORTVELDEN) blijft staan, ook als de
+    client het niet meestuurt.
     """
-    if not norm_data or not isinstance(norm_data, dict):
-        return None
-    allowed = alle_norm_velden_keys()
-    cleaned = {k: v for k, v in norm_data.items()
-               if k in allowed and v not in (None, "", [])}
+    cleaned = {}
+    if bestaand:
+        try:
+            oud = json.loads(bestaand)
+        except (ValueError, TypeError):
+            oud = {}
+        if isinstance(oud, dict):
+            cleaned = {k: v for k, v in oud.items()
+                       if k in BEWAARDE_IMPORTVELDEN and v not in (None, "", [])}
+    if norm_data and isinstance(norm_data, dict):
+        allowed = alle_norm_velden_keys()
+        cleaned.update({k: v for k, v in norm_data.items()
+                        if k in allowed and v not in (None, "", [])})
     return json.dumps(cleaned, ensure_ascii=False) if cleaned else None
 
 
@@ -1328,7 +1359,8 @@ def update_melding(
     for field, value in update_data.items():
         setattr(melding, field, value)
     if norm_data_present:
-        melding.norm_data_json = _clean_norm_data(norm_data_value)
+        melding.norm_data_json = _clean_norm_data(norm_data_value,
+                                                  bestaand=melding.norm_data_json)
     db.commit()
     db.refresh(melding)
 

@@ -1613,6 +1613,103 @@ class WerkplekinspectieAntwoord(Base):
     actiehouder = relationship("User", foreign_keys=[actiehouder_id])
 
 
+class Lmra(Base):
+    """Een LMRA: de Laatste Minuut Risico Analyse vlak voor de start van een taak.
+
+    Het verschil met de werkplekinspectie zit niet in de vragen maar in wie hem
+    doet en wat een NEE betekent. Een WPI is de rondgang van de uitvoerder over
+    de werkplek, en een aandachtspunt daaruit is werk voor later. Een LMRA doet
+    degene die zo begint, over deze taak, en een NEE betekent dat je niet
+    begint. Daarom mag iedereen er een starten -- wachten op een leidinggevende
+    is precies het gedrag dat je hier niet wilt -- en eindigt hij op een
+    oordeel in plaats van op een score.
+
+    Hangt bij voorkeur aan een project en mag aan een melding hangen, maar geen
+    van beide is verplicht: een LMRA in de berm bij een storing hoort ook
+    vastgelegd te worden, en die heeft nog geen projectnummer.
+
+    Status-flow:
+        concept       -> bezig, antwoorden nog aan te passen
+        veilig        -> afgesloten met "veilig om te starten"
+        niet_gestart  -> afgesloten met "niet starten"; het werk is niet begonnen
+    """
+
+    __tablename__ = "lmras"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    # Nulbaar net als bij de werkplekinspectie: dit is een veiligheidsdossier
+    # dat blijft bestaan als het project wordt opgeruimd.
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    melding_id = Column(String, ForeignKey("meldingen.id"), nullable=True, index=True)
+
+    datum = Column(DateTime, nullable=True)
+    locatie = Column(String(255), nullable=True)
+    taak = Column(String(500), nullable=True)                # wat ga je doen
+
+    uitvoerder_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    uitvoerder_naam = Column(String(120), nullable=True)     # gedenormaliseerd voor de PDF
+
+    status = Column(String(30), nullable=False, default="concept", index=True)
+    oordeel = Column(String(20), nullable=True)              # veilig / niet_starten
+
+    checklist_versie = Column(String(40), nullable=True)
+    aantal_niet_in_orde = Column(Integer, nullable=True)
+    # Wat er is gedaan om alsnog veilig te kunnen starten, of waarom niet.
+    maatregelen = Column(Text, nullable=True)
+
+    afgerond_op = Column(DateTime, nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    antwoorden = relationship("LmraAntwoord", back_populates="lmra",
+                              cascade="all, delete-orphan",
+                              order_by="LmraAntwoord.order_index")
+    project = relationship("Project")
+    melding = relationship("Melding")
+    uitvoerder = relationship("User", foreign_keys=[uitvoerder_id])
+
+
+class LmraAntwoord(Base):
+    """Een beantwoorde LMRA-vraag.
+
+    De vraagtekst wordt gesnapshot zoals overal in dit systeem: verandert de
+    lijst later, dan blijft een LMRA van vorig jaar tonen wat er destijds
+    gevraagd is.
+
+    Het maatregel-veld is wat de LMRA onderscheidt van een inspectie. Een NEE
+    hoeft het werk niet tegen te houden, maar er moet dan wel staan wat je
+    eraan gedaan hebt voordat je begon. Leeg gelaten bij een NEE is dat het
+    signaal dat er iets niet klopt.
+    """
+
+    __tablename__ = "lmra_antwoorden"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    lmra_id = Column(String, ForeignKey("lmras.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    question_code = Column(String(40), nullable=False, index=True)
+    question_version = Column(String(40), nullable=False)
+    question_text_snapshot = Column(String(500), nullable=True)
+    categorie = Column(String(40), nullable=True, index=True)
+
+    # ja = in orde, nee = niet in orde, nvt = niet van toepassing
+    antwoord = Column(String(4), nullable=True)
+    toelichting = Column(Text, nullable=True)
+    photo_url = Column(Text, nullable=True)
+    maatregel = Column(Text, nullable=True)                  # wat is er gedaan
+
+    order_index = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    lmra = relationship("Lmra", back_populates="antwoorden")
+
+
 class BouwInspectie(Base):
     """Een BOEI-inspectie: conditie- en risico-opname van een gebouw.
 
