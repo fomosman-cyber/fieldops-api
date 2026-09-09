@@ -23,7 +23,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 import math
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import case, func
 
 from models import Asset, Melding, Inspection, InspectionElement, InspectionDefect
 from crow_kosten import klasse_to_risk_points, KLASSE_RISK_POINTS
@@ -63,6 +63,105 @@ def _condition_points(score: Optional[int]) -> int:
     return int(round((s - 1) / 4 * W_CONDITION))
 
 
+class MeldingContext:
+    """Alle meldinggegevens die de risicoscore nodig heeft, voor veel assets tegelijk.
+
+    ``compute_asset_risk`` deed per asset vier aparte database-heenreizen: de
+    CROW-klassen, de prioriteiten, en twee tellingen voor de trend. Voor een los
+    asset is dat prima. Maar ``/api/predictive/summary`` draait er een lus
+    overheen voor de hele organisatie, en dat is de endpoint achter het
+    dashboard -- die draait bij elke keer openen.
+
+    Bij vijftig assets waren dat ruim driehonderd queries. Bij een klant met
+    vijfduizend wegvakken worden dat er twintigduizend. Op sqlite merk je dat
+    nauwelijks; op PostgreSQL is elke query een round-trip over het netwerk.
+
+    Deze klasse haalt hetzelfde op in drie queries, ongeacht het aantal assets.
+    """
+
+    __slots__ = ("klassen", "prioriteiten", "recent", "prior", "defecten",
+                 "geo")
+
+    # Venster van het buurt-signaal. Moet gelijk blijven aan de default van
+    # _geo_cluster_signal, anders kijkt de gebatchte weg naar een andere periode
+    # dan de losse.
+    GEO_VENSTER_DAGEN = 30
+
+    def __init__(self, db: Session, asset_ids: list[str], now: datetime,
+                 organization_id: Optional[str] = None):
+        self.klassen: dict[str, list[str]] = {}
+        self.prioriteiten: dict[str, dict[str, int]] = {}
+        self.recent: dict[str, int] = {}
+        self.prior: dict[str, int] = {}
+        self.defecten: dict[str, list] = {}
+        self.geo: list[tuple] = []
+        if not asset_ids:
+            return
+
+        een_jaar = now - timedelta(days=365)
+        cutoff_recent = now - timedelta(days=90)
+        cutoff_prior = now - timedelta(days=180)
+
+        # 1. CROW-klassen van het afgelopen jaar.
+        for aid, klasse in (db.query(Melding.asset_id, Melding.crow_klasse)
+                              .filter(Melding.asset_id.in_(asset_ids),
+                                      Melding.created_at >= een_jaar,
+                                      Melding.crow_klasse.isnot(None))
+                              .all()):
+            self.klassen.setdefault(aid, []).append(klasse)
+
+        # 2. Aantallen per prioriteit over hetzelfde jaar.
+        for aid, prio, n in (db.query(Melding.asset_id, Melding.priority,
+                                      func.count(Melding.id))
+                               .filter(Melding.asset_id.in_(asset_ids),
+                                       Melding.created_at >= een_jaar)
+                               .group_by(Melding.asset_id, Melding.priority)
+                               .all()):
+            self.prioriteiten.setdefault(aid, {})[prio] = int(n)
+
+        # 3. De twee trendvensters in een keer: laatste 90 dagen en de 90 dagen
+        #    daarvoor, uit elkaar gehouden met een vlag in de group-by.
+        recent_vlag = case((Melding.created_at >= cutoff_recent, 1), else_=0)
+        for aid, is_recent, n in (db.query(Melding.asset_id, recent_vlag,
+                                           func.count(Melding.id))
+                                    .filter(Melding.asset_id.in_(asset_ids),
+                                            Melding.created_at >= cutoff_prior)
+                                    .group_by(Melding.asset_id, recent_vlag)
+                                    .all()):
+            doel = self.recent if int(is_recent) == 1 else self.prior
+            doel[aid] = doel.get(aid, 0) + int(n)
+
+        # 4. Inspectie-defecten van het afgelopen jaar. Twee functies vroegen
+        #    hier apart om -- de historie-bonus en de type-specifieke floors --
+        #    en die tweede stelde per asset-type ook nog eens meerdere vragen.
+        for aid, defect in (db.query(Inspection.asset_id, InspectionDefect)
+                              .join(InspectionElement,
+                                    InspectionDefect.element_id == InspectionElement.id)
+                              .join(Inspection,
+                                    InspectionElement.inspection_id == Inspection.id)
+                              .filter(Inspection.asset_id.in_(asset_ids),
+                                      Inspection.created_at >= een_jaar)
+                              .all()):
+            self.defecten.setdefault(aid, []).append(defect)
+
+        # 5. Meldingen met coordinaten in het buurt-venster. Het buurt-signaal
+        #    deed hier per asset een bounding-box-query op, terwijl het daarna
+        #    toch in Python op afstand filtert. Een keer ophalen en er per asset
+        #    overheen lopen geeft precies hetzelfde antwoord.
+        #
+        #    Alleen de vier kolommen die het signaal gebruikt -- niet het hele
+        #    Melding-object, want daar hangen de base64-foto's aan.
+        if organization_id:
+            geo_cutoff = now - timedelta(days=self.GEO_VENSTER_DAGEN)
+            self.geo = (db.query(Melding.asset_id, Melding.lat, Melding.lng,
+                                 Melding.crow_klasse)
+                          .filter(Melding.organization_id == organization_id,
+                                  Melding.created_at >= geo_cutoff,
+                                  Melding.lat.isnot(None),
+                                  Melding.lng.isnot(None))
+                          .all())
+
+
 def _melding_count_recent(db: Session, asset_id: str, since: datetime) -> tuple[int, int]:
     """Return (total, hoog_kritiek) over een tijdvenster."""
     rows = (db.query(Melding.priority, func.count(Melding.id))
@@ -93,10 +192,17 @@ def _worst_crow_klasse(db: Session, asset_id: str, since: datetime) -> Optional[
                          Melding.created_at >= since,
                          Melding.crow_klasse.isnot(None))
                  .all())
-    if not klassen:
-        return None
-    # Sorteer op risk-points (hoogst eerst)
-    valid = [k[0] for k in klassen if k[0] in KLASSE_RISK_POINTS]
+    return _ergste_klasse([k[0] for k in klassen])
+
+
+def _ergste_klasse(klassen: list) -> Optional[str]:
+    """De ergste CROW-klasse uit een lijst. Ranking E3 > E2 > ... > L1.
+
+    Apart van de query, zodat de losse en de gebatchte weg gegarandeerd
+    hetzelfde antwoord geven -- twee kopieen van deze sortering zouden vroeg of
+    laat uit elkaar lopen.
+    """
+    valid = [k for k in klassen if k in KLASSE_RISK_POINTS]
     if not valid:
         return None
     return max(valid, key=klasse_to_risk_points)
@@ -135,25 +241,30 @@ def _melding_trend(db: Session, asset_id: str, now: datetime) -> tuple[int, int,
 
     recent = int(recent)
     prior = int(prior)
+    return recent, prior, _trend_punten(recent, prior)
 
+
+def _trend_punten(recent: int, prior: int) -> int:
+    """Trendpunten uit twee tellingen. Apart van de query, om dezelfde reden
+    als _ergste_klasse: een tweede kopie van deze drempels zou gaan afwijken."""
     # Geen data — geen trend
     if recent == 0:
-        return recent, prior, 0
+        return 0
 
     # Uit-het-niets-uitbarsting: prior=0, recent>0 → schaal op recent
     if prior == 0:
         # 1 melding alleen is geen trend, 2+ wel
-        return recent, prior, min(W_TREND_MAX, max(0, (recent - 1) * 3))
+        return min(W_TREND_MAX, max(0, (recent - 1) * 3))
 
     # Ratio-gebaseerde stijging
     ratio = recent / prior
     if ratio <= 1.2:
-        return recent, prior, 0
+        return 0
     if ratio <= 2.0:
-        return recent, prior, 4
+        return 4
     if ratio <= 3.0:
-        return recent, prior, 7
-    return recent, prior, W_TREND_MAX
+        return 7
+    return W_TREND_MAX
 
 
 def _confidence(asset: Asset, *, has_meldingen: bool, has_crow_classification: bool) -> float:
@@ -174,7 +285,8 @@ def _confidence(asset: Asset, *, has_meldingen: bool, has_crow_classification: b
 
 
 def _geo_cluster_signal(db: Session, asset: Asset, now: datetime,
-                        radius_m: int = 200, window_days: int = 30) -> Optional[dict]:
+                        radius_m: int = 200, window_days: int = 30,
+                        voorgeladen: Optional[list] = None) -> Optional[dict]:
     """Tel meldingen binnen radius+window rond dit asset (excl. asset's eigen
     meldingen). Een hoge density wijst op buurt-brede problemen die een
     enkele asset-score niet vangt — bv. een straat met scheurvorming over
@@ -195,21 +307,30 @@ def _geo_cluster_signal(db: Session, asset: Asset, now: datetime,
     box_lat = radius_m * deg_per_m_lat * 1.2  # 20% marge voor box-vs-cirkel
     box_lng = radius_m * deg_per_m_lng * 1.2
 
-    candidates = db.query(Melding).filter(
-        Melding.organization_id == asset.organization_id,
-        Melding.asset_id != asset.id,
-        Melding.created_at >= cutoff,
-        Melding.lat.isnot(None), Melding.lng.isnot(None),
-        Melding.lat.between(asset.lat - box_lat, asset.lat + box_lat),
-        Melding.lng.between(asset.lng - box_lng, asset.lng + box_lng),
-    ).all()
+    if voorgeladen is not None:
+        # Al opgehaald voor de hele lijst; hier alleen nog de box eromheen.
+        kandidaten = [(aid, lat, lng, klasse) for aid, lat, lng, klasse in voorgeladen
+                      if aid != asset.id
+                      and asset.lat - box_lat <= lat <= asset.lat + box_lat
+                      and asset.lng - box_lng <= lng <= asset.lng + box_lng]
+    else:
+        kandidaten = [(m.asset_id, m.lat, m.lng, m.crow_klasse) for m in db.query(
+            Melding.asset_id, Melding.lat, Melding.lng, Melding.crow_klasse).filter(
+            Melding.organization_id == asset.organization_id,
+            Melding.asset_id != asset.id,
+            Melding.created_at >= cutoff,
+            Melding.lat.isnot(None), Melding.lng.isnot(None),
+            Melding.lat.between(asset.lat - box_lat, asset.lat + box_lat),
+            Melding.lng.between(asset.lng - box_lng, asset.lng + box_lng),
+        ).all()]
 
-    nearby = [m for m in candidates if _haversine_m(asset.lat, asset.lng, m.lat, m.lng) <= radius_m]
+    nearby = [k for k in kandidaten
+              if _haversine_m(asset.lat, asset.lng, k[1], k[2]) <= radius_m]
     if not nearby:
         return None
 
     # Hottest klasse in de buurt (zelfde ranking als _worst_crow_klasse)
-    classified = [m.crow_klasse for m in nearby if m.crow_klasse in KLASSE_RISK_POINTS]
+    classified = [k[3] for k in nearby if k[3] in KLASSE_RISK_POINTS]
     hottest = max(classified, key=klasse_to_risk_points) if classified else None
 
     return {
@@ -247,6 +368,12 @@ def _inspection_history_points(db: Session, asset_id: str, since: datetime) -> t
               .filter(Inspection.asset_id == asset_id,
                       Inspection.created_at >= since)
               .all())
+    return _inspectie_punten(rows)
+
+
+def _inspectie_punten(rows: list) -> tuple[int, int, int]:
+    """Punten uit een lijst defecten. Apart van de query zodat de losse en de
+    gebatchte weg dezelfde uitkomst geven."""
     if not rows:
         return 0, 0, 0
     total = len(rows)
@@ -256,70 +383,94 @@ def _inspection_history_points(db: Session, asset_id: str, since: datetime) -> t
     return int(pts), total, severe
 
 
-def _type_specific_override(asset: Asset, db: Session, since: datetime) -> Optional[tuple[int, str]]:
-    """v2.2 — Type-specifieke regels die de score forceren bovenop het basis-model.
+def _override_uit_defecten(asset: Asset, defecten: list) -> Optional[tuple[int, str]]:
+    """Dezelfde type-specifieke floors als _type_specific_override, maar op een
+    lijst die al is opgehaald.
 
-    Wanneer een norm-specifiek defect kritiek is (NEN-EN 1176 cat C/D, VTA
-    klasse 5, NEN 3140 isolatie < 0.5 MΩ), is het juridisch en operationeel
-    onverdedigbaar om dat asset op laag risico te scoren. Deze regels zetten
-    een minimum-score (floor) die de eindscore garandeert.
-
-    Return (floor_score, reden_tekst) of None.
+    De regels staan hier een keer; _type_specific_override haalt de defecten op
+    en geeft ze hieraan door. Twee kopieen van deze drempels zouden vroeg of
+    laat uit elkaar lopen, en dan scoort dezelfde boom op het dashboard anders
+    dan in de drilldown.
     """
-    base_q = (db.query(InspectionDefect)
-                .join(InspectionElement, InspectionDefect.element_id == InspectionElement.id)
-                .join(Inspection, InspectionElement.inspection_id == Inspection.id)
-                .filter(Inspection.asset_id == asset.id,
-                        Inspection.created_at >= since))
+    if not defecten:
+        return None
+
+    def _eerste(voorwaarde):
+        for d in defecten:
+            try:
+                if voorwaarde(d):
+                    return d
+            except TypeError:
+                continue
+        return None
 
     # Speeltoestel — NEN-EN 1176 categorie C/D
     if asset.asset_type == "speeltoestel":
-        cat_d = base_q.filter(InspectionDefect.en1176_categorie == "D").first()
-        if cat_d:
+        if _eerste(lambda d: d.en1176_categorie == "D"):
             return 95, "NEN-EN 1176 categorie D defect (afgesloten) → forceer 95+"
-        cat_c = base_q.filter(InspectionDefect.en1176_categorie == "C").first()
-        if cat_c:
+        if _eerste(lambda d: d.en1176_categorie == "C"):
             return 80, "NEN-EN 1176 categorie C defect (gebruik beperken) → forceer 80+"
 
     # Boom — VTA Mattheck risicoklasse 5 of t/r < 0.30
     if asset.asset_type == "boom":
-        vta5 = base_q.filter(InspectionDefect.vta_risicoklasse == 5).first()
-        if vta5:
+        if _eerste(lambda d: d.vta_risicoklasse == 5):
             return 95, "VTA risicoklasse 5 (acute breekrisico) → forceer 95+"
-        # t/r < 0.30 = Mattheck breukrisico (v2.2 polish #12 zet ook auto-risicoklasse 5)
-        tr_unsafe = base_q.filter(InspectionDefect.vta_t_r_ratio < 0.30).first()
-        if tr_unsafe:
+        if _eerste(lambda d: d.vta_t_r_ratio is not None and d.vta_t_r_ratio < 0.30):
             return 90, "VTA Mattheck t/r < 0.30 (breukrisico) → forceer 90+"
 
     # Verlichting — NEN 3140 isolatie-resistance onveilig
     if asset.asset_type == "verlichting":
-        iso_unsafe = base_q.filter(
-            InspectionDefect.nen3140_isolatie_megaohm.isnot(None),
-            InspectionDefect.nen3140_isolatie_megaohm < 0.5,
-        ).first()
-        if iso_unsafe:
+        if _eerste(lambda d: d.nen3140_isolatie_megaohm is not None
+                   and d.nen3140_isolatie_megaohm < 0.5):
             return 80, "NEN 3140 isolatie < 0.5 MΩ (elektrische onveiligheid) → forceer 80+"
 
     # Wegmarkering — CROW 145 RL droog < 80 mcd = vervangen
     if asset.asset_type == "wegmarkering":
-        rl_low = base_q.filter(
-            InspectionDefect.crow145_rl_droog_mcd.isnot(None),
-            InspectionDefect.crow145_rl_droog_mcd < 80,
-        ).first()
-        if rl_low:
+        if _eerste(lambda d: d.crow145_rl_droog_mcd is not None
+                   and d.crow145_rl_droog_mcd < 80):
             return 70, "CROW 145 retroreflectie droog < 80 mcd (vervang-drempel) → forceer 70+"
 
     # Riolering — NEN 3399 eindklasse 5 = acute vervanging
     if asset.asset_type == "riolering":
-        klasse5 = base_q.filter(InspectionDefect.nen3399_klasse == 5).first()
-        if klasse5:
+        if _eerste(lambda d: d.nen3399_klasse == 5):
             return 90, "NEN 3399 eindklasse 5 (direct vervangen) → forceer 90+"
 
     return None
 
 
-def compute_asset_risk(db: Session, asset: Asset) -> dict:
-    """Bereken risicoscore + uitleg. Werkt op één asset."""
+def _type_specific_override(asset: Asset, db: Session, since: datetime) -> Optional[tuple[int, str]]:
+    """v2.2 — Type-specifieke regels die de score forceren bovenop het basis-model.
+
+    Wanneer een norm-specifiek defect kritiek is (NEN-EN 1176 cat C/D, VTA
+    klasse 5, NEN 3140 isolatie < 0.5 MOhm), is het juridisch en operationeel
+    onverdedigbaar om dat asset op laag risico te scoren. Deze regels zetten
+    een minimum-score (floor) die de eindscore garandeert.
+
+    Haalt de defecten op en laat _override_uit_defecten het oordeel vellen. De
+    drempels staan dus op een plek: dezelfde boom moet op het dashboard niet
+    anders scoren dan in de drilldown.
+
+    Return (floor_score, reden_tekst) of None.
+    """
+    defecten = (db.query(InspectionDefect)
+                  .join(InspectionElement,
+                        InspectionDefect.element_id == InspectionElement.id)
+                  .join(Inspection, InspectionElement.inspection_id == Inspection.id)
+                  .filter(Inspection.asset_id == asset.id,
+                          Inspection.created_at >= since)
+                  .all())
+    return _override_uit_defecten(asset, defecten)
+
+
+def compute_asset_risk(db: Session, asset: Asset,
+                       ctx: "MeldingContext | None" = None) -> dict:
+    """Bereken risicoscore + uitleg. Werkt op een asset.
+
+    Geef `ctx` mee als je dit voor veel assets achter elkaar doet: dan komen de
+    meldinggegevens uit drie groepsqueries in plaats van vier queries per asset.
+    Zonder ctx blijft het gedrag precies zoals het was -- de losse
+    asset-drilldown heeft die batch niet nodig en zou er alleen trager van worden.
+    """
     now = datetime.now(timezone.utc)
 
     rationale: list[str] = []
@@ -349,7 +500,10 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
 
     # Ergste CROW-klasse op recente meldingen (nieuw in v2.0)
     one_year_ago = now - timedelta(days=365)
-    worst_klasse = _worst_crow_klasse(db, asset.id, one_year_ago)
+    if ctx is not None:
+        worst_klasse = _ergste_klasse(ctx.klassen.get(asset.id, []))
+    else:
+        worst_klasse = _worst_crow_klasse(db, asset.id, one_year_ago)
     crow_pts = _crow_points(worst_klasse)
     if worst_klasse:
         cat_map = {"L": "observatie", "M": "klein onderhoud", "E": "groot onderhoud"}
@@ -361,7 +515,12 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
         rationale.append("Geen CROW-classificatie op recente meldingen — CROW-factor 0.")
 
     # Meldingen-aantal
-    total_m, severe_m = _melding_count_recent(db, asset.id, one_year_ago)
+    if ctx is not None:
+        per_prio = ctx.prioriteiten.get(asset.id, {})
+        total_m = sum(per_prio.values())
+        severe_m = sum(n for p, n in per_prio.items() if p in ("hoog", "kritiek"))
+    else:
+        total_m, severe_m = _melding_count_recent(db, asset.id, one_year_ago)
     mel_pts = _melding_points(total_m, severe_m)
     if total_m == 0:
         rationale.append("Geen meldingen in afgelopen 12 maanden — meldingfactor 0.")
@@ -373,7 +532,12 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
     base_score = max(0, min(100, base_score))
 
     # Trend-bonus (v2.1) — voegt toe bovenop base, maar wordt na cap niet boven 100.
-    recent_m, prior_m, trend_pts = _melding_trend(db, asset.id, now)
+    if ctx is not None:
+        recent_m = ctx.recent.get(asset.id, 0)
+        prior_m = ctx.prior.get(asset.id, 0)
+        trend_pts = _trend_punten(recent_m, prior_m)
+    else:
+        recent_m, prior_m, trend_pts = _melding_trend(db, asset.id, now)
     if trend_pts > 0:
         rationale.append(
             f"Toenemende meldingstrend ({prior_m}→{recent_m} in voorgaande 90d "
@@ -381,7 +545,12 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
         )
 
     # Inspectie-historie-bonus (v2.2) — formele defecten uit ondertekende inspecties
-    insp_pts, insp_total, insp_severe = _inspection_history_points(db, asset.id, one_year_ago)
+    if ctx is not None:
+        insp_pts, insp_total, insp_severe = _inspectie_punten(
+            ctx.defecten.get(asset.id, []))
+    else:
+        insp_pts, insp_total, insp_severe = _inspection_history_points(
+            db, asset.id, one_year_ago)
     if insp_pts > 0:
         sev_text = f", waarvan {insp_severe} score≥4" if insp_severe else ""
         rationale.append(
@@ -391,7 +560,10 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
     score = max(0, min(100, base_score + trend_pts + insp_pts))
 
     # Type-specifieke overrides (v2.2) — forceer score-floor bij norm-kritieke defecten
-    override = _type_specific_override(asset, db, one_year_ago)
+    if ctx is not None:
+        override = _override_uit_defecten(asset, ctx.defecten.get(asset.id, []))
+    else:
+        override = _type_specific_override(asset, db, one_year_ago)
     override_applied = None
     if override:
         floor, reason = override
@@ -417,7 +589,8 @@ def compute_asset_risk(db: Session, asset: Asset) -> dict:
         has_crow_classification=(worst_klasse is not None),
     )
 
-    geo_signal = _geo_cluster_signal(db, asset, now)
+    geo_signal = _geo_cluster_signal(
+        db, asset, now, voorgeladen=(ctx.geo if ctx is not None else None))
     if geo_signal:
         rationale.append(
             f"{geo_signal['nearby_count']} meldingen binnen "
@@ -479,7 +652,10 @@ def list_at_risk(db: Session, organization_id: str, *,
         q = q.filter(Asset.project_id == project_id)
     assets = q.all()
 
-    results = [compute_asset_risk(db, a) for a in assets]
+    # Een context voor de hele lijst: drie queries in plaats van vier per asset.
+    ctx = MeldingContext(db, [a.id for a in assets], datetime.now(timezone.utc),
+                         organization_id=organization_id)
+    results = [compute_asset_risk(db, a, ctx) for a in assets]
     results = [r for r in results if r["score"] >= min_score]
     results.sort(key=lambda r: r["score"], reverse=True)
     return results[:limit]

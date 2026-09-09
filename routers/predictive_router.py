@@ -6,6 +6,7 @@
   GET /api/predictive/clusters            geografische meldingen-clusters (wijk-alerts)
 """
 
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -14,6 +15,7 @@ from database import get_db
 from models import Asset, User
 from auth import get_current_user
 from permissions import require_module
+import predictive
 from predictive import compute_asset_risk, list_at_risk, find_geo_clusters
 
 router = APIRouter(prefix="/api/predictive", tags=["Predictive Maintenance"],
@@ -58,10 +60,16 @@ def summary(
     assets = (db.query(Asset)
                 .filter(Asset.organization_id == current_user.organization_id,
                         Asset.archived_at.is_(None)).all())
+    # Deze endpoint draait bij elke keer dat het dashboard opent, over alle
+    # assets van de organisatie. Per asset apart de meldingen ophalen kostte
+    # ruim driehonderd queries bij vijftig assets -- en groeide mee.
+    ctx = predictive.MeldingContext(db, [a.id for a in assets],
+                                    datetime.now(timezone.utc),
+                                    organization_id=current_user.organization_id)
     bands = {"laag": 0, "matig": 0, "hoog": 0}
     by_type: dict[str, dict[str, int]] = {}
     for a in assets:
-        r = compute_asset_risk(db, a)
+        r = compute_asset_risk(db, a, ctx)
         bands[r["band"]] += 1
         t = by_type.setdefault(a.asset_type, {"laag": 0, "matig": 0, "hoog": 0})
         t[r["band"]] += 1
