@@ -329,3 +329,53 @@ def is_actionable(score: Optional[int]) -> bool:
 
 
 KOSTEN_VERSION = "mjop-kosten.v1.1-2026-07"
+
+# Op welk prijspeil de katalogus hierboven staat. Zonder dit getal is een
+# MJOP-bedrag betekenisloos: je weet dan niet of die 200.000 euro in euro's van
+# nu is of van over tien jaar.
+PRIJSPEIL_JAAR = 2025
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Indexatie
+# ─────────────────────────────────────────────────────────────────────────────
+
+def indexeer(bedrag: float, naar_jaar: int, index_pct: Optional[float],
+             van_jaar: int = PRIJSPEIL_JAAR) -> Optional[int]:
+    """Reken een bedrag van prijspeil naar het jaar van uitvoering.
+
+    Een MJOP plant tot vijfentwintig jaar vooruit maar rekent af tegen de
+    katalogus van vandaag. Een brugrenovatie in 2034 staat er dan in euro's van
+    2025 in, en dat is precies het bedrag dat een raad of directie in de
+    begroting overneemt. Bij drie procent per jaar scheelt dat over negen jaar
+    ruim dertig procent -- niet een afrondingsverschil maar een gat.
+
+    **Zonder percentage geen indexatie.** Dit geeft dan None, en de exports
+    zeggen er expliciet bij dat de bedragen op prijspeil staan. Zelfde regel als
+    bij de keuringen en de schouw: een getal dat wij verzinnen is erger dan geen
+    getal, want niemand controleert het meer zodra het in een rapport staat.
+    Welk percentage klopt hangt af van het contract en de eigen indexafspraak
+    (CBS GWW-index, RAW-index, of wat er in het bestek staat) -- dat weet de
+    organisatie, wij niet.
+
+    Werk dat al te laat is, wordt nu uitgevoerd en dus tegen het prijspeil van
+    nu. Daarom kan de exponent niet onder nul: terugrekenen naar goedkopere
+    euro's van vroeger zou een achterstand goedkoper laten lijken dan hij is.
+    """
+    if index_pct is None:
+        return None
+    try:
+        pct = float(index_pct)
+    except (TypeError, ValueError):
+        return None
+    jaren = max(0, int(naar_jaar) - int(van_jaar))
+    return int(round(bedrag * ((1 + pct / 100.0) ** jaren)))
+
+
+def index_toelichting(index_pct: Optional[float]) -> str:
+    """Eén regel die onder elke export hoort, zodat een bedrag niet zwerft."""
+    if index_pct is None:
+        return (f"Bedragen op prijspeil {PRIJSPEIL_JAAR}, niet geindexeerd. "
+                f"Stel een indexpercentage in om uitvoeringsjaren door te rekenen.")
+    return (f"Bedragen geindexeerd vanaf prijspeil {PRIJSPEIL_JAAR} "
+            f"met {index_pct:.1f}% per jaar tot het jaar van uitvoering.")

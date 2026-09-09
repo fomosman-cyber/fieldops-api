@@ -142,6 +142,12 @@ class Organization(Base):
     # opdrachtgever en horen niet door ons verzonnen te worden. Zonder
     # grenswaarden levert een schouw wel waarnemingen op maar geen A-D-score.
     schouw_drempels = Column(Text, nullable=True)
+    # Indexpercentage per jaar voor het MJOP. NULL = niet indexeren; dan staan
+    # de bedragen op prijspeil en zeggen de exports dat er expliciet bij. Welk
+    # percentage klopt staat in het contract of de eigen indexafspraak (CBS
+    # GWW-index, RAW-index) -- dat weet de organisatie, wij niet. Zelfde keuze
+    # als bij schouw_drempels hierboven.
+    mjop_index_pct = Column(Float, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     users = relationship("User", back_populates="organization")

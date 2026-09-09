@@ -49,11 +49,23 @@ router = APIRouter(prefix="/api/mjop", tags=["MJOP"],
 # Core builder
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _index_pct(db: Session, organization_id: str) -> Optional[float]:
+    """Het indexpercentage van deze organisatie, of None als het niet is gezet.
+
+    Nul telt als "bewust niet indexeren" en niet als "niet ingevuld": wie
+    expliciet 0% invult zegt dat hij op prijspeil wil rekenen, en dat is een
+    andere uitspraak dan een leeg veld.
+    """
+    org = db.query(Organization).filter(Organization.id == organization_id).first()
+    return org.mjop_index_pct if org else None
+
+
 def _build_mjop_rows(db: Session, *, organization_id: str,
                      years: int = 10,
                      project_id: Optional[str] = None,
                      asset_type: Optional[str] = None,
-                     include_score_2: bool = False) -> list[dict]:
+                     include_score_2: bool = False,
+                     index_pct: Optional[float] = None) -> list[dict]:
     """Maak MJOP-regels voor alle relevante assets.
 
     Logica:
@@ -134,6 +146,11 @@ def _build_mjop_rows(db: Session, *, organization_id: str,
             "max_eur": maatregel["max_eur"],
             "min_total": total["min_total"],
             "max_total": total["max_total"],
+            # Wat het naar verwachting kost in het jaar dat het gebeurt. None
+            # zolang er geen indexpercentage is ingesteld -- dan staan alleen
+            # de prijspeil-bedragen erboven, en zeggen de exports dat erbij.
+            "min_geindexeerd": mjop.indexeer(total["min_total"], due.year, index_pct),
+            "max_geindexeerd": mjop.indexeer(total["max_total"], due.year, index_pct),
             "due_date": due.date().isoformat(),
         })
 
@@ -178,11 +195,12 @@ def preview_mjop(
     db: Session = Depends(get_db),
 ):
     """Preview MJOP-data als JSON (max 200 regels)."""
+    index_pct = _index_pct(db, current_user.organization_id)
     rows = _build_mjop_rows(
         db,
         organization_id=current_user.organization_id,
         years=years, project_id=project_id, asset_type=asset_type,
-        include_score_2=include_score_2,
+        include_score_2=include_score_2, index_pct=index_pct,
     )
     return {
         "count": len(rows),
@@ -209,28 +227,34 @@ def mjop_summary(
       summary_by_type[asset_type]      = {min_total, max_total, count}
       grand_total                      = {min, max}
     """
+    index_pct = _index_pct(db, current_user.organization_id)
     rows = _build_mjop_rows(
         db,
         organization_id=current_user.organization_id,
         years=years, project_id=project_id,
-        include_score_2=include_score_2,
+        include_score_2=include_score_2, index_pct=index_pct,
     )
 
     by_year: dict = {}
     by_type: dict = {}
     grand_min = 0
     grand_max = 0
+    grand_min_idx = 0
+    grand_max_idx = 0
 
     for r in rows:
         y = r["year"]
         t = r["asset_type"]
         by_year.setdefault(y, {"year": y, "min_total": 0, "max_total": 0,
+                                "min_geindexeerd": 0, "max_geindexeerd": 0,
                                 "count": 0, "by_type": {}})
         by_type.setdefault(t, {"asset_type": t, "min_total": 0, "max_total": 0,
                                 "count": 0, "norm_reference": r["norm_reference"]})
 
         by_year[y]["min_total"] += r["min_total"]
         by_year[y]["max_total"] += r["max_total"]
+        by_year[y]["min_geindexeerd"] += (r["min_geindexeerd"] or 0)
+        by_year[y]["max_geindexeerd"] += (r["max_geindexeerd"] or 0)
         by_year[y]["count"] += 1
         by_year[y]["by_type"].setdefault(t, 0)
         by_year[y]["by_type"][t] += r["min_total"]
@@ -241,12 +265,23 @@ def mjop_summary(
 
         grand_min += r["min_total"]
         grand_max += r["max_total"]
+        grand_min_idx += (r["min_geindexeerd"] or 0)
+        grand_max_idx += (r["max_geindexeerd"] or 0)
 
     return {
         "horizon_years": years,
         "by_year": sorted(by_year.values(), key=lambda x: x["year"]),
         "by_type": sorted(by_type.values(), key=lambda x: -x["max_total"]),
         "grand_total": {"min": grand_min, "max": grand_max},
+        # Wat het kost in de jaren dat het gebeurt. Zonder ingesteld
+        # indexpercentage None -- dan is er niets doorgerekend, en dat hoort
+        # zichtbaar te zijn in plaats van gelijk aan het prijspeil-bedrag.
+        "grand_total_geindexeerd": (
+            {"min": grand_min_idx, "max": grand_max_idx}
+            if index_pct is not None else None),
+        "index_pct": index_pct,
+        "prijspeil_jaar": mjop.PRIJSPEIL_JAAR,
+        "index_toelichting": mjop.index_toelichting(index_pct),
         "total_assets": len(rows),
         "kosten_version": mjop.KOSTEN_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -266,11 +301,12 @@ def export_mjop_csv(
 
     Gebruikt `;` als delimiter (NL Excel-default) en BOM voor UTF-8.
     """
+    index_pct = _index_pct(db, current_user.organization_id)
     rows = _build_mjop_rows(
         db,
         organization_id=current_user.organization_id,
         years=years, project_id=project_id, asset_type=asset_type,
-        include_score_2=include_score_2,
+        include_score_2=include_score_2, index_pct=index_pct,
     )
 
     buf = io.StringIO()
@@ -280,7 +316,9 @@ def export_mjop_csv(
         "Jaar", "Maand", "Asset code", "Asset naam", "Type", "Norm",
         "Conditie", "Maatregel", "Eenheid", "Hoeveelheid",
         "Min € per eenheid", "Max € per eenheid",
-        "Min € totaal", "Max € totaal", "Geplande datum",
+        f"Min € totaal (prijspeil {mjop.PRIJSPEIL_JAAR})",
+        f"Max € totaal (prijspeil {mjop.PRIJSPEIL_JAAR})",
+        "Min € geïndexeerd", "Max € geïndexeerd", "Geplande datum",
     ])
     for r in rows:
         writer.writerow([
@@ -289,12 +327,16 @@ def export_mjop_csv(
             r["condition_score"], r["maatregel"],
             r["unit"], r["multiplier"],
             r["min_eur"], r["max_eur"],
-            r["min_total"], r["max_total"], r["due_date"],
+            r["min_total"], r["max_total"],
+            r["min_geindexeerd"] if r["min_geindexeerd"] is not None else "",
+            r["max_geindexeerd"] if r["max_geindexeerd"] is not None else "",
+            r["due_date"],
         ])
     # Voettekst — meta
     writer.writerow([])
     writer.writerow([f"MJOP gegenereerd op {datetime.now(timezone.utc).date().isoformat()}"])
     writer.writerow([f"Versie kosten-katalogus: {mjop.KOSTEN_VERSION}"])
+    writer.writerow([mjop.index_toelichting(index_pct)])
     writer.writerow(["Bronnen: NEN 2767-2 + CROW 134 + CROW 145 + GWW-kostengids 2024"])
     writer.writerow(["LET OP: indicatieve kostenranges, geen RAW-bestek"])
 
@@ -339,10 +381,11 @@ def export_mjop_pdf(
             status_code=500, media_type="text/plain",
         )
 
+    index_pct = _index_pct(db, current_user.organization_id)
     rows = _build_mjop_rows(
         db, organization_id=current_user.organization_id,
         years=years, project_id=project_id, asset_type=asset_type,
-        include_score_2=include_score_2,
+        include_score_2=include_score_2, index_pct=index_pct,
     )
 
     project_name = None
@@ -482,7 +525,20 @@ def export_mjop_pdf(
     _info_row("Inclusief score 2:", "ja (preventief)" if include_score_2 else "nee (alleen actionable)")
     _info_row("Gegenereerd:", datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M UTC"))
     _info_row("Kosten-versie:", mjop.KOSTEN_VERSION)
-    pdf.ln(8)
+    _info_row("Prijspeil:", str(mjop.PRIJSPEIL_JAAR))
+    _info_row("Indexatie:", (f"{index_pct:.1f}% per jaar" if index_pct is not None
+                             else "niet ingesteld"))
+    pdf.ln(4)
+
+    # De belangrijkste regel van dit rapport. Iemand neemt deze bedragen over in
+    # een begroting; dan moet er onder staan of ze in euro's van nu zijn of van
+    # het jaar van uitvoering. Zonder die zin is een bedrag van 2034 niet te
+    # onderscheiden van een bedrag van vandaag.
+    pdf.set_font("Helvetica", "I", 9)
+    pdf.set_text_color(90, 90, 90)
+    pdf.multi_cell(0, 5, _safe(mjop.index_toelichting(index_pct)))
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(6)
 
     # Kerncijfers-grid (3 grote getallen)
     total_min = sum(r["min_total"] for r in rows)
@@ -497,10 +553,17 @@ def export_mjop_pdf(
     kpi_h = 26
     kpi_gap = 4
     kpi_y = pdf.get_y()
+    # Het derde vakje is het getal dat in een begroting belandt. Staat er een
+    # index, dan hoort daar het bedrag van het jaar van uitvoering -- anders
+    # leest een directeur een som van 2034-werk in euro's van 2025.
+    total_max_idx = sum((r["max_geindexeerd"] or 0) for r in rows)
+    kpi_bedrag = total_max_idx if index_pct is not None else total_max
+    kpi_label = ("max kosten (geindexeerd)" if index_pct is not None
+                 else f"max kosten (prijspeil {mjop.PRIJSPEIL_JAAR})")
     kpis = [
         (f"{len(all_assets)}", "assets in scope", 2, 132, 199),
         (f"{len(rows)}", "MJOP-regels", 22, 163, 74),
-        (f"EUR {_fmt_eur(total_max)}", "max kosten", 234, 88, 12),
+        (f"EUR {_fmt_eur(kpi_bedrag)}", kpi_label, 234, 88, 12),
     ]
     for i, (val, lbl, r_c, g_c, b_c) in enumerate(kpis):
         x = 18 + i * (kpi_w + kpi_gap)
