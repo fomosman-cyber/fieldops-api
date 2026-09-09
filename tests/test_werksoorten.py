@@ -87,3 +87,43 @@ def test_bulkactie_biedt_elke_werksoort():
         # wordt daar niet uitgelezen en zou een categorie opleveren die nergens
         # op matcht.
         assert f'value="{w["label"]}"' in blok, f"{w['label']} ontbreekt in de bulk-actie"
+
+
+def test_kaart_vult_de_hoogte_van_het_scherm():
+    """De kaart stond op een vaste 500px terwijl er ruimte zat tot de footer.
+
+    Een height:100% tegen een ouder die zijn hoogte uit flex-grow haalt lost
+    niet overal op; dan viel #map terug op zijn min-height en bleef er onder de
+    tegels een lege strook staan. Absoluut positioneren binnen de relatieve
+    wrapper doet dat wel.
+    """
+    html = PORTAAL.read_text(encoding="utf-8")
+    blok = html.split('<div id="map"', 1)
+    assert len(blok) == 2, "kaartcontainer niet gevonden"
+    stijl = blok[1][:200]
+    assert "position:absolute" in stijl and "inset:0" in stijl
+    assert "min-height:500px" not in stijl, "de kaart hoort niet meer op een vaste hoogte te staan"
+    assert "min-height:calc(100vh" in blok[0][-400:], "de wrapper moet met het scherm meegroeien"
+    # Leaflet meet zijn container een keer; zonder dit blijven de tegels op de
+    # oude maat staan als het venster verandert.
+    assert "window.addEventListener('resize'" in html and "map.invalidateSize()" in html
+
+
+def test_legenda_blijft_compact_en_leesbaar():
+    """De legenda hoort de kaart te verklaren, niet te bedekken."""
+    html = PORTAAL.read_text(encoding="utf-8")
+    blok = html.split('id="kaartLegenda"', 1)
+    assert len(blok) == 2, "legenda niet gevonden"
+    legenda = blok[1].split("<!-- Map Legend", 1)[0][:5000]
+    # Het paneel is altijd donker, ook in het lichte thema. Themakleuren maken
+    # de tekst daar onleesbaar — dat was precies wat er misging.
+    kop = legenda.split(">", 1)[0]
+    assert "var(--text)" not in legenda, "vaste lichte kleuren op een donker paneel"
+    assert "var(--border)" not in kop
+    # Inklapbaar, en die keuze wordt onthouden.
+    assert "toggleLegenda(" in legenda
+    assert html.count("function toggleLegenda") == 1
+    assert "kaartLegendaDicht" in html
+    # Elke werksoort staat er nog in — compact maken mag niets weglaten.
+    for w in WERKSOORTEN:
+        assert w["kleur"] in legenda, f"kleur van {w['label']} ontbreekt in de legenda"
