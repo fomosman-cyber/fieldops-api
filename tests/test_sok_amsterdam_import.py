@@ -35,15 +35,16 @@ def org_en_user():
         db.close()
 
 
-def _importeer(org_id, user_id):
+def _importeer(org_id, user_id, overschrijf=False):
     db = SessionLocal()
     try:
         data = imp.laad_data()
-        org = db.query(Organization).get(org_id)
-        user = db.query(User).get(user_id)
+        org = db.get(Organization, org_id)
+        user = db.get(User, user_id)
         project = imp.upsert_project(db, data, org, user)
         assets = imp.upsert_wegen(db, data, org, user, project)
-        telling = imp.upsert_meldingen(db, data, org, user, project, assets)
+        telling = imp.upsert_meldingen(db, data, org, user, project, assets,
+                                       overschrijf=overschrijf)
         db.commit()
         return project.id, telling
     finally:
@@ -105,7 +106,7 @@ def test_import_koppelt_project_wegen_en_meldingen(org_en_user):
 
     db = SessionLocal()
     try:
-        project = db.query(Project).get(project_id)
+        project = db.get(Project, project_id)
         assert project.name == "SOK Amsterdam - Asfalt 2026"
         assert project.gemeente == "Amsterdam"
         assert json.loads(project.categories)[0] == "Hotbox werkzaamheden"
@@ -195,3 +196,59 @@ def test_csv_uitvoer_past_op_de_bestaande_import(tmp_path):
     import zipfile
     with zipfile.ZipFile(tmp_path / "sok-amsterdam-fotos.zip") as z:
         assert len(z.namelist()) == 156
+
+
+def test_herimport_laat_veldwerk_staan(org_en_user):
+    """Als er later betere foto's komen, mag een tweede import de indeling en
+    de verplaatste pin uit het portaal niet terugdraaien."""
+    org_id, user_id = org_en_user
+    project_id, _ = _importeer(org_id, user_id)
+
+    db = SessionLocal()
+    try:
+        m = db.query(Melding).filter(Melding.project_id == project_id,
+                                     Melding.lat.isnot(None)).first()
+        melding_id, oude_foto = m.id, m.photo_url
+        m.category = "Hotbox werkzaamheden"
+        m.title = "Eigen titel van de uitvoerder"
+        m.lat, m.lng = 52.40000, 4.90000
+        m.photo_after_url = "data:image/jpeg;base64,AAAA"
+        db.commit()
+    finally:
+        db.close()
+
+    _importeer(org_id, user_id)
+    db = SessionLocal()
+    try:
+        m = db.get(Melding, melding_id)
+        assert m.category == "Hotbox werkzaamheden"
+        assert m.title == "Eigen titel van de uitvoerder"
+        assert (m.lat, m.lng) == (52.40000, 4.90000)
+        assert m.photo_after_url == "data:image/jpeg;base64,AAAA"
+        assert m.photo_url == oude_foto      # schouwfoto wel ververst
+    finally:
+        db.close()
+
+
+def test_overschrijf_zet_de_brongegevens_terug(org_en_user):
+    org_id, user_id = org_en_user
+    project_id, _ = _importeer(org_id, user_id)
+
+    db = SessionLocal()
+    try:
+        m = db.query(Melding).filter(Melding.project_id == project_id).first()
+        melding_id = m.id
+        m.category = "Hotbox werkzaamheden"
+        m.title = "Eigen titel"
+        db.commit()
+    finally:
+        db.close()
+
+    _importeer(org_id, user_id, overschrijf=True)
+    db = SessionLocal()
+    try:
+        m = db.get(Melding, melding_id)
+        assert m.category == ONBEPAALD
+        assert m.title != "Eigen titel"
+    finally:
+        db.close()

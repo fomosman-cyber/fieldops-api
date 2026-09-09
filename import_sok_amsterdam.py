@@ -32,8 +32,12 @@ meerdere, dan stopt het script en toont het de keuzes. Zonder --user wordt de
 eerste actieve admin van die organisatie als aanmaker gebruikt.
 
 Het script is idempotent: het matcht op projectnaam, asset-code en de
-combinatie (titel, project). Een tweede run maakt geen duplicaten en vult
-alleen aan wat nog ontbreekt.
+bronreferentie onderaan elke omschrijving. Een tweede run maakt geen
+duplicaten. Bij bestaande meldingen wint het veldwerk: een in het portaal
+gekozen werksoort, een verplaatste pin of een aangepaste titel blijft staan,
+alleen lege velden worden aangevuld. De schouwfoto wordt wel steeds ververst,
+zodat je later betere opnames kunt inladen. Met --overschrijf wint het
+databestand alsnog op alle velden.
 """
 from __future__ import annotations
 
@@ -164,11 +168,19 @@ REF_RE = re.compile(r"Bronreferentie:\s*(SOK-AMS-2026-\d+)")
 
 
 def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
-                     project: Project, assets: dict[str, Asset]) -> tuple[int, int, int]:
+                     project: Project, assets: dict[str, Asset],
+                     overschrijf: bool = False) -> tuple[int, int, int]:
     """Meldingen aanmaken/bijwerken.
 
     Gematcht op de bronreferentie onderaan de omschrijving, niet op de titel:
     een titel kan nog bijgeschaafd worden en zou dan een duplicaat opleveren.
+
+    Bij een bestaande melding wint het veldwerk. Alleen lege velden worden
+    aangevuld; een in het portaal gekozen werksoort, een verplaatste pin of een
+    aangepaste titel blijft staan. De foto uit het rapport wordt wel steeds
+    ververst — dat is juist de reden om opnieuw te importeren als er betere
+    opnames binnenkomen. Met `overschrijf=True` wint het databestand alsnog op
+    alle velden.
     """
     bestaand = {}
     for m in db.query(Melding).filter(
@@ -182,19 +194,24 @@ def upsert_meldingen(db: Session, data: dict, org: Organization, user: User,
     for m in data["meldingen"]:
         melding = bestaand.get(m["ref"])
         if melding is None:
-            melding = Melding(title=m["titel"], organization_id=org.id,
-                              created_by=user.id, status=STATUS)
+            melding = Melding(organization_id=org.id, created_by=user.id, status=STATUS)
             db.add(melding)
             nieuw += 1
         else:
             bijgewerkt += 1
-        melding.description = m["omschrijving"]
-        melding.category = ONBEPAALD
-        melding.priority = PRIORITEIT
-        melding.lat = m["lat"]
-        melding.lng = m["lng"]
-        # Alleen zetten als er een foto is: een handmatig toegevoegde foto mag
-        # een herhaalde import niet kwijtraken.
+        vers = overschrijf or melding.id is None
+        if vers or not melding.title:
+            melding.title = m["titel"]
+        if vers or not melding.description:
+            melding.description = m["omschrijving"]
+        if vers or not melding.category:
+            melding.category = ONBEPAALD
+        if vers or not melding.priority:
+            melding.priority = PRIORITEIT
+        if vers or melding.lat is None:
+            melding.lat = m["lat"]
+            melding.lng = m["lng"]
+        # De schouwfoto komt uit het rapport en wordt wel steeds ververst.
         if (foto := foto_data_url(m.get("foto"))):
             melding.photo_url = foto
         melding.project_id = project.id
@@ -253,6 +270,9 @@ def main() -> None:
     ap.add_argument("--user", help="e-mailadres van de aanmaker")
     ap.add_argument("--dry-run", action="store_true",
                     help="toon wat er zou gebeuren, schrijf niets weg")
+    ap.add_argument("--overschrijf", action="store_true",
+                    help="zet ook velden terug die in het portaal zijn aangepast "
+                         "(werksoort, titel, pin); standaard blijven die staan")
     ap.add_argument("--csv", metavar="MAP",
                     help="schrijf de import-CSV's naar deze map en stop")
     args = ap.parse_args()
@@ -273,7 +293,8 @@ def main() -> None:
 
         project = upsert_project(db, data, org, user)
         assets = upsert_wegen(db, data, org, user, project)
-        nieuw, bijgewerkt, met_foto = upsert_meldingen(db, data, org, user, project, assets)
+        nieuw, bijgewerkt, met_foto = upsert_meldingen(
+            db, data, org, user, project, assets, overschrijf=args.overschrijf)
 
         zonder_gps = [m["titel"] for m in data["meldingen"] if m["lat"] is None]
         gemarkeerd = [m["titel"] for m in data["meldingen"] if m["gps_waarschuwing"]]
