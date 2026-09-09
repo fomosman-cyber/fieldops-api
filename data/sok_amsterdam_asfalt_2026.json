@@ -3125,11 +3125,11 @@
   },
   {
    "titel": "Astasiastraat — nr 15. 5.50 x 5.00",
-   "omschrijving": "Astasiastr. nr 15. 5.50 x 5.00\n\nGeschouwd: 18 augustus 2026 om 12:12 (week 34)\nLocatie volgens GPS: Astasiastraat 15HS, Amsterdam\nWeer tijdens schouw: Zwaar bewolkt 18°C wind 9 km/u\nBron: Asfalt Schouw NOORD — 26 augustus 2026, pagina 48/49\nGPS in rapport: 52.41847, 4.90488\nBronreferentie: SOK-AMS-2026-139",
+   "omschrijving": "Astasiastr. nr 15. 5.50 x 5.00\n\nGeschouwd: 18 augustus 2026 om 12:12 (week 34)\nLocatie volgens GPS: Astasiastraat 15HS, Amsterdam\nBuurt/deelgebied: Kadoelen\nWeer tijdens schouw: Zwaar bewolkt 18°C wind 9 km/u\nBron: Asfalt Schouw NOORD — 26 augustus 2026, pagina 48/49\nGPS in rapport: 52.41847, 4.90488\nBronreferentie: SOK-AMS-2026-139",
    "lat": 52.41847,
    "lng": 4.90488,
    "straat": "Astasiastraat",
-   "buurt": null,
+   "buurt": "Kadoelen",
    "schouwdatum": "2026-08-18",
    "tijd": "12:12",
    "week": 34,
@@ -3200,8 +3200,8 @@
    "foto": "142-baanakkerspad.jpg"
   },
   {
-   "titel": "Volendammerweg — 88 / Werengouw Opnieuw vierkant asfalteren van het zebrapad. Asfalt rijweg zwart Asfalt Fietspad weerszijde",
-   "omschrijving": "Volendammerweg 88 / Werengouw Opnieuw vierkant asfalteren van het zebrapad. Asfalt rijweg zwart Asfalt Fietspad weerszijde\n\nGeschouwd: 27 augustus 2026 om 12:42 (week 35)\nLocatie volgens GPS: Volendammerweg 88, Amsterdam\nStatus in bronrapport: HERSTELPUNT OPEN\nWeer tijdens schouw: Zwaar bewolkt 23°C wind 14 km/u\nBron: Notities Asfalt NOORD 2026 / Herstelwerkzaamheden Noord, pagina 1/1\nGPS in rapport: 52.39112, 4.95433\nBronreferentie: SOK-AMS-2026-143",
+   "titel": "Volendammerweg — 88 / Werengouw Opnieuw vierkant asfalteren van het zebrapad. Asfalt rijweg zwart -2,7 x 10,7 Asfalt Fietspad…",
+   "omschrijving": "Volendammerweg 88 / Werengouw Opnieuw vierkant asfalteren van het zebrapad. Asfalt rijweg zwart -2,7 x 10,7 Asfalt Fietspad weerszijde -0.6 x 0,8m -0,6 x 1m\n\nGeschouwd: 27 augustus 2026 om 12:42 (week 35)\nLocatie volgens GPS: Volendammerweg 88, Amsterdam\nStatus in bronrapport: HERSTELPUNT OPEN\nWeer tijdens schouw: Zwaar bewolkt 23°C wind 14 km/u\nBron: Notities Asfalt NOORD 2026 / Herstelwerkzaamheden Noord, pagina 1/1\nGPS in rapport: 52.39112, 4.95433\nBronreferentie: SOK-AMS-2026-143",
    "lat": 52.39112,
    "lng": 4.95433,
    "straat": "Volendammerweg",
@@ -3211,7 +3211,7 @@
    "week": 35,
    "bron": "Notities Asfalt NOORD 2026 / Herstelwerkzaamheden Noord",
    "pagina": "1/1",
-   "bron_tekst": "Volendammerweg 88 / Werengouw Opnieuw vierkant asfalteren van het zebrapad. Asfalt rijweg zwart Asfalt Fietspad weerszijde",
+   "bron_tekst": "Volendammerweg 88 / Werengouw Opnieuw vierkant asfalteren van het zebrapad. Asfalt rijweg zwart -2,7 x 10,7 Asfalt Fietspad weerszijde -0.6 x 0,8m -0,6 x 1m",
    "bron_adres": "Volendammerweg 88, Amsterdam",
    "gps_waarschuwing": null,
    "ref": "SOK-AMS-2026-143",
