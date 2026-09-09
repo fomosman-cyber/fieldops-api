@@ -3077,8 +3077,8 @@
           <button class="btn-primary" onclick="openMeldingModal()">+ Melding</button>
         </div>
       </div>
-      <div style="position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--border);flex:1;min-height:500px;">
-        <div id="map" style="width:100%;height:100%;min-height:500px;background:#1a1a2e;"></div>
+      <div style="position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--border);flex:1;min-height:calc(100vh - 250px);">
+        <div id="map" style="position:absolute;inset:0;background:#1a1a2e;"></div>
         <!-- Wegvak-mode toolbar (split/merge) — verschijnt alleen als modus actief is -->
         <div id="kaartModeBar" style="display:none;position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:1000;background:rgba(15,23,42,0.96);color:#fff;border:1px solid #334155;border-radius:12px;padding:10px 14px;font-size:13px;backdrop-filter:blur(10px);box-shadow:0 8px 24px rgba(0,0,0,0.3);display:none;align-items:center;gap:12px;font-family:DM Sans,sans-serif;">
           <span id="kaartModeIcon" style="font-size:18px;"></span>
@@ -3087,29 +3087,43 @@
           <button id="kaartModeConfirmBtn" onclick="confirmKaartMode()" style="padding:6px 14px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">Bevestigen</button>
           <button onclick="setKaartMode('normal')" style="padding:6px 14px;background:transparent;color:#fff;border:1px solid #475569;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;">Annuleren</button>
         </div>
-        <!-- Map Legend -->
-        <div style="position:absolute;bottom:16px;left:16px;z-index:1000;background:rgba(10,15,30,0.9);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:12px;padding:14px 18px;font-size:12px;">
-          <div style="font-weight:600;margin-bottom:8px;color:var(--text);">Legenda</div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ff5252;"></div><span style="color:var(--text-muted);">Kritiek</span></div>
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ffab40;"></div><span style="color:var(--text-muted);">Hoog</span></div>
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#00d4ff;"></div><span style="color:var(--text-muted);">Normaal</span></div>
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#888;"></div><span style="color:var(--text-muted);">Laag</span></div>
-            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;"><div style="width:12px;height:12px;border:2px solid #00d4ff;border-radius:2px;"></div><span style="color:var(--text-muted);">Projectgebied</span></div>
+        <!-- Legenda. Compact gehouden en inklapbaar: hij hoort de kaart te
+             verklaren, niet te bedekken. Twee kolommen naast elkaar, want
+             prioriteit en werksoort zijn twee losse assen. -->
+        <div id="kaartLegenda" style="position:absolute;bottom:12px;left:12px;z-index:1000;background:rgba(10,15,30,0.92);backdrop-filter:blur(10px);border:1px solid #334155;border-radius:10px;font-size:11px;line-height:1.25;max-width:min(420px,calc(100% - 24px));">
+          <button type="button" onclick="toggleLegenda()" style="display:flex;align-items:center;gap:6px;width:100%;background:none;border:none;padding:7px 11px;color:#e2e8f0;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer;">
+            <span id="kaartLegendaPijl" style="font-size:9px;display:inline-block;transition:transform .15s;">&#9650;</span> Legenda
+          </button>
+          <div id="kaartLegendaBody" style="padding:0 11px 9px;display:flex;gap:18px;flex-wrap:wrap;">
+            <div>
+              <div style="font-weight:700;color:#94a3b8;margin-bottom:4px;font-size:10px;letter-spacing:.04em;text-transform:uppercase;">Werksoort</div>
+              <div style="display:flex;flex-direction:column;gap:3px;">
+                <div style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:50%;background:#ff5252;flex:none;"></i><span style="color:#cbd5e1;">Hotbox</span></div>
+                <div style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:50%;background:#22c55e;flex:none;"></i><span style="color:#cbd5e1;">Asfalt machinaal</span></div>
+                <div style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:50%;background:#ffab40;flex:none;"></i><span style="color:#cbd5e1;">Scheuren vullen</span></div>
+                <div style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:50%;background:#94a3b8;flex:none;"></i><span style="color:#cbd5e1;">Nog in te delen</span></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-weight:700;color:#94a3b8;margin-bottom:4px;font-size:10px;letter-spacing:.04em;text-transform:uppercase;">Prioriteit</div>
+              <div style="display:flex;flex-direction:column;gap:3px;">
+                <div style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:50%;background:#ff5252;flex:none;"></i><span style="color:#cbd5e1;">Kritiek</span></div>
+                <div style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:50%;background:#ffab40;flex:none;"></i><span style="color:#cbd5e1;">Hoog</span></div>
+                <div style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:50%;background:#00d4ff;flex:none;"></i><span style="color:#cbd5e1;">Normaal</span></div>
+                <div style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:50%;background:#888;flex:none;"></i><span style="color:#cbd5e1;">Laag</span></div>
+                <div style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border:2px solid #00d4ff;border-radius:2px;flex:none;"></i><span style="color:#cbd5e1;">Projectgebied</span></div>
+              </div>
+            </div>
+            <div>
+              <div style="font-weight:700;color:#94a3b8;margin-bottom:4px;font-size:10px;letter-spacing:.04em;text-transform:uppercase;" title="Zegt wat er ligt, niet hoe het hersteld wordt. Staat als label bij de melding, alleen waar het rapport het noemt.">Asfaltsoort</div>
+              <div style="display:flex;flex-direction:column;gap:3px;">
+                <div style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:2px;background:#334155;flex:none;"></i><span style="color:#cbd5e1;">Zwart (rijweg)</span></div>
+                <div style="display:flex;align-items:center;gap:6px;"><i style="width:9px;height:9px;border-radius:2px;background:#e11d48;flex:none;"></i><span style="color:#cbd5e1;">Rood (fiets-/voetpad)</span></div>
+              </div>
+            </div>
           </div>
-          <div style="font-weight:600;margin:12px 0 8px;color:var(--text);">Werksoort</div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ff5252;"></div><span style="color:var(--text-muted);">🔥 Hotbox werkzaamheden</span></div>
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#22c55e;"></div><span style="color:var(--text-muted);">🚜 Asfalt machinaal</span></div>
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#ffab40;"></div><span style="color:var(--text-muted);">🩹 Scheuren vullen</span></div>
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:50%;background:#94a3b8;"></div><span style="color:var(--text-muted);">🛣️ Nog in te delen</span></div>
-          </div>
-          <div style="font-weight:600;margin:12px 0 8px;color:var(--text);">Asfaltsoort</div>
-          <div style="display:flex;flex-direction:column;gap:6px;">
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:2px;background:#334155;"></div><span style="color:var(--text-muted);">⬛ Zwart asfalt (rijweg)</span></div>
-            <div style="display:flex;align-items:center;gap:8px;"><div style="width:12px;height:12px;border-radius:2px;background:#e11d48;"></div><span style="color:var(--text-muted);">🟥 Rood asfalt (fiets-/voetpad)</span></div>
-            <div style="color:var(--text-muted);font-size:11px;line-height:1.4;">Zegt wat er ligt, niet hoe het hersteld wordt — daarom geen kaartkleur maar een label bij de melding. Alleen ingevuld waar het rapport het noemt.</div>
-          </div>
+        </div>
+        </div>
         </div>
       </div>
     </div>
@@ -24050,13 +24064,45 @@
     var gpsWatchId = null;
     var firstLocationSet = false;
 
+    // De legenda is standaard open, maar op een klein scherm neemt hij te veel
+    // kaart in beslag. De keuze blijft bewaard, zodat je hem niet elke keer
+    // opnieuw dicht hoeft te klikken.
+    function toggleLegenda(forceer) {
+      var body = document.getElementById('kaartLegendaBody');
+      var pijl = document.getElementById('kaartLegendaPijl');
+      if (!body) return;
+      var dicht = (forceer === undefined) ? (body.style.display !== 'none') : forceer;
+      body.style.display = dicht ? 'none' : 'flex';
+      if (pijl) pijl.style.transform = dicht ? 'rotate(180deg)' : '';
+      try { localStorage.setItem('kaartLegendaDicht', dicht ? '1' : '0'); } catch (e) { /* privémodus */ }
+    }
+
+    function herstelLegenda() {
+      var dicht = false;
+      try { dicht = localStorage.getItem('kaartLegendaDicht') === '1'; } catch (e) { /* privémodus */ }
+      // Op een smal scherm gaat hij dicht tenzij je hem zelf hebt opengezet.
+      var opgeslagen = null;
+      try { opgeslagen = localStorage.getItem('kaartLegendaDicht'); } catch (e) { /* privémodus */ }
+      if (opgeslagen === null && window.innerWidth < 700) dicht = true;
+      toggleLegenda(dicht);
+    }
+
     function initMap() {
+      herstelLegenda();
       if (mapInitialized) {
         map.invalidateSize();
         loadMapData();
         startGPSTracking();
         return;
       }
+      // Leaflet meet zijn container één keer. Verandert het venster van maat —
+      // draaien van een telefoon, een venster dat groter wordt — dan blijven de
+      // tegels op de oude maat staan met een grijze rand eronder.
+      window.addEventListener('resize', function () {
+        if (map && document.getElementById('page-kaart').classList.contains('active')) {
+          map.invalidateSize();
+        }
+      });
 
       // Initialize map centered on Netherlands (will move to GPS)
       map = L.map('map', { zoomControl: false }).setView([52.3, 5.3], 8);
