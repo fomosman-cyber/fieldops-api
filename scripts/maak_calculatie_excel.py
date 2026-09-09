@@ -20,6 +20,7 @@ from openpyxl.utils import get_column_letter
 WORTEL = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(WORTEL))
 from werksoorten import WERKSOORTEN  # noqa: E402
+from crow_kosten import klasse_to_categorie  # noqa: E402
 
 BRON = WORTEL / "data" / "sok_amsterdam_asfalt_2026.json"
 UIT = WORTEL / "data" / "SOK-Amsterdam-Asfalt-2026-calculatie.xlsx"
@@ -68,6 +69,17 @@ regels = [
     ("Het rapport noemt de asfaltsoort alleen bij de herstelpunten van de nutsbedrijven —", NORM),
     ("8 x zwart (rijweg) en 1 x rood (fiets-/voetpad). Bij de overige 147 staat het er niet,", NORM),
     ("en dan blijft de kolom leeg. Zie het blad Per asfaltsoort voor de percentages.", NORM),
+    ("", NORM),
+    ("Schadebeeld, ernst en conditie", VET),
+    ("De foto's laten zien dat het meeste werk geen asfaltschade is maar elementenverharding", NORM),
+    ("in het asfalt: klinkerstroken en -vlakken waar een sleuf heeft gelegen, die vervangen", NORM),
+    ("moeten worden door asfalt. In CROW-termen is dat vlakheid/verzakking, geen scheurvorming.", NORM),
+    ("Daarnaast een minderheid met echte asfaltschade: gaten, rafeling en langsscheuren.", NORM),
+    ("Ernst is per melding van de schouwfoto afgelezen, omvang volgt uit de gemeten maat", NORM),
+    ("(< 2 m2 = 1, 2-10 m2 = 2, > 10 m2 = 3). Samen geven ze de CROW-klasse en daaruit volgt", NORM),
+    ("de NEN 2767-conditie. Het is een schatting van achter een bureau om op te prioriteren —", NORM),
+    ("geen inspectie op locatie, en geen basis voor een bestek. De laatste kolom op het blad", NORM),
+    ("Locaties zegt per regel waar de indeling vandaan komt.", NORM),
     ("", NORM),
     ("Foto's", VET),
     ("De foto's komen uit het digitale rapport, niet uit de scan. Waar de schouwer meer dan een", NORM),
@@ -130,6 +142,22 @@ ta.cell(row=laatste_tarief + 2, column=1,
 
 
 ASFALT_TEKST = {"zwart": "zwart (rijweg)", "rood": "rood (fiets-/voetpad)"}
+BEELD_TEKST = {
+    "verzakking": "verzakte elementenverharding (klinkerstrook in het asfalt)",
+    "oneffenheden": "oneffen verharding",
+    "kuilen": "gaten in het asfalt",
+    "rafeling": "rafeling van de deklaag",
+    "scheurvorming-langs": "langsscheur",
+    "scheurvorming-rand": "randschade / scheur langs de kant",
+}
+ERNST_TEKST = {"L": "gering", "M": "serieus", "E": "ernstig"}
+OMVANG_TEKST = {"1": "beperkt (< 2 m2)", "2": "gemiddeld (2-10 m2)", "3": "groot (> 10 m2)"}
+ONDERHOUD_TEKST = {
+    "observatie": "observatie — volgende schouw",
+    "KO": "klein onderhoud — binnen het jaar",
+    "GO": "groot onderhoud — inplannen",
+    "acuut": "acuut — veiligheidsmaatregel",
+}
 
 
 def let_op(m):
@@ -154,7 +182,9 @@ kolommen = ["Referentie", "Werksoort", "Straat", "Buurt", "Wat is er geschouwd",
             "Kosten min", "Kosten max", "Prioriteit", "Schouwdatum", "Week",
             "GPS breedte", "GPS lengte", "Adres bij GPS", "Bron", "Pagina", "Foto",
             "Waarom deze werksoort", "Let op", "Asset-code (weg)",
-            "Asfaltsoort", "Aantal foto's"]
+            "Asfaltsoort", "Aantal foto's",
+            "Schadebeeld", "Ernst", "Omvang", "CROW-klasse", "NEN 2767 conditie",
+            "Onderhoud", "Waar komt de classificatie vandaan"]
 for k, naam in enumerate(kolommen, 1):
     c = lo.cell(row=1, column=k, value=naam); c.font = KOP; c.fill = KOPVUL
     c.border = RAND; c.alignment = Alignment(wrap_text=True, vertical="center")
@@ -183,7 +213,13 @@ for i, m in enumerate(MELD, 2):
     staart = [m["prioriteit"], m["schouwdatum"], m["week"], m["lat"], m["lng"],
               m["bron_adres"], m["bron"], m["pagina"], m["foto"],
               m.get("werksoort_herkomst") or "", let_op(m), m.get("asset_code") or "",
-              ASFALT_TEKST.get(m.get("asfaltsoort"), ""), m.get("aantal_fotos") or 0]
+              ASFALT_TEKST.get(m.get("asfaltsoort"), ""), m.get("aantal_fotos") or 0,
+              BEELD_TEKST.get(m.get("crow_schadebeeld"), m.get("crow_schadebeeld") or ""),
+              ERNST_TEKST.get(m.get("crow_ernst"), ""),
+              OMVANG_TEKST.get(m.get("crow_omvang"), ""),
+              m.get("crow_klasse") or "", m.get("nen_2767_conditie") or "",
+              ONDERHOUD_TEKST.get(klasse_to_categorie(m["crow_klasse"]) if m.get("crow_klasse") else "", ""),
+              m.get("crow_herkomst") or ""]
     for k, v in enumerate(staart, 17):
         c = lo.cell(row=i, column=k, value=v); c.font = NORM
         if k in (26, 27):
@@ -202,8 +238,9 @@ for kol, br in zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ",
     lo.column_dimensions[kol].width = br
 lo.column_dimensions["AA"].width = 52
 lo.column_dimensions["AB"].width = 26
-lo.column_dimensions["AC"].width = 22
-lo.column_dimensions["AD"].width = 12
+for kol, br in (("AC", 22), ("AD", 12), ("AE", 42), ("AF", 12), ("AG", 20),
+                ("AH", 13), ("AI", 17), ("AJ", 26), ("AK", 54)):
+    lo.column_dimensions[kol].width = br
 
 # ── Per werksoort ─────────────────────────────────────────────────────────
 pw = wb.create_sheet("Per werksoort")
@@ -269,6 +306,37 @@ c = pa.cell(row=ar, column=3, value=f"=SUM(C5:C{ar-1})")
 c.font = VET; c.number_format = "0.0%"
 for kol, br in zip("ABCDEF", (30, 15, 12, 15, 14, 14)):
     pa.column_dimensions[kol].width = br
+
+# ── Per CROW-klasse ───────────────────────────────────────────────────────
+# De klasse is een schatting van de foto, geen inspectie op locatie. Hij staat
+# er om te kunnen prioriteren, niet om een bestek op te baseren.
+pk = wb.create_sheet("Per klasse")
+pk["A1"] = "Ernst en omvang — CROW-klasse"; pk["A1"].font = TITEL
+pk["A2"] = ("Ernst is afgelezen van de schouwfoto, omvang volgt uit de gemeten maat. "
+            "Een schatting om op te prioriteren — controleren op locatie.")
+pk["A2"].font = NORM
+for k, naam in enumerate(["CROW-klasse", "Betekenis", "Aantal locaties",
+                          "Oppervlak (m2)", "Kosten min", "Kosten max"], 1):
+    c = pk.cell(row=4, column=k, value=naam); c.font = KOP; c.fill = KOPVUL; c.border = RAND
+KLASSEN = [(f"{e}{o}", f"{ERNST_TEKST[e]}, {OMVANG_TEKST[o]}")
+           for e in ("L", "M", "E") for o in ("1", "2", "3")]
+for r, (klasse, betekenis) in enumerate(KLASSEN, 5):
+    pk.cell(row=r, column=1, value=klasse).font = NORM
+    pk.cell(row=r, column=2,
+            value=f"{betekenis} — {ONDERHOUD_TEKST[klasse_to_categorie(klasse)]}").font = NORM
+    pk.cell(row=r, column=3, value=f'=COUNTIF(Locaties!$AH$2:$AH${n},$A{r})').font = NORM
+    for kol, brk in ((4, "J"), (5, "O"), (6, "P")):
+        c = pk.cell(row=r, column=kol,
+                    value=f'=SUMIF(Locaties!$AH$2:$AH${n},$A{r},Locaties!${brk}$2:${brk}${n})')
+        c.font = NORM; c.number_format = EUR if kol in (5, 6) else GETAL
+kr = 5 + len(KLASSEN)
+pk.cell(row=kr, column=1, value="Totaal").font = VET
+for kol in (3, 4, 5, 6):
+    L = get_column_letter(kol)
+    c = pk.cell(row=kr, column=kol, value=f"=SUM({L}5:{L}{kr-1})")
+    c.font = VET; c.number_format = EUR if kol in (5, 6) else GETAL
+for kol, br in zip("ABCDEF", (14, 56, 15, 15, 14, 14)):
+    pk.column_dimensions[kol].width = br
 
 # ── Per weg ───────────────────────────────────────────────────────────────
 pg = wb.create_sheet("Per weg")

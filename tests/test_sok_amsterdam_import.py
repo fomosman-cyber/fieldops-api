@@ -535,3 +535,54 @@ def test_wegen_hebben_conditie_en_hoeveelheid_voor_de_mjop(org_en_user):
         assert met_opp >= 45
     finally:
         db.close()
+
+
+def test_elke_melding_heeft_een_crow_klasse(org_en_user):
+    """De classificatie is een schatting van de schouwfoto. Hij mag onzeker
+    zijn, maar niet ontbreken — anders vallen meldingen buiten de voorspeller
+    en de prioritering, en dat is precies waar de klant naar kijkt."""
+    from crow_kosten import ALL_KLASSEN, klasse_to_categorie
+    org_id, user_id = org_en_user
+    project_id, _ = _importeer(org_id, user_id)
+    db = SessionLocal()
+    try:
+        meldingen = db.query(Melding).filter(Melding.project_id == project_id).all()
+        assert len(meldingen) == 156
+        for m in meldingen:
+            assert m.crow_klasse in ALL_KLASSEN, m.title
+            assert m.crow_ernst == m.crow_klasse[0]
+            assert m.crow_omvang == m.crow_klasse[1]
+            assert m.crow_schadegroep and m.crow_schadebeeld
+            assert 1 <= m.nen_2767_conditie <= 6
+            assert m.onderhoud_categorie == klasse_to_categorie(m.crow_klasse)
+            # De onderbouwing moet mee — een klasse zonder herkomst is een getal
+            # waar niemand op durft te bouwen.
+            assert "Classificatie:" in m.description
+            assert "controleren op locatie" in m.description
+        # De classificatie stuurt de maatregel niet: die volgt uit de werksoort,
+        # want die bepaalt welke ploeg gaat.
+        hotbox = [m for m in meldingen if m.category == "Hotbox werkzaamheden"]
+        assert all(m.gw_term == "Hotbox werkzaamheden" for m in hotbox)
+    finally:
+        db.close()
+
+
+def test_schadebeeld_past_bij_wat_er_ligt(org_en_user):
+    """Het meeste werk is klinkerstrook in het asfalt, geen scheurvorming —
+    het schadebeeld hoort dat te zeggen."""
+    org_id, user_id = org_en_user
+    project_id, _ = _importeer(org_id, user_id)
+    db = SessionLocal()
+    try:
+        meldingen = db.query(Melding).filter(Melding.project_id == project_id).all()
+        beelden = Counter(m.crow_schadebeeld for m in meldingen)
+        assert beelden["verzakking"] > 100
+        # En de echte asfaltschade is wel apart benoemd.
+        assert beelden["kuilen"] >= 4
+        assert sum(v for k, v in beelden.items() if k.startswith("scheurvorming")) >= 4
+        # Elk schadebeeld hoort in de CROW-catalogus thuis.
+        from crow_kosten import ALL_SCHADEBEELDEN
+        bekend = {b for _, b in ALL_SCHADEBEELDEN}
+        assert set(beelden) <= bekend, set(beelden) - bekend
+    finally:
+        db.close()
