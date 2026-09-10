@@ -114,6 +114,18 @@ def _punt_to_dict(p: OpleveringPunt) -> dict:
     }
 
 
+def _bevestigde_punten(o: Oplevering) -> list:
+    """De punten die meetellen: alles behalve wat nog een voorstel is.
+
+    Een voorstel is door de camera gezien maar nog niet door een mens. Het
+    telt niet mee in de restpuntenlijst, niet in de teller, niet in het PV en
+    niet in de mail naar de aannemer -- pas als iemand het bevestigt. Zonder
+    deze filter zou het scherm de belofte "niets gaat automatisch de lijst in"
+    breken op elke plek waar de oplevering wordt getoond.
+    """
+    return [p for p in (o.punten or []) if p.status != "voorgesteld"]
+
+
 def _oplevering_to_dict(o: Oplevering, *, include_punten: bool = False) -> dict:
     extra = None
     if o.extra_questions_json:
@@ -137,13 +149,13 @@ def _oplevering_to_dict(o: Oplevering, *, include_punten: bool = False) -> dict:
         "notes": o.notes,
         "status": o.status,
         "signed_off_at": o.signed_off_at.isoformat() if o.signed_off_at else None,
-        "punten_count": len(o.punten or []),
+        "punten_count": len(_bevestigde_punten(o)),
         "created_by": o.created_by,
         "created_at": o.created_at.isoformat() if o.created_at else None,
         "updated_at": o.updated_at.isoformat() if o.updated_at else None,
     }
     if include_punten:
-        out["punten"] = [_punt_to_dict(p) for p in (o.punten or [])]
+        out["punten"] = [_punt_to_dict(p) for p in _bevestigde_punten(o)]
     return out
 
 
@@ -834,7 +846,7 @@ def update_oplevering(
     # Werkdagboek: auto-entry bij status-wijziging naar opgeleverd of aanvaard
     if before_status != o.status and o.status in ("opgeleverd", "aanvaard"):
         from daybook_logger import log_daybook
-        punten_count = len(o.punten or []) if hasattr(o, "punten") else 0
+        punten_count = len(_bevestigde_punten(o))
         log_daybook(
             db,
             user_id=current_user.id,

@@ -4768,6 +4768,11 @@
       <button type="button" class="btn-primary" onclick="openPuntModal()" style="width:100%;margin-top:14px;font-size:14px;padding:14px;display:flex;align-items:center;justify-content:center;gap:8px;background:linear-gradient(135deg,#0284c7,#0369a1);">
         <span style="font-size:18px;font-weight:300;line-height:1;">+</span> <span data-i18n="pm_title_new">Restpunt toevoegen</span>
       </button>
+
+      <!-- Opleverronde met camera. Lege huls: de opbouw zit in
+           /static/opleverronde.js, dat pas binnenkomt als er een oplevering
+           wordt geopend. Zelfde patroon als kwaliteit en bedrijven. -->
+      <div id="opRondeBlok"></div>
     </div>
   </div>
 
@@ -16850,6 +16855,9 @@
         _currentOplevering = o;
         renderOpleveringDetail(o);
         document.getElementById('opleveringDetailModal').classList.add('active');
+        // Buiten de then van renderOpleveringDetail: die springt eruit zodra er
+        // nog geen restpunten zijn, en juist dan wil je de ronde kunnen starten.
+        opleverRondeLaad(o.id).catch(function () {});
       }).catch(function(err){
         showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
       });
@@ -16857,6 +16865,9 @@
     function closeOpleveringDetail() {
       document.getElementById('opleveringDetailModal').classList.remove('active');
       _currentOplevering = null;
+      if (typeof opRondeCameraUit === 'function') opRondeCameraUit();
+      var _orb = document.getElementById('opRondeBlok');
+      if (_orb) _orb.innerHTML = '';
     }
 
     // ─── PV PDF Export (proces-verbaal client-side via jsPDF) ───
@@ -17095,10 +17106,17 @@
         return;
       }
       var puntStatusColors = {
-        gereed:    {bg:'#dcfce7', color:'#166534'},
-        restpunt:  {bg:'#fef3c7', color:'#92400e'},
-        afgekeurd: {bg:'#fee2e2', color:'#991b1b'},
+        gereed:       {bg:'#dcfce7', color:'#166534'},
+        restpunt:     {bg:'#fef3c7', color:'#92400e'},
+        afgekeurd:    {bg:'#fee2e2', color:'#991b1b'},
+        // Hersteld is niet afgetekend: de aannemer zegt dat het klaar is, de
+        // opdrachtgever moet er nog naar kijken. Groen zou dat verschil wegpoetsen.
+        hersteld:     {bg:'#ffedd5', color:'#9a3412'},
+        geverifieerd: {bg:'#dcfce7', color:'#166534'},
       };
+      // Waar een herstelmelding op zijn plaats is. 'hersteld' zit er bewust
+      // niet in: dat is al gemeld en wacht op aftekenen.
+      var OPEN_STATUS = {restpunt: 1, actiepunt: 1, afgekeurd: 1};
       function photoTile(url, label, badgeColor) {
         if (url) {
           return '<div style="text-align:center;">'
@@ -17130,6 +17148,13 @@
           + (p.uitvoeringsmethode ? '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;"><strong>Methode:</strong> ' + escapeHtml(p.uitvoeringsmethode) + '</div>' : '')
           + '</div>'
           + '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0;">'
+          + (OPEN_STATUS[p.status]
+              ? '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;white-space:nowrap;" onclick="opRondeHerstel(\'' + p.id + '\')">Hersteld</button>'
+              : '')
+          + (p.status === 'hersteld'
+              ? '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;white-space:nowrap;" onclick="opRondeAftekenen(\'' + p.id + '\', \'akkoord\')">Aftekenen</button>'
+                + '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;white-space:nowrap;color:#dc2626;border-color:#fee2e2;" onclick="opRondeAftekenen(\'' + p.id + '\', \'afwijzen\')">Afwijzen</button>'
+              : '')
           +   '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;" onclick="openPuntModal(\'' + p.id + '\')">✎</button>'
           +   '<button class="btn-secondary" style="font-size:11px;padding:4px 8px;color:#dc2626;border-color:#fee2e2;" onclick="deletePunt(\'' + p.id + '\')">🗑️</button>'
           + '</div>'
@@ -20779,6 +20804,69 @@
       });
       return _kwBezig;
     }
+
+    // ── Opleverronde met camera ──
+    // De module woont in /static/opleverronde.js en komt pas binnen als er een
+    // oplevering wordt geopend. Het is een camera-scherm met een eigen brok
+    // code; dat hoort niet in de eerste 1,5 MB die iedereen laadt.
+    var _orGeladen = false;
+    var _orBezig = null;
+
+    function opleverRondeLaad(opleveringId) {
+      if (_orGeladen) {
+        if (typeof opleverRondeOpen === 'function') opleverRondeOpen(opleveringId);
+        return Promise.resolve();
+      }
+      if (_orBezig) {
+        return _orBezig.then(function () {
+          if (typeof opleverRondeOpen === 'function') opleverRondeOpen(opleveringId);
+        });
+      }
+      var doel = document.getElementById('opRondeBlok');
+      if (doel) doel.innerHTML = '<div class="loading-spinner">Module laden...</div>';
+
+      _orBezig = new Promise(function (resolve, reject) {
+        var el = document.createElement('script');
+        el.src = '/static/opleverronde.js';
+        el.onload = function () {
+          _orGeladen = true;
+          _orBezig = null;
+          resolve();
+        };
+        el.onerror = function () {
+          _orBezig = null;
+          if (doel) {
+            doel.innerHTML = '<div style="margin-top:18px;padding:12px;border:1px solid ' +
+              'var(--border);border-radius:10px;font-size:13px;color:var(--text-dim);">' +
+              'De opleverronde kon niet geladen worden. Restpunten toevoegen ' +
+              'werkt gewoon.</div>';
+          }
+          reject(new Error('opleverronde.js kon niet geladen worden'));
+        };
+        document.body.appendChild(el);
+      }).then(function () {
+        if (typeof opleverRondeOpen === 'function') opleverRondeOpen(opleveringId);
+      });
+      return _orBezig;
+    }
+
+    // De herstel- en afteken-knoppen staan in de restpuntenkaartjes, en die
+    // worden getekend voordat opleverronde.js binnen is. Zonder deze stubs
+    // levert een snelle klik een ReferenceError op: laden, dan alsnog doen.
+    var _orStubs = {};
+    ['opRondeHerstel', 'opRondeAftekenen']
+      .forEach(function (n) {
+        _orStubs[n] = function () {
+          var args = arguments;
+          var id = _currentOplevering ? _currentOplevering.id : null;
+          opleverRondeLaad(id).then(function () {
+            if (typeof window[n] === 'function' && window[n] !== _orStubs[n]) {
+              window[n].apply(null, args);
+            }
+          }).catch(function () {});
+        };
+        window[n] = _orStubs[n];
+      });
 
     // ══════════════════════════════════════
     // ── PWA: OFFLINE SYNC QUEUE ──

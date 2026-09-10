@@ -433,3 +433,69 @@ def test_audit_legt_de_keten_vast(client, admin_user):
     assert {"oplevering.ronde.start", "oplevering.restpunt.handmatig",
             "oplevering.restpunt.hersteld", "oplevering.herstel.beoordeeld",
             "oplevering.ronde.afgerond"} <= acties
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Een voorstel lekt niet naar buiten
+# ─────────────────────────────────────────────────────────────────────────────
+# De voorstel-regel is niets waard als het voorstel ondertussen wel al in het
+# detailscherm, de teller en de mail aan de aannemer staat. Dat is precies wat
+# er gebeurde: de oplevering gaf gewoon al haar punten terug.
+
+def test_voorstel_staat_niet_in_de_oplevering(client, admin_user):
+    opl = _oplevering(client, admin_user)
+    r = _ronde(client, admin_user, opl)
+    handmatig = _punt(client, admin_user, r["id"])
+    voorstel = _maak_voorstel(admin_user.organization_id, opl, r["id"], code="RP-099")
+
+    o = client.get(f"/api/opleveringen/{opl}", headers=auth(admin_user)).json()
+    ids = {p["id"] for p in o["punten"]}
+    assert handmatig["id"] in ids
+    assert voorstel not in ids, "een onbevestigd voorstel hoort niet in het PV"
+    assert o["punten_count"] == 1
+
+    # In de lijst telt hij ook niet mee.
+    lijst = client.get("/api/opleveringen/", headers=auth(admin_user)).json()
+    rij = [x for x in lijst if x["id"] == opl][0]
+    assert rij["punten_count"] == 1
+
+
+def test_bevestigd_voorstel_telt_wel_mee(client, admin_user):
+    opl = _oplevering(client, admin_user)
+    r = _ronde(client, admin_user, opl)
+    voorstel = _maak_voorstel(admin_user.organization_id, opl, r["id"])
+
+    client.patch(f"/api/opleveringen/punten/{voorstel}/bevestigen",
+                 json={"besluit": "bevestigen"}, headers=auth(admin_user))
+
+    o = client.get(f"/api/opleveringen/{opl}", headers=auth(admin_user)).json()
+    assert o["punten_count"] == 1
+    assert [p["id"] for p in o["punten"]] == [voorstel]
+
+
+def test_voorstel_staat_niet_in_de_mail(client, admin_user, monkeypatch):
+    import email_service
+    from models import Oplevering
+
+    opl = _oplevering(client, admin_user)
+    r = _ronde(client, admin_user, opl)
+    _punt(client, admin_user, r["id"], omschrijving="Kolk staat niet vlak")
+    _maak_voorstel(admin_user.organization_id, opl, r["id"], code="RP-099",
+                   omschrijving="voorstel dat nog niemand heeft gezien")
+
+    verstuurd = []
+    monkeypatch.setattr(email_service, "send_email",
+                        lambda to, onderwerp, body: verstuurd.append(body) or True)
+
+    db = SessionLocal()
+    try:
+        o = db.query(Oplevering).filter(Oplevering.id == opl).first()
+        email_service.send_oplevering_email(o, ["directie@gemeente.nl"])
+    finally:
+        db.close()
+
+    assert len(verstuurd) == 1
+    html = verstuurd[0]
+    assert "Kolk staat niet vlak" in html
+    assert "voorstel dat nog niemand heeft gezien" not in html
+    assert "Restpunten (1)" in html
