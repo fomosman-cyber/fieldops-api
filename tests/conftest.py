@@ -33,6 +33,7 @@ from models import (  # noqa: E402
     Toolbox, ToolboxDeelnemer, Incident,
     Werkplekinspectie, WerkplekinspectieAntwoord,
     QualityInspection, QualityField, QualityRequirement,
+    Oplevering, OpleveringPunt, OpleverRonde,
     QualityRegistration, QualityAnswer, QualityEvidence,
 )
 from auth import hash_password, create_access_token  # noqa: E402
@@ -57,6 +58,7 @@ def clean_db():
             InspectionAnswer, InspectionDefect, InspectionElement, Inspection,
             ToolboxDeelnemer, Toolbox, Incident,
             WerkplekinspectieAntwoord, Werkplekinspectie,
+            OpleveringPunt, OpleverRonde, Oplevering,
             QualityEvidence, QualityAnswer, QualityRegistration,
             QualityField, QualityRequirement, QualityInspection,
             AIAnalysis, AuditLog, PasswordResetToken,

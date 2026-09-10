@@ -1163,12 +1163,47 @@ class OpleveringPunt(Base):
     asset_id = Column(String, ForeignKey("assets.id"), nullable=True, index=True)  # optionele koppeling
 
     order_index = Column(Integer, default=0, nullable=False)  # volgorde in oplever-PV
-    status = Column(String(20), default="gereed", nullable=False)  # gereed | restpunt | actiepunt | afgekeurd
+    status = Column(String(20), default="gereed", nullable=False, index=True)
+    # gereed | restpunt | actiepunt | afgekeurd | voorgesteld | hersteld | geverifieerd
+    # 'voorgesteld' hoort bij bron='ai': gezien door de camera, nog niet
+    # bevestigd door een mens. Telt niet mee in de restpuntenlijst tot dat gebeurt.
+
+    # ── Waar komt dit punt vandaan ──────────────────────────────────────
+    ronde_id = Column(String, ForeignKey("oplever_rondes.id", ondelete="SET NULL"),
+                      nullable=True, index=True)
+    bron = Column(String(12), nullable=False, default="handmatig", index=True)
+    # handmatig | ai -- punt voor punt intypen blijft gewoon kunnen
+    restpunt_klasse = Column(String(32), nullable=True, index=True)  # zie oplever_vision
+    ernst = Column(String(10), nullable=True, index=True)            # licht | matig | zwaar
+    plek = Column(String(255), nullable=True)   # "voor de inrit van nummer 12"
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+
+    # Wat het model dacht en hoe zeker. Blijft staan ook nadat een mens het heeft
+    # bevestigd of gecorrigeerd: bij een geschil wil je kunnen laten zien wat de
+    # camera zag en wat de inspecteur ervan maakte.
+    zekerheid = Column(Float, nullable=True)
+    model_id = Column(String(80), nullable=True)
+    vision_versie = Column(String(40), nullable=True)
+    bevestigd_op = Column(DateTime, nullable=True)
+    bevestigd_door = Column(String, ForeignKey("users.id"), nullable=True)
+
+    # ── Bewijslast dat het hersteld is ──────────────────────────────────
+    # photo_url_after hierboven is de herstelfoto. Deze velden zeggen wie het
+    # heeft gedaan en wie het heeft nagekeken -- zonder dat is een foto alleen
+    # een foto, en geen bewijs dat het punt dicht is.
+    hersteld_op = Column(DateTime, nullable=True)
+    hersteld_door = Column(String, ForeignKey("users.id"), nullable=True)
+    hersteld_toelichting = Column(Text, nullable=True)
+    geverifieerd_op = Column(DateTime, nullable=True)
+    geverifieerd_door = Column(String, ForeignKey("users.id"), nullable=True)
+    afgewezen_reden = Column(Text, nullable=True)   # verplicht bij afwijzen van een herstel
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     oplevering = relationship("Oplevering", back_populates="punten")
     asset = relationship("Asset", foreign_keys=[asset_id])
+    ronde = relationship("OpleverRonde", back_populates="punten", foreign_keys=[ronde_id])
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2419,3 +2454,68 @@ class QualityEvidence(Base):
     eis = relationship("QualityRequirement", foreign_keys=[eis_id])
     veld = relationship("QualityField", foreign_keys=[veld_id])
     creator = relationship("User", foreign_keys=[created_by])
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# OPLEVERRONDE — met de camera het werk aflopen
+# ═════════════════════════════════════════════════════════════════════════════
+# Een oplevering is het proces-verbaal; een ronde is het aflopen ervan. Je loopt
+# er meerdere: de eerste oplevering, en daarna een herkeuring nadat er hersteld
+# is. Daarom hangt de ronde onder de oplevering en niet andersom.
+#
+# Het AI-deel is bewust een voorstel-machine. Elk punt dat uit een frame komt
+# krijgt bron='ai' en blijft 'voorgesteld' tot een mens het bevestigt. Die lijst
+# is een contractstuk waar geld aan hangt; een lijst die zichzelf afvinkt is
+# geen oplevering.
+
+
+class OpleverRonde(Base):
+    """Eén keer het werk aflopen binnen een oplevering.
+
+    De eerste ronde levert de restpuntenlijst op. Een herkeuring loopt dezelfde
+    route nadat er hersteld is, en dan gaat het erom of de punten van de vorige
+    ronde dicht zijn -- niet om een nieuwe lijst maken.
+    """
+    __tablename__ = "oplever_rondes"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    oplevering_id = Column(String, ForeignKey("opleveringen.id", ondelete="CASCADE"),
+                           nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    nummer = Column(Integer, nullable=False, default=1)      # 1e ronde, 2e ronde, ...
+    soort = Column(String(20), nullable=False, default="eerste")
+    # eerste | herkeuring
+
+    status = Column(String(20), nullable=False, default="bezig", index=True)
+    # bezig | afgerond
+
+    # Wie hem loopt. Gedenormaliseerd voor het rapport, zoals bij de inspecties.
+    inspecteur_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    inspecteur_naam = Column(String(120), nullable=True)
+
+    # Privacy-poort van oplever_vision. Een opleverronde loopt over straat en
+    # langs woningen; zonder deze bevestiging gaat er geen beeld naar de
+    # verwerker. Zelfde constructie als bij de schouw.
+    privacy_bevestigd = Column(Boolean, nullable=False, default=False)
+
+    frames = Column(Integer, nullable=False, default=0)
+    frames_onbruikbaar = Column(Integer, nullable=False, default=0)
+    # ↑ te donker, te onscherp, te vol. Apart geteld want "niets gevonden" en
+    #   "niets bekeken" zijn verschillende uitkomsten en dat verschil hoort
+    #   zichtbaar te zijn voordat iemand een oplevering tekent.
+
+    weer = Column(String(120), nullable=True)                # "droog, 9 graden, bewolkt"
+    opmerking = Column(Text, nullable=True)
+
+    gestart_op = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    afgerond_op = Column(DateTime, nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+    oplevering = relationship("Oplevering", foreign_keys=[oplevering_id])
+    inspecteur = relationship("User", foreign_keys=[inspecteur_id])
+    creator = relationship("User", foreign_keys=[created_by])
+    punten = relationship("OpleveringPunt", back_populates="ronde",
+                          order_by="OpleveringPunt.order_index")

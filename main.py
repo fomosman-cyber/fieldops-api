@@ -483,6 +483,48 @@ def _run_migrations():
                     conn.execute(text(
                         "ALTER TABLE organizations ADD COLUMN mjop_index_pct FLOAT"))
                 print("[migration] organizations.mjop_index_pct toegevoegd.")
+
+            # Opleverronde met camera: nieuwe kolommen op opleveringspunten.
+            # De tabel oplever_rondes zelf komt via create_all().
+            punt_cols = {
+                "ronde_id":             "VARCHAR",
+                "bron":                 "VARCHAR(12)",
+                "restpunt_klasse":      "VARCHAR(32)",
+                "ernst":                "VARCHAR(10)",
+                "plek":                 "VARCHAR(255)",
+                "lat":                  "FLOAT",
+                "lng":                  "FLOAT",
+                "zekerheid":            "FLOAT",
+                "model_id":             "VARCHAR(80)",
+                "vision_versie":        "VARCHAR(40)",
+                "bevestigd_op":         "TIMESTAMP",
+                "bevestigd_door":       "VARCHAR",
+                "hersteld_op":          "TIMESTAMP",
+                "hersteld_door":        "VARCHAR",
+                "hersteld_toelichting": "TEXT",
+                "geverifieerd_op":      "TIMESTAMP",
+                "geverifieerd_door":    "VARCHAR",
+                "afgewezen_reden":      "TEXT",
+            }
+            bestaand = [c["name"] for c in insp.get_columns("opleveringspunten")]
+            punt_missing = [c for c in punt_cols if c not in bestaand]
+            if punt_missing:
+                print(f"[migration] opleveringspunten kolommen toevoegen: {punt_missing}")
+                with engine.begin() as conn:
+                    for col in punt_missing:
+                        conn.execute(text(
+                            f"ALTER TABLE opleveringspunten ADD COLUMN {col} {punt_cols[col]}"))
+                    # Bestaande punten zijn met de hand ingevoerd; die vlag hoort
+                    # te kloppen, anders lijkt oud werk uit de camera te komen.
+                    conn.execute(text(
+                        "UPDATE opleveringspunten SET bron = 'handmatig' WHERE bron IS NULL"))
+                    conn.execute(text(
+                        "CREATE INDEX IF NOT EXISTS ix_opleveringspunten_ronde "
+                        "ON opleveringspunten(ronde_id)"))
+                    conn.execute(text(
+                        "CREATE INDEX IF NOT EXISTS ix_opleveringspunten_bron "
+                        "ON opleveringspunten(bron)"))
+                print("[migration] opleveringspunten kolommen toegevoegd.")
     except Exception as e:
         print(f"[migration] Waarschuwing: {e}")
 
