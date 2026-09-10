@@ -444,9 +444,12 @@ def send_oplevering_email(oplevering, recipients: list[str], *, trigger: str = "
                 f'<td style="padding:4px 0;color:#1e293b;font-size:13px;font-weight:500;">{v}</td></tr>'
             )
 
-    # Restpunten-rijen
+    # Restpunten-rijen. Voorstellen die nog niet door een mens zijn
+    # nagekeken gaan niet mee: die horen niet in een mail aan de aannemer.
+    zichtbare_punten = [p for p in (oplevering.punten or [])
+                        if p.status != "voorgesteld"]
     punten_html = ""
-    for p in (oplevering.punten or []):
+    for p in zichtbare_punten:
         punt_status_colors = {"gereed": "#16a34a", "restpunt": "#f59e0b", "afgekeurd": "#dc2626"}
         ps_color = punt_status_colors.get(p.status, "#64748b")
         photos = []
@@ -517,7 +520,7 @@ def send_oplevering_email(oplevering, recipients: list[str], *, trigger: str = "
 
 {notes_html}
 
-<h3 style="color:#1e293b;font-size:16px;margin:16px 0 8px;">Restpunten ({len(oplevering.punten or [])})</h3>
+<h3 style="color:#1e293b;font-size:16px;margin:16px 0 8px;">Restpunten ({len(zichtbare_punten)})</h3>
 <table width="100%" cellpadding="0" cellspacing="0" style="border-top:1px solid #e2e8f0;">
 {punten_html}
 </table>

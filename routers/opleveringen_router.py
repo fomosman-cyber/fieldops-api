@@ -11,14 +11,19 @@ Endpoints:
   DELETE /api/opleveringen/{id}/punten/{punt_id}   Verwijder punt
 """
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timezone
+import base64
+import re
 import json
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User, Oplevering, OpleveringPunt, Asset
+import oplever_vision as ov
+from models import (User, Oplevering, OpleveringPunt, Asset,
+                    OpleverRonde)
 from auth import get_current_user
 from permissions import require_module
 from audit import log_action
@@ -109,6 +114,18 @@ def _punt_to_dict(p: OpleveringPunt) -> dict:
     }
 
 
+def _bevestigde_punten(o: Oplevering) -> list:
+    """De punten die meetellen: alles behalve wat nog een voorstel is.
+
+    Een voorstel is door de camera gezien maar nog niet door een mens. Het
+    telt niet mee in de restpuntenlijst, niet in de teller, niet in het PV en
+    niet in de mail naar de aannemer -- pas als iemand het bevestigt. Zonder
+    deze filter zou het scherm de belofte "niets gaat automatisch de lijst in"
+    breken op elke plek waar de oplevering wordt getoond.
+    """
+    return [p for p in (o.punten or []) if p.status != "voorgesteld"]
+
+
 def _oplevering_to_dict(o: Oplevering, *, include_punten: bool = False) -> dict:
     extra = None
     if o.extra_questions_json:
@@ -132,13 +149,13 @@ def _oplevering_to_dict(o: Oplevering, *, include_punten: bool = False) -> dict:
         "notes": o.notes,
         "status": o.status,
         "signed_off_at": o.signed_off_at.isoformat() if o.signed_off_at else None,
-        "punten_count": len(o.punten or []),
+        "punten_count": len(_bevestigde_punten(o)),
         "created_by": o.created_by,
         "created_at": o.created_at.isoformat() if o.created_at else None,
         "updated_at": o.updated_at.isoformat() if o.updated_at else None,
     }
     if include_punten:
-        out["punten"] = [_punt_to_dict(p) for p in (o.punten or [])]
+        out["punten"] = [_punt_to_dict(p) for p in _bevestigde_punten(o)]
     return out
 
 
@@ -203,6 +220,580 @@ def create_oplevering(
     return _oplevering_to_dict(o, include_punten=True)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# OPLEVERRONDE MET CAMERA
+# ─────────────────────────────────────────────────────────────────────────────
+# Let op de volgorde: deze routes staan bewust vóór GET /{oplevering_id}.
+# FastAPI kiest de eerst geregistreerde die past, en anders vangt die route
+# "rondes" op als oplevering-id -- dan krijg je een 404 die nergens op slaat.
+
+
+class RondeIn(BaseModel):
+    soort: Optional[str] = Field(default="eerste", pattern="^(eerste|herkeuring)$")
+    inspecteur_naam: Optional[str] = Field(default=None, max_length=120)
+    weer: Optional[str] = Field(default=None, max_length=120)
+    # De privacy-poort. Zonder expliciete bevestiging gaat er geen beeld naar
+    # de verwerker; zie oplever_vision.analyseer_frame.
+    privacy_bevestigd: bool = False
+
+
+class FrameIn(BaseModel):
+    image_data_url: str = Field(..., min_length=32)
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    lng: Optional[float] = Field(default=None, ge=-180, le=180)
+    plek: Optional[str] = Field(default=None, max_length=255)
+    bewaar_beeld: bool = True
+
+
+class HandmatigPuntIn(BaseModel):
+    """Punt voor punt blijft gewoon kunnen -- de camera is een extra, geen dwang."""
+    omschrijving: str = Field(..., min_length=1)
+    restpunt_klasse: Optional[str] = None
+    ernst: Optional[str] = Field(default="matig", pattern="^(licht|matig|zwaar)$")
+    plek: Optional[str] = Field(default=None, max_length=255)
+    code: Optional[str] = Field(default=None, max_length=64)
+    photo_url: Optional[str] = None
+    lat: Optional[float] = Field(default=None, ge=-90, le=90)
+    lng: Optional[float] = Field(default=None, ge=-180, le=180)
+
+
+class BevestigIn(BaseModel):
+    """Een voorstel bevestigen, bijstellen of weggooien."""
+    besluit: str = Field(..., pattern="^(bevestigen|verwerpen)$")
+    omschrijving: Optional[str] = None
+    ernst: Optional[str] = Field(default=None, pattern="^(licht|matig|zwaar)$")
+    plek: Optional[str] = Field(default=None, max_length=255)
+    restpunt_klasse: Optional[str] = None
+
+
+class HerstelIn(BaseModel):
+    photo_url_after: str = Field(..., min_length=32)
+    toelichting: Optional[str] = None
+
+
+class VerificatieIn(BaseModel):
+    besluit: str = Field(..., pattern="^(akkoord|afwijzen)$")
+    reden: Optional[str] = None
+
+
+def _ronde_of_404(db: Session, ronde_id: str, user: User) -> OpleverRonde:
+    r = (db.query(OpleverRonde)
+           .filter(OpleverRonde.id == ronde_id,
+                   OpleverRonde.organization_id == user.organization_id)
+           .first())
+    if not r:
+        raise HTTPException(status_code=404, detail="Ronde niet gevonden")
+    return r
+
+
+def _punt_of_404(db: Session, punt_id: str, user: User) -> OpleveringPunt:
+    p = (db.query(OpleveringPunt)
+           .filter(OpleveringPunt.id == punt_id,
+                   OpleveringPunt.organization_id == user.organization_id)
+           .first())
+    if not p:
+        raise HTTPException(status_code=404, detail="Punt niet gevonden")
+    return p
+
+
+def _naam(u: User) -> str:
+    return " ".join(x for x in (u.first_name, u.last_name) if x).strip() or u.email
+
+
+def _ronde_dict(r: OpleverRonde, *, punten: Optional[list] = None) -> dict:
+    uit = {
+        "id": r.id,
+        "oplevering_id": r.oplevering_id,
+        "nummer": r.nummer,
+        "soort": r.soort,
+        "status": r.status,
+        "inspecteur_naam": r.inspecteur_naam,
+        "privacy_bevestigd": r.privacy_bevestigd,
+        "frames": r.frames,
+        "frames_onbruikbaar": r.frames_onbruikbaar,
+        "weer": r.weer,
+        "opmerking": r.opmerking,
+        "gestart_op": r.gestart_op.isoformat() if r.gestart_op else None,
+        "afgerond_op": r.afgerond_op.isoformat() if r.afgerond_op else None,
+        "ai_beschikbaar": ov.is_geconfigureerd(),
+    }
+    if punten is not None:
+        uit["punten"] = punten
+    return uit
+
+
+def _restpunt_dict(p: OpleveringPunt) -> dict:
+    """Zonder de foto's. Een ronde levert makkelijk dertig punten met elk een
+    voor- en een nafoto op; die base64-blobs horen niet in een lijst. De
+    inhoud haal je per punt op."""
+    return {
+        "id": p.id,
+        "code": p.code,
+        "omschrijving": p.omschrijving,
+        "restpunt_klasse": p.restpunt_klasse,
+        "restpunt_klasse_naam": (ov.KLASSEN_OP_CODE.get(p.restpunt_klasse) or {}).get("naam"),
+        "ernst": p.ernst,
+        "plek": p.plek,
+        "status": p.status,
+        "bron": p.bron,
+        "zekerheid": p.zekerheid,
+        "moet_nagekeken": ov.moet_nagekeken(p.zekerheid) if p.bron == "ai" else False,
+        "lat": p.lat,
+        "lng": p.lng,
+        "heeft_foto": bool(p.photo_url),
+        "heeft_herstelfoto": bool(p.photo_url_after),
+        "hersteld_op": p.hersteld_op.isoformat() if p.hersteld_op else None,
+        "geverifieerd_op": p.geverifieerd_op.isoformat() if p.geverifieerd_op else None,
+        "afgewezen_reden": p.afgewezen_reden,
+        "order_index": p.order_index,
+    }
+
+
+def _data_url_naar_bytes(data_url: str) -> tuple[bytes, str]:
+    m = re.match(r"^data:(image/[a-zA-Z0-9.+-]+);base64,(.+)$", data_url or "", re.S)
+    if not m:
+        raise HTTPException(status_code=400,
+                            detail="Verwacht een data-URL met een base64-afbeelding")
+    try:
+        return base64.b64decode(m.group(2)), m.group(1)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Afbeelding is niet te lezen")
+
+
+@router.get("/restpunt-klassen")
+def restpunt_klassen(current_user: User = Depends(get_current_user)):
+    """Wat de camera mag melden, plus de ernst-niveaus. Voedt het scherm."""
+    return {
+        "klassen": ov.klassen(),
+        "ernst": [{"code": c, "label": lb} for c, lb in ov.ERNST_NIVEAUS.items()],
+        "ai_beschikbaar": ov.is_geconfigureerd(),
+        "drempel_nakijken": ov.DREMPEL_NAKIJKEN,
+        "versie": ov.OPLEVER_VISION_VERSIE,
+    }
+
+
+@router.post("/{oplevering_id}/rondes")
+def start_ronde(
+    oplevering_id: str,
+    payload: RondeIn,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Start een ronde. De eerste levert de restpuntenlijst; een herkeuring
+    loopt dezelfde route nadat er hersteld is."""
+    o = _get_oplevering_or_404(db, oplevering_id, current_user)
+
+    hoogste = (db.query(OpleverRonde.nummer)
+                 .filter(OpleverRonde.oplevering_id == o.id)
+                 .order_by(OpleverRonde.nummer.desc()).first())
+    nummer = ((hoogste[0] or 0) + 1) if hoogste else 1
+
+    r = OpleverRonde(
+        oplevering_id=o.id,
+        organization_id=current_user.organization_id,
+        nummer=nummer,
+        soort=payload.soort or ("herkeuring" if nummer > 1 else "eerste"),
+        inspecteur_id=current_user.id,
+        inspecteur_naam=(payload.inspecteur_naam or "").strip() or _naam(current_user),
+        privacy_bevestigd=bool(payload.privacy_bevestigd),
+        weer=payload.weer,
+        created_by=current_user.id,
+    )
+    db.add(r)
+    db.commit()
+    db.refresh(r)
+    log_action(db, request, current_user, action="oplevering.ronde.start",
+               entity_type="oplever_ronde", entity_id=r.id,
+               after={"oplevering_id": o.id, "nummer": r.nummer, "soort": r.soort,
+                      "privacy_bevestigd": r.privacy_bevestigd})
+    return _ronde_dict(r, punten=[])
+
+
+@router.get("/{oplevering_id}/rondes")
+def lijst_rondes(
+    oplevering_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    o = _get_oplevering_or_404(db, oplevering_id, current_user)
+    rijen = (db.query(OpleverRonde)
+               .filter(OpleverRonde.oplevering_id == o.id)
+               .order_by(OpleverRonde.nummer).all())
+    return [_ronde_dict(r) for r in rijen]
+
+
+@router.get("/{oplevering_id}/restpunten")
+def restpunten(
+    oplevering_id: str,
+    alleen_open: bool = False,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De restpuntenlijst van deze oplevering.
+
+    Voorstellen die nog niet zijn bevestigd staan er apart bij: die zijn door
+    de camera gezien maar nog niet door een mens. Ze horen niet in de lijst die
+    naar de aannemer gaat tot iemand ze heeft nagekeken.
+    """
+    o = _get_oplevering_or_404(db, oplevering_id, current_user)
+    q = (db.query(OpleveringPunt)
+           .filter(OpleveringPunt.oplevering_id == o.id)
+           .order_by(OpleveringPunt.order_index, OpleveringPunt.created_at))
+    alle = q.all()
+
+    OPEN = ("restpunt", "actiepunt", "afgekeurd", "hersteld")
+    voorstellen = [p for p in alle if p.status == "voorgesteld"]
+    lijst = [p for p in alle if p.status != "voorgesteld"]
+    if alleen_open:
+        lijst = [p for p in lijst if p.status in OPEN]
+
+    per_ernst = {"licht": 0, "matig": 0, "zwaar": 0}
+    for p in lijst:
+        if p.ernst in per_ernst and p.status in OPEN:
+            per_ernst[p.ernst] += 1
+
+    return {
+        "oplevering_id": o.id,
+        "restpunten": [_restpunt_dict(p) for p in lijst],
+        "voorstellen": [_restpunt_dict(p) for p in voorstellen],
+        "tellingen": {
+            "totaal": len(lijst),
+            "open": sum(1 for p in lijst if p.status in OPEN),
+            "hersteld": sum(1 for p in lijst if p.status == "hersteld"),
+            "geverifieerd": sum(1 for p in lijst if p.status == "geverifieerd"),
+            "nog_te_bevestigen": len(voorstellen),
+            "per_ernst_open": per_ernst,
+        },
+    }
+
+
+@router.get("/rondes/{ronde_id}")
+def ronde_detail(
+    ronde_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    r = _ronde_of_404(db, ronde_id, current_user)
+    punten = (db.query(OpleveringPunt)
+                .filter(OpleveringPunt.ronde_id == r.id)
+                .order_by(OpleveringPunt.created_at).all())
+    return _ronde_dict(r, punten=[_restpunt_dict(p) for p in punten])
+
+
+@router.post("/rondes/{ronde_id}/frame")
+def ronde_frame(
+    ronde_id: str,
+    payload: FrameIn,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Eén beeld analyseren en de gevonden punten als voorstel vastleggen.
+
+    Antwoordt met wat er in dít beeld is gezien, zodat het scherm het meteen
+    kan tonen terwijl de inspecteur er nog staat. Alles komt binnen als
+    'voorgesteld': niets gaat automatisch de restpuntenlijst in.
+    """
+    r = _ronde_of_404(db, ronde_id, current_user)
+    if r.status != "bezig":
+        raise HTTPException(status_code=409, detail="Deze ronde is al afgerond")
+
+    beeld, media_type = _data_url_naar_bytes(payload.image_data_url)
+    o = db.query(Oplevering).filter(Oplevering.id == r.oplevering_id).first()
+    context = " · ".join(x for x in (o.title if o else None,
+                                     o.locatie if o else None,
+                                     payload.plek) if x) or None
+
+    try:
+        resultaat = ov.analyseer_frame(
+            image_bytes=beeld, image_media_type=media_type,
+            privacy_gecontroleerd=r.privacy_bevestigd,
+            context=context)
+    except ov.NietGecontroleerd as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    r.frames = (r.frames or 0) + 1
+    if not resultaat.get("bruikbaar"):
+        r.frames_onbruikbaar = (r.frames_onbruikbaar or 0) + 1
+
+    volgende = (db.query(func.count(OpleveringPunt.id))
+                  .filter(OpleveringPunt.oplevering_id == r.oplevering_id)
+                  .scalar() or 0)
+
+    nieuw: list[OpleveringPunt] = []
+    for i, v in enumerate(resultaat.get("punten") or []):
+        p = OpleveringPunt(
+            oplevering_id=r.oplevering_id,
+            organization_id=current_user.organization_id,
+            ronde_id=r.id,
+            code=f"RP-{volgende + i + 1:03d}",
+            omschrijving=v.get("omschrijving") or v.get("klasse_naam") or "Restpunt",
+            restpunt_klasse=v.get("klasse"),
+            ernst=v.get("ernst"),
+            plek=v.get("plek") or payload.plek,
+            lat=payload.lat,
+            lng=payload.lng,
+            zekerheid=v.get("zekerheid"),
+            bron="ai",
+            status="voorgesteld",
+            model_id=resultaat.get("_model_id"),
+            vision_versie=resultaat.get("_versie"),
+            photo_url=payload.image_data_url if payload.bewaar_beeld else None,
+            order_index=volgende + i + 1,
+        )
+        db.add(p)
+        nieuw.append(p)
+
+    db.commit()
+    db.refresh(r)
+    return {
+        "bruikbaar": resultaat.get("bruikbaar"),
+        "reden_onbruikbaar": resultaat.get("reden_onbruikbaar"),
+        "gevonden": [_restpunt_dict(p) for p in nieuw],
+        "ronde": _ronde_dict(r),
+    }
+
+
+@router.post("/rondes/{ronde_id}/punt")
+def handmatig_punt(
+    ronde_id: str,
+    payload: HandmatigPuntIn,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Zelf een restpunt vastleggen. Komt direct als restpunt binnen, niet als
+    voorstel: een mens heeft het al gezien."""
+    r = _ronde_of_404(db, ronde_id, current_user)
+    if r.status != "bezig":
+        raise HTTPException(status_code=409, detail="Deze ronde is al afgerond")
+    if payload.restpunt_klasse and payload.restpunt_klasse not in ov.KLASSEN_OP_CODE:
+        raise HTTPException(status_code=400, detail="Onbekende soort restpunt")
+
+    volgende = (db.query(func.count(OpleveringPunt.id))
+                  .filter(OpleveringPunt.oplevering_id == r.oplevering_id)
+                  .scalar() or 0) + 1
+
+    foto = payload.photo_url
+    if foto:
+        from photo_storage import maybe_offload
+        foto = maybe_offload(foto, organization_id=current_user.organization_id,
+                             kind="oplevering") or foto
+
+    p = OpleveringPunt(
+        oplevering_id=r.oplevering_id,
+        organization_id=current_user.organization_id,
+        ronde_id=r.id,
+        code=(payload.code or "").strip() or f"RP-{volgende:03d}",
+        omschrijving=payload.omschrijving.strip(),
+        restpunt_klasse=payload.restpunt_klasse,
+        ernst=payload.ernst or "matig",
+        plek=payload.plek,
+        lat=payload.lat, lng=payload.lng,
+        bron="handmatig",
+        status="restpunt",
+        photo_url=foto,
+        order_index=volgende,
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    log_action(db, request, current_user, action="oplevering.restpunt.handmatig",
+               entity_type="opleveringspunt", entity_id=p.id,
+               after={"ronde_id": r.id, "code": p.code, "ernst": p.ernst})
+    return _restpunt_dict(p)
+
+
+@router.patch("/punten/{punt_id}/bevestigen")
+def bevestig_punt(
+    punt_id: str,
+    payload: BevestigIn,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Een voorstel van de camera bevestigen of weggooien.
+
+    Bijstellen mag: de omschrijving, de ernst, de plek en de soort. Wat het
+    model zag blijft bewaard in zekerheid en model_id -- bij een geschil wil je
+    kunnen laten zien wat de camera meldde en wat de inspecteur ervan maakte.
+    """
+    p = _punt_of_404(db, punt_id, current_user)
+    if p.status != "voorgesteld":
+        raise HTTPException(status_code=409,
+                            detail="Dit punt is al beoordeeld en staat in de lijst")
+
+    voor = {"status": p.status, "ernst": p.ernst, "omschrijving": p.omschrijving}
+
+    if payload.besluit == "verwerpen":
+        db.delete(p)
+        db.commit()
+        log_action(db, request, current_user, action="oplevering.voorstel.verworpen",
+                   entity_type="opleveringspunt", entity_id=punt_id, before=voor)
+        return {"verworpen": True}
+
+    velden = payload.model_dump(exclude_unset=True)
+    if velden.get("restpunt_klasse") and velden["restpunt_klasse"] not in ov.KLASSEN_OP_CODE:
+        raise HTTPException(status_code=400, detail="Onbekende soort restpunt")
+    for veld in ("omschrijving", "ernst", "plek", "restpunt_klasse"):
+        if veld in velden and velden[veld] is not None:
+            setattr(p, veld, velden[veld])
+
+    p.status = "restpunt"
+    p.bevestigd_op = datetime.now(timezone.utc)
+    p.bevestigd_door = current_user.id
+    db.commit()
+    db.refresh(p)
+    log_action(db, request, current_user, action="oplevering.voorstel.bevestigd",
+               entity_type="opleveringspunt", entity_id=p.id, before=voor,
+               after={"status": p.status, "ernst": p.ernst,
+                      "zekerheid": p.zekerheid, "model_id": p.model_id})
+    return _restpunt_dict(p)
+
+
+@router.post("/punten/{punt_id}/herstel")
+def meld_herstel(
+    punt_id: str,
+    payload: HerstelIn,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Melden dat een restpunt is hersteld, met de foto als bewijs.
+
+    De foto is verplicht. Een restpunt afvinken zonder beeld is precies het
+    soort afvinken waar deze module vanaf wil: bij een geschil is "hij zei dat
+    het gemaakt was" geen onderbouwing.
+
+    Het punt gaat naar 'hersteld', niet naar 'gereed'. Dicht is het pas als
+    iemand anders het heeft nagekeken.
+    """
+    p = _punt_of_404(db, punt_id, current_user)
+    if p.status == "voorgesteld":
+        raise HTTPException(status_code=409,
+                            detail="Bevestig dit punt eerst; het is nog een voorstel")
+    if p.status == "geverifieerd":
+        raise HTTPException(status_code=409, detail="Dit punt is al afgetekend")
+
+    from photo_storage import maybe_offload
+    p.photo_url_after = maybe_offload(
+        payload.photo_url_after, organization_id=current_user.organization_id,
+        kind="oplevering") or payload.photo_url_after
+    p.hersteld_op = datetime.now(timezone.utc)
+    p.hersteld_door = current_user.id
+    p.hersteld_toelichting = payload.toelichting
+    p.afgewezen_reden = None      # nieuwe poging: oude afwijzing hoort weg
+    p.status = "hersteld"
+    db.commit()
+    db.refresh(p)
+    log_action(db, request, current_user, action="oplevering.restpunt.hersteld",
+               entity_type="opleveringspunt", entity_id=p.id,
+               after={"code": p.code, "met_bewijs": True})
+    return _restpunt_dict(p)
+
+
+@router.post("/punten/{punt_id}/verifieren")
+def verifieer_herstel(
+    punt_id: str,
+    payload: VerificatieIn,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Het herstel nakijken en aftekenen, of afwijzen met een reden.
+
+    Afwijzen zonder reden mag niet: de aannemer moet weten wat er alsnog moet
+    gebeuren, anders komt hetzelfde punt bij de volgende ronde weer terug.
+    """
+    p = _punt_of_404(db, punt_id, current_user)
+    if p.status != "hersteld":
+        raise HTTPException(status_code=409,
+                            detail="Alleen een gemeld herstel kan worden nagekeken")
+
+    reden = (payload.reden or "").strip()
+    if payload.besluit == "afwijzen":
+        if not reden:
+            raise HTTPException(
+                status_code=400,
+                detail="Geef een reden op, anders weet de aannemer niet wat er moet gebeuren")
+        p.status = "restpunt"
+        p.afgewezen_reden = reden
+        p.hersteld_op = None
+        p.hersteld_door = None
+    else:
+        p.status = "geverifieerd"
+        p.geverifieerd_op = datetime.now(timezone.utc)
+        p.geverifieerd_door = current_user.id
+        p.afgewezen_reden = None
+
+    db.commit()
+    db.refresh(p)
+    log_action(db, request, current_user, action="oplevering.herstel.beoordeeld",
+               entity_type="opleveringspunt", entity_id=p.id,
+               after={"code": p.code, "besluit": payload.besluit,
+                      "reden": reden or None})
+    return _restpunt_dict(p)
+
+
+@router.get("/punten/{punt_id}/fotos")
+def punt_fotos(
+    punt_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De voor- en herstelfoto van één punt. Bewust apart: in een lijst van
+    dertig punten horen zestig base64-blobs niet thuis."""
+    p = _punt_of_404(db, punt_id, current_user)
+    return {
+        "id": p.id,
+        "photo_url": p.photo_url,
+        "photo_url_after": p.photo_url_after,
+    }
+
+
+@router.post("/rondes/{ronde_id}/afronden")
+def rond_ronde_af(
+    ronde_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De ronde sluiten.
+
+    Kan niet zolang er voorstellen open staan: dan zou een deel van wat de
+    camera zag in het niets verdwijnen, en dat is precies het gat waar deze
+    module voor bedoeld is.
+    """
+    r = _ronde_of_404(db, ronde_id, current_user)
+    if r.status == "afgerond":
+        raise HTTPException(status_code=409, detail="Deze ronde is al afgerond")
+
+    open_voorstellen = (db.query(func.count(OpleveringPunt.id))
+                          .filter(OpleveringPunt.ronde_id == r.id,
+                                  OpleveringPunt.status == "voorgesteld")
+                          .scalar() or 0)
+    if open_voorstellen:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"Er staan nog {open_voorstellen} voorstellen open. Bevestig of "
+                    "verwerp ze eerst, anders verdwijnt wat de camera zag."))
+
+    r.status = "afgerond"
+    r.afgerond_op = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(r)
+
+    punten = (db.query(OpleveringPunt)
+                .filter(OpleveringPunt.ronde_id == r.id)
+                .order_by(OpleveringPunt.created_at).all())
+    log_action(db, request, current_user, action="oplevering.ronde.afgerond",
+               entity_type="oplever_ronde", entity_id=r.id,
+               after={"frames": r.frames, "frames_onbruikbaar": r.frames_onbruikbaar,
+                      "punten": len(punten)})
+    return _ronde_dict(r, punten=[_restpunt_dict(p) for p in punten])
+
+
 @router.get("/{oplevering_id}")
 def get_oplevering(
     oplevering_id: str,
@@ -255,7 +846,7 @@ def update_oplevering(
     # Werkdagboek: auto-entry bij status-wijziging naar opgeleverd of aanvaard
     if before_status != o.status and o.status in ("opgeleverd", "aanvaard"):
         from daybook_logger import log_daybook
-        punten_count = len(o.punten or []) if hasattr(o, "punten") else 0
+        punten_count = len(_bevestigde_punten(o))
         log_daybook(
             db,
             user_id=current_user.id,
