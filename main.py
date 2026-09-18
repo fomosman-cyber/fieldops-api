@@ -525,6 +525,29 @@ def _run_migrations():
                         "CREATE INDEX IF NOT EXISTS ix_opleveringspunten_bron "
                         "ON opleveringspunten(bron)"))
                 print("[migration] opleveringspunten kolommen toegevoegd.")
+
+            # Schouw: CROW-wegschade met een kader in het beeld.
+            if "schouwwaarnemingen" in insp.get_table_names():
+                schouw_cols = {
+                    "crow_verharding":  "VARCHAR(20)",
+                    "crow_schadegroep": "VARCHAR(30)",
+                    "crow_schadebeeld": "VARCHAR(40)",
+                    "crow_ernst":       "VARCHAR(1)",
+                    "crow_omvang":      "VARCHAR(1)",
+                    "kader":            "TEXT",
+                }
+                bestaand = [c["name"] for c in insp.get_columns("schouwwaarnemingen")]
+                schouw_missing = [c for c in schouw_cols if c not in bestaand]
+                if schouw_missing:
+                    print(f"[migration] schouwwaarnemingen kolommen toevoegen: {schouw_missing}")
+                    with engine.begin() as conn:
+                        for col in schouw_missing:
+                            conn.execute(text(
+                                f"ALTER TABLE schouwwaarnemingen ADD COLUMN {col} {schouw_cols[col]}"))
+                        conn.execute(text(
+                            "CREATE INDEX IF NOT EXISTS ix_schouwwaarnemingen_crow_schadebeeld "
+                            "ON schouwwaarnemingen(crow_schadebeeld)"))
+                    print("[migration] schouwwaarnemingen kolommen toegevoegd.")
     except Exception as e:
         print(f"[migration] Waarschuwing: {e}")
 

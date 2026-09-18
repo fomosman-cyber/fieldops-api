@@ -2041,6 +2041,19 @@ class Schouwwaarneming(Base):
     photo_url = Column(Text, nullable=True)
     melding_id = Column(String, nullable=True, index=True)   # als er een melding uit volgde
 
+    # Schade aan de verharding, in de taal van CROW (zie crow_wegschade). Leeg
+    # bij alles wat geen wegschade is. Ernst komt uit het beeld; omvang is de
+    # omvang IN BEELD en dus een indicatie, niet de omvang over het vak.
+    crow_verharding = Column(String(20), nullable=True)      # asfalt | elementen | beton
+    crow_schadegroep = Column(String(30), nullable=True)
+    crow_schadebeeld = Column(String(40), nullable=True, index=True)
+    crow_ernst = Column(String(1), nullable=True)            # L | M | E
+    crow_omvang = Column(String(1), nullable=True)           # 1 | 2 | 3, in beeld
+    # Waar de schade in het beeld zit: "[x0, y0, x1, y1]" als fracties van
+    # breedte en hoogte. Het scherm tekent er een rood vlak op. Een benadering
+    # van het model, geen pixelmeting.
+    kader = Column(Text, nullable=True)
+
     model_id = Column(String(80), nullable=True)
     vision_versie = Column(String(60), nullable=True)
 

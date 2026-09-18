@@ -4474,6 +4474,18 @@
         <div style="position:relative;margin:14px 0;border-radius:12px;overflow:hidden;background:#000;">
           <video id="schouwVideo" playsinline muted autoplay
                  style="width:100%;max-height:46vh;object-fit:cover;display:block;"></video>
+          <!-- Schade in beeld: het beeld dat net is beoordeeld, met een rood vlak
+               (25% dekkend, 75% doorlatend) op elke gevonden schade. Zelfde
+               uitsnede als de video: preserveAspectRatio "slice" doet voor de
+               SVG wat object-fit:cover voor de video doet. -->
+          <div id="schouwSchadeLaag" onclick="schouwSchadeSluit()"
+               style="display:none;position:absolute;inset:0;cursor:pointer;">
+            <svg id="schouwSchadeBeeld" preserveAspectRatio="xMidYMid slice"
+                 style="width:100%;height:100%;display:block;" role="img"
+                 aria-label="Gevonden schade in het laatst beoordeelde beeld"></svg>
+            <div style="position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.65);color:#fff;
+                 border-radius:999px;padding:4px 10px;font-size:12px;">Beeld van zojuist &middot; tik voor de camera</div>
+          </div>
           <div id="schouwBadge" style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);
                color:#fff;border-radius:999px;padding:4px 10px;font-size:12px;">camera starten…</div>
         </div>
@@ -9643,7 +9655,18 @@
     // Camera aan, elke paar seconden een beeld naar de server, waarnemingen
     // meteen terug. Het interval staat ruim: elk beeld is een vision-aanroep
     // en die kosten geld, en een inspecteur loopt geen meter per seconde.
-    var SCHOUW_INTERVAL_MS = 6000;
+    // Minimale tijd tussen de start van twee beelden. De lus wacht verder
+    // op het antwoord: het volgende beeld gaat pas als het vorige terug is.
+    var SCHOUW_MIN_MS = 3000;
+    var _schouwLoopt = false;
+    var _schouwSchadeTimer = null;
+    var _schouwW = {};              // waarneming-id -> waarneming, voor "Toon in beeld"
+    // Beelden met schade, zodat "Toon in beeld" ook werkt voor een schade van
+    // een paar minuten terug. Alleen de laatste vijftien: elk is een paar
+    // honderd kilobyte, en na een herlaad komt het beeld van de server.
+    var SCHOUW_BEELDEN_MAX = 15;
+    var _schouwBeeldPer = {};       // waarneming-id -> beeld
+    var _schouwBeeldRij = [];       // beelden, oudste eerst
     var _schouwCatalogus = null;
     var _schouwRit = null;
     var _schouwStream = null;
@@ -9869,16 +9892,27 @@
       });
     }
 
+    // Geen vaste klok maar een keten: het volgende beeld gaat als het vorige
+    // terug is, en nooit eerder dan SCHOUW_MIN_MS na de start van het vorige.
+    // De oude klok van zes seconden sloeg bij een trage verbinding tikken over
+    // en liet bij een snelle verbinding onnodig lang wachten.
     function _schouwTimerAan() {
-      if (_schouwTimer) clearInterval(_schouwTimer);
-      _schouwTimer = setInterval(schouwNu, SCHOUW_INTERVAL_MS);
+      _schouwLoopt = true;
+      _schouwPlan(0);
       document.getElementById('schouwPauzeBtn').textContent = 'Pauze';
+    }
+
+    function _schouwPlan(ms) {
+      if (_schouwTimer) { clearTimeout(_schouwTimer); _schouwTimer = null; }
+      if (!_schouwLoopt) return;
+      _schouwTimer = setTimeout(schouwNu, ms);
     }
 
     function schouwPauze() {
       var knop = document.getElementById('schouwPauzeBtn');
-      if (_schouwTimer) {
-        clearInterval(_schouwTimer); _schouwTimer = null;
+      if (_schouwLoopt) {
+        _schouwLoopt = false;
+        _schouwPlan(0);
         knop.textContent = 'Hervatten';
         document.getElementById('schouwBadge').textContent = 'gepauzeerd';
       } else {
@@ -9898,9 +9932,11 @@
     function schouwNu() {
       if (!_schouwRit || _schouwBezig) return;
       var video = document.getElementById('schouwVideo');
-      if (!video || !video.videoWidth) return;
+      // Camera nog aan het opstarten: straks opnieuw, anders stopt de lus.
+      if (!video || !video.videoWidth) { _schouwPlan(500); return; }
 
       _schouwBezig = true;
+      var start = Date.now();
       document.getElementById('schouwBadge').textContent = 'analyseren…';
 
       var canvas = document.getElementById('schouwCanvas');
@@ -9912,7 +9948,8 @@
       canvas.height = Math.round(video.videoHeight * schaal);
       canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      var body = { image_data_url: canvas.toDataURL('image/jpeg', 0.8) };
+      var beeld = { src: canvas.toDataURL('image/jpeg', 0.8), w: canvas.width, h: canvas.height };
+      var body = { image_data_url: beeld.src };
       if (_schouwPositie) {
         body.lat = _schouwPositie.coords.latitude;
         body.lng = _schouwPositie.coords.longitude;
@@ -9924,16 +9961,104 @@
           _schouwRit = res.rit;
           _schouwToonKop();
           _schouwTussenstand(res.rit.tussenstand);
+          var schades = (res.gevonden || []).filter(function (w) { return w.wegschade && w.kader; });
+          schades.forEach(function (w) { _schouwBeeldBewaar(w, beeld); });
           if (res.gevonden && res.gevonden.length) _schouwVoegToe(res.gevonden);
-          document.getElementById('schouwBadge').textContent =
-            res.bruikbaar ? 'opname loopt' : ('overgeslagen: ' + (res.reden_onbruikbaar || 'onbruikbaar'));
+          if (schades.length) {
+            _schouwToonSchade(beeld, schades, 5000);
+          } else {
+            document.getElementById('schouwBadge').textContent =
+              res.bruikbaar ? 'opname loopt' : ('overgeslagen: ' + (res.reden_onbruikbaar || 'onbruikbaar'));
+          }
           _schouwMeld('schouwMelding', '');
         })
         .catch(function (e) {
           _schouwMeld('schouwMelding', e.message || 'Analyse mislukt', 'fout');
           document.getElementById('schouwBadge').textContent = 'opname loopt';
         })
-        .then(function () { _schouwBezig = false; });
+        .then(function () {
+          _schouwBezig = false;
+          _schouwPlan(Math.max(SCHOUW_MIN_MS - (Date.now() - start), 250));
+        });
+    }
+
+    function _schouwBeeldBewaar(w, beeld) {
+      if (_schouwBeeldRij.indexOf(beeld) === -1) {
+        beeld.ids = [];
+        _schouwBeeldRij.push(beeld);
+        while (_schouwBeeldRij.length > SCHOUW_BEELDEN_MAX) {
+          var oud = _schouwBeeldRij.shift();
+          (oud.ids || []).forEach(function (id) { delete _schouwBeeldPer[id]; });
+        }
+      }
+      beeld.ids.push(w.id);
+      _schouwBeeldPer[w.id] = beeld;
+    }
+
+    // Het beoordeelde beeld over de video, met een rood vlak op elke schade.
+    // ms > 0: vanzelf weer weg na zoveel milliseconden; 0: blijft tot je tikt.
+    function _schouwToonSchade(beeld, schades, ms) {
+      var svg = document.getElementById('schouwSchadeBeeld');
+      var w = beeld.w, h = beeld.h;
+      var letter = Math.max(12, Math.round(w / 55));
+      var inhoud = '<image href="' + _esc(beeld.src) + '" x="0" y="0" width="' + w + '" height="' + h + '"/>';
+      schades.forEach(function (s) {
+        var k = s.kader;
+        var x = k[0] * w, y = k[1] * h, bw = (k[2] - k[0]) * w, bh = (k[3] - k[1]) * h;
+        // 25% rood, 75% doorlatend: de schade blijft er doorheen te zien.
+        inhoud += '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + bh + '"'
+          + ' fill="#FF0000" fill-opacity="0.25" stroke="#FF0000" stroke-width="2"'
+          + ' vector-effect="non-scaling-stroke"/>';
+        var tekst = s.naam + (s.ernst ? ' · ' + s.ernst : '');
+        var ty = y > letter * 1.6 ? y - letter * 0.45 : y + bh + letter * 1.1;
+        inhoud += '<text x="' + (x + 2) + '" y="' + ty + '" font-size="' + letter + '"'
+          + ' font-family="system-ui, sans-serif" font-weight="600" fill="#FFFFFF"'
+          + ' stroke="#000000" stroke-width="' + (letter / 5) + '" paint-order="stroke">'
+          + _esc(tekst) + '</text>';
+      });
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      svg.innerHTML = inhoud;
+      // Zonder lopende camera (nakijken achteraf, of geen toegang) heeft het
+      // videovak geen maat van zichzelf. Dan krijgt het de verhouding van het
+      // beeld, anders zie je alleen een strook ervan.
+      var video = document.getElementById('schouwVideo');
+      var live = !!(video && video.videoWidth);
+      if (video && !live) video.style.aspectRatio = w + ' / ' + h;
+      // Live: zelfde uitsnede als de video. Achteraf: het hele beeld, niets eraf.
+      svg.setAttribute('preserveAspectRatio', live ? 'xMidYMid slice' : 'xMidYMid meet');
+      document.getElementById('schouwSchadeLaag').style.display = 'block';
+      document.getElementById('schouwBadge').textContent =
+        schades.length === 1 ? '1 schade in beeld' : schades.length + ' schades in beeld';
+      if (_schouwSchadeTimer) clearTimeout(_schouwSchadeTimer);
+      _schouwSchadeTimer = ms ? setTimeout(schouwSchadeSluit, ms) : null;
+    }
+
+    function schouwSchadeSluit() {
+      if (_schouwSchadeTimer) { clearTimeout(_schouwSchadeTimer); _schouwSchadeTimer = null; }
+      var laag = document.getElementById('schouwSchadeLaag');
+      if (laag) laag.style.display = 'none';
+      var video = document.getElementById('schouwVideo');
+      if (video) video.style.aspectRatio = '';
+      var badge = document.getElementById('schouwBadge');
+      if (badge && _schouwRit) badge.textContent = _schouwLoopt ? 'opname loopt' : 'gepauzeerd';
+    }
+
+    // Vanuit de lijst: dezelfde schade opnieuw in beeld. Eerst uit het
+    // geheugen van deze sessie, anders het beeld dat de server bewaarde.
+    function schouwToonInBeeld(id) {
+      var w = _schouwW[id];
+      if (!w || !w.kader) return;
+      var laag = document.getElementById('schouwSchadeLaag');
+      var toon = function (beeld) {
+        _schouwToonSchade(beeld, [w], 0);
+        if (laag && laag.scrollIntoView) laag.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      };
+      if (_schouwBeeldPer[id]) { toon(_schouwBeeldPer[id]); return; }
+      if (!w.photo_url) { showToast('Het beeld van deze schade is niet bewaard', 'error'); return; }
+      var img = new Image();
+      img.onload = function () { toon({ src: w.photo_url, w: img.naturalWidth, h: img.naturalHeight }); };
+      img.onerror = function () { showToast('Het beeld kon niet geladen worden', 'error'); };
+      img.src = w.photo_url;
     }
 
     function _schouwTussenstand(t) {
@@ -9956,6 +10081,7 @@
     }
 
     function _schouwRij(w) {
+      _schouwW[w.id] = w;
       var zeker = w.zekerheid === null || w.zekerheid === undefined
         ? '' : Math.round(w.zekerheid * 100) + '%';
       var status = w.afgewezen ? 'afgewezen'
@@ -9967,14 +10093,28 @@
           + ' onclick="schouwBevestig(\'' + w.id + '\',false)">Niet</button>';
       return '<div id="sw-' + w.id + '" style="padding:9px 0;border-bottom:1px solid var(--border);">'
         + '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">'
-        + '<div style="flex:1;"><div style="font-weight:600;font-size:13.5px;">' + _esc(w.naam) + '</div>'
+        + '<div style="flex:1;"><div style="font-weight:600;font-size:13.5px;">'
+        + (w.wegschade
+            ? '<span style="display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;'
+              + 'background:rgba(255,0,0,.25);border:2px solid #FF0000;"></span>'
+            : '')
+        + _esc(w.naam) + '</div>'
         + '<div style="font-size:12px;color:var(--text-muted);">'
-        + (w.waarde !== null && w.waarde !== undefined ? w.waarde + ' &middot; ' : '')
-        + (w.klasse_niveau ? w.klasse_niveau + ' &middot; ' : '')
+        + (w.wegschade
+            ? (w.ernst ? 'ernst ' + _esc(w.ernst) : 'ernst onbekend')
+              + (w.klasse_indicatie ? ' &middot; klasse ' + _esc(w.klasse_indicatie) + ' (indicatie)' : '')
+              + ' &middot; '
+            : (w.waarde !== null && w.waarde !== undefined ? w.waarde + ' &middot; ' : '')
+              + (w.klasse_niveau ? w.klasse_niveau + ' &middot; ' : ''))
         + zeker + ' &middot; ' + status
         + (w.meetlat ? '' : ' &middot; drager onbekend')
         + '</div></div>'
-        + '<div style="white-space:nowrap;">' + knoppen + '</div></div></div>';
+        + '<div style="white-space:nowrap;">'
+        + (w.wegschade && w.kader
+            ? '<button class="btn-secondary" style="padding:3px 10px;font-size:12px;"'
+              + ' onclick="schouwToonInBeeld(\'' + w.id + '\')">Toon in beeld</button> '
+            : '')
+        + knoppen + '</div></div></div>';
     }
 
     function schouwBevestig(id, akkoord) {
@@ -10038,7 +10178,11 @@
     }
 
     function _schouwStop() {
-      if (_schouwTimer) { clearInterval(_schouwTimer); _schouwTimer = null; }
+      _schouwLoopt = false;
+      _schouwPlan(0);
+      schouwSchadeSluit();
+      _schouwBeeldPer = {};
+      _schouwBeeldRij = [];
       if (_schouwWatch !== null && navigator.geolocation) {
         navigator.geolocation.clearWatch(_schouwWatch);
         _schouwWatch = null;
