@@ -30,6 +30,7 @@ bevestiging. Afwijzen verwijdert niets: de waarneming blijft staan met
 `afgewezen`, zodat het spoor van een gewijzigde score navolgbaar blijft.
 """
 
+import json
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -38,6 +39,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 import crow_schouw as cs
+import crow_wegschade as cw
 import schouw_vision as sv
 from audit import log_action
 from auth import get_current_user
@@ -221,13 +223,15 @@ def _tussenstand(r: Schouwrit) -> dict:
 
 def _w_dict(w: Schouwwaarneming) -> dict:
     m = cs.meetlat(w.meetlat) if w.meetlat else None
+    schade = cw.zoek(w.crow_verharding, w.crow_schadebeeld) if w.crow_schadebeeld else None
     return {
         "id": w.id,
         "detectieklasse": w.detectieklasse,
         "drager": w.drager,
         "meetlat": w.meetlat,
-        "naam": m["naam"] if m else (cs.DETECTIEKLASSEN.get(w.detectieklasse, {})
-                                     .get("naam") or w.detectieklasse),
+        "naam": schade["naam"] if schade else (
+            m["naam"] if m else (cs.DETECTIEKLASSEN.get(w.detectieklasse, {})
+                                 .get("naam") or w.detectieklasse)),
         "waarde": w.waarde,
         "klasse_niveau": w.klasse_niveau,
         "toelichting": w.toelichting,
@@ -239,7 +243,26 @@ def _w_dict(w: Schouwwaarneming) -> dict:
         "lat": w.lat, "lng": w.lng, "straatnaam": w.straatnaam,
         "photo_url": w.photo_url,
         "created_at": w.created_at.isoformat() if w.created_at else None,
+        # Wegschade. `kader` is waar het scherm het rode vlak tekent.
+        "wegschade": bool(w.crow_schadebeeld),
+        "verharding": w.crow_verharding,
+        "schadegroep": w.crow_schadegroep,
+        "schadebeeld": w.crow_schadebeeld,
+        "ernst": w.crow_ernst,
+        "omvang": w.crow_omvang,
+        "klasse_indicatie": cw.klasse_indicatie(w.crow_ernst, w.crow_omvang),
+        "kader": _kader_lezen(w.kader),
     }
+
+
+def _kader_lezen(tekst: Optional[str]) -> Optional[list[float]]:
+    if not tekst:
+        return None
+    try:
+        k = json.loads(tekst)
+    except (TypeError, ValueError):
+        return None
+    return k if isinstance(k, list) and len(k) == 4 else None
 
 
 def _rit_dict(r: Schouwrit, *, detail: bool = False) -> dict:
@@ -301,6 +324,14 @@ def catalogus():
         "klassen": cs.KLASSE_CODES,
         "zekerheidsdrempel": sv.DREMPEL_AUTOMATISCH,
         "privacy_modi": sorted(TOEGESTANE_PRIVACY_MODI),
+        "wegschade": {
+            "versie": cw.WEGSCHADE_VERSIE,
+            "verhardingen": {k: v["naam"] for k, v in cw.VERHARDINGEN.items()},
+            "ernst": cw.ERNST,
+            "schadebeelden": [
+                {k: sb[k] for k in ("verharding", "schadegroep", "schadebeeld", "naam")}
+                for sb in cw.schadebeelden()],
+        },
     }
 
 
@@ -482,8 +513,20 @@ def frame(
     if not resultaat.get("bruikbaar"):
         r.frames_onbruikbaar = (r.frames_onbruikbaar or 0) + 1
 
+    wegschade = resultaat.get("wegschade") or []
+
+    # Een beeld met schade erop is bewijs, en zonder beeld kan het scherm het
+    # rode vak later niet meer laten zien. Dan bewaren we hem altijd -- één
+    # keer, via de opslag voor foto's, en dezelfde verwijzing bij elke schade.
+    foto = None
+    if payload.bewaar_beeld or wegschade:
+        from photo_storage import maybe_offload
+        foto = maybe_offload(payload.image_data_url,
+                             organization_id=current_user.organization_id,
+                             kind="schouw") or payload.image_data_url
+
     nieuw: list[Schouwwaarneming] = []
-    for w in (resultaat.get("gebied") or []):
+    for w in (resultaat.get("gebied") or []) + wegschade:
         rij = Schouwwaarneming(
             schouwrit_id=r.id,
             organization_id=current_user.organization_id,
@@ -498,9 +541,15 @@ def frame(
             toelichting=w.get("toelichting"),
             zekerheid=w.get("zekerheid"),
             bron="ai",
-            photo_url=payload.image_data_url if payload.bewaar_beeld else None,
+            photo_url=foto,
             model_id=resultaat.get("_model_id"),
             vision_versie=resultaat.get("_versie"),
+            crow_verharding=w.get("verharding"),
+            crow_schadegroep=w.get("schadegroep"),
+            crow_schadebeeld=w.get("schadebeeld"),
+            crow_ernst=w.get("ernst"),
+            crow_omvang=w.get("omvang"),
+            kader=json.dumps(w["kader"]) if w.get("kader") else None,
         )
         db.add(rij)
         nieuw.append(rij)
