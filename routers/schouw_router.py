@@ -31,6 +31,7 @@ bevestiging. Afwijzen verwijdert niets: de waarneming blijft staan met
 """
 
 import json
+import math
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -44,7 +45,7 @@ import schouw_vision as sv
 from audit import log_action
 from auth import get_current_user
 from database import get_db
-from models import Project, Schouwrit, Schouwwaarneming, User
+from models import Melding, Project, Schouwrit, Schouwwaarneming, User
 from permissions import can_manage_toolbox, require_module
 
 router = APIRouter(prefix="/api/schouw", tags=["Schouw"],
@@ -252,7 +253,121 @@ def _w_dict(w: Schouwwaarneming) -> dict:
         "omvang": w.crow_omvang,
         "klasse_indicatie": cw.klasse_indicatie(w.crow_ernst, w.crow_omvang),
         "kader": _kader_lezen(w.kader),
+        "keer_gezien": w.keer_gezien or 1,
+        "melding_id": w.melding_id,
     }
+
+
+# ── Dezelfde schade in opeenvolgende beelden ─────────────────────────
+#
+# Lopend met een beeld per paar seconden staat dezelfde kuil in twee, drie
+# beelden achter elkaar. Dat is één kuil. De regel is bewust voorzichtig:
+# liever een dubbele regel in de lijst dan een schade die wegvalt omdat hij
+# met zijn buurman is samengevoegd. Twee kuilen tien meter uit elkaar mogen
+# nooit één worden.
+#
+# Een nieuwe schade hoort bij een bestaande als alle drie waar zijn:
+#   - zelfde verharding en zelfde schadebeeld, in dezelfde ronde;
+#   - de bestaande was nog in beeld: laatst gezien hooguit DUBBEL_TIJD_S geleden;
+#   - de plek klopt: binnen de GPS-straal, of er is geen GPS om te vergelijken.
+# Schades uit één en hetzelfde beeld worden nooit samengevoegd: dat zijn er
+# gewoon twee.
+
+DUBBEL_TIJD_S = 15
+DUBBEL_STRAAL_M = 6.0            # als de nauwkeurigheid onbekend is
+DUBBEL_STRAAL_MIN_M = 4.0
+DUBBEL_STRAAL_MAX_M = 12.0       # daarboven is GPS te grof om op te vertrouwen
+
+
+def _utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _afstand_m(lat1, lng1, lat2, lng2) -> float:
+    r = 6371000.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dp, dl = p2 - p1, math.radians(lng2 - lng1)
+    a = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * r * math.asin(math.sqrt(a))
+
+
+def _straal_m(n1: Optional[float], n2: Optional[float]) -> float:
+    bekend = [n for n in (n1, n2) if n]
+    if not bekend:
+        return DUBBEL_STRAAL_M
+    return min(DUBBEL_STRAAL_MAX_M, max(DUBBEL_STRAAL_MIN_M, max(bekend)))
+
+
+def _kandidaten(db: Session, r: Schouwrit, schadebeelden: set[str],
+                nu: datetime) -> list[Schouwwaarneming]:
+    """Wegschade in deze ronde die nog in beeld kan zijn. Opgehaald vóór het
+    verwerken van het nieuwe beeld, zodat schades uit hetzelfde beeld elkaar
+    niet kunnen vinden."""
+    if not schadebeelden:
+        return []
+    rijen = (db.query(Schouwwaarneming)
+               .filter(Schouwwaarneming.schouwrit_id == r.id,
+                       Schouwwaarneming.crow_schadebeeld.in_(schadebeelden))
+               .all())
+    uit = []
+    for w in rijen:
+        laatst = _utc(w.laatst_gezien_op) or _utc(w.created_at)
+        if laatst and (nu - laatst).total_seconds() <= DUBBEL_TIJD_S:
+            uit.append(w)
+    return uit
+
+
+def _zoek_dubbel(kandidaten: list[Schouwwaarneming], w: dict, payload,
+                 gebruikt: set[str]) -> Optional[Schouwwaarneming]:
+    beste, beste_afstand = None, None
+    for k in kandidaten:
+        if k.id in gebruikt:
+            continue
+        if (k.crow_verharding, k.crow_schadebeeld) != (w.get("verharding"), w.get("schadebeeld")):
+            continue
+        heeft_gps = None not in (k.lat, k.lng, payload.lat, payload.lng)
+        if heeft_gps:
+            afstand = _afstand_m(k.lat, k.lng, payload.lat, payload.lng)
+            if afstand > _straal_m(k.nauwkeurigheid_m, payload.nauwkeurigheid_m):
+                continue
+        else:
+            afstand = 0.0
+        if beste is None or afstand < beste_afstand:
+            beste, beste_afstand = k, afstand
+    return beste
+
+
+def _voeg_samen(bestaand: Schouwwaarneming, w: dict, payload, foto, resultaat: dict,
+                nu: datetime) -> bool:
+    """Tel het nieuwe beeld bij de bestaande schade. Geeft True als het nieuwe
+    beeld het bewijs wordt (en het scherm het dus mag onthouden).
+
+    Het beeld waar het model het zekerst was, wordt het bewijs: ernst, kader en
+    foto komen daar samen vandaan, zodat ze bij elkaar passen. Heeft een mens
+    de schade al bevestigd of afgewezen, dan verandert de camera er niets meer
+    aan -- alleen de teller loopt op.
+    """
+    bestaand.keer_gezien = (bestaand.keer_gezien or 1) + 1
+    bestaand.laatst_gezien_op = nu
+    if bestaand.bevestigd or bestaand.afgewezen:
+        return False
+    if (w.get("zekerheid") or 0) <= (bestaand.zekerheid or 0):
+        return False
+    bestaand.crow_ernst = w.get("ernst")
+    bestaand.crow_omvang = w.get("omvang")
+    bestaand.klasse_niveau = w.get("klasse_niveau")
+    bestaand.kader = json.dumps(w["kader"]) if w.get("kader") else None
+    bestaand.zekerheid = w.get("zekerheid")
+    bestaand.toelichting = w.get("toelichting")
+    bestaand.photo_url = foto()
+    if payload.lat is not None and payload.lng is not None:
+        bestaand.lat, bestaand.lng = payload.lat, payload.lng
+        bestaand.nauwkeurigheid_m = payload.nauwkeurigheid_m
+    bestaand.model_id = resultaat.get("_model_id")
+    bestaand.vision_versie = resultaat.get("_versie")
+    return True
 
 
 def _kader_lezen(tekst: Optional[str]) -> Optional[list[float]]:
@@ -513,20 +628,39 @@ def frame(
     if not resultaat.get("bruikbaar"):
         r.frames_onbruikbaar = (r.frames_onbruikbaar or 0) + 1
 
-    wegschade = resultaat.get("wegschade") or []
+    # De zekerste eerst: die mag als eerste een bestaande schade claimen.
+    wegschade = sorted(resultaat.get("wegschade") or [],
+                       key=lambda w: -(w.get("zekerheid") or 0))
+    nu = datetime.now(timezone.utc)
 
     # Een beeld met schade erop is bewijs, en zonder beeld kan het scherm het
-    # rode vak later niet meer laten zien. Dan bewaren we hem altijd -- één
-    # keer, via de opslag voor foto's, en dezelfde verwijzing bij elke schade.
-    foto = None
-    if payload.bewaar_beeld or wegschade:
-        from photo_storage import maybe_offload
-        foto = maybe_offload(payload.image_data_url,
-                             organization_id=current_user.organization_id,
-                             kind="schouw") or payload.image_data_url
+    # rode vak later niet meer laten zien. Dan bewaren we hem -- één keer, via
+    # de opslag voor foto's, en pas als er echt iets is dat hem gebruikt.
+    _foto: dict = {}
+
+    def foto() -> Optional[str]:
+        if "url" not in _foto:
+            from photo_storage import maybe_offload
+            _foto["url"] = maybe_offload(payload.image_data_url,
+                                         organization_id=current_user.organization_id,
+                                         kind="schouw") or payload.image_data_url
+        return _foto["url"]
+
+    kandidaten = _kandidaten(db, r, {w.get("schadebeeld") for w in wegschade}, nu)
+    gebruikt: set[str] = set()
+    samengevoegd: list[tuple[Schouwwaarneming, bool, dict]] = []
+    nieuwe_schade: list[dict] = []
+    for w in wegschade:
+        dubbel = _zoek_dubbel(kandidaten, w, payload, gebruikt)
+        if dubbel is None:
+            nieuwe_schade.append(w)
+            continue
+        gebruikt.add(dubbel.id)
+        samengevoegd.append((dubbel, _voeg_samen(dubbel, w, payload, foto, resultaat, nu), w))
 
     nieuw: list[Schouwwaarneming] = []
-    for w in (resultaat.get("gebied") or []) + wegschade:
+    in_beeld_nieuw: list[tuple[Schouwwaarneming, dict]] = []
+    for w in (resultaat.get("gebied") or []) + nieuwe_schade:
         rij = Schouwwaarneming(
             schouwrit_id=r.id,
             organization_id=current_user.organization_id,
@@ -541,7 +675,7 @@ def frame(
             toelichting=w.get("toelichting"),
             zekerheid=w.get("zekerheid"),
             bron="ai",
-            photo_url=foto,
+            photo_url=foto() if (payload.bewaar_beeld or wegschade) else None,
             model_id=resultaat.get("_model_id"),
             vision_versie=resultaat.get("_versie"),
             crow_verharding=w.get("verharding"),
@@ -550,16 +684,34 @@ def frame(
             crow_ernst=w.get("ernst"),
             crow_omvang=w.get("omvang"),
             kader=json.dumps(w["kader"]) if w.get("kader") else None,
+            keer_gezien=1,
+            laatst_gezien_op=nu,
         )
         db.add(rij)
         nieuw.append(rij)
+        if w.get("schadebeeld"):
+            in_beeld_nieuw.append((rij, w))
 
     db.commit()
     db.refresh(r)
+
+    # Voor het scherm: alles wat in DIT beeld rood moet worden, met het kader
+    # uit dit beeld -- ook bij een samengevoegde schade, waarvan het bewaarde
+    # kader bij een ander beeld hoort.
+    in_beeld = [
+        {"id": rij.id, "naam": _w_dict(rij)["naam"], "ernst": w.get("ernst"),
+         "kader": w.get("kader")}
+        for rij, w in in_beeld_nieuw + [(d, w) for d, _, w in samengevoegd]
+        if w.get("kader")
+    ]
+    gevonden = [dict(_w_dict(w), samengevoegd=False, beeld_vervangen=True) for w in nieuw]
+    gevonden += [dict(_w_dict(d), samengevoegd=True, beeld_vervangen=v)
+                 for d, v, _ in samengevoegd]
     return {
         "bruikbaar": resultaat.get("bruikbaar"),
         "reden_onbruikbaar": resultaat.get("reden_onbruikbaar"),
-        "gevonden": [_w_dict(w) for w in nieuw],
+        "gevonden": gevonden,
+        "in_beeld": in_beeld,
         "objecten": resultaat.get("objecten") or [],
         "rit": _rit_dict(r),
     }
@@ -651,6 +803,96 @@ def waarneming_bijwerken(
     db.commit()
     db.refresh(w)
     return _w_dict(w)
+
+
+# Hoe een schade als melding binnenkomt. Kritiek laten we aan een mens: dat
+# is een oordeel over gevaar, en dat ziet de camera niet.
+_ERNST_NAAR_PRIORITEIT = {"E": "hoog", "M": "normaal", "L": "laag"}
+_CATEGORIE = {"asfalt": "Wegdek", "beton": "Wegdek", "elementen": "Bestrating"}
+
+
+@router.post("/waarnemingen/{waarneming_id}/melding")
+def maak_melding(
+    waarneming_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Een schade uit de schouw doorzetten als melding.
+
+    Op de knop drukken is zelf een menselijk oordeel, dus de waarneming wordt
+    daarmee ook bevestigd. De melding loopt via dezelfde route als elke andere
+    melding: foto-opslag, koppeling aan het dichtstbijzijnde object, audit en
+    werkdagboek. Twee keer drukken levert geen tweede melding op.
+
+    Ook na het afronden van de ronde: nakijken op kantoor is het normale moment.
+    """
+    _eis_beheer(current_user)
+    w = (db.query(Schouwwaarneming)
+           .filter(Schouwwaarneming.id == waarneming_id,
+                   Schouwwaarneming.organization_id == current_user.organization_id)
+           .first())
+    if not w:
+        raise HTTPException(status_code=404, detail="Waarneming niet gevonden")
+    if w.melding_id:
+        bestaat = (db.query(Melding.id)
+                     .filter(Melding.id == w.melding_id,
+                             Melding.organization_id == current_user.organization_id)
+                     .first())
+        if bestaat:
+            return {"waarneming": _w_dict(w), "melding_id": w.melding_id, "bestond_al": True}
+    if w.afgewezen:
+        raise HTTPException(status_code=409,
+                            detail="Deze schade is afgewezen; zet hem eerst terug als je er een melding van wilt")
+    schade = cw.zoek(w.crow_verharding, w.crow_schadebeeld)
+    if not schade:
+        raise HTTPException(status_code=400,
+                            detail="Alleen schade aan de verharding kan vanuit de schouw een melding worden")
+
+    r = w.rit
+    plek = w.straatnaam or (r.gebied if r else None)
+    datum = (_utc(w.created_at) or datetime.now(timezone.utc)).strftime("%d-%m-%Y")
+    delen = [f"{schade['naam']} ({schade['verharding_naam'].lower()})"
+             + (f", ernst {w.crow_ernst}" if w.crow_ernst else "") + "."]
+    if w.toelichting:
+        delen.append(w.toelichting.rstrip(".") + ".")
+    delen.append(f"Vastgelegd met de schouwcamera op {datum}"
+                 + (f" tijdens de ronde '{r.gebied}'" if r and r.gebied else "")
+                 + (f", {w.keer_gezien} keer in beeld" if (w.keer_gezien or 1) > 1 else "")
+                 + ". De plek staat met een rood vak in de schouwronde.")
+
+    from routers.meldingen_router import create_melding
+    from schemas import MeldingCreate
+
+    # Omvang laten we leeg: de camera zag een stuk van het vak, niet het vak.
+    # De klasse (M2 enz.) vult de inspecteur in de melding aan.
+    data = MeldingCreate(
+        title=(schade["naam"] + (f" \u2014 {plek}" if plek else ""))[:255],
+        description=" ".join(delen),
+        category=_CATEGORIE.get(w.crow_verharding),
+        priority=_ERNST_NAAR_PRIORITEIT.get(w.crow_ernst, "normaal"),
+        lat=w.lat, lng=w.lng,
+        photo_url=w.photo_url,
+        asset_id=w.asset_id,
+        project_id=r.project_id if r else None,
+        crow_schadegroep=w.crow_schadegroep,
+        crow_schadebeeld=w.crow_schadebeeld,
+        crow_ernst=w.crow_ernst,
+    )
+    melding = create_melding(data, request, current_user, db)
+    melding_id = melding["id"] if isinstance(melding, dict) else melding.id
+
+    w.melding_id = melding_id
+    w.bevestigd = True
+    w.afgewezen = False
+    w.bevestigd_door_id = current_user.id
+    db.commit()
+    db.refresh(w)
+    log_action(db, request, current_user, action="schouw.melding",
+               entity_type="schouwwaarneming", entity_id=w.id,
+               after={"melding_id": melding_id, "schadebeeld": w.crow_schadebeeld,
+                      "ernst": w.crow_ernst})
+    return {"waarneming": _w_dict(w), "melding_id": melding_id, "bestond_al": False}
 
 
 @router.post("/ritten/{rit_id}/afronden")

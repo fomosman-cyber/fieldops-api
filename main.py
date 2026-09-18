@@ -535,6 +535,8 @@ def _run_migrations():
                     "crow_ernst":       "VARCHAR(1)",
                     "crow_omvang":      "VARCHAR(1)",
                     "kader":            "TEXT",
+                    "keer_gezien":      "INTEGER DEFAULT 1",
+                    "laatst_gezien_op": "TIMESTAMP",
                 }
                 bestaand = [c["name"] for c in insp.get_columns("schouwwaarnemingen")]
                 schouw_missing = [c for c in schouw_cols if c not in bestaand]
