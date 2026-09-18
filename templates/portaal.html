@@ -9961,8 +9961,14 @@
           _schouwRit = res.rit;
           _schouwToonKop();
           _schouwTussenstand(res.rit.tussenstand);
-          var schades = (res.gevonden || []).filter(function (w) { return w.wegschade && w.kader; });
-          schades.forEach(function (w) { _schouwBeeldBewaar(w, beeld); });
+          // Rood wordt wat in DIT beeld is gezien, met het kader uit dit beeld.
+          var schades = res.in_beeld || [];
+          // Onthouden alleen waar dit beeld het bewijs is: bij een samengevoegde
+          // schade die elders beter in beeld was, hoort het bewaarde kader bij
+          // een ander beeld.
+          (res.gevonden || []).forEach(function (w) {
+            if (w.wegschade && w.kader && w.beeld_vervangen) _schouwBeeldBewaar(w, beeld);
+          });
           if (res.gevonden && res.gevonden.length) _schouwVoegToe(res.gevonden);
           if (schades.length) {
             _schouwToonSchade(beeld, schades, 5000);
@@ -10076,8 +10082,15 @@
 
     function _schouwVoegToe(nieuwe) {
       var box = document.getElementById('schouwWaarnemingen');
-      var html = nieuwe.map(_schouwRij).join('');
-      box.innerHTML = html + box.innerHTML;
+      var html = '';
+      nieuwe.forEach(function (w) {
+        // Dezelfde schade uit een volgend beeld: de regel bijwerken, niet
+        // er een tweede bovenop zetten.
+        var bestaand = document.getElementById('sw-' + w.id);
+        if (bestaand) bestaand.outerHTML = _schouwRij(w);
+        else html += _schouwRij(w);
+      });
+      if (html) box.innerHTML = html + box.innerHTML;
     }
 
     function _schouwRij(w) {
@@ -10103,6 +10116,7 @@
         + (w.wegschade
             ? (w.ernst ? 'ernst ' + _esc(w.ernst) : 'ernst onbekend')
               + (w.klasse_indicatie ? ' &middot; klasse ' + _esc(w.klasse_indicatie) + ' (indicatie)' : '')
+              + ((w.keer_gezien || 1) > 1 ? ' &middot; ' + w.keer_gezien + '&times; gezien' : '')
               + ' &middot; '
             : (w.waarde !== null && w.waarde !== undefined ? w.waarde + ' &middot; ' : '')
               + (w.klasse_niveau ? w.klasse_niveau + ' &middot; ' : ''))
@@ -10114,7 +10128,35 @@
             ? '<button class="btn-secondary" style="padding:3px 10px;font-size:12px;"'
               + ' onclick="schouwToonInBeeld(\'' + w.id + '\')">Toon in beeld</button> '
             : '')
+        + (w.wegschade && w.melding_id
+            ? '<button class="btn-secondary" style="padding:3px 10px;font-size:12px;color:var(--success,#16a34a);"'
+              + ' onclick="openMeldingDetailFromMyDay(\'' + w.melding_id + '\')">Melding &#10003;</button> '
+            : '')
+        + (w.wegschade && !w.melding_id && !w.afgewezen
+            ? '<button class="btn-secondary" style="padding:3px 10px;font-size:12px;"'
+              + ' onclick="schouwMaakMelding(\'' + w.id + '\', this)">Maak melding</button> '
+            : '')
         + knoppen + '</div></div></div>';
+    }
+
+    // Een schade doorzetten als melding. De knop is zelf het menselijk oordeel,
+    // dus de server bevestigt de schade meteen mee.
+    function schouwMaakMelding(id, knop) {
+      if (knop) { knop.disabled = true; knop.textContent = 'Bezig…'; }
+      api('POST', '/api/schouw/waarnemingen/' + id + '/melding', {})
+        .then(function (res) {
+          var rij = document.getElementById('sw-' + id);
+          if (rij) rij.outerHTML = _schouwRij(res.waarneming);
+          showToast(res.bestond_al ? 'Deze schade had al een melding' : 'Melding aangemaakt', 'success');
+          if (_schouwRit) {
+            return api('GET', '/api/schouw/ritten/' + _schouwRit.id)
+              .then(function (r) { _schouwRit = r; _schouwTussenstand(r.tussenstand); });
+          }
+        })
+        .catch(function (e) {
+          if (knop) { knop.disabled = false; knop.textContent = 'Maak melding'; }
+          showToast(e.message || 'Melding maken mislukt', 'error');
+        });
     }
 
     function schouwBevestig(id, akkoord) {
@@ -14037,13 +14079,19 @@
     // ── CROW 146 + GWWkosten lookup (mirror van crow_kosten.py) ──
     // ══════════════════════════════════════
     var CROW_SCHADEBEELDEN = {
-      samenhang:        ['scheurvorming-langs','scheurvorming-dwars','scheurvorming-kruis','scheurvorming-rand','scheurvorming-groep'],
+      samenhang:        ['scheurvorming-langs','scheurvorming-dwars','scheurvorming-kruis','scheurvorming-rand','scheurvorming-groep',
+                         'scheurvorming','breuk','betondegradatie'],
       textuur:          ['rafeling','spaltverlies'],
-      vlakheid:         ['spoorvorming','oneffenheden','kuilen','deformatie','verzakking'],
-      voegen:           ['voegwijdte','voegvulling-gebrek'],
+      vlakheid:         ['spoorvorming','oneffenheden','kuilen','deformatie','verzakking','opdrukking',
+                         'voegovergangen','oneffenheid'],
+      voegen:           ['voegwijdte','voegvulling-gebrek','voeg-degradatie','kit-gebreken'],
       watergevoeligheid:['bitumen-uittreden'],
       stenen:           ['gebroken-stenen','ontbrekende-stenen','los-liggend'],
     };
+    // Cementbeton heeft eigen schadebeelden die op asfalt lijken ("oneffenheid"
+    // naast "oneffenheden"). In de keuzelijst staat erbij dat ze bij beton horen.
+    var CROW_BETON = { 'voegovergangen':1, 'oneffenheid':1, 'voeg-degradatie':1,
+                       'kit-gebreken':1, 'scheurvorming':1, 'breuk':1, 'betondegradatie':1 };
     var CROW_LOOKUP = {
       'scheurvorming-langs|M1':  {categorie:'KO', maatregel:'Vullen polymeer', gw_term:'Vullen polymeer (cold-pour)', kosten_orde:'€5–10 / m¹', termijn:52},
       'scheurvorming-langs|M2':  {categorie:'KO', maatregel:'Vullen polymeer', gw_term:'Vullen polymeer (cold-pour)', kosten_orde:'€8–15 / m¹', termijn:24},
@@ -14103,7 +14151,7 @@
       if (!groep) return;
       var beelden = CROW_SCHADEBEELDEN[groep] || [];
       sel.innerHTML = '<option value="">— Kies schadebeeld —</option>' +
-        beelden.map(function(b){ return '<option value="'+b+'">'+b+'</option>'; }).join('');
+        beelden.map(function(b){ return '<option value="'+b+'">'+b+(CROW_BETON[b] ? ' (beton)' : '')+'</option>'; }).join('');
       updateCrowKlasse();
     }
     function updateCrowKlasse(){

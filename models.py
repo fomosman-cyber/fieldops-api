@@ -2053,6 +2053,11 @@ class Schouwwaarneming(Base):
     # breedte en hoogte. Het scherm tekent er een rood vlak op. Een benadering
     # van het model, geen pixelmeting.
     kader = Column(Text, nullable=True)
+    # Dezelfde schade staat bij het lopen in een paar beelden achter elkaar.
+    # Die worden één waarneming: `keer_gezien` telt ze, `laatst_gezien_op`
+    # bepaalt of een volgend beeld er nog bij hoort (zie schouw_router).
+    keer_gezien = Column(Integer, nullable=False, default=1)
+    laatst_gezien_op = Column(DateTime, nullable=True)
 
     model_id = Column(String(80), nullable=True)
     vision_versie = Column(String(60), nullable=True)

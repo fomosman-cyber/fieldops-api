@@ -5,7 +5,7 @@
  *  - API calls (/api/*): network-first met fallback naar cache
  *  - Externe libs (fonts, leaflet, chart.js): stale-while-revalidate
  */
-const VERSION = 'v1.6.0';
+const VERSION = 'v1.6.1';
 const SHELL_CACHE = `fieldops-shell-${VERSION}`;
 const API_CACHE = `fieldops-api-${VERSION}`;
 const RUNTIME_CACHE = `fieldops-runtime-${VERSION}`;
