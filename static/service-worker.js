@@ -5,10 +5,14 @@
  *  - API calls (/api/*): network-first met fallback naar cache
  *  - Externe libs (fonts, leaflet, chart.js): stale-while-revalidate
  */
-const VERSION = 'v1.6.1';
+const VERSION = 'v1.7.0';
 const SHELL_CACHE = `fieldops-shell-${VERSION}`;
 const API_CACHE = `fieldops-api-${VERSION}`;
 const RUNTIME_CACHE = `fieldops-runtime-${VERSION}`;
+// Modelbestanden (18 MB voor het verpixelen) staan NIET in een cache met
+// het versienummer erin: anders haalt elke telefoon ze na elke update
+// opnieuw binnen. Nieuw model = nieuwe map onder /static/models/.
+const MODEL_CACHE = 'fieldops-modellen-v1';
 
 const SHELL_URLS = [
   '/portaal',
@@ -40,7 +44,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((k) => ![SHELL_CACHE, API_CACHE, RUNTIME_CACHE].includes(k))
+          .filter((k) => ![SHELL_CACHE, API_CACHE, RUNTIME_CACHE, MODEL_CACHE].includes(k))
           .map((k) => caches.delete(k))
       )
     )
@@ -73,6 +77,12 @@ self.addEventListener('fetch', (event) => {
         .catch(() => caches.match('/portaal'))
         .then((res) => res || caches.match('/static/offline.html'))
     );
+    return;
+  }
+
+  // 4a. Modelbestanden: cache-first in een eigen, blijvende cache.
+  if (url.pathname.startsWith('/static/models/')) {
+    event.respondWith(cacheFirst(req, MODEL_CACHE));
     return;
   }
 

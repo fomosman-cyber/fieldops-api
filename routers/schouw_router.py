@@ -35,7 +35,8 @@ import math
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -45,8 +46,9 @@ import schouw_vision as sv
 from audit import log_action
 from auth import get_current_user
 from database import get_db
-from models import Melding, Project, Schouwrit, Schouwwaarneming, User
-from permissions import can_manage_toolbox, require_module
+from models import Melding, Project, SchouwBeeld, Schouwrit, Schouwwaarneming, User
+from models import generate_uuid
+from permissions import can_manage_toolbox, is_org_admin, require_module
 
 router = APIRouter(prefix="/api/schouw", tags=["Schouw"],
                    dependencies=[Depends(require_module("schouw"))])
@@ -76,6 +78,12 @@ class FrameIn(BaseModel):
     # Bewaren van het beeld is optioneel: bij een lange rit is het veel data en
     # meestal is de waarneming genoeg. Bij een aandachtspunt wil je hem wel.
     bewaar_beeld: bool = False
+    # Het toestel heeft mensen en voertuigen verpixeld vóór het versturen.
+    # Alleen zulke beelden worden lesmateriaal.
+    geanonimiseerd: bool = False
+    verpixeld: Optional[int] = Field(default=None, ge=0, le=500)
+    breedte: Optional[int] = Field(default=None, ge=1, le=10000)
+    hoogte: Optional[int] = Field(default=None, ge=1, le=10000)
 
 
 class WaarnemingIn(BaseModel):
@@ -394,6 +402,7 @@ def _rit_dict(r: Schouwrit, *, detail: bool = False) -> dict:
         "inspecteur_naam": r.inspecteur_naam,
         "frames": r.frames,
         "frames_onbruikbaar": r.frames_onbruikbaar,
+        "frames_geanonimiseerd": r.frames_geanonimiseerd or 0,
         "waarnemingen_totaal": len(waarnemingen),
         "te_bevestigen": sum(1 for w in waarnemingen
                              if not w.bevestigd and not w.afgewezen
@@ -627,6 +636,8 @@ def frame(
     r.frames = (r.frames or 0) + 1
     if not resultaat.get("bruikbaar"):
         r.frames_onbruikbaar = (r.frames_onbruikbaar or 0) + 1
+    if payload.geanonimiseerd:
+        r.frames_geanonimiseerd = (r.frames_geanonimiseerd or 0) + 1
 
     # De zekerste eerst: die mag als eerste een bestaande schade claimen.
     wegschade = sorted(resultaat.get("wegschade") or [],
@@ -660,6 +671,7 @@ def frame(
 
     nieuw: list[Schouwwaarneming] = []
     in_beeld_nieuw: list[tuple[Schouwwaarneming, dict]] = []
+    gebied_in_beeld: list[tuple[Schouwwaarneming, dict]] = []
     for w in (resultaat.get("gebied") or []) + nieuwe_schade:
         rij = Schouwwaarneming(
             schouwrit_id=r.id,
@@ -691,19 +703,60 @@ def frame(
         nieuw.append(rij)
         if w.get("schadebeeld"):
             in_beeld_nieuw.append((rij, w))
+        elif w.get("kader"):
+            gebied_in_beeld.append((rij, w))
 
-    db.commit()
-    db.refresh(r)
+    db.flush()      # ids voor de nieuwe waarnemingen
 
-    # Voor het scherm: alles wat in DIT beeld rood moet worden, met het kader
+    # Voor het scherm: alles wat in DIT beeld een kader krijgt, met het kader
     # uit dit beeld -- ook bij een samengevoegde schade, waarvan het bewaarde
-    # kader bij een ander beeld hoort.
+    # kader bij een ander beeld hoort. Schade wordt rood; de rest krijgt een
+    # rand in de kleur van het niveau.
     in_beeld = [
-        {"id": rij.id, "naam": _w_dict(rij)["naam"], "ernst": w.get("ernst"),
-         "kader": w.get("kader")}
+        {"soort": "schade", "id": rij.id, "label": w.get("schadebeeld"),
+         "naam": _w_dict(rij)["naam"], "ernst": w.get("ernst"),
+         "kader": w.get("kader"), "zekerheid": w.get("zekerheid")}
         for rij, w in in_beeld_nieuw + [(d, w) for d, _, w in samengevoegd]
         if w.get("kader")
     ]
+    in_beeld += [
+        {"soort": "gebied", "id": rij.id, "label": w.get("klasse"),
+         "naam": cs.DETECTIEKLASSEN.get(w.get("klasse"), {}).get("naam") or w.get("klasse"),
+         "niveau": w.get("klasse_niveau"), "waarde": w.get("waarde"),
+         "kader": w.get("kader"), "zekerheid": w.get("zekerheid")}
+        for rij, w in gebied_in_beeld
+    ]
+    in_beeld += [
+        {"soort": "object", "id": None, "label": o.get("type"), "naam": o.get("naam"),
+         "niveau": o.get("niveau"), "kader": o.get("kader"), "zekerheid": o.get("zekerheid")}
+        for o in (resultaat.get("objecten") or []) if o.get("kader")
+    ]
+
+    # Lesmateriaal: alleen geanonimiseerde beelden, en dan elk beeld met
+    # schade (dat bewaren we toch al als bewijs) plus een steekproef van de
+    # rest, zodat het model ook leert hoe een straat zonder schade eruitziet.
+    if payload.geanonimiseerd and in_beeld and (
+            wegschade or payload.bewaar_beeld or r.frames % LEERBEELD_ELKE == 0):
+        beeld = SchouwBeeld(
+            id=generate_uuid(), schouwrit_id=r.id,
+            organization_id=current_user.organization_id,
+            photo_url=foto(), breedte=payload.breedte, hoogte=payload.hoogte,
+            verpixeld=payload.verpixeld or 0, lat=payload.lat, lng=payload.lng,
+            kaders=json.dumps([
+                {k: i[k] for k in ("soort", "label", "naam", "niveau", "ernst",
+                                   "kader", "zekerheid") if i.get(k) is not None}
+                | ({"waarneming_id": i["id"]} if i.get("id") else {})
+                for i in in_beeld]),
+            model_id=resultaat.get("_model_id"), vision_versie=resultaat.get("_versie"))
+        db.add(beeld)
+        for rij in nieuw:
+            rij.beeld_id = beeld.id
+        for d, vervangen, _ in samengevoegd:
+            if vervangen:
+                d.beeld_id = beeld.id
+
+    db.commit()
+    db.refresh(r)
     gevonden = [dict(_w_dict(w), samengevoegd=False, beeld_vervangen=True) for w in nieuw]
     gevonden += [dict(_w_dict(d), samengevoegd=True, beeld_vervangen=v)
                  for d, v, _ in samengevoegd]
@@ -803,6 +856,109 @@ def waarneming_bijwerken(
     db.commit()
     db.refresh(w)
     return _w_dict(w)
+
+
+# ── Lesmateriaal ─────────────────────────────────────────────────────
+#
+# Een steekproef van één op de zoveel beelden gaat ook zonder schade de
+# leerset in: een model dat alleen schade heeft gezien, ziet overal schade.
+LEERBEELD_ELKE = 10
+
+
+def _eis_org_admin(current_user: User) -> None:
+    if not is_org_admin(current_user):
+        raise HTTPException(status_code=403,
+                            detail="Alleen een beheerder kan de leerset ophalen")
+
+
+def _status(w: Optional[Schouwwaarneming]) -> str:
+    if w is None:
+        return "voorstel"
+    if w.afgewezen:
+        return "afgewezen"
+    return "bevestigd" if w.bevestigd else "voorstel"
+
+
+@router.get("/leerset")
+def leerset(
+    limit: int = Query(default=500, ge=1, le=5000),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De bewaarde schouwbeelden met hun kaders, in COCO-formaat.
+
+    COCO is wat vrijwel elk trainingsgereedschap inleest. Kaders staan in
+    pixels ([x, y, breedte, hoogte]); per kader staat erbij of het een
+    voorstel van het model is, of door een inspecteur is bevestigd of
+    afgewezen. Afgewezen kaders zijn ook lesmateriaal: ze leren het model wat
+    het níet is.
+    """
+    _eis_org_admin(current_user)
+    beelden = (db.query(SchouwBeeld)
+                 .filter(SchouwBeeld.organization_id == current_user.organization_id)
+                 .order_by(SchouwBeeld.created_at.desc()).limit(limit).all())
+    ids = [wid for b in beelden for k in json.loads(b.kaders or "[]")
+           if (wid := k.get("waarneming_id"))]
+    oordeel = {w.id: w for w in (db.query(Schouwwaarneming)
+                                   .filter(Schouwwaarneming.id.in_(ids)).all() if ids else [])}
+
+    categorieen: dict[tuple[str, str], int] = {}
+    images, annotations = [], []
+    for b in beelden:
+        breedte, hoogte = b.breedte or 0, b.hoogte or 0
+        images.append({
+            "id": b.id,
+            "file_name": (b.photo_url if b.photo_url and not b.photo_url.startswith("data:")
+                          else f"/api/schouw/leerset/beeld/{b.id}"),
+            "width": breedte, "height": hoogte,
+            "date_captured": b.created_at.isoformat() if b.created_at else None,
+            "schouwrit_id": b.schouwrit_id,
+        })
+        for i, k in enumerate(json.loads(b.kaders or "[]")):
+            if not k.get("kader") or not k.get("label"):
+                continue
+            sleutel = (k.get("soort") or "object", k["label"])
+            cat = categorieen.setdefault(sleutel, len(categorieen) + 1)
+            x0, y0, x1, y1 = k["kader"]
+            bw, bh = (x1 - x0) * breedte, (y1 - y0) * hoogte
+            annotations.append({
+                "id": f"{b.id}:{i}", "image_id": b.id, "category_id": cat,
+                "bbox": [round(x0 * breedte, 1), round(y0 * hoogte, 1),
+                         round(bw, 1), round(bh, 1)],
+                "area": round(bw * bh, 1), "iscrowd": 0,
+                "niveau": k.get("niveau"), "ernst": k.get("ernst"),
+                "zekerheid": k.get("zekerheid"),
+                "status": _status(oordeel.get(k.get("waarneming_id"))),
+            })
+    return {
+        "info": {"description": "FieldOps schouw-leerset",
+                 "versie": sv.SCHOUW_VISION_VERSION,
+                 "gemaakt_op": datetime.now(timezone.utc).isoformat()},
+        "images": images,
+        "annotations": annotations,
+        "categories": [{"id": c, "name": label, "supercategory": soort}
+                       for (soort, label), c in sorted(categorieen.items(), key=lambda x: x[1])],
+    }
+
+
+@router.get("/leerset/beeld/{beeld_id}")
+def leerset_beeld(
+    beeld_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Het beeld zelf, voor wie de leerset downloadt."""
+    _eis_org_admin(current_user)
+    b = (db.query(SchouwBeeld)
+           .filter(SchouwBeeld.id == beeld_id,
+                   SchouwBeeld.organization_id == current_user.organization_id)
+           .first())
+    if not b or not b.photo_url:
+        raise HTTPException(status_code=404, detail="Beeld niet gevonden")
+    if not b.photo_url.startswith("data:"):
+        return RedirectResponse(b.photo_url)
+    data, media_type = _data_url_naar_bytes(b.photo_url)
+    return Response(content=data, media_type=media_type)
 
 
 # Hoe een schade als melding binnenkomt. Kritiek laten we aan een mens: dat
@@ -932,6 +1088,9 @@ def verwijderen(
 ):
     _eis_beheer(current_user)
     r = _rit_of_404(db, rit_id, current_user)
+    # Lesbeelden expliciet mee: SQLite handhaaft ON DELETE CASCADE niet altijd.
+    db.query(SchouwBeeld).filter(SchouwBeeld.schouwrit_id == r.id).delete(
+        synchronize_session=False)
     db.delete(r)
     db.commit()
     log_action(db, request, current_user, action="schouw.delete",

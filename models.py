@@ -1973,6 +1973,9 @@ class Schouwrit(Base):
 
     frames = Column(Integer, default=0, nullable=False)
     frames_onbruikbaar = Column(Integer, default=0, nullable=False)
+    # Beelden waarin het toestel mensen en voertuigen heeft verpixeld vóór het
+    # versturen. Zo is achteraf te zien hoeveel van een ronde geanonimiseerd was.
+    frames_geanonimiseerd = Column(Integer, default=0, nullable=False)
 
     # Vastgezet bij afronden, zodat een afgeronde rit niet verandert als de
     # drempels later worden bijgesteld.
@@ -1991,6 +1994,8 @@ class Schouwrit(Base):
     organization = relationship("Organization")
     project = relationship("Project", foreign_keys=[project_id])
     inspecteur = relationship("User", foreign_keys=[inspecteur_id])
+    beelden = relationship("SchouwBeeld", cascade="all, delete-orphan",
+                           passive_deletes=True)
     waarnemingen = relationship("Schouwwaarneming", back_populates="rit",
                                 cascade="all, delete-orphan",
                                 order_by="Schouwwaarneming.created_at")
@@ -2058,6 +2063,9 @@ class Schouwwaarneming(Base):
     # bepaalt of een volgend beeld er nog bij hoort (zie schouw_router).
     keer_gezien = Column(Integer, nullable=False, default=1)
     laatst_gezien_op = Column(DateTime, nullable=True)
+    # Het lesbeeld waar deze waarneming uit komt (schouw_beelden), als dat is
+    # bewaard. Zo telt het oordeel van de inspecteur mee als label.
+    beeld_id = Column(String, nullable=True, index=True)
 
     model_id = Column(String(80), nullable=True)
     vision_versie = Column(String(60), nullable=True)
@@ -2065,6 +2073,42 @@ class Schouwwaarneming(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
     rit = relationship("Schouwrit", back_populates="waarnemingen")
+
+
+class SchouwBeeld(Base):
+    """Een beoordeeld schouwbeeld, bewaard als lesmateriaal.
+
+    Een eigen herkenningsmodel leer je met beelden waar kaders omheen staan
+    met wat erin zit. Elke schouw levert die op: het model zet de kaders neer,
+    de inspecteur bevestigt of wijst af. `kaders` is wat er in dit beeld is
+    herkend; het oordeel van de inspecteur staat op de waarnemingen die naar
+    dit beeld verwijzen.
+
+    **Alleen geanonimiseerde beelden.** Lesmateriaal wordt lang bewaard en
+    voor een ander doel gebruikt dan het bewijs van één schade. Daar horen
+    geen herkenbare mensen of kentekens in. Een beeld dat niet op het toestel
+    is verpixeld, komt hier niet.
+    """
+    __tablename__ = "schouw_beelden"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    schouwrit_id = Column(String, ForeignKey("schouwritten.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    photo_url = Column(Text, nullable=True)
+    breedte = Column(Integer, nullable=True)        # pixels, voor kaders in pixels
+    hoogte = Column(Integer, nullable=True)
+    verpixeld = Column(Integer, nullable=False, default=0)   # aantal verpixelde vakken
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+
+    # JSON: [{soort, label, naam, niveau|ernst, kader, zekerheid, waarneming_id}]
+    kaders = Column(Text, nullable=False, default="[]")
+
+    model_id = Column(String(80), nullable=True)
+    vision_versie = Column(String(60), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
 class Invoice(Base):

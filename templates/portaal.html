@@ -4466,6 +4466,7 @@
             <div id="schouwActiefMeta" style="font-size:12.5px;color:var(--text-muted);margin-top:2px;"></div>
           </div>
           <div style="display:flex;gap:8px;">
+            <button class="btn-secondary" id="schouwWeergaveBtn" onclick="schouwWisselWeergave()">Toon live</button>
             <button class="btn-secondary" id="schouwPauzeBtn" onclick="schouwPauze()">Pauze</button>
             <button class="btn-secondary" onclick="schouwAfronden()">Afronden</button>
           </div>
@@ -4478,12 +4479,17 @@
                (25% dekkend, 75% doorlatend) op elke gevonden schade. Zelfde
                uitsnede als de video: preserveAspectRatio "slice" doet voor de
                SVG wat object-fit:cover voor de video doet. -->
-          <div id="schouwSchadeLaag" onclick="schouwSchadeSluit()"
+          <div id="schouwSchadeLaag" onclick="schouwLaagTik()"
                style="display:none;position:absolute;inset:0;cursor:pointer;">
             <svg id="schouwSchadeBeeld" preserveAspectRatio="xMidYMid slice"
                  style="width:100%;height:100%;display:block;" role="img"
-                 aria-label="Gevonden schade in het laatst beoordeelde beeld"></svg>
-            <div style="position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.65);color:#fff;
+                 aria-label="Het laatst beoordeelde beeld met wat erin herkend is"></svg>
+            <!-- Klein live-beeld: in de herkenningsweergave zie je het beoordeelde
+                 beeld groot, en richt je met dit kleine beeld de camera. -->
+            <video id="schouwVideoKlein" playsinline muted autoplay
+                   style="display:none;position:absolute;right:8px;bottom:8px;width:28%;
+                   border-radius:8px;border:2px solid #fff;background:#000;"></video>
+            <div id="schouwLaagLabel" style="position:absolute;left:8px;bottom:8px;background:rgba(0,0,0,.65);color:#fff;
                  border-radius:999px;padding:4px 10px;font-size:12px;">Beeld van zojuist &middot; tik voor de camera</div>
           </div>
           <div id="schouwBadge" style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);
@@ -9667,6 +9673,35 @@
     var SCHOUW_BEELDEN_MAX = 15;
     var _schouwBeeldPer = {};       // waarneming-id -> beeld
     var _schouwBeeldRij = [];       // beelden, oudste eerst
+
+    // Weergave. "herkenning": het laatst beoordeelde beeld groot, met een kader
+    // om alles wat erin herkend is, en klein het live-beeld om te richten.
+    // "live": de camera groot; alleen bij schade flitst het beeld vijf seconden.
+    var _schouwWeergave = 'herkenning';
+    try { _schouwWeergave = localStorage.getItem('fieldops_schouw_weergave') || 'herkenning'; } catch (e) {}
+    var _schouwLaatste = null;      // {beeld, items} van het laatst beoordeelde beeld
+
+    // Verpixelen op het toestel, vóór het versturen. Een open herkenningsmodel
+    // (COCO-SSD, Apache-2.0) vindt mensen en voertuigen; die worden
+    // onherkenbaar gemaakt. De modelbestanden staan op onze eigen server, dus
+    // er gaat niets naar derden. Lukt het laden niet, dan gaat de schouw door
+    // zoals voorheen (gericht, verantwoordelijkheid bij de inspecteur) en zegt
+    // het scherm dat er niet verpixeld wordt.
+    // Per soort een eigen drempel. Mensen: gevoelig afgesteld, een gemist
+    // gezicht is erger dan een verpixelde paal. Voertuigen: pas bij een
+    // duidelijke herkenning, en nooit een vak over het halve beeld -- een
+    // "auto" van 26% zekerheid bleek in een test de halve weg te zijn, en die
+    // weg is precies wat de schouw moet beoordelen.
+    var SCHOUW_PRIVACY_KLASSEN = { person: 0.30, car: 0.50, truck: 0.50, bus: 0.50, motorcycle: 0.50 };
+    var SCHOUW_VOERTUIG_MAX_OPPERVLAK = 0.40;   // deel van het beeld
+    var SCHOUW_ANONIEM_SCRIPTS = [
+      ['https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js',
+       'sha384-vE8hbVJ4lezako5rlvE7bY0BVzWlFhZncPlckrqNwcUQpVtgbENTgZ8TBbnPjZre'],
+      ['https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js',
+       'sha384-7qLdgfEQyO9ZQi9ArRHigK+IBto4XPk468jAqc+fnsXaZIcMAhQeLwzggRK7aESl']
+    ];
+    var _schouwAnoniem = null;      // het geladen model
+    var _schouwAnoniemBezig = null; // promise zolang het laadt
     var _schouwCatalogus = null;
     var _schouwRit = null;
     var _schouwStream = null;
@@ -9850,6 +9885,7 @@
         _schouwRit = r;
         document.getElementById('schouwStart').style.display = 'none';
         document.getElementById('schouwActief').style.display = '';
+        _schouwWeergaveKnop();
         _schouwToonKop();
         _schouwCameraAan();
         _schouwGpsAan();
@@ -9865,7 +9901,8 @@
         _schouwRit.gebied || 'Schouwronde';
       document.getElementById('schouwActiefMeta').textContent =
         (_schouwRit.gebiedstype_label || '') + ' · ambitie ' + _schouwRit.ambitie
-        + ' · ' + _schouwRit.frames + ' beelden';
+        + ' · ' + _schouwRit.frames + ' beelden'
+        + (_schouwRit.frames_geanonimiseerd ? ', ' + _schouwRit.frames_geanonimiseerd + ' verpixeld' : '');
     }
 
     function _schouwCameraAan() {
@@ -9882,7 +9919,10 @@
       }).then(function (stream) {
         _schouwStream = stream;
         video.srcObject = stream;
+        var klein = document.getElementById('schouwVideoKlein');
+        if (klein) klein.srcObject = stream;
         badge.textContent = 'opname loopt';
+        _schouwAnoniemLaad();
         _schouwTimerAan();
       }).catch(function (e) {
         // Geen camera is geen ramp: handmatig vastleggen werkt nog.
@@ -9948,35 +9988,21 @@
       canvas.height = Math.round(video.videoHeight * schaal);
       canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      var beeld = { src: canvas.toDataURL('image/jpeg', 0.8), w: canvas.width, h: canvas.height };
-      var body = { image_data_url: beeld.src };
-      if (_schouwPositie) {
-        body.lat = _schouwPositie.coords.latitude;
-        body.lng = _schouwPositie.coords.longitude;
-        body.nauwkeurigheid_m = _schouwPositie.coords.accuracy;
-      }
-
-      api('POST', '/api/schouw/ritten/' + _schouwRit.id + '/frame', body)
-        .then(function (res) {
-          _schouwRit = res.rit;
-          _schouwToonKop();
-          _schouwTussenstand(res.rit.tussenstand);
-          // Rood wordt wat in DIT beeld is gezien, met het kader uit dit beeld.
-          var schades = res.in_beeld || [];
-          // Onthouden alleen waar dit beeld het bewijs is: bij een samengevoegde
-          // schade die elders beter in beeld was, hoort het bewaarde kader bij
-          // een ander beeld.
-          (res.gevonden || []).forEach(function (w) {
-            if (w.wegschade && w.kader && w.beeld_vervangen) _schouwBeeldBewaar(w, beeld);
-          });
-          if (res.gevonden && res.gevonden.length) _schouwVoegToe(res.gevonden);
-          if (schades.length) {
-            _schouwToonSchade(beeld, schades, 5000);
-          } else {
-            document.getElementById('schouwBadge').textContent =
-              res.bruikbaar ? 'opname loopt' : ('overgeslagen: ' + (res.reden_onbruikbaar || 'onbruikbaar'));
+      // Eerst verpixelen. Het eerste beeld wacht op het model (hooguit
+      // twintig seconden), zodat de ronde niet begint met onverpixelde beelden.
+      _schouwAnoniemKlaar()
+        .then(function (model) { return model ? _schouwVerpixel(model, canvas) : null; })
+        .then(function (verpixeld) {
+          var beeld = { src: canvas.toDataURL('image/jpeg', 0.8), w: canvas.width, h: canvas.height };
+          var body = { image_data_url: beeld.src, breedte: canvas.width, hoogte: canvas.height };
+          if (verpixeld !== null) { body.geanonimiseerd = true; body.verpixeld = verpixeld; }
+          if (_schouwPositie) {
+            body.lat = _schouwPositie.coords.latitude;
+            body.lng = _schouwPositie.coords.longitude;
+            body.nauwkeurigheid_m = _schouwPositie.coords.accuracy;
           }
-          _schouwMeld('schouwMelding', '');
+          return api('POST', '/api/schouw/ritten/' + _schouwRit.id + '/frame', body)
+            .then(function (res) { _schouwVerwerk(res, beeld, verpixeld); });
         })
         .catch(function (e) {
           _schouwMeld('schouwMelding', e.message || 'Analyse mislukt', 'fout');
@@ -9986,6 +10012,126 @@
           _schouwBezig = false;
           _schouwPlan(Math.max(SCHOUW_MIN_MS - (Date.now() - start), 250));
         });
+    }
+
+    function _schouwVerwerk(res, beeld, verpixeld) {
+      _schouwRit = res.rit;
+      _schouwToonKop();
+      _schouwTussenstand(res.rit.tussenstand);
+      var items = res.in_beeld || [];
+      var schades = items.filter(function (i) { return i.soort === 'schade'; });
+      // Onthouden alleen waar dit beeld het bewijs is: bij een samengevoegde
+      // schade die elders beter in beeld was, hoort het bewaarde kader bij
+      // een ander beeld.
+      (res.gevonden || []).forEach(function (w) {
+        if (w.wegschade && w.kader && w.beeld_vervangen) _schouwBeeldBewaar(w, beeld);
+      });
+      if (res.gevonden && res.gevonden.length) _schouwVoegToe(res.gevonden);
+      _schouwLaatste = { beeld: beeld, items: items, verpixeld: verpixeld };
+
+      if (!res.bruikbaar) {
+        document.getElementById('schouwBadge').textContent =
+          'overgeslagen: ' + (res.reden_onbruikbaar || 'onbruikbaar');
+      } else if (_schouwWeergave === 'herkenning') {
+        _schouwTekenBeeld(beeld, items, 0, true);
+      } else if (schades.length) {
+        _schouwTekenBeeld(beeld, schades, 5000, false);
+      } else {
+        document.getElementById('schouwBadge').textContent = 'opname loopt';
+      }
+      _schouwMeld('schouwMelding', '');
+    }
+
+    // ── Verpixelen ──────────────────────────────────────────────────
+    function _schouwScript(url, integriteit) {
+      return new Promise(function (ok, fout) {
+        var el = document.createElement('script');
+        el.src = url;
+        el.integrity = integriteit;
+        el.crossOrigin = 'anonymous';
+        el.onload = ok;
+        el.onerror = function () { fout(new Error('laden mislukt: ' + url)); };
+        document.head.appendChild(el);
+      });
+    }
+
+    function _schouwAnoniemLaad() {
+      if (_schouwAnoniem || _schouwAnoniemBezig) return _schouwAnoniemBezig;
+      var badge = document.getElementById('schouwBadge');
+      if (badge) badge.textContent = 'verpixelen wordt geladen…';
+      // TensorFlow.js zet bij het laden `regeneratorRuntime = ...`. In strict
+      // mode mislukt dat als de variabele niet bestaat, en dan valt het terug
+      // op Function(...) -- wat onze Content-Security-Policy (terecht) weigert,
+      // waarna de rest van de bundel niet laadt. Bestaat hij al, dan slaagt de
+      // toewijzing en is er geen eval nodig. Zo hoeft de CSP niet soepeler.
+      if (!('regeneratorRuntime' in window)) window.regeneratorRuntime = undefined;
+      var eerst = window.tf ? Promise.resolve()
+        : _schouwScript(SCHOUW_ANONIEM_SCRIPTS[0][0], SCHOUW_ANONIEM_SCRIPTS[0][1]);
+      _schouwAnoniemBezig = eerst
+        .then(function () {
+          return window.cocoSsd ? null
+            : _schouwScript(SCHOUW_ANONIEM_SCRIPTS[1][0], SCHOUW_ANONIEM_SCRIPTS[1][1]);
+        })
+        .then(function () {
+          return window.cocoSsd.load({ base: 'lite_mobilenet_v2',
+                                       modelUrl: '/static/models/coco-ssd-lite/model.json' });
+        })
+        .then(function (model) {
+          _schouwAnoniem = model;
+          if (badge && _schouwRit) badge.textContent = 'opname loopt · verpixelen aan';
+          return model;
+        })
+        .catch(function (e) {
+          _schouwAnoniemBezig = null;
+          if (badge && _schouwRit) badge.textContent = 'opname loopt · zonder verpixelen';
+          _schouwMeld('schouwMelding',
+            'Verpixelen kon niet geladen worden (' + (e.message || 'onbekend') + '). '
+            + 'Richt de camera zelf zo dat er geen mensen of kentekens in beeld komen.', 'fout');
+          return null;
+        });
+      return _schouwAnoniemBezig;
+    }
+
+    function _schouwAnoniemKlaar() {
+      if (_schouwAnoniem) return Promise.resolve(_schouwAnoniem);
+      if (!_schouwAnoniemBezig) return Promise.resolve(null);
+      return Promise.race([
+        _schouwAnoniemBezig,
+        new Promise(function (ok) { setTimeout(function () { ok(null); }, 20000); })
+      ]);
+    }
+
+    // Mensen en voertuigen onherkenbaar maken, op het beeld zelf. Het vak
+    // wordt ruim genomen en grof geblokt: een gezicht of kenteken wordt één
+    // of twee blokken. Geeft het aantal verpixelde vakken, of null als het
+    // herkennen misging -- dan claimen we ook niet dat het beeld anoniem is.
+    function _schouwVerpixel(model, canvas) {
+      return model.detect(canvas, 40, 0.25).then(function (voorspellingen) {
+        var ctx = canvas.getContext('2d');
+        var n = 0;
+        voorspellingen.forEach(function (p) {
+          var drempel = SCHOUW_PRIVACY_KLASSEN[p['class']];
+          if (!drempel || p.score < drempel) return;
+          var b = p.bbox;
+          if (p['class'] !== 'person'
+              && (b[2] * b[3]) / (canvas.width * canvas.height) > SCHOUW_VOERTUIG_MAX_OPPERVLAK) return;
+          var mx = b[2] * 0.12, my = b[3] * 0.12;
+          var x = Math.max(0, Math.floor(b[0] - mx)), y = Math.max(0, Math.floor(b[1] - my));
+          var w = Math.min(canvas.width - x, Math.ceil(b[2] + 2 * mx));
+          var h = Math.min(canvas.height - y, Math.ceil(b[3] + 2 * my));
+          if (w < 2 || h < 2) return;
+          var blok = Math.max(12, Math.round(Math.max(w, h) / 10));
+          var klein = document.createElement('canvas');
+          klein.width = Math.max(1, Math.ceil(w / blok));
+          klein.height = Math.max(1, Math.ceil(h / blok));
+          klein.getContext('2d').drawImage(canvas, x, y, w, h, 0, 0, klein.width, klein.height);
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(klein, 0, 0, klein.width, klein.height, x, y, w, h);
+          ctx.imageSmoothingEnabled = true;
+          n++;
+        });
+        return n;
+      }).catch(function () { return null; });
     }
 
     function _schouwBeeldBewaar(w, beeld) {
@@ -10003,40 +10149,91 @@
 
     // Het beoordeelde beeld over de video, met een rood vlak op elke schade.
     // ms > 0: vanzelf weer weg na zoveel milliseconden; 0: blijft tot je tikt.
+    var SCHOUW_NIVEAU_KLEUR = { 'A+': '#22C55E', 'A': '#22C55E', 'B': '#EAB308',
+                                'C': '#F97316', 'D': '#EF4444' };
+
     function _schouwToonSchade(beeld, schades, ms) {
+      _schouwTekenBeeld(beeld, schades.map(function (s) {
+        return Object.assign({ soort: 'schade' }, s);
+      }), ms, false);
+    }
+
+    // Het beoordeelde beeld over de video. Schade krijgt een rood vlak op 25%
+    // (de schade blijft er doorheen te zien); al het andere een rand in de
+    // kleur van zijn niveau, met naam en niveau erbij.
+    // ms > 0: vanzelf weer weg na zoveel milliseconden; 0: blijft staan.
+    function _schouwTekenBeeld(beeld, items, ms, herkenning) {
       var svg = document.getElementById('schouwSchadeBeeld');
       var w = beeld.w, h = beeld.h;
-      var letter = Math.max(12, Math.round(w / 55));
-      var inhoud = '<image href="' + _esc(beeld.src) + '" x="0" y="0" width="' + w + '" height="' + h + '"/>';
-      schades.forEach(function (s) {
-        var k = s.kader;
-        var x = k[0] * w, y = k[1] * h, bw = (k[2] - k[0]) * w, bh = (k[3] - k[1]) * h;
-        // 25% rood, 75% doorlatend: de schade blijft er doorheen te zien.
-        inhoud += '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + bh + '"'
-          + ' fill="#FF0000" fill-opacity="0.25" stroke="#FF0000" stroke-width="2"'
-          + ' vector-effect="non-scaling-stroke"/>';
-        var tekst = s.naam + (s.ernst ? ' · ' + s.ernst : '');
-        var ty = y > letter * 1.6 ? y - letter * 0.45 : y + bh + letter * 1.1;
-        inhoud += '<text x="' + (x + 2) + '" y="' + ty + '" font-size="' + letter + '"'
-          + ' font-family="system-ui, sans-serif" font-weight="600" fill="#FFFFFF"'
-          + ' stroke="#000000" stroke-width="' + (letter / 5) + '" paint-order="stroke">'
-          + _esc(tekst) + '</text>';
-      });
-      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
-      svg.innerHTML = inhoud;
       // Zonder lopende camera (nakijken achteraf, of geen toegang) heeft het
       // videovak geen maat van zichzelf. Dan krijgt het de verhouding van het
       // beeld, anders zie je alleen een strook ervan.
       var video = document.getElementById('schouwVideo');
       var live = !!(video && video.videoWidth);
       if (video && !live) video.style.aspectRatio = w + ' / ' + h;
+      document.getElementById('schouwSchadeLaag').style.display = 'block';
+      // Letters op ongeveer 13 pixels op het scherm, hoe groot het beeld ook
+      // is: rekenen vanaf de weergave, niet vanaf de pixels van het beeld.
+      var vak = svg.getBoundingClientRect();
+      var sx = vak.width / w, sy = vak.height / h;
+      var schaal = live ? Math.max(sx, sy) : Math.min(sx, sy);
+      var letter = schaal > 0 ? 13 / schaal : Math.max(12, Math.round(w / 60));
+      var inhoud = '<image href="' + _esc(beeld.src) + '" x="0" y="0" width="' + w + '" height="' + h + '"/>';
+      // Schade als laatste, zodat het rood bovenop ligt.
+      var volgorde = items.filter(function (i) { return i.soort !== 'schade'; })
+        .concat(items.filter(function (i) { return i.soort === 'schade'; }));
+      volgorde.forEach(function (s) {
+        var k = s.kader;
+        if (!k) return;
+        var x = k[0] * w, y = k[1] * h, bw = (k[2] - k[0]) * w, bh = (k[3] - k[1]) * h;
+        var schade = s.soort === 'schade';
+        var kleur = schade ? '#FF0000' : (SCHOUW_NIVEAU_KLEUR[s.niveau] || '#38BDF8');
+        inhoud += '<rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + bh + '"'
+          + (schade ? ' fill="#FF0000" fill-opacity="0.25"' : ' fill="none"')
+          + ' stroke="' + kleur + '" stroke-width="2" vector-effect="non-scaling-stroke"/>';
+        var extra = schade ? s.ernst
+          : (s.niveau || (s.waarde !== null && s.waarde !== undefined ? s.waarde : ''));
+        var tekst = s.naam + (extra ? ' · ' + extra : '');
+        var ty = y > letter * 1.6 ? y - letter * 0.45 : y + bh + letter * 1.1;
+        inhoud += '<text x="' + (x + 2) + '" y="' + ty + '" font-size="' + letter + '"'
+          + ' font-family="system-ui, sans-serif" font-weight="600" fill="' + (schade ? '#FFFFFF' : kleur) + '"'
+          + ' stroke="#000000" stroke-width="' + (letter / 5) + '" paint-order="stroke">'
+          + _esc(tekst) + '</text>';
+      });
+      svg.setAttribute('viewBox', '0 0 ' + w + ' ' + h);
+      svg.innerHTML = inhoud;
       // Live: zelfde uitsnede als de video. Achteraf: het hele beeld, niets eraf.
       svg.setAttribute('preserveAspectRatio', live ? 'xMidYMid slice' : 'xMidYMid meet');
-      document.getElementById('schouwSchadeLaag').style.display = 'block';
-      document.getElementById('schouwBadge').textContent =
-        schades.length === 1 ? '1 schade in beeld' : schades.length + ' schades in beeld';
+      document.getElementById('schouwVideoKlein').style.display = (herkenning && live) ? 'block' : 'none';
+      document.getElementById('schouwLaagLabel').textContent = herkenning
+        ? 'Herkenning · tik voor alleen de camera' : 'Beeld van zojuist · tik voor de camera';
+
+      var nSchade = items.filter(function (i) { return i.soort === 'schade'; }).length;
+      var badge = [];
+      if (herkenning) badge.push(items.length + ' herkend');
+      if (nSchade) badge.push(nSchade === 1 ? '1 schade' : nSchade + ' schades');
+      if (herkenning && _schouwLaatste && _schouwLaatste.verpixeld) badge.push(_schouwLaatste.verpixeld + ' verpixeld');
+      document.getElementById('schouwBadge').textContent = badge.join(' · ') || 'niets herkend';
       if (_schouwSchadeTimer) clearTimeout(_schouwSchadeTimer);
       _schouwSchadeTimer = ms ? setTimeout(schouwSchadeSluit, ms) : null;
+    }
+
+    function schouwLaagTik() {
+      if (_schouwWeergave === 'herkenning') schouwWisselWeergave();
+      else schouwSchadeSluit();
+    }
+
+    function schouwWisselWeergave() {
+      _schouwWeergave = _schouwWeergave === 'herkenning' ? 'live' : 'herkenning';
+      try { localStorage.setItem('fieldops_schouw_weergave', _schouwWeergave); } catch (e) {}
+      _schouwWeergaveKnop();
+      if (_schouwWeergave === 'live') schouwSchadeSluit();
+      else if (_schouwLaatste) _schouwTekenBeeld(_schouwLaatste.beeld, _schouwLaatste.items, 0, true);
+    }
+
+    function _schouwWeergaveKnop() {
+      var knop = document.getElementById('schouwWeergaveBtn');
+      if (knop) knop.textContent = _schouwWeergave === 'herkenning' ? 'Toon live' : 'Toon herkenning';
     }
 
     function schouwSchadeSluit() {
@@ -10225,6 +10422,9 @@
       schouwSchadeSluit();
       _schouwBeeldPer = {};
       _schouwBeeldRij = [];
+      _schouwLaatste = null;
+      var klein = document.getElementById('schouwVideoKlein');
+      if (klein) klein.srcObject = null;
       if (_schouwWatch !== null && navigator.geolocation) {
         navigator.geolocation.clearWatch(_schouwWatch);
         _schouwWatch = null;

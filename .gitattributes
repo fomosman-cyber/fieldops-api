@@ -1,0 +1,3 @@
+
+# Modelgewichten zijn binair; nooit regeleinden omzetten.
+static/models/**/group1-shard* binary

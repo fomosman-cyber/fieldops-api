@@ -49,7 +49,7 @@ from typing import Optional
 import crow_schouw as cs
 import crow_wegschade as cw
 
-SCHOUW_VISION_VERSION = "schouw-vision.v2-2026-09"
+SCHOUW_VISION_VERSION = "schouw-vision.v3-2026-09"
 
 # Het model voor de schouw. Eigen omgevingsvariabele, zodat de schouw niet
 # meeverandert als iemand CLAUDE_MODEL voor de inspecties omzet. Elke paar
@@ -61,6 +61,14 @@ MODEL_STANDAARD = "claude-opus-5"
 # apart gaat benoemen. Dan liever de duidelijkste acht.
 MAX_WEGSCHADE_PER_BEELD = 8
 
+# Elk object krijgt een kader, ook als het in orde is. Dat kost tekst in het
+# antwoord, en tekst kost tijd: bij twaalf objecten blijft een beeld binnen de
+# paar seconden. Meer dan dit staat er zelden scherp genoeg in beeld om iets
+# over te zeggen.
+MAX_OBJECTEN_PER_BEELD = 12
+
+OBJECT_NIVEAUS = ("A+", "A", "B", "C", "D")
+
 # Boven deze zekerheid mag een waarneming zonder tussenkomst doorstromen naar
 # een beeldkwaliteitsscore. Bewust hoog: een onterecht "schoon" kost een
 # gemeente niets, een onterecht "vervuild" kost een aannemer geld.
@@ -71,11 +79,24 @@ class NietGeblurd(RuntimeError):
     """Het beeld is niet als privacy-gecontroleerd aangemerkt."""
 
 
-# Objecten die je op een straatbeeld kunt aanwijzen en die car2023 kent.
+# Objecten die je op een straatbeeld kunt aanwijzen. De eerste tien kent
+# car2023 ook; de rest staat er omdat ze in elk straatbeeld zitten en een
+# inspecteur ze in het beeld verwacht terug te zien.
 OBJECT_TYPES: list[str] = [
     "verkeersbord", "lichtmast", "bewegwijzering", "afvalbak", "zitbank",
     "paal_poller", "fietsenrek", "abri", "hekwerk", "boom",
+    "verkeerslicht", "trottoirband", "kolk", "putdeksel",
 ]
+
+# Zoals een inspecteur ze noemt, voor het scherm.
+OBJECT_NAMEN: dict[str, str] = {
+    "verkeersbord": "Verkeersbord", "lichtmast": "Lichtmast",
+    "bewegwijzering": "Bewegwijzering", "afvalbak": "Afvalbak",
+    "zitbank": "Zitbank", "paal_poller": "Paal", "fietsenrek": "Fietsenrek",
+    "abri": "Abri", "hekwerk": "Hekwerk", "boom": "Boom",
+    "verkeerslicht": "Verkeerslicht", "trottoirband": "Trottoirband",
+    "kolk": "Kolk", "putdeksel": "Putdeksel",
+}
 
 _OBJECT_ASPECTEN = ["heelheid", "reinheid", "stabiliteit", "functie"]
 
@@ -128,10 +149,20 @@ Per schade:
 - losse schades apart; hetzelfde schadebeeld op twee plekken is twee keer
 - hooguit {MAX_WEGSCHADE_PER_BEELD} schades per beeld, de duidelijkste eerst
 
-OBJECTEN die je los mag benoemen: {', '.join(OBJECT_TYPES)}
-Per object mag je per aspect ({', '.join(_OBJECT_ASPECTEN)}) melden of er iets
-opvalt. Beoordeel alleen wat zichtbaar is. Beoordeel niet of iets aan een norm
+OBJECTEN: benoem ELK object uit deze lijst dat duidelijk in beeld staat, ook
+als het in orde is: {', '.join(OBJECT_TYPES)}
+Per object:
+- "niveau": hoe het eruitziet, op het slechtste zichtbare aspect
+  ({', '.join(_OBJECT_ASPECTEN)}): A+ als nieuw, A in orde, B licht gebrek,
+  C duidelijk gebrek, D sterk gebrek
+- "kader": waar het object in het beeld staat, zelfde notatie als bij schade
+- "aspect" en "waarneming" alleen als het niveau B of slechter is
+- hooguit {MAX_OBJECTEN_PER_BEELD} objecten, de grootste en duidelijkste eerst
+Beoordeel alleen wat zichtbaar is. Beoordeel niet of iets aan een norm
 voldoet, of iets veilig is, of hoe oud het is.
+
+KADERS: geef elk getal met twee decimalen. Ook bij "gebied" mag een kader,
+als de waarneming op één plek zit (een stapel afval, een scheve mast).
 
 ZEKERHEID is een getal tussen 0 en 1. Wees streng: geef 0.9 of hoger alleen bij
 iets dat scherp in beeld staat en onmiskenbaar is. Bij regen, tegenlicht,
@@ -145,6 +176,7 @@ Antwoord met uitsluitend geldige JSON, zonder toelichting eromheen:
     {{"klasse": "afval_los", "drager": "elementenverharding", "waarde": 3,
       "zekerheid": 0.86, "toelichting": "drie blikjes op het trottoir"}},
     {{"klasse": "scheefstand", "drager": "lichtmast", "klasse_niveau": "C",
+      "kader": [0.71, 0.08, 0.78, 0.66],
       "zekerheid": 0.74, "toelichting": "mast helt duidelijk"}}
   ],
   "wegschade": [
@@ -153,8 +185,10 @@ Antwoord met uitsluitend geldige JSON, zonder toelichting eromheen:
       "zekerheid": 0.83, "toelichting": "open langsscheur in het rechter wielspoor"}}
   ],
   "objecten": [
-    {{"type": "afvalbak", "aspect": "reinheid", "waarneming": "bak zit vol",
-      "zekerheid": 0.72}}
+    {{"type": "verkeersbord", "niveau": "A", "kader": [0.52, 0.30, 0.60, 0.45],
+      "zekerheid": 0.9}},
+    {{"type": "afvalbak", "niveau": "C", "kader": [0.12, 0.55, 0.20, 0.78],
+      "aspect": "reinheid", "waarneming": "bak zit vol", "zekerheid": 0.72}}
   ]
 }}
 
@@ -224,6 +258,7 @@ def _schoon(rauw: dict) -> dict:
             "klasse_niveau": niveau,
             "zekerheid": zekerheid,
             "toelichting": (w.get("toelichting") or "")[:300] or None,
+            "kader": _kader(w.get("kader")),
             "beoordeling_nodig": (code is None or zekerheid is None
                                   or zekerheid < DREMPEL_AUTOMATISCH),
         })
@@ -235,15 +270,19 @@ def _schoon(rauw: dict) -> dict:
         gebied = [w for w in gebied if w["klasse"] != "verharding"]
 
     objecten = []
-    for o in (rauw.get("objecten") or []):
-        if o.get("type") not in OBJECT_TYPES:
+    for o in (rauw.get("objecten") or [])[:MAX_OBJECTEN_PER_BEELD]:
+        if not isinstance(o, dict) or o.get("type") not in OBJECT_TYPES:
             continue
         aspect = o.get("aspect")
         if aspect not in _OBJECT_ASPECTEN:
             aspect = None
         zekerheid = _getal(o.get("zekerheid"), 0.0, 1.0)
+        niveau = o.get("niveau") if o.get("niveau") in OBJECT_NIVEAUS else None
         objecten.append({
             "type": o["type"],
+            "naam": OBJECT_NAMEN.get(o["type"], o["type"]),
+            "niveau": niveau,
+            "kader": _kader(o.get("kader")),
             "aspect": aspect,
             "waarneming": (o.get("waarneming") or "")[:300] or None,
             "zekerheid": zekerheid,
