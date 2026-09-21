@@ -12,6 +12,7 @@ Endpoints:
   POST   /api/toolbox/{id}/deelnemers/{did}/sign   Tekenen
   POST   /api/toolbox/{id}/afsluiten            Presentielijst definitief maken
   GET    /api/toolbox/{id}/export.pdf           Toolbox + ondertekende presentielijst
+  GET    /api/toolbox/{id}/export.xlsx          Zelfde inhoud en presentielijst als werkboek
 
 Rolverdeling: opstellen, wijzigen en afsluiten is voor admin/manager — de
 uitvoerder leidt de bespreking. Tekenen mag iedereen die is ingelogd, en
@@ -21,11 +22,13 @@ een account nodig hebben.
 import base64
 import io
 import json
+import re
+import unicodedata
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fpdf.fonts import FontFace
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -33,6 +36,9 @@ import toolbox_ai
 from audit import log_action
 from auth import get_current_user
 from database import get_db
+from export_huisstijl import (BLAUW, GRIJS, INKT, LETTER_PDF, LIJN, STREEP, WIT, Blad,
+                              HuisstijlPDF, Kolom, als_tekst, excel_antwoord, excel_van,
+                              klant_van, naar_nl, pdf_antwoord, rgb)
 from models import Asset, Melding, Organization, Project, Toolbox, ToolboxDeelnemer, User
 from permissions import can_manage_toolbox, require_module
 
@@ -495,7 +501,139 @@ def afsluiten(
     return _toolbox_to_dict(t, include_deelnemers=True)
 
 
-# ── PDF ──────────────────────────────────────────────────────────────
+# ── Export: PDF en Excel ─────────────────────────────────────────────
+#
+# In de huisstijl van export_huisstijl: FieldOps-kleuren, met het logo en de
+# gegevens van de klant in het briefhoofd. De presentielijst heeft in PDF en
+# Excel dezelfde kolommen; alleen de PDF draagt de handtekeningen zelf.
+
+KOLOMMEN_GEGEVENS = [Kolom("Onderdeel", breedte=30), Kolom("Waarde", breedte=70)]
+KOLOMMEN_AANWEZIGEN = [Kolom("Naam", breedte=62), Kolom("Bedrijf", breedte=48),
+                       Kolom("Aanwezig", breedte=24), Kolom("Handtekening", breedte=46)]
+
+_TITEL = "Toolbox"
+_RIJ_MET_HANDTEKENING = 14.0   # mm; genoeg om een handtekening te herkennen
+
+
+def _gegevens(t: Toolbox, org_naam: str) -> list[tuple[str, str]]:
+    gegevens = [
+        ("Project", t.project.name if t.project else "-"),
+        ("Datum", t.datum.strftime("%d-%m-%Y") if t.datum else "-"),
+        ("Gehouden door", t.houder_naam or "-"),
+        ("Organisatie", org_naam),
+        ("Status", t.status),
+    ]
+    if t.ai_gegenereerd:
+        gegevens.append(("Opgesteld met",
+                         f"AI-voorstel ({t.ai_model or 'onbekend model'}), "
+                         "nagelopen door de opsteller"))
+    return gegevens
+
+
+def _getekend_op(d: ToolboxDeelnemer) -> str:
+    if not d.signed_at:
+        return "getekend"
+    moment = d.signed_at if d.signed_at.tzinfo else d.signed_at.replace(tzinfo=timezone.utc)
+    return f"getekend op {naar_nl(moment).strftime('%d-%m-%Y %H:%M')}"
+
+
+def _aanwezigen_rij(d: ToolboxDeelnemer) -> list:
+    """Eén regel van de presentielijst. In Excel staat bij de handtekening
+    wanneer er getekend is; de PDF zet daar de handtekening zelf neer."""
+    return [d.naam, d.bedrijf or ("-" if d.user_id else "extern"), bool(d.aanwezig),
+            _getekend_op(d) if d.signature_data_url else ""]
+
+
+def _handtekening(data_url: Optional[str]) -> Optional[bytes]:
+    """De handtekening als PNG, of None als hij niet te lezen is.
+
+    Vooraf gecontroleerd: een kapotte afbeelding halverwege de tabel zou de
+    hele PDF laten klappen, en een onleesbare handtekening mag het document
+    niet slopen.
+    """
+    if not data_url or "," not in data_url:
+        return None
+    try:
+        from PIL import Image
+        ruw = base64.b64decode(data_url.split(",", 1)[1])
+        with Image.open(io.BytesIO(ruw)) as beeld:
+            beeld.load()
+            uit = io.BytesIO()
+            beeld.convert("RGBA").save(uit, format="PNG")
+            return uit.getvalue()
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _presentielijst(pdf: HuisstijlPDF, deelnemers: list) -> None:
+    """Presentielijst met de handtekening in de laatste kolom.
+
+    Zelfde opmaak als `HuisstijlPDF.tabel()` (blauwe kop, gestreepte rijen,
+    kop terug op elke nieuwe pagina). Die kan geen afbeelding in een cel
+    zetten, dus deze tabel wordt hier met dezelfde instellingen getekend.
+    """
+    grootte = 8.5
+    pdf.ruimte_nodig(16 + _RIJ_MET_HANDTEKENING)
+    pdf.set_fill_color(*rgb(WIT))       # zoals tabel(): anders erven de rijen blauw
+    pdf.set_x(pdf.MARGE)
+    pdf.set_font(LETTER_PDF, "", grootte)
+    pdf.set_text_color(*rgb(INKT))
+    pdf.set_draw_color(*rgb(LIJN))
+    pdf.set_line_width(0.2)
+    kop = FontFace(emphasis="BOLD", color=rgb(WIT), fill_color=rgb(BLAUW))
+    with pdf.table(width=pdf.w - 2 * pdf.MARGE,
+                   col_widths=[k.breedte for k in KOLOMMEN_AANWEZIGEN],
+                   headings_style=kop, cell_fill_color=rgb(STREEP), cell_fill_mode="ROWS",
+                   borders_layout="HORIZONTAL_LINES", line_height=grootte * 0.55,
+                   text_align="LEFT", v_align="MIDDLE", padding=(1.1, 1.5), align="LEFT",
+                   first_row_as_headings=True, repeat_headings=1) as tabel:
+        kopregel = tabel.row()
+        for k in KOLOMMEN_AANWEZIGEN:
+            kopregel.cell(k.naam)
+        for d in deelnemers:
+            waarden = _aanwezigen_rij(d)
+            rij = tabel.row(min_height=_RIJ_MET_HANDTEKENING)
+            for k, v in zip(KOLOMMEN_AANWEZIGEN[:-1], waarden[:-1]):
+                rij.cell(als_tekst(k, v))
+            beeld = _handtekening(d.signature_data_url)
+            if beeld:
+                rij.cell(img=beeld, img_fill_width=False)
+            elif d.signature_data_url:
+                rij.cell("getekend", style=FontFace(emphasis="ITALICS", color=rgb(GRIJS)))
+            else:
+                rij.cell("")
+    pdf.ln(3)
+
+
+def _opsomming(pdf: HuisstijlPDF, items: list) -> None:
+    """Genummerde lijst; een tweede regel springt in onder de tekst."""
+    pdf.set_font(LETTER_PDF, "", 10)
+    pdf.set_text_color(*rgb(INKT))
+    for i, item in enumerate(items, 1):
+        pdf.ruimte_nodig(6)
+        y = pdf.get_y()
+        pdf.set_xy(pdf.MARGE, y)
+        pdf.cell(7, 5.2, f"{i}.")
+        pdf.set_xy(pdf.MARGE + 7, y)
+        pdf.multi_cell(0, 5.2, str(item), new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(0.6)
+    pdf.ln(1.5)
+
+
+def _bestandsnaam(t: Toolbox, ext: str) -> str:
+    """toolbox-<onderwerp>-<datum>. Alleen ASCII: een header met een Ł of
+    een aanhalingsteken laat de download stuklopen."""
+    datum = (t.datum or datetime.now(timezone.utc)).date().isoformat()
+    naam = f"toolbox-{t.onderwerp}-{datum}"
+    naam = unicodedata.normalize("NFKD", naam).encode("ascii", "ignore").decode("ascii")
+    naam = re.sub(r"-{2,}", "-", re.sub(r"[^A-Za-z0-9._-]", "-", naam)).strip("-")
+    return f"{naam or 'toolbox'}.{ext}"
+
+
+def _organisatie(db: Session, current_user: User):
+    return db.query(Organization).filter(
+        Organization.id == current_user.organization_id).first()
+
 
 @router.get("/{toolbox_id}/export.pdf")
 def export_toolbox_pdf(
@@ -509,180 +647,77 @@ def export_toolbox_pdf(
     Dit is wat een opdrachtgever of de Arbeidsinspectie opvraagt: waar ging het
     over, wie was erbij, en heeft die persoon getekend.
     """
-    try:
-        from fpdf import FPDF
-    except ImportError:
-        return StreamingResponse(
-            iter([b"PDF-generator niet geinstalleerd: pip install fpdf2"]),
-            status_code=500, media_type="text/plain",
-        )
-
     t = _get_toolbox_or_404(db, toolbox_id, current_user)
-    org = db.query(Organization).filter(
-        Organization.id == current_user.organization_id).first()
+    org = _organisatie(db, current_user)
     org_naam = org.name if org else "-"
 
-    # fpdf2 core-font Helvetica is latin-1. Claude schrijft en-dashes en
-    # typografische aanhalingstekens, dus saneren is hier geen luxe.
-    def safe(v) -> str:
-        if v is None:
-            return ""
-        s = str(v)
-        for k, r in (("€", "EUR "), ("–", "-"), ("—", "-"), ("•", "-"),
-                     ("’", "'"), ("‘", "'"), ("“", '"'), ("”", '"'),
-                     ("…", "..."), ("→", "->"), ("×", "x"), ("·", "-"),
-                     ("™", "(TM)")):
-            s = s.replace(k, r)
-        return s.encode("latin-1", "replace").decode("latin-1")
-
-    def _hex_rgb(hexstr: str, default=(2, 132, 199)):
-        try:
-            h = (hexstr or "").lstrip("#")
-            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
-        except Exception:
-            return default
-
-    BRAND = _hex_rgb(getattr(org, "brand_color", None) or "")
-
-    class _ToolboxPDF(FPDF):
-        def footer(self):
-            self.set_y(-12)
-            self.set_font("Helvetica", "I", 7)
-            self.set_text_color(120, 120, 120)
-            self.set_x(15)
-            self.cell(120, 5, safe(f"{org_naam} - toolbox"))
-            self.cell(0, 5, f"Pagina {self.page_no()}/{{nb}}", align="R")
-            self.set_text_color(0, 0, 0)
-
-    pdf = _ToolboxPDF(orientation="P", unit="mm", format="A4")
-    pdf.set_auto_page_break(auto=True, margin=18)
-    pdf.alias_nb_pages()
+    pdf = HuisstijlPDF(klant_van(org), _TITEL, ondertitel=t.onderwerp)
     pdf.add_page()
-
-    # Kop
-    pdf.set_fill_color(*BRAND)
-    pdf.rect(0, 0, 210, 34, "F")
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_xy(15, 10)
-    pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(0, 9, "Toolbox")
-    pdf.set_xy(15, 20)
-    pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 6, safe(t.onderwerp))
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_y(42)
-
-    def regel(label, waarde):
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_x(15)
-        pdf.cell(34, 6, safe(label))
-        pdf.set_font("Helvetica", "", 9)
-        pdf.cell(0, 6, safe(waarde), new_x="LMARGIN", new_y="NEXT")
-
-    regel("Project", t.project.name if t.project else "-")
-    regel("Datum", t.datum.strftime("%d-%m-%Y") if t.datum else "-")
-    regel("Gehouden door", t.houder_naam or "-")
-    regel("Organisatie", org_naam)
-    regel("Status", t.status)
-    if t.ai_gegenereerd:
-        regel("Opgesteld met", f"AI-voorstel ({t.ai_model or 'onbekend model'}), nagelopen door de opsteller")
-    pdf.ln(3)
-
-    def kop(tekst):
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.set_x(15)
-        pdf.set_text_color(*BRAND)
-        pdf.cell(0, 7, safe(tekst), new_x="LMARGIN", new_y="NEXT")
-        pdf.set_text_color(0, 0, 0)
-
-    def alinea(tekst):
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_x(15)
-        pdf.multi_cell(180, 5, safe(tekst))
-        pdf.ln(1)
-
-    def opsomming(items):
-        pdf.set_font("Helvetica", "", 9)
-        for i, item in enumerate(items, 1):
-            pdf.set_x(15)
-            pdf.multi_cell(180, 5, safe(f"{i}.  {item}"))
-        pdf.ln(1)
+    pdf.titelblok()
+    pdf.kv(_gegevens(t, org_naam), labelbreedte=40)
 
     if t.inleiding:
-        kop("Waar gaat het over")
-        alinea(t.inleiding)
+        pdf.sectie("Waar gaat het over")
+        pdf.tekst(t.inleiding)
+        pdf.ln(2)
 
-    risicos = _lijst(t.risicos)
-    if risicos:
-        kop("Risico's")
-        opsomming(risicos)
-
-    maatregelen = _lijst(t.maatregelen)
-    if maatregelen:
-        kop("Maatregelen")
-        opsomming(maatregelen)
-
-    punten = _lijst(t.bespreekpunten)
-    if punten:
-        kop("Besproken")
-        opsomming(punten)
+    for titel, items in (("Risico's", _lijst(t.risicos)),
+                         ("Maatregelen", _lijst(t.maatregelen)),
+                         ("Besproken", _lijst(t.bespreekpunten))):
+        if items:
+            pdf.sectie(titel)
+            _opsomming(pdf, items)
 
     if t.afspraken:
-        kop("Afspraken")
-        alinea(t.afspraken)
-
-    # Presentielijst
-    pdf.ln(2)
-    kop("Presentielijst")
+        pdf.sectie("Afspraken")
+        pdf.tekst(t.afspraken)
+        pdf.ln(2)
 
     deelnemers = list(t.deelnemers or [])
+    pdf.sectie("Presentielijst")
     if not deelnemers:
-        alinea("Er zijn geen deelnemers geregistreerd.")
+        pdf.tekst("Er zijn geen deelnemers geregistreerd.")
     else:
-        pdf.set_font("Helvetica", "B", 8)
-        pdf.set_fill_color(240, 243, 247)
-        pdf.set_x(15)
-        pdf.cell(62, 7, "Naam", border=1, fill=True)
-        pdf.cell(48, 7, "Bedrijf", border=1, fill=True)
-        pdf.cell(24, 7, "Aanwezig", border=1, fill=True)
-        pdf.cell(46, 7, "Handtekening", border=1, fill=True, new_x="LMARGIN", new_y="NEXT")
-
-        pdf.set_font("Helvetica", "", 8)
-        for d in deelnemers:
-            hoogte = 14
-            if pdf.get_y() + hoogte > 265:
-                pdf.add_page()
-            y = pdf.get_y()
-            pdf.set_x(15)
-            pdf.cell(62, hoogte, safe(d.naam), border=1)
-            pdf.cell(48, hoogte, safe(d.bedrijf or ("-" if d.user_id else "extern")), border=1)
-            pdf.cell(24, hoogte, "ja" if d.aanwezig else "nee", border=1, align="C")
-            pdf.cell(46, hoogte, "", border=1, new_x="LMARGIN", new_y="NEXT")
-
-            if d.signature_data_url:
-                try:
-                    raw = base64.b64decode(d.signature_data_url.split(",", 1)[1])
-                    pdf.image(io.BytesIO(raw), x=136, y=y + 1, h=hoogte - 2)
-                except Exception:
-                    # Een onleesbare handtekening mag het document niet slopen.
-                    pdf.set_xy(136, y + 4)
-                    pdf.set_font("Helvetica", "I", 7)
-                    pdf.cell(44, 6, "getekend", align="C")
-                    pdf.set_font("Helvetica", "", 8)
-            pdf.set_y(y + hoogte)
+        _presentielijst(pdf, deelnemers)
 
     t.pdf_generated_at = datetime.now(timezone.utc)
     db.commit()
     log_action(db, request, current_user, action="toolbox.export_pdf",
                entity_type="toolbox", entity_id=t.id,
                after={"deelnemers": len(deelnemers)})
+    return pdf_antwoord(pdf.uitvoer(), _bestandsnaam(t, "pdf"))
 
-    out = bytes(pdf.output())
-    datum = (t.datum or datetime.now(timezone.utc)).date().isoformat()
-    fname = f"toolbox-{t.onderwerp}-{datum}.pdf".replace(" ", "-")
-    fname = fname.encode("ascii", "ignore").decode("ascii") or "toolbox.pdf"
-    return StreamingResponse(
-        iter([out]),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
-    )
+
+@router.get("/{toolbox_id}/export.xlsx")
+def export_toolbox_xlsx(
+    toolbox_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De toolbox als werkboek: de inhoud op het eerste tabblad, de
+    presentielijst op het tweede. Handtekeningen staan alleen in de PDF;
+    Excel zegt wanneer er getekend is."""
+    t = _get_toolbox_or_404(db, toolbox_id, current_user)
+    org = _organisatie(db, current_user)
+
+    rijen = [[k, v] for k, v in _gegevens(t, org.name if org else "-")]
+    if t.inleiding:
+        rijen.append(["Waar gaat het over", t.inleiding])
+    for label, items in (("Risico", _lijst(t.risicos)),
+                         ("Maatregel", _lijst(t.maatregelen)),
+                         ("Bespreekpunt", _lijst(t.bespreekpunten))):
+        rijen += [[f"{label} {i}", item] for i, item in enumerate(items, 1)]
+    if t.afspraken:
+        rijen.append(["Afspraken", t.afspraken])
+
+    deelnemers = list(t.deelnemers or [])
+    bladen = [
+        Blad("Samenvatting", KOLOMMEN_GEGEVENS, rijen),
+        Blad("Aanwezigen", KOLOMMEN_AANWEZIGEN, [_aanwezigen_rij(d) for d in deelnemers]),
+    ]
+    bestand = excel_van(klant_van(org), _TITEL, bladen, ondertitel=t.onderwerp)
+    log_action(db, request, current_user, action="toolbox.export_xlsx",
+               entity_type="toolbox", entity_id=t.id,
+               after={"deelnemers": len(deelnemers)})
+    return excel_antwoord(bestand, _bestandsnaam(t, "xlsx"))

@@ -439,25 +439,9 @@ def delete_entry(
     return {"deleted": True, "entry_id": entry_id}
 
 
-@router.get("/export.csv")
-def export_csv(
-    date_from: str = Query(..., alias="from", description="YYYY-MM-DD"),
-    date_to: str = Query(..., alias="to", description="YYYY-MM-DD (inclusief)"),
-    user_id: Optional[str] = Query(None, description="Default = current user; org-admin mag andere"),
-    project_id: Optional[str] = Query(None, description="Filter op project"),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """CSV-export van werkdagboek-entries — geschikt voor Excel / facturatie.
-
-    Use-case: aannemer exporteert maandelijks zijn uren per project, importeert
-    in Excel of factureringssoftware. Org-admin kan team-leden exporteren.
-
-    Kolommen: datum, tijd, gebruiker, type, bron, titel, omschrijving,
-              project, duur_min, duur_uur, lat, lng
-
-    Max range: 366 dagen (1 jaar). Voor langere periodes: meerdere exports.
-    """
+def _export_selectie(date_from, date_to, user_id, project_id, current_user, db):
+    """De dagboekregels voor een export: wie, welke periode, welk project.
+    Geeft (entries, user_name, project_map, d_from, d_to)."""
     target_user_id = user_id or current_user.id
     if not _can_view_user_entries(current_user, target_user_id):
         raise HTTPException(403, "Geen toegang tot dagboek van andere gebruiker")
@@ -496,6 +480,30 @@ def export_csv(
     if project_ids:
         prs = db.query(Project.id, Project.name).filter(Project.id.in_(project_ids)).all()
         project_map = {p.id: p.name for p in prs}
+    return entries, user_name, project_map, d_from, d_to
+
+
+@router.get("/export.csv")
+def export_csv(
+    date_from: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    date_to: str = Query(..., alias="to", description="YYYY-MM-DD (inclusief)"),
+    user_id: Optional[str] = Query(None, description="Default = current user; org-admin mag andere"),
+    project_id: Optional[str] = Query(None, description="Filter op project"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """CSV-export van werkdagboek-entries — geschikt voor Excel / facturatie.
+
+    Use-case: aannemer exporteert maandelijks zijn uren per project, importeert
+    in Excel of factureringssoftware. Org-admin kan team-leden exporteren.
+
+    Kolommen: datum, tijd, gebruiker, type, bron, titel, omschrijving,
+              project, duur_min, duur_uur, lat, lng
+
+    Max range: 366 dagen (1 jaar). Voor langere periodes: meerdere exports.
+    """
+    entries, user_name, project_map, d_from, d_to = _export_selectie(
+        date_from, date_to, user_id, project_id, current_user, db)
 
     # CSV met BOM voor Excel (anders breekt UTF-8 op Windows Excel)
     buf = io.StringIO()
@@ -554,6 +562,99 @@ def export_csv(
             "Cache-Control": "no-store",
         },
     )
+
+
+_TYPE_NAMEN = {"melding_created": "Melding gemaakt", "melding_status_change": "Status melding",
+               "inspection_completed": "Inspectie afgerond",
+               "oplevering_completed": "Oplevering afgerond", "asset_visited": "Object bezocht",
+               "time_logged": "Uren", "manual_note": "Notitie", "werk": "Werk"}
+_BRON_NAMEN = {"auto": "Automatisch", "manual": "Handmatig"}
+
+
+def _uren_bladen(entries, project_map, per_project: bool):
+    """Uren als overzicht: één regel per activiteit, totaal onderaan, en een
+    tweede overzicht per project. Tijden in Nederlandse tijd."""
+    from export_huisstijl import Blad, Kolom, naar_nl
+
+    kolommen = [Kolom("Datum", "datum"), Kolom("Tijd"), Kolom("Type"), Kolom("Bron"),
+                Kolom("Activiteit"), Kolom("Omschrijving"), Kolom("Project"),
+                Kolom("Duur (min)", "heel"), Kolom("Duur (uur)", "getal", 2)]
+    rijen, totaal_min = [], 0
+    per_proj: dict[str, int] = {}
+    for e in entries:
+        moment = e.occurred_at
+        if moment is not None and moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        lokaal = naar_nl(moment) if moment else None
+        minuten = e.duration_minutes or 0
+        totaal_min += minuten
+        project = project_map.get(e.project_id, "") if e.project_id else ""
+        per_proj[project or "(geen project)"] = per_proj.get(project or "(geen project)", 0) + minuten
+        rijen.append([
+            lokaal.date() if lokaal else None,
+            lokaal.strftime("%H:%M") if lokaal else "",
+            _TYPE_NAMEN.get(e.entry_type or "", e.entry_type or ""),
+            _BRON_NAMEN.get(e.source or "", e.source or ""),
+            (e.title or "").replace("\n", " "),
+            (e.description or "").replace("\n", " "),
+            project,
+            minuten or None,
+            round(minuten / 60, 2) if minuten else None,
+        ])
+    bladen = [Blad("Uren", kolommen, rijen,
+                   totaal=["", "", "", "", "Totaal", "", "", totaal_min, round(totaal_min / 60, 2)])]
+    if per_project and per_proj:
+        bladen.append(Blad(
+            "Per project",
+            [Kolom("Project"), Kolom("Duur (min)", "heel"), Kolom("Duur (uur)", "getal", 2)],
+            [[p, m, round(m / 60, 2)] for p, m in sorted(per_proj.items(), key=lambda x: -x[1])],
+            totaal=["Totaal", totaal_min, round(totaal_min / 60, 2)]))
+    return bladen
+
+
+def _uren_export(formaat, date_from, date_to, user_id, project_id, current_user, db):
+    from export_huisstijl import (bestandsnaam, excel_antwoord, excel_van, klant_van,
+                                  pdf_antwoord, pdf_van)
+    entries, user_name, project_map, d_from, d_to = _export_selectie(
+        date_from, date_to, user_id, project_id, current_user, db)
+    bladen = _uren_bladen(entries, project_map, per_project=not project_id)
+    periode = f"{d_from.strftime('%d-%m-%Y')} t/m {d_to.strftime('%d-%m-%Y')}"
+    ondertitel = " · ".join(x for x in (user_name, project_map.get(project_id, "") if project_id else "",
+                                         periode) if x)
+    klant = klant_van(current_user.organization)
+    naam = bestandsnaam("Uren", user_name, d_from.isoformat(), "tot", d_to.isoformat(), ext=formaat,
+                        met_datum=False)
+    if formaat == "xlsx":
+        return excel_antwoord(excel_van(klant, "Urenoverzicht", bladen, ondertitel=ondertitel), naam)
+    return pdf_antwoord(pdf_van(klant, "Urenoverzicht", bladen, ondertitel=ondertitel), naam)
+
+
+@router.get("/export.xlsx")
+def export_xlsx(
+    date_from: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    date_to: str = Query(..., alias="to", description="YYYY-MM-DD (inclusief)"),
+    user_id: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Urenoverzicht als Excel in de huisstijl: dezelfde regels als de CSV,
+    met echte datums en getallen, een totaal en een tabblad per project."""
+    return _uren_export("xlsx", date_from, date_to, user_id, project_id, current_user, db)
+
+
+@router.get("/export.pdf")
+def export_pdf(
+    date_from: str = Query(..., alias="from", description="YYYY-MM-DD"),
+    date_to: str = Query(..., alias="to", description="YYYY-MM-DD (inclusief)"),
+    user_id: Optional[str] = Query(None),
+    project_id: Optional[str] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Hetzelfde urenoverzicht als PDF, om te laten aftekenen of mee te sturen
+    met een factuur."""
+    return _uren_export("pdf", date_from, date_to, user_id, project_id, current_user, db)
 
 
 @router.get("/team-overview")

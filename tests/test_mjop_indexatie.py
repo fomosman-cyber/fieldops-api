@@ -87,7 +87,7 @@ def test_nul_procent_is_iets_anders_dan_leeg():
 def test_toelichting_zegt_wat_de_bedragen_betekenen():
     zonder = mjop.index_toelichting(None)
     assert str(mjop.PRIJSPEIL_JAAR) in zonder
-    assert "niet geindexeerd" in zonder.lower()
+    assert "niet geïndexeerd" in zonder.lower()
 
     met = mjop.index_toelichting(3.0)
     assert "3.0%" in met
@@ -132,7 +132,7 @@ def test_samenvatting_geeft_beide_totalen_en_de_toelichting(client, admin_user):
     assert zonder["index_pct"] is None
     assert zonder["grand_total_geindexeerd"] is None
     assert zonder["prijspeil_jaar"] == mjop.PRIJSPEIL_JAAR
-    assert "niet geindexeerd" in zonder["index_toelichting"].lower()
+    assert "niet geïndexeerd" in zonder["index_toelichting"].lower()
     assert zonder["grand_total"]["max"] > 0
 
     _zet_index(admin_user.organization_id, 3.5)

@@ -375,7 +375,7 @@ def indexeer(bedrag: float, naar_jaar: int, index_pct: Optional[float],
 def index_toelichting(index_pct: Optional[float]) -> str:
     """Eén regel die onder elke export hoort, zodat een bedrag niet zwerft."""
     if index_pct is None:
-        return (f"Bedragen op prijspeil {PRIJSPEIL_JAAR}, niet geindexeerd. "
+        return (f"Bedragen op prijspeil {PRIJSPEIL_JAAR}, niet geïndexeerd. "
                 f"Stel een indexpercentage in om uitvoeringsjaren door te rekenen.")
-    return (f"Bedragen geindexeerd vanaf prijspeil {PRIJSPEIL_JAAR} "
+    return (f"Bedragen geïndexeerd vanaf prijspeil {PRIJSPEIL_JAAR} "
             f"met {index_pct:.1f}% per jaar tot het jaar van uitvoering.")

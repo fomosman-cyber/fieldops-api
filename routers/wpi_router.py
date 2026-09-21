@@ -10,6 +10,7 @@ Endpoints:
   POST   /api/wpi/{id}/afronden          Vastzetten en score berekenen
   DELETE /api/wpi/{id}                   Verwijderen
   GET    /api/wpi/{id}/export.pdf        Rapport voor de opdrachtgever
+  GET    /api/wpi/{id}/export.xlsx       Hetzelfde rapport als werkboek
   GET    /api/wpi/acties/open            Alle openstaande acties uit alle rondgangen
 
 Rollen volgen de rest van Veiligheid: opstellen, invullen en afronden is voor
@@ -24,7 +25,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -32,6 +32,8 @@ import wpi_checklist as wc
 from audit import log_action
 from auth import get_current_user
 from database import get_db
+from export_huisstijl import (GRIJS, INKT, LETTER_PDF, Blad, HuisstijlPDF, Kolom,
+                              excel_antwoord, excel_van, klant_van, pdf_antwoord, rgb)
 from models import Organization, Project, User, Werkplekinspectie, WerkplekinspectieAntwoord
 from permissions import can_manage_toolbox, require_module
 
@@ -389,6 +391,155 @@ def delete_wpi(
     return {"ok": True}
 
 
+# ── Export: PDF en Excel ─────────────────────────────────────────────
+#
+# In de huisstijl van export_huisstijl: FieldOps-kleuren, met het logo en de
+# gegevens van de klant in het briefhoofd. De tabellen hebben in PDF en Excel
+# dezelfde kolommen; de foto's staan alleen in de PDF.
+
+KOLOMMEN_GEGEVENS = [Kolom("Onderdeel", breedte=30), Kolom("Waarde", breedte=70)]
+KOLOMMEN_ACTIES = [Kolom("Code", breedte=31), Kolom("Vraag", breedte=45),
+                   Kolom("Toelichting", breedte=38), Kolom("Actie", breedte=29),
+                   Kolom("Actiehouder", breedte=22), Kolom("Status", breedte=13)]
+KOLOMMEN_CHECKLIST = [Kolom("Categorie", breedte=34), Kolom("Vraag", breedte=72),
+                      Kolom("Status", breedte=26), Kolom("Opmerking", breedte=46)]
+
+_TITEL = "Werkplekinspectie"
+_STATUS = {"ja": "in orde", "nee": "NIET IN ORDE", "nvt": "n.v.t."}
+
+
+def _export_inhoud(w: Werkplekinspectie) -> dict:
+    """Wat er in het rapport staat, één keer uitgerekend voor PDF en Excel."""
+    antwoorden = list(w.antwoorden or [])
+    telling = wc.bereken_score([{"antwoord": a.antwoord} for a in antwoorden])
+    score = f"{w.score_pct}% in orde" if w.score_pct is not None else "nog niet afgerond"
+    beoordeeld = f"{telling['beoordeeld']} van {telling['totaal']} ({telling['nvt']} n.v.t.)"
+
+    gegevens = [
+        ("Datum", w.datum.strftime("%d-%m-%Y") if w.datum else "-"),
+        ("Locatie", w.locatie or "-"),
+        ("Uitgevoerd door", w.inspecteur_naam or "-"),
+        ("Status", w.status),
+        ("Vragenlijst", w.checklist_versie or "-"),
+        ("Score", score),
+        ("Beoordeeld", beoordeeld),
+    ]
+
+    # Eerst wat niet in orde was -- dat is waar het rapport over gaat. Open
+    # zolang de actie niet gereed is, dezelfde telling als /acties/open.
+    niet_ok = [a for a in antwoorden if a.antwoord == "nee"]
+    acties = [[a.question_code, a.question_text_snapshot, a.toelichting, a.actie,
+               a.actiehouder_naam, "gereed" if a.actie_gereed else "open"]
+              for a in niet_ok]
+
+    checklist = [[wc.CATEGORIEEN.get(a.categorie, a.categorie or ""),
+                  a.question_text_snapshot,
+                  _STATUS.get(a.antwoord, "niet beantwoord"),
+                  a.toelichting]
+                 for a in antwoorden]
+
+    samenvatting = ([["Project", w.project.name if w.project else "-"]]
+                    + [[k, v] for k, v in gegevens])
+    if w.algemene_indruk:
+        samenvatting.append(["Algemene indruk", w.algemene_indruk])
+
+    return {
+        "gegevens": gegevens,
+        "niet_ok": niet_ok,
+        "samenvatting": Blad("Samenvatting", KOLOMMEN_GEGEVENS, samenvatting),
+        # Brede tabbladen liggend afdrukken, anders wordt de letter te klein.
+        "acties": Blad("Acties", KOLOMMEN_ACTIES, acties, liggend=True),
+        "checklist": Blad("Checklist", KOLOMMEN_CHECKLIST, checklist, liggend=True),
+    }
+
+
+def _foto(data_url: Optional[str]) -> Optional[tuple[bytes, int, int]]:
+    """Een foto als JPEG, rechtop gezet, met breedte en hoogte in pixels.
+
+    Alleen foto's die als data-URL zijn opgeslagen; een onleesbare foto geeft
+    None, want die mag het rapport niet slopen. Verkleind tot wat op papier
+    nog iets toevoegt, zodat een rondgang met tien foto's geen 40 MB wordt.
+    """
+    if not data_url or not data_url.startswith("data:image") or "," not in data_url:
+        return None
+    try:
+        from PIL import Image, ImageOps
+        ruw = base64.b64decode(data_url.split(",", 1)[1])
+        with Image.open(io.BytesIO(ruw)) as beeld:
+            beeld.load()
+            beeld = ImageOps.exif_transpose(beeld).convert("RGB")
+            beeld.thumbnail((1400, 1400))
+            uit = io.BytesIO()
+            beeld.save(uit, format="JPEG", quality=85)
+            return uit.getvalue(), beeld.width, beeld.height
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _past(pdf: HuisstijlPDF, tekst: str, breedte: float) -> str:
+    """Tekst ingekort tot hij op één regel van `breedte` mm past."""
+    tekst = (tekst or "").strip()
+    if pdf.get_string_width(tekst) <= breedte:
+        return tekst
+    while tekst and pdf.get_string_width(tekst + "…") > breedte:
+        tekst = tekst[:-1]
+    return tekst.rstrip() + "…"
+
+
+def _fotos(pdf: HuisstijlPDF, antwoorden: list) -> None:
+    """De foto's bij de punten die niet in orde waren, drie naast elkaar, met
+    de vraagcode eronder zodat je ze bij de tabel terugvindt. De foto's staan
+    op één onderlijn, zodat de onderschriften van een rij gelijk lopen."""
+    fotos = [(a, f) for a in antwoorden if (f := _foto(a.photo_url))]
+    if not fotos:
+        return
+    per_rij, tussen, max_h, onderschrift = 3, 4.0, 62.0, 8.5
+    breed = (pdf.w - 2 * pdf.MARGE - tussen * (per_rij - 1)) / per_rij
+    for i in range(0, len(fotos), per_rij):
+        rij = fotos[i:i + per_rij]
+        maten = []
+        for _, (_, px_b, px_h) in rij:
+            b, h = breed, breed * px_h / px_b
+            if h > max_h:
+                b, h = max_h * px_b / px_h, max_h
+            maten.append((b, h))
+        hoogste = max(h for _, h in maten)
+        hoogte = hoogste + onderschrift
+        if i == 0:
+            pdf.ruimte_nodig(hoogte + 10)
+            pdf.subsectie("Foto's")
+        else:
+            pdf.ruimte_nodig(hoogte + tussen)
+        y = pdf.get_y()
+        for k, ((a, (data, _, _)), (b, h)) in enumerate(zip(rij, maten)):
+            x = pdf.MARGE + k * (breed + tussen)
+            try:
+                pdf.image(io.BytesIO(data), x=x, y=y + hoogste - h, w=b, h=h)
+            except Exception:  # noqa: BLE001 — een onleesbare foto mag het rapport niet slopen
+                continue
+            pdf.set_xy(x, y + hoogste + 1.2)
+            pdf.set_font(LETTER_PDF, "B", 7.5)
+            pdf.set_text_color(*rgb(INKT))
+            pdf.cell(breed, 3.4, _past(pdf, a.question_code, breed))
+            pdf.set_xy(x, y + hoogste + 4.6)
+            pdf.set_font(LETTER_PDF, "", 7)
+            pdf.set_text_color(*rgb(GRIJS))
+            pdf.cell(breed, 3.2, _past(pdf, a.question_text_snapshot, breed))
+        pdf.set_text_color(*rgb(INKT))
+        pdf.set_xy(pdf.MARGE, y + hoogte + tussen)
+
+
+def _bestandsnaam(w: Werkplekinspectie, ext: str) -> str:
+    datum = (w.datum or datetime.now(timezone.utc)).date().isoformat()
+    return f"werkplekinspectie-{datum}.{ext}"
+
+
+def _klant(db: Session, current_user: User):
+    org = db.query(Organization).filter(
+        Organization.id == current_user.organization_id).first()
+    return klant_van(org)
+
+
 @router.get("/{wpi_id}/export.pdf")
 def export_wpi_pdf(
     wpi_id: str,
@@ -398,170 +549,60 @@ def export_wpi_pdf(
 ):
     """Rapport van de rondgang: score, de punten die niet in orde waren, en
     wie wat oplost."""
-    try:
-        from fpdf import FPDF
-    except ImportError:
-        return StreamingResponse(
-            iter([b"PDF-generator niet geinstalleerd: pip install fpdf2"]),
-            status_code=500, media_type="text/plain",
-        )
-
     w = _get_wpi_or_404(db, wpi_id, current_user)
-    org = db.query(Organization).filter(
-        Organization.id == current_user.organization_id).first()
-    org_naam = org.name if org else "-"
+    inhoud = _export_inhoud(w)
 
-    def safe(v) -> str:
-        if v is None:
-            return ""
-        s = str(v)
-        for k, r in (("€", "EUR "), ("–", "-"), ("—", "-"), ("•", "-"),
-                     ("’", "'"), ("‘", "'"), ("“", '"'), ("”", '"'),
-                     ("…", "..."), ("→", "->"), ("×", "x"), ("·", "-"),
-                     ("™", "(TM)")):
-            s = s.replace(k, r)
-        return s.encode("latin-1", "replace").decode("latin-1")
-
-    def _hex_rgb(hexstr: str, default=(2, 132, 199)):
-        try:
-            h = (hexstr or "").lstrip("#")
-            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
-        except Exception:
-            return default
-
-    BRAND = _hex_rgb(getattr(org, "brand_color", None) or "")
-
-    class _WpiPDF(FPDF):
-        def footer(self):
-            self.set_y(-12)
-            self.set_font("Helvetica", "I", 7)
-            self.set_text_color(120, 120, 120)
-            self.set_x(15)
-            self.cell(120, 5, safe(f"{org_naam} - werkplekinspectie"))
-            self.cell(0, 5, f"Pagina {self.page_no()}/{{nb}}", align="R")
-            self.set_text_color(0, 0, 0)
-
-    pdf = _WpiPDF(orientation="P", unit="mm", format="A4")
-    pdf.set_auto_page_break(auto=True, margin=18)
-    pdf.alias_nb_pages()
+    pdf = HuisstijlPDF(_klant(db, current_user), _TITEL,
+                       ondertitel=w.project.name if w.project else "-")
     pdf.add_page()
-
-    pdf.set_fill_color(*BRAND)
-    pdf.rect(0, 0, 210, 34, "F")
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_xy(15, 10)
-    pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(0, 9, "Werkplekinspectie")
-    pdf.set_xy(15, 20)
-    pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 6, safe(w.project.name if w.project else "-"))
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_y(42)
-
-    def regel(label, waarde):
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.set_x(15)
-        pdf.cell(38, 6, safe(label))
-        pdf.set_font("Helvetica", "", 9)
-        pdf.cell(0, 6, safe(waarde), new_x="LMARGIN", new_y="NEXT")
-
-    antwoorden = list(w.antwoorden or [])
-    telling = wc.bereken_score([{"antwoord": a.antwoord} for a in antwoorden])
-
-    regel("Datum", w.datum.strftime("%d-%m-%Y") if w.datum else "-")
-    regel("Locatie", w.locatie or "-")
-    regel("Uitgevoerd door", w.inspecteur_naam or "-")
-    regel("Status", w.status)
-    regel("Vragenlijst", w.checklist_versie or "-")
-    regel("Score", f"{w.score_pct}% in orde" if w.score_pct is not None else "nog niet afgerond")
-    regel("Beoordeeld", f"{telling['beoordeeld']} van {telling['totaal']} "
-                        f"({telling['nvt']} n.v.t.)")
-    pdf.ln(3)
+    pdf.titelblok()
+    pdf.kv(inhoud["gegevens"], labelbreedte=40)
 
     if w.algemene_indruk:
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.set_x(15)
-        pdf.set_text_color(*BRAND)
-        pdf.cell(0, 7, "Algemene indruk", new_x="LMARGIN", new_y="NEXT")
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_x(15)
-        pdf.multi_cell(180, 5, safe(w.algemene_indruk))
+        pdf.sectie("Algemene indruk")
+        pdf.tekst(w.algemene_indruk)
         pdf.ln(2)
 
-    # Eerst wat niet in orde was -- dat is waar het rapport over gaat.
-    niet_ok = [a for a in antwoorden if a.antwoord == "nee"]
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.set_x(15)
-    pdf.set_text_color(*BRAND)
-    pdf.cell(0, 7, safe(f"Niet in orde ({len(niet_ok)})"), new_x="LMARGIN", new_y="NEXT")
-    pdf.set_text_color(0, 0, 0)
-
+    niet_ok, acties = inhoud["niet_ok"], inhoud["acties"]
+    pdf.sectie(f"Niet in orde ({len(niet_ok)})")
     if not niet_ok:
-        pdf.set_font("Helvetica", "", 9)
-        pdf.set_x(15)
-        pdf.multi_cell(180, 5, "Geen bijzonderheden aangetroffen.")
+        pdf.tekst("Geen bijzonderheden aangetroffen.", grootte=9.5)
     else:
-        for a in niet_ok:
-            if pdf.get_y() > 250:
-                pdf.add_page()
-            pdf.set_font("Helvetica", "B", 9)
-            pdf.set_x(15)
-            pdf.multi_cell(180, 5, safe(f"{a.question_code} - {a.question_text_snapshot}"))
-            pdf.set_font("Helvetica", "", 9)
-            if a.toelichting:
-                pdf.set_x(19)
-                pdf.multi_cell(176, 5, safe(a.toelichting))
-            if a.actie:
-                pdf.set_x(19)
-                pdf.multi_cell(176, 5, safe(
-                    "Actie: " + a.actie
-                    + (f" ({a.actiehouder_naam})" if a.actiehouder_naam else "")
-                    + (" - gereed" if a.actie_gereed else " - open")))
-            if a.photo_url:
-                try:
-                    if a.photo_url.startswith("data:image"):
-                        raw = base64.b64decode(a.photo_url.split(",", 1)[1])
-                        pdf.image(io.BytesIO(raw), x=19, w=50)
-                except Exception:
-                    pass  # een onleesbare foto mag het rapport niet slopen
-            pdf.ln(2)
+        pdf.tabel(acties.kolommen, acties.rijen)
+        _fotos(pdf, niet_ok)
 
     # Daarna de volledige lijst, zodat zichtbaar is wat er gecontroleerd is.
-    pdf.ln(2)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.set_x(15)
-    pdf.set_text_color(*BRAND)
-    pdf.cell(0, 7, "Volledige checklist", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_text_color(0, 0, 0)
-
-    huidige_cat = None
-    for a in antwoorden:
-        if pdf.get_y() > 262:
-            pdf.add_page()
-        if a.categorie != huidige_cat:
-            huidige_cat = a.categorie
-            pdf.set_font("Helvetica", "B", 9)
-            pdf.set_x(15)
-            pdf.cell(0, 6, safe(wc.CATEGORIEEN.get(huidige_cat, huidige_cat or "")),
-                     new_x="LMARGIN", new_y="NEXT")
-        label = {"ja": "in orde", "nee": "NIET IN ORDE", "nvt": "n.v.t."}.get(
-            a.antwoord, "niet beantwoord")
-        pdf.set_font("Helvetica", "", 8)
-        pdf.set_x(19)
-        pdf.cell(24, 5, safe(label), border=0)
-        pdf.multi_cell(152, 5, safe(a.question_text_snapshot))
+    # De categorie staat alleen boven de eerste vraag van elke groep.
+    checklist = inhoud["checklist"]
+    rijen, vorige = [], None
+    for rij in checklist.rijen:
+        rijen.append(["" if rij[0] == vorige else rij[0], *rij[1:]])
+        vorige = rij[0]
+    pdf.sectie("Volledige checklist")
+    pdf.tabel(checklist.kolommen, rijen)
 
     w.pdf_generated_at = datetime.now(timezone.utc)
     db.commit()
     log_action(db, request, current_user, action="wpi.export_pdf",
                entity_type="wpi", entity_id=w.id)
+    return pdf_antwoord(pdf.uitvoer(), _bestandsnaam(w, "pdf"))
 
-    out = bytes(pdf.output())
-    datum = (w.datum or datetime.now(timezone.utc)).date().isoformat()
-    fname = f"werkplekinspectie-{datum}.pdf"
-    return StreamingResponse(
-        iter([out]),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
-    )
+
+@router.get("/{wpi_id}/export.xlsx")
+def export_wpi_xlsx(
+    wpi_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De rondgang als werkboek: samenvatting, de acties bij wat niet in orde
+    was, en de volledige checklist -- met dezelfde kolommen als de PDF."""
+    w = _get_wpi_or_404(db, wpi_id, current_user)
+    inhoud = _export_inhoud(w)
+    bestand = excel_van(
+        _klant(db, current_user), _TITEL,
+        [inhoud["samenvatting"], inhoud["acties"], inhoud["checklist"]],
+        ondertitel=w.project.name if w.project else "")
+    log_action(db, request, current_user, action="wpi.export_xlsx",
+               entity_type="wpi", entity_id=w.id)
+    return excel_antwoord(bestand, _bestandsnaam(w, "xlsx"))

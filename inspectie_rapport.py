@@ -59,7 +59,7 @@ def objectbeschrijving(*, kw_label, obj_naam, bouwjaar, beheerder, wegnr,
     if locatie_oms:
         zin += f" {str(locatie_oms).rstrip('.')}."
     if coords:
-        zin += f" De locatie is vastgelegd op coordinaten {coords}."
+        zin += f" De locatie is vastgelegd op coördinaten {coords}."
     return zin
 
 
@@ -70,7 +70,7 @@ def werkwijze() -> str:
         "omvang; daaruit volgt per gebrek een defect-score. De conditie van een bouwdeel wordt "
         "bepaald door het zwaarste gebrek (de worst-defect-regel), en de objectconditie door het "
         "slechtst scorende bouwdeel. De conditie wordt uitgedrukt op een schaal van 1 (uitstekend) "
-        "tot 6 (zeer slecht). Maatregel-categorieen volgen de CROW 134-systematiek voor kunstwerken; "
+        "tot 6 (zeer slecht). Maatregelcategorieën volgen de CROW 134-systematiek voor kunstwerken; "
         "waar verharding is beoordeeld is aanvullend CROW 146 toegepast. De genoemde kosten-ordes "
         "zijn indicatief (GWWkosten) en vervangen geen RAW-bestek."
     )

@@ -56,6 +56,11 @@ import inspection_cycle as cycle
 import kunstwerken_i18n as kw_i18n
 import crow_kosten as ck
 import inspectie_rapport as rapport
+from export_huisstijl import (
+    BLAUW, FOUT, GRIJS, INKT, LET_OP, LETTER_PDF, LICHTGRIJS, LIJN, WIT,
+    Blad, HuisstijlPDF, Kolom, bestandsnaam, excel_antwoord, excel_van, klant_van,
+    naar_nl, pdf_antwoord, rgb,
+)
 
 router = APIRouter(prefix="/api/kunstwerken-inspecties", tags=["Kunstwerken-inspecties"],
                    dependencies=[Depends(require_module("kunstwerken"))])
@@ -1142,6 +1147,751 @@ def export_inspection_csv(
     )
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Inspectierapport in de huisstijl — PDF en Excel uit dezelfde bladen
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Beide exports lezen uit dezelfde vier bladen (Samenvatting, Elementen,
+# Gebreken, Checklist). Excel krijgt elk blad volledig; de PDF-tabellen tonen
+# een vaste selectie van dezelfde kolommen (hieronder), zodat een kolom in de
+# PDF en in Excel altijd hetzelfde heet en dezelfde waarde heeft. Detailkolommen
+# die in een A4-tabel niet passen (bevindingen, toelichting, foto) staan in de
+# PDF als tekst per bouwdeel.
+
+_STATUS_NL = {"draft": "Concept", "in_progress": "In uitvoering", "completed": "Afgerond",
+              "signed": "Ondertekend", "delivered": "Opgeleverd"}
+_GROEP_NL = {"constructief": "Constructief", "afwerking": "Afwerking",
+             "installatie": "Installatie", "omgeving": "Omgeving", "overig": "Overig"}
+
+# Kolommen die de PDF uit elk blad laat zien, in deze volgorde.
+_PDF_ELEMENTEN = ("Bouwdeel", "Groep", "Conditie", "Oordeel",
+                  "Gebreken", "Aandachtspunten", "Beoordeeld")
+_PDF_GEBREKEN = ("Bouwdeel", "Gebrek", "Locatie", "Ernst", "Intensiteit",
+                 "Omvang", "Score", "Oordeel")
+_PDF_TOP_GEBREKEN = ("Bouwdeel", "Gebrek", "Score", "Oordeel")
+_PDF_CHECKLIST = ("Vraag", "Antwoord", "Aandacht", "Toelichting", "Normreferentie")
+
+_HOOFDSTUKKEN = (
+    "1. Inleiding en aanleiding",
+    "2. Objectbeschrijving",
+    "3. Werkwijze en normkader",
+    "4. Bevindingen per bouwdeel",
+    "5. Conditiebeoordeling en analyse",
+    "6. Conclusie en advies",
+    "7. Verantwoording en ondertekening",
+)
+
+_FOTO_BUDGET = 60          # max. ingesloten foto's, om het bestand hanteerbaar te houden
+_FOTO_PX = 1400            # langste zijde waarop een foto wordt ingebed
+_FOTO_MAX_B, _FOTO_MAX_H = 82.0, 62.0   # mm; twee foto's naast elkaar
+
+
+def _datum_nl(d, *, met_tijd: bool = False) -> str:
+    """Tijdstippen staan zonder tijdzone (UTC) in de database; het rapport
+    toont Nederlandse tijd."""
+    if not d:
+        return ""
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    d = naar_nl(d)
+    return d.strftime("%d-%m-%Y %H:%M" if met_tijd else "%d-%m-%Y")
+
+
+def _hoofdletter(s: str) -> str:
+    return s[:1].upper() + s[1:] if s else s
+
+
+def _antwoord_tekst(vraag: dict, a: Optional[InspectionAnswer]) -> str:
+    """Het antwoord zoals het in het rapport staat (gelijk aan het portaal)."""
+    if a is None or not _is_answered(a):
+        return "niet beantwoord"
+    soort = vraag.get("type")
+    if soort == "score_1_6" and a.answer_score is not None:
+        return f"Score {a.answer_score} · {scoring.conditie_label(a.answer_score)}"
+    if soort == "ja_nee":
+        if a.answer_bool is None:
+            return "niet beantwoord"
+        return "Ja" if a.answer_bool else "Nee"
+    if soort == "ja_nee_nvt":
+        waarde = a.answer_value_text or ("ja" if a.answer_bool is True
+                                         else "nee" if a.answer_bool is False else "–")
+        return _hoofdletter(waarde)
+    if soort == "keuze":
+        return _hoofdletter(a.answer_value_text or "–")
+    if soort == "meting":
+        waarde = a.answer_value_text if a.answer_value_text not in (None, "") else a.answer_score
+        return f"{waarde} {vraag.get('eenheid') or ''}".strip()
+    if a.answer_value_text:
+        return a.answer_value_text
+    if a.answer_score is not None:
+        return str(a.answer_score)
+    return "Ja" if a.answer_bool else "Nee"
+
+
+def _maatregel_tekst(d: InspectionDefect) -> Optional[str]:
+    """CROW-maatregel + GWWkosten-orde bij een CROW-klasse, anders de
+    vrij ingevulde maatregel."""
+    if d.crow_klasse:
+        try:
+            m = ck.lookup_maatregel(d.gebrek_code or d.gebrek_naam or "", d.crow_klasse)
+            tekst = (f"{m.get('maatregel', '')} ({m.get('kosten_orde', '')})").strip()
+            return tekst if tekst != "()" else d.gw_maatregel
+        except Exception:
+            return d.gw_maatregel
+    return d.gw_maatregel or None
+
+
+def _foto_verwijzing(url: Optional[str]) -> str:
+    """Voor Excel: een link als de foto online staat. Ingebedde foto's (base64)
+    passen niet in een cel; die staan in het PDF-rapport."""
+    if not url:
+        return ""
+    if url.startswith(("https://", "http://")):
+        return url
+    return "in PDF-rapport"
+
+
+def _kies(blad: Blad, namen, rijen=None):
+    """Kolommen `namen` uit een blad, voor een PDF-tabel. Dezelfde Kolom-
+    definities als het Excel-tabblad; een onbekende naam is een programmeerfout."""
+    idx = []
+    for naam in namen:
+        treffers = [i for i, k in enumerate(blad.kolommen) if k.naam == naam]
+        if not treffers:
+            raise KeyError(f"Kolom '{naam}' ontbreekt in blad '{blad.naam}'")
+        idx.append(treffers[0])
+    bron = blad.rijen if rijen is None else rijen
+    return [blad.kolommen[i] for i in idx], [[r[i] for i in idx] for r in bron]
+
+
+class _Rapport:
+    """Alles wat PDF en Excel van één inspectie nodig hebben, één keer
+    opgehaald en berekend."""
+
+    def __init__(self, db: Session, insp: Inspection):
+        self.insp = insp
+        asset = self.asset = insp.asset
+        self.metrics = _compute_metrics(db, insp)
+        self.eind = insp.conditiescore_overall
+        self.advies = scoring.maatregel_advies(self.eind)
+        self.kw_label = kt.KUNSTWERK_TYPES.get(insp.kunstwerk_type, insp.kunstwerk_type or "")
+        code = asset.code if asset else None
+        naam = asset.name if asset else None
+        self.obj = " – ".join(x for x in (code, naam) if x) or insp.title or "Kunstwerk"
+
+        # Rijkere object-metadata — uit asset.properties_json + kolommen, indien aanwezig
+        props = {}
+        if asset and getattr(asset, "properties_json", None):
+            try:
+                import json as _json
+                props = _json.loads(asset.properties_json) or {}
+            except (ValueError, TypeError):
+                props = {}
+        laag = {str(k).lower(): v for k, v in props.items()} if isinstance(props, dict) else {}
+
+        def prop(*sleutels):
+            for s in sleutels:
+                v = laag.get(s)
+                if v not in (None, "", []):
+                    return str(v)
+            return None
+
+        self.bouwjaar = prop("bouwjaar", "construction_year", "bouwjaar_aanleg") or (
+            asset.installed_at.strftime("%Y") if asset and getattr(asset, "installed_at", None) else None)
+        self.beheerder = prop("beheerder", "eigenaar", "owner", "wegbeheerder")
+        self.wegnr = prop("wegnummer", "wegnr", "road_number", "straatnaam") or (
+            getattr(asset, "nwb_wvk_id", None) if asset else None)
+        self.coords = (f"{asset.lat:.6f}, {asset.lng:.6f}"
+                       if asset and asset.lat is not None and asset.lng is not None else None)
+        self.locatie = asset.location_description if asset else None
+
+        self.elementen = list(insp.elementen or [])
+        self.checklist_per_element: dict[str, list] = {}
+        self.vragen_per_element: dict[str, tuple[int, int, int]] = {}
+        self._bladen_bouwen()
+
+    # ── de vier bladen ────────────────────────────────────────────────
+    def _bladen_bouwen(self) -> None:
+        insp = self.insp
+        el_rijen, gb_rijen, ck_rijen = [], [], []
+        for e in self.elementen:
+            defs = e.defecten or []
+            antwoorden = e.antwoorden or []
+            aandacht = sum(1 for a in antwoorden if a.requires_attention)
+            el_rijen.append([
+                e.element_naam, _GROEP_NL.get(e.element_groep or "", e.element_groep or ""),
+                e.conditiescore, scoring.conditie_label(e.conditiescore) if e.conditiescore is not None else "",
+                len(defs), aandacht, bool(e.beoordeeld or e.niet_inspecteerbaar_reden),
+                e.bevindingen or "", e.aanbevolen_actie or "", e.element_code,
+            ])
+            for d in defs:
+                gb_rijen.append([
+                    e.element_naam, d.gebrek_naam or "", d.locatie_beschrijving or "",
+                    d.ernst, d.intensiteit, d.omvang_klasse, d.defect_score,
+                    scoring.conditie_label(d.defect_score) if d.defect_score else "",
+                    d.crow_klasse or "", _maatregel_tekst(d) or "", d.omschrijving or "",
+                    d.omvang_percentage, d.gebrek_code or "", e.element_code,
+                    "\n".join(dict.fromkeys(_foto_verwijzing(u)          # dubbele weg
+                                            for u in (d.photo_url, d.photo_url_2) if u)),
+                ])
+            vragen = kt.vragen_voor(insp.kunstwerk_type or "", e.element_code, e.element_groep)
+            per_code = {a.question_code: a for a in antwoorden}
+            rijen = []
+            for q in vragen:
+                a = per_code.get(q["code"])
+                rijen.append([
+                    e.element_naam, q.get("vraag") or (a.question_text_snapshot if a else "") or q["code"],
+                    _antwoord_tekst(q, a), "ja" if a is not None and a.requires_attention else "",
+                    (a.toelichting if a else "") or "", q.get("norm_ref") or "", e.element_code,
+                ])
+            self.checklist_per_element[e.id] = rijen
+            beantwoord = sum(1 for q in vragen if per_code.get(q["code"]) is not None
+                             and _is_answered(per_code[q["code"]]))
+            self.vragen_per_element[e.id] = (beantwoord, len(vragen), aandacht)
+            ck_rijen.extend(rijen)
+
+        # `breedte` = kolombreedte in mm in de PDF-tabel (Excel rekent zelf naar
+        # inhoud); de PDF-kolommen van elk blad tellen op tot 178 mm (A4 staand).
+        self.elementen_blad = Blad("Elementen", [
+            Kolom("Bouwdeel", breedte=54), Kolom("Groep", breedte=21),
+            Kolom("Conditie", "heel", breedte=16), Kolom("Oordeel", breedte=19),
+            Kolom("Gebreken", "heel", breedte=18), Kolom("Aandachtspunten", "heel", breedte=30),
+            Kolom("Beoordeeld", breedte=20), Kolom("Bevindingen"), Kolom("Aanbevolen actie"),
+            Kolom("Bouwdeelcode"),
+        ], el_rijen, toelichting=[
+            "Conditie volgens NEN 2767-2: 1 (uitstekend) t/m 6 (zeer slecht); "
+            "het zwaarste gebrek bepaalt de conditie van het bouwdeel."])
+        self.gebreken_blad = Blad("Gebreken", [
+            Kolom("Bouwdeel", breedte=35), Kolom("Gebrek", breedte=34),
+            Kolom("Locatie", breedte=31.5), Kolom("Ernst", "heel", breedte=12),
+            Kolom("Intensiteit", "heel", breedte=18), Kolom("Omvang", "heel", breedte=16),
+            Kolom("Score", "heel", breedte=12.5), Kolom("Oordeel", breedte=19),
+            Kolom("CROW-klasse"), Kolom("Maatregel"), Kolom("Toelichting"),
+            Kolom("Omvang (%)", "getal", 1), Kolom("Gebrekcode"), Kolom("Bouwdeelcode"),
+            Kolom("Foto"),
+        ], gb_rijen, toelichting=[
+            "Ernst 1-3, intensiteit 1-3 en omvang 1-5 volgens NEN 2767-2; "
+            "de score (1-6) volgt uit de NEN 2767-2-matrices.",
+            "Kosten-ordes zijn indicatief (GWWkosten) en vervangen geen RAW-besteksraming."])
+        self.checklist_blad = Blad("Checklist", [
+            Kolom("Bouwdeel"), Kolom("Vraag", breedte=71), Kolom("Antwoord", breedte=24),
+            Kolom("Aandacht", breedte=17), Kolom("Toelichting", breedte=34),
+            Kolom("Normreferentie", breedte=32), Kolom("Bouwdeelcode"),
+        ], ck_rijen)
+        self.samenvatting_blad = Blad("Samenvatting", [Kolom("Onderdeel"), Kolom("Waarde")],
+                                      self.samenvatting(), toelichting=[
+            "Conform NEN 2767-2 + CROW 134 — scores berekend volgens de worst-defect-regel."])
+
+    @property
+    def bladen(self) -> list:
+        return [self.samenvatting_blad, self.elementen_blad, self.gebreken_blad, self.checklist_blad]
+
+    # ── gegevens ─────────────────────────────────────────────────────
+    def inspecteur(self) -> str:
+        i = self.insp
+        return (i.inspecteur_naam or "") + (f" ({i.inspecteur_certificaat})"
+                                           if i.inspecteur_certificaat else "")
+
+    def opdrachtgever(self) -> str:
+        i = self.insp
+        return " · ".join(x for x in (i.opdrachtgever_naam, i.opdrachtgever_email) if x)
+
+    def checklist_zin(self) -> str:
+        m = self.metrics
+        if not m["vragen_totaal"]:
+            return ""
+        pct = round(100 * m["vragen_beantwoord"] / m["vragen_totaal"])
+        return f"{m['vragen_beantwoord']} van {m['vragen_totaal']} vragen beantwoord ({pct}%)"
+
+    def gegevens(self) -> list[tuple[str, str]]:
+        """Object- en inspectiegegevens: voorblad van de PDF en het begin van
+        het tabblad Samenvatting."""
+        i = self.insp
+        return [
+            ("Object", self.obj),
+            ("Type kunstwerk", self.kw_label),
+            ("Bouwjaar", self.bouwjaar),
+            ("Beheerder", self.beheerder),
+            ("Wegnummer/WVK", self.wegnr),
+            ("Titel inspectie", i.title),
+            ("Inspectietype", i.inspectie_type),
+            ("Datum inspectie", _datum_nl(i.datum_inspectie)),
+            ("Inspecteur", self.inspecteur()),
+            ("Opdrachtgever", self.opdrachtgever()),
+            ("Weersomstandigheden", i.weersomstandigheden),
+            ("Normreferenties", i.norm_referenties or "NEN 2767-2; CROW 134"),
+            ("Status", _STATUS_NL.get(i.status, i.status)),
+            ("Checklist", self.checklist_zin()),
+        ]
+
+    def samenvatting(self) -> list[list]:
+        i, m, adv = self.insp, self.metrics, self.advies
+        eind = (f"{self.eind} – {scoring.conditie_label(self.eind)}"
+                if self.eind is not None else "nog niet bepaald")
+        termijn = adv.get("termijn_jaren")
+        rijen = self.gegevens() + [
+            ("Locatie", self.locatie),
+            ("Coördinaten", self.coords),
+            ("Eindconditie NEN 2767-2", eind),
+            ("Maatregelcategorie", adv.get("categorie")),
+            ("Maatregel-advies", (adv.get("actie") or "") + (f" (binnen {termijn} jaar)" if termijn else "")),
+            ("Bouwdelen beoordeeld", f"{m['elementen_beoordeeld']} van {m['elementen_totaal']}"),
+            ("Gebreken", f"{m['defecten_totaal']}, waarvan {m['defecten_kritiek']} kritiek (score 5-6)"),
+            ("Aandachtspunten", f"{m['vragen_aandacht']} uit de checklist"),
+            ("Samenvatting inspecteur", i.samenvatting),
+            ("Aanbevolen acties", i.aanbevolen_acties),
+            ("Bijzonderheden", i.bijzonderheden),
+            ("Volgende inspectie", _datum_nl(i.volgende_inspectie_op)),
+            ("Ondertekend op", _datum_nl(i.signed_at, met_tijd=True) if i.signed_at else ""),
+            ("Inspectie-ID", i.id),
+        ]
+        return [[k, v or ""] for k, v in rijen]
+
+
+def _rapport_bestandsnaam(r: _Rapport, ext: str) -> str:
+    asset = r.asset
+    return bestandsnaam("inspectierapport",
+                        asset.code if asset and asset.code else (r.insp.title or "rapport"), ext=ext)
+
+
+def _klant(db: Session, user: User):
+    org = db.query(Organization).filter(Organization.id == user.organization_id).first()
+    return klant_van(org)
+
+
+# ── PDF-onderdelen ───────────────────────────────────────────────────────────
+
+class _Fotos:
+    """Foto's ophalen en klaarmaken voor de PDF: base64 data-URL of https-URL
+    (R2/S3-offload). Best-effort: een onbereikbare of kapotte foto slaat het
+    rapport niet stuk. Na drie mislukte downloads proberen we geen nieuwe meer,
+    zodat een uitgevallen opslag het rapport niet minutenlang ophoudt."""
+
+    def __init__(self):
+        self.over = _FOTO_BUDGET
+        self.weggelaten = False
+        self.fouten_online = 0
+
+    def ruw(self, url: Optional[str]) -> Optional[bytes]:
+        if not url or not isinstance(url, str):
+            return None
+        try:
+            if url.startswith("data:image"):
+                return base64.b64decode(url.split(",", 1)[1])
+            if url.startswith(("https://", "http://")):
+                if self.fouten_online >= 3:
+                    return None
+                import httpx
+                try:
+                    resp = httpx.get(url, timeout=8.0, follow_redirects=True)
+                    resp.raise_for_status()
+                    return resp.content
+                except Exception:
+                    self.fouten_online += 1
+                    return None
+        except Exception:
+            return None
+        return None
+
+    @staticmethod
+    def klaar(ruw: Optional[bytes]) -> Optional[tuple[bytes, float]]:
+        """JPEG op beperkte resolutie, rechtop gezet volgens EXIF, transparantie
+        op wit. Geeft (bytes, breedte/hoogte) of None."""
+        if not ruw:
+            return None
+        try:
+            from PIL import Image, ImageOps
+            with Image.open(io.BytesIO(ruw)) as bron:
+                bron.load()
+                beeld = ImageOps.exif_transpose(bron)
+                if beeld.mode in ("RGBA", "LA", "P", "PA"):
+                    beeld = beeld.convert("RGBA")
+                    wit = Image.new("RGB", beeld.size, (255, 255, 255))
+                    wit.paste(beeld, mask=beeld.split()[-1])
+                    beeld = wit
+                else:
+                    beeld = beeld.convert("RGB")
+                beeld.thumbnail((_FOTO_PX, _FOTO_PX))
+                uit = io.BytesIO()
+                beeld.save(uit, format="JPEG", quality=82, optimize=True)
+                return uit.getvalue(), beeld.width / max(beeld.height, 1)
+        except Exception:
+            return None
+
+    def rij(self, pdf: HuisstijlPDF, urls, *, inspringen: float = 5.0) -> None:
+        """Eén rij van maximaal twee foto's naast elkaar."""
+        beelden = []
+        for url in urls:
+            if not url:
+                continue
+            if self.over <= 0:
+                self.weggelaten = True
+                continue
+            klaar = self.klaar(self.ruw(url))
+            if klaar:
+                beelden.append(klaar)
+                self.over -= 1
+        if not beelden:
+            return
+        maten = []
+        for _, verhouding in beelden[:2]:
+            b = min(_FOTO_MAX_B, _FOTO_MAX_H * verhouding)
+            maten.append((b, b / verhouding))
+        hoogte = max(h for _, h in maten)
+        pdf.ruimte_nodig(hoogte + 4)
+        x, y = pdf.MARGE + inspringen, pdf.get_y() + 1
+        for (data, _), (b, h) in zip(beelden, maten):
+            try:
+                pdf.image(io.BytesIO(data), x=x, y=y, w=b, h=h)
+                pdf.set_draw_color(*rgb(LIJN))
+                pdf.set_line_width(0.2)
+                pdf.rect(x, y, b, h)
+            except Exception:
+                continue
+            x += b + 4
+        pdf.set_y(y + hoogte + 3)
+
+
+def _inhoudsopgave(pdf: HuisstijlPDF, outline) -> None:
+    """Wordt aan het eind door fpdf2 aangeroepen, met de echte paginanummers."""
+    breed = pdf.w - 2 * pdf.MARGE
+    for s in outline:
+        if s.level:
+            continue
+        y = pdf.get_y()
+        link = pdf.add_link(page=s.page_number)
+        pdf.set_xy(pdf.MARGE, y)
+        pdf.set_font(LETTER_PDF, "", 10.5)
+        pdf.set_text_color(*rgb(INKT))
+        pdf.cell(breed - 16, 8, s.name, link=link)
+        pdf.set_text_color(*rgb(GRIJS))
+        pdf.cell(16, 8, str(s.page_number), align="R", link=link)
+        pdf.set_draw_color(*rgb(LIJN))
+        pdf.set_line_width(0.2)
+        pdf.line(pdf.MARGE, y + 8, pdf.w - pdf.MARGE, y + 8)
+        pdf.set_y(y + 8)
+    pdf.set_text_color(*rgb(INKT))
+
+
+def _passend(pdf: HuisstijlPDF, tekst: str, breedte: float) -> str:
+    """Tekst afkappen tot hij in `breedte` mm past (met het huidige font)."""
+    tekst = tekst or ""
+    if pdf.get_string_width(tekst) <= breedte:
+        return tekst
+    while tekst and pdf.get_string_width(tekst + "…") > breedte:
+        tekst = tekst[:-1]
+    return tekst.rstrip() + "…"
+
+
+def _label(pdf: HuisstijlPDF, tekst: str) -> None:
+    pdf.ruimte_nodig(14)
+    pdf.ln(1)
+    pdf.tekst(tekst.upper(), grootte=7.5, kleur=GRIJS, stijl="B", regel=4.5)
+
+
+def _opsomming(pdf: HuisstijlPDF, tekst: str) -> None:
+    """Regel met een streepje ervoor en ingesprongen tekst."""
+    pdf.ruimte_nodig(10)
+    y = pdf.get_y()
+    pdf.set_font(LETTER_PDF, "", 10)
+    pdf.set_text_color(*rgb(BLAUW))
+    pdf.set_xy(pdf.MARGE + 1, y)
+    pdf.cell(4, 5, "–")
+    pdf.set_text_color(*rgb(INKT))
+    pdf.set_xy(pdf.MARGE + 5, y)
+    pdf.multi_cell(pdf.w - 2 * pdf.MARGE - 5, 5, tekst, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(0.5)
+
+
+def _verdelingsbalk(pdf: HuisstijlPDF, verdeling: list[tuple[Optional[int], int]]) -> None:
+    """Horizontale balk met het aandeel bouwdelen per conditie (1-6 + niet beoordeeld)."""
+    totaal = sum(n for _, n in verdeling)
+    if not totaal:
+        return
+    pdf.ruimte_nodig(14)
+    x, y = pdf.MARGE, pdf.get_y() + 1
+    breed, hoog = pdf.w - 2 * pdf.MARGE, 7.0
+    for score, n in verdeling:
+        if not n:
+            continue
+        b = breed * n / totaal
+        pdf.set_fill_color(*rgb(scoring.conditie_color(score)))
+        pdf.rect(x, y, b, hoog, "F")
+        if b >= 9:
+            pdf.set_xy(x, y)
+            pdf.set_font(LETTER_PDF, "B", 8)
+            pdf.set_text_color(*rgb(WIT))
+            pdf.cell(b, hoog, str(score) if score is not None else "–", align="C")
+        x += b
+    pdf.set_text_color(*rgb(INKT))
+    pdf.set_y(y + hoog + 4)
+
+
+def _ondertekening(pdf: HuisstijlPDF, r: _Rapport, fotos: _Fotos) -> None:
+    """Twee vakken naast elkaar: inspecteur (met handtekening) en opdrachtgever
+    (leeg vak voor akkoord)."""
+    insp = r.insp
+    tussen, hoog = 8.0, 64.0
+    kol = (pdf.w - 2 * pdf.MARGE - tussen) / 2
+    pdf.ruimte_nodig(hoog + 6)
+    y0 = pdf.get_y() + 1
+    ondertekend = insp.status in ("signed", "delivered") and bool(insp.signature_data_url)
+
+    def vak(x: float, kop: str, naam: str, regels: list[str]) -> tuple[float, float, float, float]:
+        pdf.set_draw_color(*rgb(LIJN))
+        pdf.set_line_width(0.25)
+        pdf.rect(x, y0, kol, hoog)
+        pdf.set_xy(x + 4, y0 + 4)
+        pdf.set_font(LETTER_PDF, "B", 7.5)
+        pdf.set_text_color(*rgb(BLAUW))
+        pdf.cell(kol - 8, 4, kop.upper())
+        pdf.set_xy(x + 4, y0 + 9)
+        pdf.set_font(LETTER_PDF, "B", 11)
+        pdf.set_text_color(*rgb(INKT))
+        pdf.cell(kol - 8, 5.5, _passend(pdf, naam or "–", kol - 8))
+        pdf.set_font(LETTER_PDF, "", 8.5)
+        pdf.set_text_color(*rgb(GRIJS))
+        yy = y0 + 15
+        for regel in regels[:2]:
+            pdf.set_xy(x + 4, yy)
+            pdf.cell(kol - 8, 4.4, _passend(pdf, regel, kol - 8))
+            yy += 4.4
+        # handtekeningvak
+        vy, vh = y0 + 26, hoog - 30
+        pdf.set_fill_color(*rgb(WIT))
+        pdf.set_draw_color(*rgb(LIJN))
+        pdf.rect(x + 4, vy, kol - 8, vh, "DF")
+        return x + 4, vy, kol - 8, vh
+
+    def midden_tekst(vx, vy, vb, vh, regels):
+        pdf.set_font(LETTER_PDF, "I", 8.5)
+        pdf.set_text_color(*rgb(LICHTGRIJS))
+        start = vy + vh / 2 - 2.2 * len(regels)
+        for i, regel in enumerate(regels):
+            pdf.set_xy(vx, start + i * 4.4)
+            pdf.cell(vb, 4.4, regel, align="C")
+
+    regels = [insp.inspecteur_certificaat or ""]
+    if ondertekend and insp.signed_at:
+        regels.append(f"Ondertekend op {_datum_nl(insp.signed_at, met_tijd=True)}")
+    vx, vy, vb, vh = vak(pdf.MARGE, "Inspecteur", insp.inspecteur_naam or "",
+                         [x for x in regels if x])
+    getekend = False
+    if ondertekend:
+        klaar = fotos.klaar(fotos.ruw(insp.signature_data_url))
+        if klaar:
+            try:
+                pdf.image(io.BytesIO(klaar[0]), x=vx + 2, y=vy + 2, w=vb - 4, h=vh - 4,
+                          keep_aspect_ratio=True)
+                getekend = True
+            except Exception:
+                getekend = False
+    if not getekend:
+        midden_tekst(vx, vy, vb, vh, ["Nog niet ondertekend"] if not ondertekend
+                     else ["Handtekening niet beschikbaar"])
+
+    x2 = pdf.MARGE + kol + tussen
+    vx, vy, vb, vh = vak(x2, "Opdrachtgever", insp.opdrachtgever_naam or "",
+                         [insp.opdrachtgever_email or ""])
+    midden_tekst(vx, vy, vb, vh, ["Voor akkoord namens opdrachtgever", "datum en handtekening"])
+    pdf.set_text_color(*rgb(INKT))
+    pdf.set_xy(pdf.MARGE, y0 + hoog + 5)
+
+
+def _rapport_pdf(r: _Rapport, klant) -> bytes:
+    insp, m, eind, advies = r.insp, r.metrics, r.eind, r.advies
+    pdf = HuisstijlPDF(klant, "Inspectierapport", ondertitel=r.obj)
+    fotos = _Fotos()
+
+    def alinea(tekst: str) -> None:
+        for deel in (tekst or "").split("\n\n"):
+            pdf.tekst(deel)
+            pdf.ln(2)
+
+    def hoofdstuk(nr: int, *, nieuwe_pagina: bool = False) -> None:
+        titel = _HOOFDSTUKKEN[nr - 1]
+        if nieuwe_pagina:
+            pdf.add_page()
+        else:
+            pdf.ruimte_nodig(40)
+        pdf.start_section(titel)
+        pdf.sectie(titel)
+
+    # ═══ PAGINA 1 — VOORBLAD + KERNCIJFERS ═══
+    pdf.add_page()
+    pdf.titelblok(ondertitel=" · ".join(x for x in (r.kw_label, r.obj) if x))
+    kritiek, aandacht = m["defecten_kritiek"], m["vragen_aandacht"]
+    pdf.kengetallen([
+        (eind if eind is not None else "–",
+         f"Eindconditie · {scoring.conditie_label(eind)}" if eind is not None
+         else "Eindconditie · nog open"),
+        (m["defecten_totaal"], f"Gebreken · {kritiek} kritiek"),
+        (f"{m['elementen_beoordeeld']}/{m['elementen_totaal']}", "Bouwdelen beoordeeld"),
+        (aandacht, "Aandachtspunten checklist"),
+    ], kleuren=[scoring.conditie_color(eind), FOUT if kritiek else INKT, INKT,
+                LET_OP if aandacht else INKT])
+    pdf.subsectie("Object en inspectie")
+    pdf.kv(r.gegevens())
+
+    pdf.subsectie("Maatregel-advies")
+    termijn = advies.get("termijn_jaren")
+    pdf.tekst(f"Categorie: {advies.get('categorie', '–')}. {advies.get('actie', '–')}"
+              + (f" (binnen {termijn} jaar)" if termijn else ""))
+    pdf.ln(3)
+
+    gebreken = r.gebreken_blad
+    score_i = [k.naam for k in gebreken.kolommen].index("Score")
+    op_score = sorted(gebreken.rijen, key=lambda rij: -(rij[score_i] or 0))
+    if op_score:
+        pdf.subsectie("Belangrijkste gebreken")
+        pdf.tabel(*_kies(gebreken, _PDF_TOP_GEBREKEN, op_score[:5]))
+
+    # ═══ PAGINA 2 — INHOUDSOPGAVE (paginanummers vult fpdf2 aan het eind in) ═══
+    pdf.add_page()
+    pdf.sectie("Inhoudsopgave")
+    pdf.insert_toc_placeholder(_inhoudsopgave)
+
+    # ═══ HOOFDSTUK 1-3 — INLEIDING, OBJECT, WERKWIJZE ═══
+    datum_str = _datum_nl(insp.datum_inspectie) or "-"
+    hoofdstuk(1)
+    alinea(rapport.inleiding(
+        kw_label=r.kw_label, obj_naam=r.obj, inspectie_type=insp.inspectie_type,
+        datum_str=datum_str, inspecteur=insp.inspecteur_naam,
+        norm_ref=insp.norm_referenties or "NEN 2767-2 en CROW 134"))
+    hoofdstuk(2)
+    alinea(rapport.objectbeschrijving(
+        kw_label=r.kw_label, obj_naam=r.obj, bouwjaar=r.bouwjaar, beheerder=r.beheerder,
+        wegnr=r.wegnr, locatie_oms=r.locatie, coords=r.coords))
+    hoofdstuk(3)
+    alinea(rapport.werkwijze())
+
+    # ═══ HOOFDSTUK 4 — BEVINDINGEN PER BOUWDEEL ═══
+    hoofdstuk(4, nieuwe_pagina=True)
+    if r.elementen_blad.rijen:
+        pdf.tabel(*_kies(r.elementen_blad, _PDF_ELEMENTEN))
+    else:
+        pdf.tekst("Er zijn geen bouwdelen aan deze inspectie toegevoegd.", kleur=GRIJS)
+    pdf.ln(2)
+    for e in r.elementen:
+        defs = e.defecten or []
+        beantwoord, totaal_vragen, aandacht_el = r.vragen_per_element.get(e.id, (0, 0, 0))
+        pdf.ruimte_nodig(34)
+        pdf.subsectie(e.element_naam or "Bouwdeel")
+        meta = [e.element_code or "", _GROEP_NL.get(e.element_groep or "", e.element_groep or "")]
+        if aandacht_el:
+            meta.append(f"{aandacht_el} aandachtspunt" + ("en" if aandacht_el != 1 else ""))
+        pdf.tekst(" · ".join(x for x in meta if x), grootte=8, kleur=GRIJS, regel=4.2)
+        pdf.ln(1)
+        pdf.tekst(rapport.element_alinea(
+            naam=e.element_naam, code=e.element_code,
+            score=e.conditiescore, defect_count=len(defs)))
+        pdf.ln(1)
+        for d in defs:
+            _opsomming(pdf, rapport.defect_zin(
+                gebrek_naam=d.gebrek_naam, ernst=d.ernst, intensiteit=d.intensiteit,
+                omvang=d.omvang_klasse, defect_score=d.defect_score,
+                crow_klasse=d.crow_klasse, locatie=d.locatie_beschrijving,
+                omschrijving=d.omschrijving, maatregel=_maatregel_tekst(d)))
+            fotos.rij(pdf, (d.photo_url, d.photo_url_2))
+        if e.niet_inspecteerbaar_reden:
+            pdf.ln(1)
+            pdf.tekst(f"Niet (volledig) inspecteerbaar: {e.niet_inspecteerbaar_reden}", kleur=LET_OP)
+        if e.bevindingen:
+            _label(pdf, "Bevindingen van de inspecteur")
+            pdf.tekst(e.bevindingen)
+        if e.aanbevolen_actie:
+            _label(pdf, "Aanbevolen actie")
+            pdf.tekst(e.aanbevolen_actie)
+        rijen = r.checklist_per_element.get(e.id) or []
+        if rijen:
+            # label + zin + kop en eerste rijen van de tabel op dezelfde pagina
+            pdf.ruimte_nodig(40 if beantwoord else 14)
+            _label(pdf, "Checklist NEN/CROW")
+            if beantwoord:
+                zin = (f"De inspecteur heeft {beantwoord} van de {totaal_vragen} "
+                       "checklistvragen beantwoord.")
+                if aandacht_el:
+                    zin += (f" Bij {aandacht_el} {'vraag' if aandacht_el == 1 else 'vragen'} is "
+                            "aandacht gevraagd voor opvolging.")
+                elif e.beoordeeld:
+                    zin += " Er zijn geen aandachtspunten geconstateerd."
+            else:
+                # Een tabel met alleen 'niet beantwoord' zegt niets; de vragen
+                # staan wel in het Excel-tabblad Checklist.
+                zin = (f"De checklist ({totaal_vragen} vragen) is voor dit bouwdeel "
+                       "niet ingevuld.")
+            pdf.tekst(zin, grootte=9, regel=4.6)
+            pdf.ln(1.5)
+            if beantwoord:
+                pdf.tabel(*_kies(r.checklist_blad, _PDF_CHECKLIST, rijen), lettergrootte=8)
+        pdf.ln(3)
+    if fotos.weggelaten:
+        pdf.tekst("Niet alle foto's zijn ingesloten om de bestandsgrootte te beperken; "
+                  "ze staan bij de inspectie in FieldOps.", grootte=8, kleur=GRIJS, stijl="I")
+
+    # ═══ HOOFDSTUK 5 — CONDITIEBEOORDELING ═══
+    hoofdstuk(5, nieuwe_pagina=True)
+    slechtste, max_score = None, -1
+    for e in r.elementen:
+        if e.conditiescore is not None and e.conditiescore > max_score:
+            max_score, slechtste = e.conditiescore, e.element_naam
+    alinea(rapport.conditie_analyse(
+        eind=eind, defecten_totaal=m["defecten_totaal"],
+        defecten_kritiek=m["defecten_kritiek"],
+        elementen_beoordeeld=m["elementen_beoordeeld"],
+        elementen_totaal=m["elementen_totaal"], slechtste_naam=slechtste))
+    if r.elementen:
+        pdf.subsectie("Conditieverdeling bouwdelen")
+        per = m["elementen_per_conditie"]
+        zonder = sum(1 for e in r.elementen if e.conditiescore is None)
+        verdeling = [(s, per.get(str(s), 0)) for s in range(1, 7)]
+        if zonder:
+            verdeling.append((None, zonder))
+        totaal = sum(n for _, n in verdeling)
+        _verdelingsbalk(pdf, verdeling)
+        pdf.tabel(
+            [Kolom("Conditie", "heel", breedte=24), Kolom("Oordeel", breedte=70),
+             Kolom("Bouwdelen", "heel", breedte=42), Kolom("Aandeel", "procent", breedte=42)],
+            [[s, scoring.conditie_label(s) if s is not None else "Nog niet beoordeeld",
+              n, n / totaal if totaal else 0] for s, n in verdeling],
+            totaal=["", "Totaal", totaal, 1 if totaal else 0])
+    pdf.subsectie("Gebreken naar defect-score")
+    if op_score:
+        pdf.tabel(*_kies(gebreken, _PDF_GEBREKEN, op_score))
+    else:
+        pdf.tekst("Er zijn geen gebreken vastgelegd.", kleur=GRIJS)
+        pdf.ln(2)
+
+    # ═══ HOOFDSTUK 6 — CONCLUSIE EN ADVIES ═══
+    hoofdstuk(6)
+    alinea(rapport.conclusie(
+        eind=eind, advies=advies,
+        samenvatting_vrij=insp.samenvatting, aanbevolen_vrij=insp.aanbevolen_acties,
+        volgende_str=_datum_nl(insp.volgende_inspectie_op) or None))
+    if insp.bijzonderheden:
+        pdf.subsectie("Bijzonderheden")
+        alinea(insp.bijzonderheden)
+
+    # ═══ HOOFDSTUK 7 — VERANTWOORDING + ONDERTEKENING ═══
+    pdf.ruimte_nodig(110)   # kop + ondertekeningsvakken bij elkaar houden
+    hoofdstuk(7)
+    _ondertekening(pdf, r, fotos)
+    if not (insp.status in ("signed", "delivered") and insp.signature_data_url):
+        pdf.tekst("Deze inspectie is nog niet ondertekend. Een ondertekend rapport is pas "
+                  "rechtsgeldig na ondertekening door de inspecteur.", grootte=9.5,
+                  kleur=GRIJS, stijl="I")
+        pdf.ln(3)
+    alinea(
+        "Methodiek: conditiescores zijn bepaald volgens NEN 2767-2 (worst-defect-regel per "
+        "bouwdeel; het slechtste bouwdeel bepaalt de objectconditie). Maatregel-categorieën "
+        "volgen de CROW 134-maatregelmatrix. Kosten-ordes zijn indicatief (GWWkosten 2024); "
+        "voor aanbesteding is een RAW-besteksraming per project vereist.")
+    pdf.tekst(f"Gegenereerd met FieldOps op {pdf.gemaakt_op.strftime('%d-%m-%Y %H:%M')} · "
+              f"inspectie-ID {insp.id}. De volledige audit-trail (wie, wat, wanneer) staat "
+              "bij de inspectie in FieldOps.", grootte=8, kleur=GRIJS, stijl="I", regel=4.2)
+    return pdf.uitvoer()
+
+
 @router.get("/{inspection_id}/export.pdf")
 def export_inspection_pdf(
     inspection_id: str,
@@ -1149,366 +1899,19 @@ def export_inspection_pdf(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Genereer een CROW 134 + NEN 2767-2 conform PDF-inspectierapport.
+    """Genereer een CROW 134 + NEN 2767-2 conform PDF-inspectierapport in de
+    huisstijl (FieldOps-kleuren, logo en gegevens van de organisatie).
 
-    Bevat cover + kerncijfers, samenvatting + maatregel-advies, locatie,
-    elementen-overzicht, en per defect de NEN-classificatie + foto-bewijs +
-    (bij CROW-verharding) maatregel + GWWkosten-orde. Voor opdrachtgever,
-    directie en Rekenkamer-onderbouwing. Zet pdf_generated_at + audit-record.
+    Bevat voorblad + kerncijfers + belangrijkste gebreken, inhoudsopgave, en de
+    hoofdstukken inleiding, object, werkwijze, bevindingen per bouwdeel (met
+    checklist, gebreken en foto-bewijs; bij CROW-verharding maatregel +
+    GWWkosten-orde), conditie-analyse, conclusie en ondertekening. Voor
+    opdrachtgever, directie en Rekenkamer-onderbouwing. Zet pdf_generated_at +
+    audit-record.
     """
-    try:
-        from fpdf import FPDF
-    except ImportError:
-        return StreamingResponse(
-            iter([b"PDF-generator niet geinstalleerd: pip install fpdf2"]),
-            status_code=500, media_type="text/plain",
-        )
-
     insp = _get_inspection_or_404(db, inspection_id, current_user)
-    org = db.query(Organization).filter(
-        Organization.id == current_user.organization_id).first()
-    org_name = org.name if org else "-"
-    asset = insp.asset
-    metrics = _compute_metrics(db, insp)
-
-    # fpdf2 core-font Helvetica is latin-1: saneer alle tekst (€, en-dash etc.)
-    def safe(v) -> str:
-        if v is None:
-            return ""
-        s = str(v)
-        for k, r in (("€", "EUR "), ("–", "-"), ("—", "-"), ("•", "-"),
-                     ("’", "'"), ("‘", "'"), ("“", '"'), ("”", '"'),
-                     ("…", "..."), ("→", "->"), ("×", "x"), ("·", "-"),
-                     ("™", "(TM)")):
-            s = s.replace(k, r)
-        return s.encode("latin-1", "replace").decode("latin-1")
-
-    def _hex_rgb(hexstr: str, default=(148, 163, 184)):
-        try:
-            h = (hexstr or "").lstrip("#")
-            return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
-        except Exception:
-            return default
-
-    # White-label (A): huisstijlkleur + logo van de organisatie. Zo is het
-    # rapport het deliverable van de inspecteur, niet van FieldOps. Fallback =
-    # FieldOps-blauw als de org geen huisstijl heeft ingesteld.
-    BRAND = _hex_rgb(getattr(org, "brand_color", None) or "", (2, 132, 199))
-    org_logo = getattr(org, "logo_data_url", None) if org else None
-
-    class _ReportPDF(FPDF):
-        """A4-rapport met voettekst (object/org links, paginanummer rechts)."""
-        footer_left = ""
-
-        def footer(self):
-            self.set_y(-12)
-            self.set_font("Helvetica", "I", 7)
-            self.set_text_color(120, 120, 120)
-            self.set_x(18)
-            self.cell(120, 5, self.footer_left)
-            self.cell(0, 5, f"Pagina {self.page_no()}/{{nb}}", align="R")
-            self.set_text_color(0, 0, 0)
-
-    pdf = _ReportPDF(orientation="P", unit="mm", format="A4")
-    pdf.set_auto_page_break(auto=True, margin=18)
-    pdf.alias_nb_pages()
-
-    def _section_title(title: str) -> None:
-        pdf.set_font("Helvetica", "B", 14)
-        pdf.set_text_color(*BRAND)
-        pdf.cell(0, 8, safe(title), new_x="LMARGIN", new_y="NEXT", border="B")
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(3)
-
-    def _info_row(label: str, value: str) -> None:
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(55, 7, safe(label))
-        pdf.set_font("Helvetica", "", 11)
-        pdf.multi_cell(0, 7, safe(value), new_x="LMARGIN", new_y="NEXT")
-
-    def _paragraph(text: str) -> None:
-        """Bodytekst-alinea (prozatekst) — gebruikt voor de narratieve hoofdstukken."""
-        pdf.set_font("Helvetica", "", 10)
-        pdf.multi_cell(0, 5, safe(text), new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(1)
-
-    def _embed_image(data_url, w=55, x=None, y=None) -> bool:
-        """Bed een afbeelding in: base64 data-URL OF https-URL. Best-effort.
-
-        Sinds de R2-offload (V5) kunnen foto's https-URLs zijn i.p.v. base64;
-        beide worden hier ondersteund zodat het foto-bewijs in het rapport blijft
-        staan. Faalt nooit hard (een onbereikbare foto laat het rapport door).
-        """
-        try:
-            if not data_url or not isinstance(data_url, str):
-                return False
-            if data_url.startswith("data:image"):
-                raw = base64.b64decode(data_url.split(",", 1)[1])
-            elif data_url.startswith(("https://", "http://")):
-                import httpx
-                resp = httpx.get(data_url, timeout=10.0, follow_redirects=True)
-                resp.raise_for_status()
-                raw = resp.content
-            else:
-                return False
-            pdf.image(io.BytesIO(raw), w=w, x=x, y=y)
-            return True
-        except Exception:
-            return False
-
-    # ═══ PAGINA 1 — COVER + KERNCIJFERS ═══
-    pdf.add_page()
-    pdf.set_fill_color(*BRAND)
-    pdf.rect(0, 0, 210, 50, "F")
-    # White-label logo rechtsboven op de band (best-effort; org stelt 'm in)
-    if org_logo:
-        _embed_image(org_logo, w=42, x=150, y=10)
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Helvetica", "B", 22)
-    pdf.set_xy(18, 14)
-    pdf.cell(0, 10, "INSPECTIERAPPORT", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 12)
-    pdf.set_x(18)
-    kw_label = kt.KUNSTWERK_TYPES.get(insp.kunstwerk_type, insp.kunstwerk_type or "")
-    pdf.cell(0, 7, safe(f"{kw_label} - {(asset.code if asset else '') or insp.title or ''}"))
-    pdf.set_text_color(0, 0, 0)
-    pdf.ln(42)
-
-    _info_row("Organisatie:", org_name)
-    obj = (f"{asset.code} - " if asset and asset.code else "") + ((asset.name if asset else "") or "-")
-    _info_row("Object:", obj)
-    pdf.footer_left = safe(f"{obj} - {org_name}")[:80]
-
-    # Rijkere object-metadata (D) — uit asset.properties_json + kolommen, indien aanwezig
-    _props = {}
-    if asset and getattr(asset, "properties_json", None):
-        try:
-            import json as _json_d
-            _props = _json_d.loads(asset.properties_json) or {}
-        except (ValueError, TypeError):
-            _props = {}
-    _low = {str(k).lower(): v for k, v in _props.items()} if isinstance(_props, dict) else {}
-
-    def _prop(*keys):
-        for k in keys:
-            v = _low.get(k)
-            if v not in (None, "", []):
-                return str(v)
-        return None
-
-    _bouwjaar = _prop("bouwjaar", "construction_year", "bouwjaar_aanleg") or (
-        asset.installed_at.strftime("%Y") if asset and getattr(asset, "installed_at", None) else None)
-    _beheerder = _prop("beheerder", "eigenaar", "owner", "wegbeheerder")
-    _wegnr = _prop("wegnummer", "wegnr", "road_number", "straatnaam") or (
-        getattr(asset, "nwb_wvk_id", None) if asset else None)
-    if _bouwjaar:
-        _info_row("Bouwjaar:", _bouwjaar)
-    if _beheerder:
-        _info_row("Beheerder:", _beheerder)
-    if _wegnr:
-        _info_row("Wegnummer/WVK:", _wegnr)
-
-    _info_row("Titel:", insp.title or "-")
-    _info_row("Inspectie-type:", insp.inspectie_type or "-")
-    _info_row("Datum inspectie:",
-              insp.datum_inspectie.strftime("%d-%m-%Y") if insp.datum_inspectie else "-")
-    _info_row("Inspecteur:", (insp.inspecteur_naam or "-") +
-              (f" ({insp.inspecteur_certificaat})" if insp.inspecteur_certificaat else ""))
-    _info_row("Weer:", insp.weersomstandigheden or "-")
-    _info_row("Norm-referenties:", insp.norm_referenties or "NEN 2767-2; CROW 134")
-    _info_row("Status:", insp.status)
-    _info_row("Gegenereerd:", datetime.now(timezone.utc).strftime("%d-%m-%Y %H:%M UTC"))
-    pdf.ln(6)
-
-    # Kerncijfers-grid (3 grote getallen)
-    eind = insp.conditiescore_overall
-    eind_label = scoring.conditie_label(eind)
-    kpi_w, kpi_h, kpi_gap = 58, 26, 4
-    kpi_y = pdf.get_y()
-    kpis = [
-        (f"{eind if eind is not None else '-'} ({eind_label})",
-         "eindconditie NEN 2767-2", _hex_rgb(scoring.conditie_color(eind))),
-        (f"{metrics['defecten_totaal']} ({metrics['defecten_kritiek']} kritiek)",
-         "defecten", (234, 88, 12)),
-        (f"{metrics['elementen_beoordeeld']}/{metrics['elementen_totaal']}",
-         "elementen beoordeeld", BRAND),
-    ]
-    for i, (val, lbl, rgb) in enumerate(kpis):
-        x = 18 + i * (kpi_w + kpi_gap)
-        pdf.set_fill_color(*rgb)
-        pdf.rect(x, kpi_y, kpi_w, kpi_h, "F")
-        pdf.set_text_color(255, 255, 255)
-        pdf.set_xy(x, kpi_y + 5)
-        pdf.set_font("Helvetica", "B", 12)
-        pdf.cell(kpi_w, 7, safe(val), align="C")
-        pdf.set_xy(x, kpi_y + 16)
-        pdf.set_font("Helvetica", "", 8)
-        pdf.cell(kpi_w, 5, safe(lbl), align="C")
-    pdf.set_text_color(0, 0, 0)
-    pdf.set_y(kpi_y + kpi_h + 8)
-
-    advies = scoring.maatregel_advies(eind)
-    pdf.set_font("Helvetica", "B", 11)
-    pdf.cell(0, 7, "Maatregel-advies", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 10)
-    termijn = advies.get("termijn_jaren")
-    pdf.multi_cell(0, 5, safe(
-        f"Categorie: {advies.get('categorie', '-')}. {advies.get('actie', '-')}"
-        + (f" (binnen {termijn} jaar)" if termijn else "")
-    ))
-
-    # ═══ PAGINA 2 — INHOUDSOPGAVE ═══
-    pdf.add_page()
-    _section_title("Inhoudsopgave")
-    pdf.set_font("Helvetica", "", 11)
-    for nr, titel in (
-        ("1", "Inleiding en aanleiding"),
-        ("2", "Objectbeschrijving"),
-        ("3", "Werkwijze en normkader"),
-        ("4", "Bevindingen per bouwdeel"),
-        ("5", "Conditiebeoordeling en analyse"),
-        ("6", "Conclusie en advies"),
-        ("7", "Verantwoording en ondertekening"),
-    ):
-        pdf.cell(12, 7, nr)
-        pdf.multi_cell(0, 7, safe(titel), new_x="LMARGIN", new_y="NEXT")
-
-    datum_str = insp.datum_inspectie.strftime("%d-%m-%Y") if insp.datum_inspectie else "-"
-    coords = (f"{asset.lat:.6f}, {asset.lng:.6f}"
-              if asset and asset.lat is not None and asset.lng is not None else None)
-
-    # ═══ HOOFDSTUK 1 — INLEIDING ═══
-    pdf.add_page()
-    _section_title("1. Inleiding en aanleiding")
-    _paragraph(rapport.inleiding(
-        kw_label=kw_label, obj_naam=obj, inspectie_type=insp.inspectie_type,
-        datum_str=datum_str, inspecteur=insp.inspecteur_naam,
-        norm_ref=insp.norm_referenties or "NEN 2767-2 en CROW 134"))
-
-    # ═══ HOOFDSTUK 2 — OBJECTBESCHRIJVING ═══
-    _section_title("2. Objectbeschrijving")
-    _paragraph(rapport.objectbeschrijving(
-        kw_label=kw_label, obj_naam=obj, bouwjaar=_bouwjaar, beheerder=_beheerder,
-        wegnr=_wegnr, locatie_oms=(asset.location_description if asset else None),
-        coords=coords))
-
-    # ═══ HOOFDSTUK 3 — WERKWIJZE ═══
-    _section_title("3. Werkwijze en normkader")
-    _paragraph(rapport.werkwijze())
-
-    # ═══ HOOFDSTUK 4 — BEVINDINGEN PER BOUWDEEL ═══
-    pdf.add_page()
-    _section_title("4. Bevindingen per bouwdeel")
-    # Overzichtstabel
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_fill_color(230, 230, 230)
-    pdf.cell(28, 6, "Code", border=1, fill=True)
-    pdf.cell(58, 6, "Bouwdeel", border=1, fill=True)
-    pdf.cell(40, 6, "Conditie", border=1, fill=True)
-    pdf.cell(20, 6, "Gebreken", border=1, fill=True, align="R")
-    pdf.cell(0, 6, "Beoordeeld", border=1, fill=True)
-    pdf.ln()
-    pdf.set_font("Helvetica", "", 9)
-    for e in (insp.elementen or []):
-        pdf.cell(28, 5, safe(e.element_code)[:15], border=1)
-        pdf.cell(58, 5, safe(e.element_naam)[:33], border=1)
-        pdf.cell(40, 5, safe(f"{e.conditiescore or '-'} {scoring.conditie_label(e.conditiescore)}")[:22], border=1)
-        pdf.cell(20, 5, safe(len(e.defecten or [])), border=1, align="R")
-        pdf.cell(0, 5, "ja" if (e.beoordeeld or e.niet_inspecteerbaar_reden) else "nee", border=1)
-        pdf.ln()
-    pdf.ln(3)
-
-    # Narratief per bouwdeel + gebreken + foto-bewijs
-    photo_budget = 60  # cap foto-inbedding om bestandsgrootte te beperken
-    truncated = False
-    for e in (insp.elementen or []):
-        defs = e.defecten or []
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.multi_cell(0, 6, safe(e.element_naam or "Bouwdeel"), new_x="LMARGIN", new_y="NEXT")
-        _paragraph(rapport.element_alinea(
-            naam=e.element_naam, code=e.element_code,
-            score=e.conditiescore, defect_count=len(defs)))
-        if e.niet_inspecteerbaar_reden and not defs:
-            _paragraph(f"Niet (volledig) inspecteerbaar: {e.niet_inspecteerbaar_reden}")
-        for d in defs:
-            maatregel_txt = None
-            if d.crow_klasse:
-                try:
-                    m = ck.lookup_maatregel(d.gebrek_code or d.gebrek_naam or "", d.crow_klasse)
-                    maatregel_txt = (f"{m.get('maatregel', '')} ({m.get('kosten_orde', '')})").strip()
-                except Exception:
-                    maatregel_txt = d.gw_maatregel
-            elif d.gw_maatregel:
-                maatregel_txt = d.gw_maatregel
-            pdf.set_font("Helvetica", "", 10)
-            pdf.set_x(22)
-            pdf.multi_cell(0, 5, safe("- " + rapport.defect_zin(
-                gebrek_naam=d.gebrek_naam, ernst=d.ernst, intensiteit=d.intensiteit,
-                omvang=d.omvang_klasse, defect_score=d.defect_score,
-                crow_klasse=d.crow_klasse, locatie=d.locatie_beschrijving,
-                omschrijving=d.omschrijving, maatregel=maatregel_txt)),
-                new_x="LMARGIN", new_y="NEXT")
-            if photo_budget > 0:
-                if _embed_image(d.photo_url, w=50):
-                    photo_budget -= 1
-            elif d.photo_url:
-                truncated = True
-        pdf.ln(2)
-    if truncated:
-        pdf.set_font("Helvetica", "I", 8)
-        pdf.multi_cell(0, 4, "(Niet alle foto's zijn ingesloten om de bestandsgrootte te beperken.)")
-
-    # ═══ HOOFDSTUK 5 — CONDITIEBEOORDELING ═══
-    pdf.add_page()
-    _section_title("5. Conditiebeoordeling en analyse")
-    _slechtste, _max_score = None, -1
-    for e in (insp.elementen or []):
-        if e.conditiescore is not None and e.conditiescore > _max_score:
-            _max_score, _slechtste = e.conditiescore, e.element_naam
-    _paragraph(rapport.conditie_analyse(
-        eind=eind, defecten_totaal=metrics["defecten_totaal"],
-        defecten_kritiek=metrics["defecten_kritiek"],
-        elementen_beoordeeld=metrics["elementen_beoordeeld"],
-        elementen_totaal=metrics["elementen_totaal"], slechtste_naam=_slechtste))
-
-    # ═══ HOOFDSTUK 6 — CONCLUSIE EN ADVIES ═══
-    _section_title("6. Conclusie en advies")
-    _paragraph(rapport.conclusie(
-        eind=eind, advies=advies,
-        samenvatting_vrij=insp.samenvatting, aanbevolen_vrij=insp.aanbevolen_acties,
-        volgende_str=(insp.volgende_inspectie_op.strftime("%d-%m-%Y")
-                      if insp.volgende_inspectie_op else None)))
-    if insp.bijzonderheden:
-        pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(0, 6, "Bijzonderheden", new_x="LMARGIN", new_y="NEXT")
-        _paragraph(insp.bijzonderheden)
-
-    # ═══ HOOFDSTUK 7 — VERANTWOORDING + ONDERTEKENING ═══
-    pdf.add_page()
-    _section_title("7. Verantwoording en ondertekening")
-    if insp.status in ("signed", "delivered") and insp.signature_data_url:
-        pdf.set_font("Helvetica", "", 10)
-        pdf.cell(0, 6, safe(f"Ondertekend door: {insp.inspecteur_naam or '-'}"),
-                 new_x="LMARGIN", new_y="NEXT")
-        if insp.signed_at:
-            pdf.cell(0, 6, safe(f"Datum: {insp.signed_at.strftime('%d-%m-%Y %H:%M UTC')}"),
-                     new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(2)
-        _embed_image(insp.signature_data_url, w=60)
-    else:
-        pdf.set_font("Helvetica", "I", 10)
-        pdf.multi_cell(0, 5, "Deze inspectie is nog niet ondertekend. Een ondertekend "
-                             "rapport is pas rechtsgeldig na status 'signed'.")
-    pdf.ln(4)
-    _paragraph(
-        "Methodiek: conditiescores zijn bepaald volgens NEN 2767-2 (worst-defect-regel per "
-        "bouwdeel; het slechtste bouwdeel bepaalt de objectconditie). Maatregel-categorieen "
-        "volgen de CROW 134-maatregelmatrix. Kosten-ordes zijn indicatief (GWWkosten 2024); "
-        "voor aanbesteding is een RAW-besteksraming per project vereist.")
-    pdf.set_font("Helvetica", "I", 8)
-    pdf.multi_cell(0, 4, safe(
-        f"Gegenereerd door FieldOps op {datetime.now(timezone.utc).strftime('%d-%m-%Y %H:%M UTC')} "
-        f"- inspectie-ID {insp.id}"))
+    r = _Rapport(db, insp)
+    out = _rapport_pdf(r, _klant(db, current_user))
 
     # Persist + audit-record (compliance: wie genereerde het rapport, wanneer)
     insp.pdf_generated_at = datetime.now(timezone.utc)
@@ -1518,16 +1921,24 @@ def export_inspection_pdf(
                entity_type="inspection", entity_id=insp.id,
                extra={"status": insp.status,
                       "conditiescore_overall": insp.conditiescore_overall})
+    return pdf_antwoord(out, _rapport_bestandsnaam(r, "pdf"))
 
-    out = bytes(pdf.output())
-    base = (asset.code if asset and asset.code else (insp.title or "rapport"))
-    fname = f"inspectierapport-{base}-{datetime.now(timezone.utc).date().isoformat()}.pdf"
-    fname = fname.replace(" ", "-").encode("ascii", "ignore").decode("ascii") or "inspectierapport.pdf"
-    return StreamingResponse(
-        iter([out]),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
-    )
+
+@router.get("/{inspection_id}/export.xlsx")
+def export_inspection_xlsx(
+    inspection_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Hetzelfde inspectierapport als Excel in de huisstijl: tabbladen
+    Samenvatting, Elementen, Gebreken en Checklist, met dezelfde kolomnamen als
+    de tabellen in de PDF en echte getallen (conditie, ernst, score, ...).
+    Dezelfde gegevens als export.csv, klaar voor RAW/begroting of MJOP."""
+    insp = _get_inspection_or_404(db, inspection_id, current_user)
+    r = _Rapport(db, insp)
+    inhoud = excel_van(_klant(db, current_user), "Inspectierapport", r.bladen,
+                       ondertitel=" · ".join(x for x in (r.kw_label, r.obj) if x))
+    return excel_antwoord(inhoud, _rapport_bestandsnaam(r, "xlsx"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────

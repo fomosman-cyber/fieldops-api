@@ -106,6 +106,114 @@ _CSV_HEADERS = [
 EXPORT_MAX_ROWS = 50_000  # bovengrens om memory + sales-tabblad redelijk te houden
 
 
+def _export_rijen(current_user, db, action, entity_type, entity_id, user_id, since, until, grens):
+    """De regels voor een export; scope en filters identiek aan `/logs`."""
+    if not current_user.is_org_admin:
+        raise HTTPException(status_code=403, detail="Alleen beheerders mogen het audit-log inzien")
+    q = db.query(AuditLog)
+    if not _is_platform_owner(current_user):
+        q = q.filter(AuditLog.organization_id == current_user.organization_id)
+    if action: q = q.filter(AuditLog.action == action)
+    if entity_type: q = q.filter(AuditLog.entity_type == entity_type)
+    if entity_id: q = q.filter(AuditLog.entity_id == entity_id)
+    if user_id: q = q.filter(AuditLog.user_id == user_id)
+    if since: q = q.filter(AuditLog.created_at >= since)
+    if until: q = q.filter(AuditLog.created_at <= until)
+    return q.order_by(desc(AuditLog.created_at), desc(AuditLog.id)).limit(grens).all()
+
+
+def _log_export(db, request, current_user, aantal, formaat,
+                action, entity_type, entity_id, user_id, since, until):
+    log_action(db, request, current_user,
+               action=ACTION.AUDIT_EXPORT,
+               entity_type="audit_log", entity_id=None,
+               extra={"row_count": aantal, "formaat": formaat,
+                      "filters": {k: v for k, v in {
+                          "action": action, "entity_type": entity_type,
+                          "entity_id": entity_id, "user_id": user_id,
+                          "since": since.isoformat() if since else None,
+                          "until": until.isoformat() if until else None,
+                      }.items() if v}})
+
+
+# In PDF heeft een logboek van tienduizenden regels geen zin; de CSV en de
+# Excel zijn er voor het volledige archief.
+EXPORT_MAX_ROWS_PDF = 2_000
+
+
+def _audit_export(formaat, request, current_user, db, action, entity_type, entity_id,
+                  user_id, since, until):
+    from export_huisstijl import (Blad, Kolom, bestandsnaam, excel_antwoord, excel_van,
+                                  klant_van, pdf_antwoord, pdf_van)
+    grens = EXPORT_MAX_ROWS_PDF if formaat == "pdf" else EXPORT_MAX_ROWS
+    rows = _export_rijen(current_user, db, action, entity_type, entity_id, user_id,
+                         since, until, grens)
+    kolommen = [Kolom("Tijd", "datumtijd"), Kolom("Actie"), Kolom("Onderdeel"), Kolom("ID"),
+                Kolom("Gebruiker"), Kolom("IP-adres"), Kolom("Details", breedte=30)]
+    rijen = []
+    for r in rows:
+        moment = r.created_at
+        if moment is not None and moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        details = r.details or ""
+        if formaat == "pdf" and len(details) > 160:
+            details = details[:159] + "…"
+        rijen.append([moment, r.action, r.entity_type or "", (r.entity_id or "")[:12],
+                      r.user_email or "", r.ip_address or "", details])
+    filters = [f"{k}: {v}" for k, v in (("actie", action), ("onderdeel", entity_type),
+                                         ("id", entity_id)) if v]
+    if since or until:
+        filters.append("periode: " + " t/m ".join(
+            d.strftime("%d-%m-%Y") for d in (since, until) if d))
+    toelichting = [f"{len(rows)} regels, nieuwste eerst. Tijden in Nederlandse tijd."]
+    if len(rows) == grens:
+        toelichting.append(f"Afgekapt op {grens} regels; verklein de periode of gebruik de CSV "
+                           "voor het volledige archief.")
+    blad = Blad("Auditlog", kolommen, rijen, toelichting=toelichting, liggend=True)
+    ondertitel = " · ".join(filters) if filters else "Alle acties"
+    klant = klant_van(current_user.organization)
+    _log_export(db, request, current_user, len(rows), formaat,
+                action, entity_type, entity_id, user_id, since, until)
+    naam = bestandsnaam("Auditlog", klant.naam, ext=formaat)
+    if formaat == "xlsx":
+        return excel_antwoord(excel_van(klant, "Auditlog", [blad], ondertitel=ondertitel), naam)
+    return pdf_antwoord(pdf_van(klant, "Auditlog", [blad], ondertitel=ondertitel, liggend=True), naam)
+
+
+@router.get("/logs/export.xlsx")
+def export_audit_logs_xlsx(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    action: Optional[str] = Query(None),
+    entity_type: Optional[str] = Query(None),
+    entity_id: Optional[str] = Query(None),
+    user_id: Optional[str] = Query(None),
+    since: Optional[datetime] = Query(None),
+    until: Optional[datetime] = Query(None),
+):
+    """Audit-log als Excel in de huisstijl. Zelfde scope en filters als de CSV."""
+    return _audit_export("xlsx", request, current_user, db, action, entity_type, entity_id,
+                         user_id, since, until)
+
+
+@router.get("/logs/export.pdf")
+def export_audit_logs_pdf(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    action: Optional[str] = Query(None),
+    entity_type: Optional[str] = Query(None),
+    entity_id: Optional[str] = Query(None),
+    user_id: Optional[str] = Query(None),
+    since: Optional[datetime] = Query(None),
+    until: Optional[datetime] = Query(None),
+):
+    """Audit-log als PDF, met dezelfde kolommen als de Excel."""
+    return _audit_export("pdf", request, current_user, db, action, entity_type, entity_id,
+                         user_id, since, until)
+
+
 @router.get("/logs/export.csv")
 def export_audit_logs_csv(
     request: Request,
@@ -123,20 +231,8 @@ def export_audit_logs_csv(
     Filter-parameters identiek aan `GET /logs` zodat de UI dezelfde query
     kan hergebruiken voor "exporteer huidige weergave".
     """
-    if not current_user.is_org_admin:
-        raise HTTPException(status_code=403, detail="Alleen beheerders mogen het audit-log inzien")
-
-    q = db.query(AuditLog)
-    if not _is_platform_owner(current_user):
-        q = q.filter(AuditLog.organization_id == current_user.organization_id)
-    if action: q = q.filter(AuditLog.action == action)
-    if entity_type: q = q.filter(AuditLog.entity_type == entity_type)
-    if entity_id: q = q.filter(AuditLog.entity_id == entity_id)
-    if user_id: q = q.filter(AuditLog.user_id == user_id)
-    if since: q = q.filter(AuditLog.created_at >= since)
-    if until: q = q.filter(AuditLog.created_at <= until)
-
-    rows = q.order_by(desc(AuditLog.created_at), desc(AuditLog.id)).limit(EXPORT_MAX_ROWS).all()
+    rows = _export_rijen(current_user, db, action, entity_type, entity_id, user_id, since, until,
+                         EXPORT_MAX_ROWS)
 
     # In-memory CSV — voor 50k rijen ruim binnen Render-tier RAM
     buf = io.StringIO()
@@ -160,16 +256,8 @@ def export_audit_logs_csv(
     csv_bytes = buf.getvalue().encode("utf-8")
 
     # Eigen export ook auditeren — zelf onderdeel van het audit-spoor.
-    log_action(db, request, current_user,
-               action=ACTION.AUDIT_EXPORT,
-               entity_type="audit_log", entity_id=None,
-               extra={"row_count": len(rows),
-                      "filters": {k: v for k, v in {
-                          "action": action, "entity_type": entity_type,
-                          "entity_id": entity_id, "user_id": user_id,
-                          "since": since.isoformat() if since else None,
-                          "until": until.isoformat() if until else None,
-                      }.items() if v}})
+    _log_export(db, request, current_user, len(rows), "csv",
+                action, entity_type, entity_id, user_id, since, until)
 
     fname = f"fieldops-auditlog-{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')}.csv"
     return StreamingResponse(
