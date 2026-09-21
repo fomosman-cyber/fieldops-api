@@ -477,6 +477,23 @@ def _run_migrations():
             # MJOP-indexpercentage per organisatie. Nieuwe kolom op een
             # bestaande tabel, dus create_all() maakt hem niet aan.
             org_cols = [c["name"] for c in insp.get_columns("organizations")]
+            if "cluster_instellingen" not in org_cols:
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE organizations ADD COLUMN cluster_instellingen TEXT"))
+                print("[migration] organizations.cluster_instellingen toegevoegd.")
+            if "job_clusters" in insp.get_table_names():
+                jc_cols = [c["name"] for c in insp.get_columns("job_clusters")]
+                jc_nieuw = {"eenheden": "FLOAT", "eenheid": "VARCHAR(10)",
+                            "dagproductie": "FLOAT", "werkdagen": "FLOAT",
+                            "gemeten_aandeel": "FLOAT"}
+                jc_missing = [c for c in jc_nieuw if c not in jc_cols]
+                if jc_missing:
+                    with engine.begin() as conn:
+                        for col in jc_missing:
+                            conn.execute(text(
+                                f"ALTER TABLE job_clusters ADD COLUMN {col} {jc_nieuw[col]}"))
+                    print(f"[migration] job_clusters kolommen toegevoegd: {jc_missing}")
             if "mjop_index_pct" not in org_cols:
                 print("[migration] organizations.mjop_index_pct toevoegen...")
                 with engine.begin() as conn:

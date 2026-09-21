@@ -142,6 +142,9 @@ class Organization(Base):
     # opdrachtgever en horen niet door ons verzonnen te worden. Zonder
     # grenswaarden levert een schouw wel waarnemingen op maar geen A-D-score.
     schouw_drempels = Column(Text, nullable=True)
+    # Clusters: werkdag, maximale afstand en de eigen dagproductie per
+    # werksoort (zie orchestration.cluster_instellingen). Leeg = kengetallen.
+    cluster_instellingen = Column(Text, nullable=True)
     # Indexpercentage per jaar voor het MJOP. NULL = niet indexeren; dan staan
     # de bedragen op prijspeil en zeggen de exports dat er expliciet bij. Welk
     # percentage klopt staat in het contract of de eigen indexafspraak (CBS
@@ -513,6 +516,13 @@ class JobCluster(Base):
     # Productiviteit-tracking
     productivity_baseline_hours = Column(Float, nullable=True)             # tijd zonder clustering
     productivity_savings_hours = Column(Float, nullable=True)              # tijd-besparing door batching
+    # Dagpakket: hoeveel werk erin zit, afgezet tegen wat een ploeg op een dag
+    # haalt. Een cluster is een werkdag, niet "alles binnen vijf kilometer".
+    eenheden = Column(Float, nullable=True)                 # m², m¹, plekken, ...
+    eenheid = Column(String(10), nullable=True)
+    dagproductie = Column(Float, nullable=True)             # eenheden per werkdag
+    werkdagen = Column(Float, nullable=True)                # eenheden / dagproductie
+    gemeten_aandeel = Column(Float, nullable=True)          # deel van de eenheden dat gemeten is
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), index=True)
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

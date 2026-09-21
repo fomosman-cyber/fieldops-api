@@ -132,6 +132,110 @@ def label_for_bbox(lat_min, lat_max, lng_min, lng_max) -> Optional[str]:
 
 DEFAULT_CLUSTER_RADIUS_KM = 5.0  # binnen 5 km bij elkaar = clusterbaar
 
+# ── Dagpakketten ────────────────────────────────────────────────────
+#
+# Een cluster is een werkdag. De kengetallen in PRODUCTIVITY_PER_SKILL zeggen
+# hoeveel uur een eenheid kost en hoeveel opzettijd een dag heeft; daaruit
+# volgt wat een ploeg op een dag haalt: (werkdag - opzet) / uren per eenheid.
+# Scheuren vullen komt zo op 280 m¹, hotbox op zo'n 8 plekken, klinkers
+# herstraten op 88 m². Een organisatie met snellere of tragere ploegen zet er
+# haar eigen getal voor in de plaats.
+
+WERKDAG_UREN = 8.0
+CLUSTER_GRENZEN = {"werkdag_uren": (4.0, 12.0), "max_afstand_km": (0.2, 50.0)}
+
+
+def standaard_dagproductie(skill_code: Optional[str], werkdag_uren: float = WERKDAG_UREN) -> Optional[float]:
+    if skill_code not in PRODUCTIVITY_PER_SKILL:
+        return None
+    rate, _eenheid, setup = PRODUCTIVITY_PER_SKILL[skill_code]
+    if rate <= 0 or werkdag_uren <= setup:
+        return None
+    return round((werkdag_uren - setup) / rate, 1)
+
+
+def cluster_instellingen(org) -> dict:
+    """Werkdag, maximale afstand en dagproductie per werksoort voor een org.
+
+    Kapot of leeg -> de kengetallen. Een eigen dagproductie telt alleen voor
+    werksoorten die we kennen en als hij groter dan nul is.
+    """
+    ruw = getattr(org, "cluster_instellingen", None) if org is not None else None
+    data: dict = {}
+    if ruw:
+        try:
+            data = json.loads(ruw) or {}
+        except (ValueError, TypeError):
+            data = {}
+    uit = {"werkdag_uren": WERKDAG_UREN, "max_afstand_km": 2.0, "dagproductie": {}}
+    try:
+        for sleutel, (laag, hoog) in CLUSTER_GRENZEN.items():
+            if sleutel in data and laag <= float(data[sleutel]) <= hoog:
+                uit[sleutel] = float(data[sleutel])
+        for skill, waarde in (data.get("dagproductie") or {}).items():
+            if skill in PRODUCTIVITY_PER_SKILL and float(waarde) > 0:
+                uit["dagproductie"][skill] = float(waarde)
+    except (TypeError, ValueError):
+        pass
+    return uit
+
+
+def dagproductie_voor(skill_code: Optional[str], inst: dict) -> Optional[float]:
+    eigen = inst.get("dagproductie", {}).get(skill_code or "")
+    return eigen or standaard_dagproductie(skill_code, inst.get("werkdag_uren", WERKDAG_UREN))
+
+
+def _dagpakketten(meldingen: list[Melding], eenheden: dict[str, float],
+                  capaciteit: float, max_km: float) -> list[tuple[list[Melding], float]]:
+    """Meldingen van één werksoort verdelen over werkdagen.
+
+    Begin aan de rand van het werkgebied (de melding het verst van het midden),
+    en loop steeds naar de dichtstbijzijnde melding die nog in de dag past --
+    zolang die binnen `max_km` van het begin van de dag ligt. Past er niets
+    meer bij, dan is de dag vol en begint de volgende. Zo wordt een dag een
+    route door een stuk van de wijk in plaats van een cirkel om een willekeurig
+    punt, en blijft er aan het eind geen losse melding aan de overkant van de
+    stad over.
+
+    Eén melding die meer is dan een dag werk (een hele straat opnieuw
+    bestraten) wordt een pakket op zichzelf, van meer dan één werkdag.
+    Meldingen zonder plek worden alleen op hoeveelheid verdeeld.
+    """
+    geo = [m for m in meldingen if m.lat is not None and m.lng is not None]
+    zonder = [m for m in meldingen if m.lat is None or m.lng is None]
+    pakketten: list[tuple[list[Melding], float]] = []
+
+    rest = list(geo)
+    while rest:
+        mid_lat = sum(m.lat for m in rest) / len(rest)
+        mid_lng = sum(m.lng for m in rest) / len(rest)
+        begin = max(rest, key=lambda m: haversine_km(mid_lat, mid_lng, m.lat, m.lng))
+        rest.remove(begin)
+        dag, last, huidig = [begin], eenheden[begin.id], begin
+        while last < capaciteit:
+            kandidaten = sorted(
+                (m for m in rest if haversine_km(begin.lat, begin.lng, m.lat, m.lng) <= max_km),
+                key=lambda m: haversine_km(huidig.lat, huidig.lng, m.lat, m.lng))
+            volgende = next((m for m in kandidaten if last + eenheden[m.id] <= capaciteit), None)
+            if volgende is None:
+                break
+            rest.remove(volgende)
+            dag.append(volgende)
+            last += eenheden[volgende.id]
+            huidig = volgende
+        pakketten.append((dag, last))
+
+    dag, last = [], 0.0
+    for m in zonder:
+        if dag and last + eenheden[m.id] > capaciteit:
+            pakketten.append((dag, last))
+            dag, last = [], 0.0
+        dag.append(m)
+        last += eenheden[m.id]
+    if dag:
+        pakketten.append((dag, last))
+    return pakketten
+
 
 def _greedy_geo_clusters(
     meldingen: list[Melding],
@@ -170,6 +274,8 @@ def generate_clusters(
     radius_km: float = DEFAULT_CLUSTER_RADIUS_KM,
     min_cluster_size: int = 2,
     replace_existing: bool = True,
+    modus: str = "dag",
+    instellingen: Optional[dict] = None,
 ) -> dict:
     """Hoofdfunctie: genereer JobCluster-records voor open meldingen.
 
@@ -188,8 +294,16 @@ def generate_clusters(
     doen. Meldingen zonder werksoort ("nog in te delen") hebben geen gw_term en
     blijven bewust buiten de clusters — die moeten eerst ingedeeld worden.
 
+    Modus "dag" (standaard): binnen een werksoort worden de meldingen over
+    werkdagen verdeeld op basis van de dagproductie en de gemeten m²/m¹/plekken
+    (zie _dagpakketten). `radius_km` is dan de maximale afstand binnen één dag.
+    Modus "straal": het oude gedrag, alles binnen de straal is één cluster.
+    Werksoorten zonder kengetal gaan altijd op straal: daarvan weten we niet
+    hoeveel er in een dag past.
+
     Returns een summary-dict met counts en savings.
     """
+    inst = instellingen or {"werkdag_uren": WERKDAG_UREN, "dagproductie": {}}
     if replace_existing:
         # Verwijder oude voorgestelde clusters van deze org (assigned blijft)
         old = (db.query(JobCluster)
@@ -237,11 +351,25 @@ def generate_clusters(
 
     for gw_term, group in by_term.items():
         skill = _skill_voor_groep(group)
-        for cluster_meldingen in _greedy_geo_clusters(group, radius_km=radius_km):
-            if len(cluster_meldingen) < min_cluster_size:
+        capaciteit = dagproductie_voor(skill, inst) if modus == "dag" else None
+        eenheid = PRODUCTIVITY_PER_SKILL.get(skill or "", (0, None, 0))[1]
+        per_melding = {m.id: _eenheden_melding(skill, m) for m in group}
+
+        if capaciteit:
+            groepen = _dagpakketten(group, {k: v[0] for k, v in per_melding.items()},
+                                    capaciteit, radius_km)
+        else:
+            groepen = [(g, None) for g in _greedy_geo_clusters(group, radius_km=radius_km)]
+
+        for cluster_meldingen, last in groepen:
+            # Een losse melding is alleen een cluster als hij zelf een flink
+            # stuk van een dag is; anders is het gewoon een melding.
+            vol_genoeg = capaciteit and last is not None and last >= 0.5 * capaciteit
+            if len(cluster_meldingen) < min_cluster_size and not vol_genoeg:
                 continue
 
-            units = _estimate_units(skill, cluster_meldingen)
+            units = sum(per_melding[m.id][0] for m in cluster_meldingen)
+            gemeten = sum(per_melding[m.id][0] for m in cluster_meldingen if per_melding[m.id][1])
             clustered_h, baseline_h = estimate_cluster_hours(skill, units) if skill else (0, 0)
 
             lat_min, lat_max, lng_min, lng_max = geo_bounding(cluster_meldingen)
@@ -255,6 +383,11 @@ def generate_clusters(
                 estimated_hours=clustered_h,
                 productivity_baseline_hours=baseline_h,
                 productivity_savings_hours=round(max(0.0, baseline_h - clustered_h), 1),
+                eenheden=round(units, 1) if skill else None,
+                eenheid=eenheid if skill else None,
+                dagproductie=capaciteit,
+                werkdagen=round(units / capaciteit, 2) if capaciteit else None,
+                gemeten_aandeel=round(gemeten / units, 2) if units else None,
                 geo_lat_min=lat_min, geo_lat_max=lat_max,
                 geo_lng_min=lng_min, geo_lng_max=lng_max,
                 geo_label=label,
@@ -313,6 +446,26 @@ def _maat_uit_melding(m: Melding) -> dict:
     except (ValueError, TypeError):
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _eenheden_melding(skill_code: Optional[str], m: Melding) -> tuple[float, bool]:
+    """(eenheden, gemeten?) voor één melding.
+
+    Gemeten als de schouwer de maat heeft ingevuld; anders het oude kengetal
+    (een half uur werk per melding). Dat de maat geschat is, zeggen we er
+    eerlijk bij: een dagpakket op geschatte m² is een voorstel, geen planning.
+    """
+    if not skill_code:
+        return 0.0, False
+    rate, eenheid, _setup = PRODUCTIVITY_PER_SKILL.get(skill_code, (0.0, "", 0.0))
+    terugval = (0.5 / rate) if rate > 0 else 50.0
+    veld = {"plek": "aantal_vlakken", "m¹": "lengte_m", "m²": "oppervlakte_m2"}.get(eenheid)
+    gemeten = _maat_uit_melding(m).get(veld) if veld else None
+    try:
+        gemeten = float(gemeten) if gemeten is not None else 0.0
+    except (TypeError, ValueError):
+        gemeten = 0.0
+    return (gemeten, True) if gemeten > 0 else (terugval, False)
 
 
 def _estimate_units(skill_code: Optional[str], meldingen: list[Melding]) -> float:
@@ -398,6 +551,13 @@ def cluster_summary(jc: JobCluster, *, include_meldingen: bool = False, db: Opti
             if jc.productivity_baseline_hours else 0
         ),
         "geo_label": jc.geo_label,
+        # Dagpakket
+        "eenheden": jc.eenheden,
+        "eenheid": jc.eenheid,
+        "dagproductie": jc.dagproductie,
+        "werkdagen": jc.werkdagen,
+        "vulling_pct": (round(min(1.0, jc.werkdagen) * 100) if jc.werkdagen else None),
+        "gemeten_aandeel": jc.gemeten_aandeel,
         "geo_bbox": {
             "lat_min": jc.geo_lat_min, "lat_max": jc.geo_lat_max,
             "lng_min": jc.geo_lng_min, "lng_max": jc.geo_lng_max,
