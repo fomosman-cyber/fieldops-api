@@ -14,10 +14,9 @@ import io
 import re
 
 import pytest
-from starlette.routing import Route
-
 import export_huisstijl as h
-from main import app
+
+from .conftest import auth
 
 with io.open("templates/portaal.html", encoding="utf-8") as _f:
     PORTAAL = _f.read()
@@ -42,19 +41,18 @@ EXPORTS = [
 ]
 
 
-def _routes():
-    uit = set()
-    for r in app.routes:
-        if isinstance(r, Route) or hasattr(r, "methods"):
-            for m in getattr(r, "methods", set()) or set():
-                uit.add((m, re.sub(r"\{[^}]+\}", "{}", r.path)))
-    return uit
-
-
 @pytest.mark.parametrize("methode,pad,in_portaal", EXPORTS, ids=[e[1] for e in EXPORTS])
-def test_exportknop_heeft_een_route(methode, pad, in_portaal):
+def test_exportknop_heeft_een_route(client, admin_user, methode, pad, in_portaal):
     assert in_portaal in PORTAAL, f"portaal roept {pad} niet (meer) aan"
-    assert (methode, re.sub(r"\{[^}]+\}", "{}", pad)) in _routes(), f"{methode} {pad} bestaat niet"
+    # Echt aanroepen: een ontbrekende route geeft FastAPI's eigen 404 ("Not
+    # Found") of 405. Een onbekend id, een lege body of een uitgezette module
+    # geeft iets anders -- dan bestaat de route wel.
+    url = re.sub(r"\{[^}]+\}", "bestaat-niet", pad)
+    r = client.request(methode, url, headers=auth(admin_user), json={} if methode == "POST" else None)
+    assert r.status_code != 405, f"{methode} {pad}: methode bestaat niet"
+    ontbreekt = r.status_code == 404 and r.headers.get("content-type", "").startswith(
+        "application/json") and r.json().get("detail") == "Not Found"
+    assert not ontbreekt, f"{methode} {pad} bestaat niet"
 
 
 def test_browser_en_server_delen_de_huisstijl():
