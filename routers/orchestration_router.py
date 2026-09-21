@@ -27,6 +27,9 @@ from auth import get_current_user
 from permissions import UserRole, require_org_admin, require_module
 from audit import log_action, ACTION
 from orchestration import (
+    CLUSTER_GRENZEN,
+    cluster_instellingen,
+    standaard_dagproductie,
     generate_clusters,
     assign_cluster,
     my_clusters,
@@ -51,8 +54,18 @@ class ClusterStatusRequest(BaseModel):
 
 
 class GenerateClustersRequest(BaseModel):
-    radius_km: float = Field(default=5.0, ge=0.5, le=50.0)
+    # In modus "dag" de maximale afstand binnen één werkdag. Leeg = de
+    # instelling van de organisatie.
+    radius_km: Optional[float] = Field(default=None, ge=0.2, le=50.0)
     min_cluster_size: int = Field(default=2, ge=1, le=20)
+    modus: str = Field(default="dag", pattern="^(dag|straal)$")
+
+
+class ClusterInstellingenIn(BaseModel):
+    werkdag_uren: Optional[float] = None
+    max_afstand_km: Optional[float] = None
+    # Per werksoort (skill-code) de eigen dagproductie; null of 0 = kengetal.
+    dagproductie: dict[str, Optional[float]] = Field(default_factory=dict)
 
 
 class UserSkillItem(BaseModel):
@@ -97,17 +110,92 @@ def generate(
         raise HTTPException(status_code=403,
                             detail="Alleen admin/manager/aannemer kan clusters genereren")
 
+    inst = cluster_instellingen(current_user.organization)
     summary = generate_clusters(
         db, current_user.organization_id,
-        radius_km=payload.radius_km,
+        radius_km=payload.radius_km or inst["max_afstand_km"],
         min_cluster_size=payload.min_cluster_size,
         replace_existing=True,
+        modus=payload.modus,
+        instellingen=inst,
     )
     log_action(db, request, current_user,
                action="orchestration.clusters_generated",
                entity_type="job_cluster",
                extra=summary)
     return summary
+
+
+def _instellingen_antwoord(current_user: User) -> dict:
+    from crow_kosten import PRODUCTIVITY_PER_SKILL
+    inst = cluster_instellingen(current_user.organization)
+    werksoorten = []
+    for code, (_rate, eenheid, _setup) in PRODUCTIVITY_PER_SKILL.items():
+        standaard = standaard_dagproductie(code, inst["werkdag_uren"])
+        eigen = inst["dagproductie"].get(code)
+        werksoorten.append({
+            "code": code, "naam": SKILL_CODES.get(code, code), "eenheid": eenheid,
+            "standaard": standaard, "eigen": eigen, "dagproductie": eigen or standaard,
+        })
+    return {
+        "werkdag_uren": inst["werkdag_uren"],
+        "max_afstand_km": inst["max_afstand_km"],
+        "werksoorten": werksoorten,
+        "grenzen": {k: {"min": a, "max": b} for k, (a, b) in CLUSTER_GRENZEN.items()},
+        "kan_wijzigen": current_user.role in (UserRole.ADMIN, UserRole.MANAGER),
+    }
+
+
+@router.get("/clusters/instellingen", dependencies=[Depends(require_module("clusters"))])
+def clusters_instellingen(current_user: User = Depends(get_current_user)):
+    """Werkdag, maximale afstand en dagproductie per werksoort."""
+    return _instellingen_antwoord(current_user)
+
+
+@router.put("/clusters/instellingen", dependencies=[Depends(require_module("clusters"))])
+def clusters_instellingen_vastleggen(
+    payload: ClusterInstellingenIn,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De dagproductie van de eigen ploegen vastleggen. Beheerder of manager:
+    dit bepaalt hoe het werk over dagen wordt verdeeld."""
+    import json
+    from crow_kosten import PRODUCTIVITY_PER_SKILL
+    if current_user.role not in (UserRole.ADMIN, UserRole.MANAGER):
+        raise HTTPException(status_code=403,
+                            detail="Alleen een beheerder of manager kan de dagproductie instellen")
+    org = current_user.organization
+    if org is None:
+        raise HTTPException(status_code=404, detail="Geen organisatie gevonden")
+    oud = cluster_instellingen(org)
+    nieuw = dict(oud)
+    for sleutel, waarde in (("werkdag_uren", payload.werkdag_uren),
+                            ("max_afstand_km", payload.max_afstand_km)):
+        if waarde is None:
+            continue
+        laag, hoog = CLUSTER_GRENZEN[sleutel]
+        if not laag <= waarde <= hoog:
+            raise HTTPException(status_code=400,
+                                detail=f"{sleutel} moet tussen {laag:g} en {hoog:g} liggen")
+        nieuw[sleutel] = waarde
+    eigen = {}
+    for code, waarde in payload.dagproductie.items():
+        if code not in PRODUCTIVITY_PER_SKILL:
+            raise HTTPException(status_code=400, detail=f"Onbekende werksoort: {code}")
+        if waarde is None or waarde == 0:
+            continue                          # terug naar het kengetal
+        if not 0 < waarde <= 100000:
+            raise HTTPException(status_code=400,
+                                detail=f"Dagproductie voor {code} moet groter dan 0 zijn")
+        eigen[code] = float(waarde)
+    nieuw["dagproductie"] = eigen
+    org.cluster_instellingen = json.dumps(nieuw)
+    db.commit()
+    log_action(db, request, current_user, action="clusters.instellingen",
+               entity_type="organization", entity_id=org.id, before=oud, after=nieuw)
+    return _instellingen_antwoord(current_user)
 
 
 @router.get("/clusters/{cluster_id}", dependencies=[Depends(require_module("clusters"))])

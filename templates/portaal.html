@@ -109,8 +109,6 @@
   <!-- Clustering: bij een heel areaal staan er duizenden meldingen op de kaart.
        Zonder groeperen is dat een onleesbare vlek en zet de browser evenveel
        DOM-knopen neer als er meldingen zijn. -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -2870,13 +2868,44 @@
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn-secondary" onclick="openSkillsModal()">⚙️ Mijn skills</button>
-          <select id="clusterRadius" class="btn-secondary" style="cursor:pointer;" title="Hoe ver mag een ploeg binnen één cluster rijden? Kleiner = meer, compactere clusters.">
-            <option value="0.5">Werkstraal: 0,5 km — één buurt</option>
-            <option value="1" selected>Werkstraal: 1 km — wijkdeel</option>
-            <option value="2">Werkstraal: 2 km — stadsdeel</option>
-            <option value="5">Werkstraal: 5 km — heel werkgebied</option>
+          <select id="clusterRadius" class="btn-secondary" style="cursor:pointer;" title="Hoe ver mogen de meldingen van één werkdag uit elkaar liggen?">
+            <option value="" selected>Afstand per dag: volgens instelling</option>
+            <option value="0.5">Afstand per dag: 0,5 km — één buurt</option>
+            <option value="1">Afstand per dag: 1 km — wijkdeel</option>
+            <option value="2">Afstand per dag: 2 km — stadsdeel</option>
+            <option value="5">Afstand per dag: 5 km — heel werkgebied</option>
           </select>
+          <button class="btn-secondary" onclick="toggleClusterInstellingen()">Dagproductie</button>
           <button class="btn-primary" onclick="generateClusters()" data-i18n="genereer_clusters">⚡ Optimaliseer vandaag</button>
+        </div>
+      </div>
+
+      <!-- Dagproductie: hoeveel een ploeg per dag haalt, per werksoort -->
+      <div id="clusterInstellingen" class="card" style="display:none;margin-bottom:16px;">
+        <h3 style="margin:0 0 4px;font-size:15px;">Dagproductie</h3>
+        <p style="margin:0 0 14px;font-size:13px;color:var(--text-muted);max-width:760px;">
+          Een cluster is één werkdag: zoveel meldingen van dezelfde werksoort als een ploeg op een dag
+          haalt, dicht bij elkaar. Hoeveel dat is, rekenen we uit de gemeten m², m¹ of plekken van de
+          meldingen en de dagproductie hieronder. Vul in wat jullie eigen ploegen halen; leeg laten
+          betekent het kengetal.
+        </p>
+        <div style="display:flex;gap:18px;flex-wrap:wrap;font-size:13px;margin-bottom:14px;">
+          <label>Werkdag <input type="number" id="clWerkdag" step="0.5" style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);color:var(--text);"> uur</label>
+          <label>Meldingen van één dag hooguit <input type="number" id="clAfstand" step="0.5" style="width:70px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);color:var(--text);"> km uit elkaar</label>
+        </div>
+        <div style="overflow-x:auto;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;min-width:460px;">
+            <thead><tr style="text-align:left;color:var(--text-dim);font-size:12px;">
+              <th style="padding:6px 8px;border-bottom:1px solid var(--border);">Werksoort</th>
+              <th style="padding:6px 8px;border-bottom:1px solid var(--border);">Kengetal per dag</th>
+              <th style="padding:6px 8px;border-bottom:1px solid var(--border);">Jullie ploeg per dag</th>
+            </tr></thead>
+            <tbody id="clWerksoorten"></tbody>
+          </table>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap;">
+          <p id="clInstMelding" style="margin:0;font-size:13px;color:var(--text-muted);"></p>
+          <button class="btn-primary" id="clInstOpslaan" onclick="saveClusterInstellingen()">Dagproductie opslaan</button>
         </div>
       </div>
 
@@ -6169,7 +6198,6 @@
   <!-- Heatmap-plugin voor density-visualisatie van meldingen + dagboek-entries -->
   <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
   <script src="https://unpkg.com/leaflet-control-geocoder@2.4.0/dist/Control.Geocoder.js"></script>
-  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <!-- ═══════ jsPDF voor rapportage ═══════ -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -17303,8 +17331,82 @@
           + '</div>'
           + '<div style="display:flex;gap:6px;flex-shrink:0;">' + assignBtn + '</div>'
         + '</div>'
+        + _clusterDagBlok(c)
         + savingsBar
       + '</div>';
+    }
+
+    // Hoe vol de werkdag is. Groen vanaf 70%, oranje daaronder; meer dan een
+    // dag staat er in woorden bij, zodat niemand een klus van drie dagen als
+    // dagploeg inplant.
+    function _clusterDagBlok(c) {
+      if (!c.werkdagen || !c.dagproductie) return '';
+      var nl = function (x) { return Number(x).toLocaleString('nl-NL', { maximumFractionDigits: 1 }); };
+      var pct = Math.min(100, c.vulling_pct || 0);
+      var kleur = pct >= 70 ? '#16a34a' : (pct >= 40 ? '#d97706' : '#94a3b8');
+      var dagen = c.werkdagen > 1.05
+        ? '<strong>' + nl(c.werkdagen) + ' werkdagen</strong> &mdash; meer dan een dag werk'
+        : '<strong>Werkdag ' + pct + '% vol</strong>';
+      var geschat = (c.gemeten_aandeel !== null && c.gemeten_aandeel < 0.5)
+        ? '<div style="margin-top:6px;font-size:12px;color:#d97706;">Maten grotendeels geschat &mdash; vul de m², m¹ of het aantal plekken in bij de meldingen voor een betrouwbare dagplanning.</div>'
+        : '';
+      return '<div style="margin-top:10px;font-size:12.5px;color:var(--text);">'
+        + '<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:5px;">'
+        + '<span>' + dagen + '</span>'
+        + '<span style="color:var(--text-muted);">' + nl(c.eenheden) + ' ' + escapeHtml(c.eenheid || '')
+        + ' van ' + nl(c.dagproductie) + ' ' + escapeHtml(c.eenheid || '') + ' per dag</span></div>'
+        + '<div style="height:6px;border-radius:3px;background:var(--border);overflow:hidden;">'
+        + '<div style="height:100%;width:' + pct + '%;background:' + kleur + ';"></div></div>'
+        + geschat + '</div>';
+    }
+
+    function toggleClusterInstellingen() {
+      var paneel = document.getElementById('clusterInstellingen');
+      var open = paneel.style.display === 'none';
+      paneel.style.display = open ? 'block' : 'none';
+      if (open) loadClusterInstellingen();
+    }
+
+    function loadClusterInstellingen() {
+      api('GET', '/api/clusters/instellingen').then(function (d) {
+        document.getElementById('clWerkdag').value = d.werkdag_uren;
+        document.getElementById('clAfstand').value = d.max_afstand_km;
+        var uit = d.kan_wijzigen ? '' : ' disabled';
+        ['clWerkdag', 'clAfstand'].forEach(function (id) { document.getElementById(id).disabled = !d.kan_wijzigen; });
+        document.getElementById('clInstOpslaan').style.display = d.kan_wijzigen ? '' : 'none';
+        document.getElementById('clInstMelding').textContent = d.kan_wijzigen ? ''
+          : 'Alleen een beheerder of manager kan dit wijzigen.';
+        var nl = function (x) { return x === null || x === undefined ? '—' : Number(x).toLocaleString('nl-NL', { maximumFractionDigits: 1 }); };
+        document.getElementById('clWerksoorten').innerHTML = d.werksoorten.map(function (w) {
+          return '<tr>'
+            + '<td style="padding:6px 8px;border-bottom:1px solid var(--border);">' + escapeHtml(w.naam) + '</td>'
+            + '<td style="padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text-muted);">'
+            + nl(w.standaard) + ' ' + escapeHtml(w.eenheid) + '</td>'
+            + '<td style="padding:6px 8px;border-bottom:1px solid var(--border);">'
+            + '<input type="number" min="0" step="any" data-werksoort="' + w.code + '" value="' + (w.eigen || '') + '"'
+            + ' placeholder="kengetal"' + uit
+            + ' style="width:100px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);color:var(--text);"> '
+            + escapeHtml(w.eenheid) + '</td></tr>';
+        }).join('');
+      }).catch(function (e) { showToast(e.message || 'Laden mislukt', 'error'); });
+    }
+
+    function saveClusterInstellingen() {
+      var dag = {};
+      document.querySelectorAll('#clWerksoorten input[data-werksoort]').forEach(function (el) {
+        dag[el.getAttribute('data-werksoort')] = el.value === '' ? null : Number(el.value);
+      });
+      api('PUT', '/api/clusters/instellingen', {
+        werkdag_uren: Number(document.getElementById('clWerkdag').value),
+        max_afstand_km: Number(document.getElementById('clAfstand').value),
+        dagproductie: dag
+      }).then(function () {
+        document.getElementById('clInstMelding').textContent =
+          'Opgeslagen. Druk op "Optimaliseer vandaag" om de clusters opnieuw in te delen.';
+        loadClusterInstellingen();
+      }).catch(function (e) {
+        document.getElementById('clInstMelding').textContent = e.message || 'Opslaan mislukt';
+      });
     }
 
     function generateClusters() {
@@ -17329,9 +17431,11 @@
             // Werkstraal uit de keuzelijst. Stond vast op 5 km, en dan valt een
             // heel stadsdeel binnen één cluster — te groot om als dagploeg af te
             // werken. Kleiner geeft meer, compactere clusters.
+            // Leeg = de afstand uit de instellingen van de organisatie.
             var _sel = document.getElementById('clusterRadius');
-            var _straal = _sel ? parseFloat(_sel.value) : 1.0;
-            return api('POST', '/api/clusters/generate', { radius_km: _straal, min_cluster_size: 2 });
+            var _body = { min_cluster_size: 2, modus: 'dag' };
+            if (_sel && _sel.value) _body.radius_km = parseFloat(_sel.value);
+            return api('POST', '/api/clusters/generate', _body);
           }).then(function(r){
             showToast(r.clusters_created + ' clusters gegenereerd · ' + r.total_savings_hours + ' u bespaard (' + r.savings_percentage + '%)', 'success');
             loadClusters();
@@ -25598,36 +25702,6 @@
       });
     }
 
-    // Het icoon van een samengevouwen groep. Het getal is hoeveel meldingen
-    // eronder zitten; de rand krijgt de kleur van de zwaarste melding in de
-    // groep. Zo zie je van ver waar het brandt zonder in te zoomen -- een
-    // cluster dat alles grijs maakt verstopt juist de kritieke punten.
-    var _CLUSTER_RANG = ['#ff5252', '#ffab40', '#22c55e', '#00d4ff', '#94a3b8', '#888'];
-
-    function maakClusterIcoon(cluster) {
-      var n = cluster.getChildCount();
-      var kleur = '#94a3b8';
-      var beste = _CLUSTER_RANG.length;
-      cluster.getAllChildMarkers().forEach(function (mk) {
-        var i = _CLUSTER_RANG.indexOf(mk._meldingKleur);
-        if (i !== -1 && i < beste) { beste = i; kleur = mk._meldingKleur; }
-      });
-      // Groter bij meer punten, maar met een plafond: anders bedekt een cluster
-      // van duizend het halve scherm.
-      var maat = n < 10 ? 34 : (n < 100 ? 40 : (n < 1000 ? 46 : 52));
-      var label = n < 1000 ? String(n) : (Math.round(n / 100) / 10) + 'k';
-      return L.divIcon({
-        className: 'fo-cluster',
-        html: '<div style="width:' + maat + 'px;height:' + maat + 'px;border-radius:50%;'
-            + 'background:rgba(15,20,32,.88);border:3px solid ' + kleur + ';color:#fff;'
-            + 'display:flex;align-items:center;justify-content:center;font-weight:700;'
-            + 'font-size:' + (n < 1000 ? 13 : 12) + 'px;font-family:inherit;'
-            + 'box-shadow:0 2px 10px rgba(0,0,0,.45);">' + label + '</div>',
-        iconSize: [maat, maat],
-        iconAnchor: [maat / 2, maat / 2]
-      });
-    }
-
     // Zet de meldingstippen op de kaart. Twee aanroepers: het eerste laden
     // en het projectfilter. Stond eerst inline in loadMapData, waardoor het
     // filter de markers alleen kon verbergen in plaats van opnieuw ophalen.
@@ -25635,14 +25709,14 @@
     // Bewust NIET allMeldingen zetten: dat is de volledige lijst van het
     // dashboard. De kaart werkt met een lichte, eventueel gefilterde set,
     // en die zou de dashboardcijfers stil laten liegen.
-    meldingCluster = L.markerClusterGroup({
-      chunkedLoading: true,          // in stukjes toevoegen, blokkeert het scherm niet
-      maxClusterRadius: 45,
-      spiderfyOnMaxZoom: true,
-      showCoverageOnHover: false,
-      disableClusteringAtZoom: 17,   // van dichtbij wil je de losse stippen
-      iconCreateFunction: maakClusterIcoon
-    });
+    // Elke melding is een eigen stip, op elk zoomniveau. Eerder werden
+    // punten bij elkaar gevouwen tot een bolletje met een getal, en moest je
+    // inzoomen om te zien wat erin zat -- precies wat je op een overzichtskaart
+    // niet wilt. Getekend op een canvas in plaats van als losse HTML-elementen:
+    // zo blijven ook duizenden stippen soepel. De tolerantie maakt een stip op
+    // een telefoon makkelijker aan te tikken.
+    if (!window._meldingCanvas) window._meldingCanvas = L.canvas({ padding: 0.5, tolerance: 6 });
+    meldingCluster = L.featureGroup();
     kaartMeldingen.forEach(function(m) {
       if (m.lat && m.lng) {
         var color = meldingKleur(m);
@@ -25656,16 +25730,14 @@
         // die wel iets zegt -- die staat ook zo in de legenda. Wat de melding
         // is, staat in de popup; de foto laadt daar pas als je hem opent.
         var _hasPhoto = !!m.has_photo;
-        var icon = L.divIcon({
-          className: '',
-          html: '<div style="width:16px;height:16px;border-radius:50%;background:'+color+';border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.45);"></div>',
-          iconSize: [16, 16],
-          iconAnchor: [8, 8]
-        });
         var _photoSlot = _hasPhoto
           ? '<div class="mpopup-photo" data-mid="'+m.id+'" style="margin-bottom:6px;"><span style="color:#888;font-size:11px;">📷 foto laden…</span></div>'
           : '';
-        var marker = L.marker([m.lat, m.lng], { icon: icon })
+        var marker = L.circleMarker([m.lat, m.lng], {
+            renderer: window._meldingCanvas,
+            radius: 7, weight: 2, color: '#ffffff', fillColor: color, fillOpacity: 1
+          })
+          .bindTooltip(escapeHtml(m.title || ''), { direction: 'top', offset: [0, -6] })
           .bindPopup(
             '<div style="min-width:200px;font-family:DM Sans,sans-serif;">' +
             _photoSlot +
@@ -25697,7 +25769,6 @@
           });
         }
         marker._meldingData = m;
-        marker._meldingKleur = color;
         meldingMarkers.push(marker);
       }
     });
