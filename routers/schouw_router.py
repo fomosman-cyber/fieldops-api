@@ -32,6 +32,7 @@ bevestiging. Afwijzen verwijdert niets: de waarneming blijft staan met
 
 import json
 import math
+import time
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -42,6 +43,7 @@ from sqlalchemy.orm import Session
 
 import crow_schouw as cs
 import crow_wegschade as cw
+import schouw_instellingen as si
 import schouw_vision as sv
 from audit import log_action
 from auth import get_current_user
@@ -144,7 +146,12 @@ def _eis_bezig(r: Schouwrit) -> None:
             detail="Deze schouwrit is afgerond en kan niet meer worden gewijzigd")
 
 
-def _telt_mee(w: Schouwwaarneming) -> bool:
+def _drempel(org) -> float:
+    """Vanaf welke zekerheid een waarneming vanzelf meetelt, voor deze organisatie."""
+    return si.lees(org)["drempel_automatisch"]
+
+
+def _telt_mee(w: Schouwwaarneming, drempel: Optional[float] = None) -> bool:
     """Welke waarnemingen de score in gaan.
 
     Afgewezen nooit. Verder: bevestigd telt altijd, en onbevestigd alleen als de
@@ -156,7 +163,9 @@ def _telt_mee(w: Schouwwaarneming) -> bool:
         return False
     if w.bevestigd:
         return True
-    return (w.zekerheid or 0) >= sv.DREMPEL_AUTOMATISCH
+    if drempel is None:
+        drempel = _drempel(w.rit.organization if w.rit else None)
+    return (w.zekerheid or 0) >= drempel
 
 
 def _drempels_voor(org) -> cs.Drempels:
@@ -210,7 +219,8 @@ def _controleer_grenzen(blok: dict[str, dict[str, float]],
 
 
 def _tussenstand(r: Schouwrit) -> dict:
-    tellend = [w for w in (r.waarnemingen or []) if _telt_mee(w)]
+    drempel = _drempel(r.organization)
+    tellend = [w for w in (r.waarnemingen or []) if _telt_mee(w, drempel)]
     waarden: dict[str, float] = {}
     niveaus: dict[str, str] = {}
     _rang = {"A+": 5, "A": 4, "B": 3, "C": 2, "D": 1}
@@ -406,7 +416,7 @@ def _rit_dict(r: Schouwrit, *, detail: bool = False) -> dict:
         "waarnemingen_totaal": len(waarnemingen),
         "te_bevestigen": sum(1 for w in waarnemingen
                              if not w.bevestigd and not w.afgewezen
-                             and (w.zekerheid or 0) < sv.DREMPEL_AUTOMATISCH),
+                             and (w.zekerheid or 0) < _drempel(r.organization)),
         "beeldkwaliteit": r.beeldkwaliteit,
         "voldoet": r.voldoet,
         "gestart_op": r.gestart_op.isoformat() if r.gestart_op else None,
@@ -631,7 +641,8 @@ def frame(
     resultaat = sv.analyseer_frame(
         image_bytes=beeld, image_media_type=media_type,
         privacy_gecontroleerd=(r.privacy_modus == "gericht"),
-        context=(f"Gebied: {r.gebied}" if r.gebied else None))
+        context=(f"Gebied: {r.gebied}" if r.gebied else None),
+        instellingen=si.lees(r.organization))
 
     r.frames = (r.frames or 0) + 1
     if not resultaat.get("bruikbaar"):
@@ -856,6 +867,93 @@ def waarneming_bijwerken(
     db.commit()
     db.refresh(w)
     return _w_dict(w)
+
+
+# ── Instellingen van de herkenning ───────────────────────────────────
+
+def _instellingen_antwoord(current_user: User) -> dict:
+    uit = si.beschrijving()
+    uit["instellingen"] = si.lees(current_user.organization)
+    uit["kan_wijzigen"] = bool(is_org_admin(current_user))
+    return uit
+
+
+@router.get("/instellingen")
+def instellingen_lezen(current_user: User = Depends(get_current_user)):
+    """Wat de camera herkent en hoe streng. Iedereen die schouwt mag het zien:
+    een inspecteur moet weten waarom de camera iets niet meldt."""
+    return _instellingen_antwoord(current_user)
+
+
+@router.put("/instellingen")
+def instellingen_vastleggen(
+    payload: dict,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Alleen de beheerder: dit bepaalt voor de hele organisatie wat er gezien
+    en meegeteld wordt."""
+    if not is_org_admin(current_user):
+        raise HTTPException(status_code=403,
+                            detail="Alleen een beheerder kan de herkenning instellen")
+    org = current_user.organization
+    if org is None:
+        raise HTTPException(status_code=404, detail="Geen organisatie gevonden")
+    try:
+        nieuw = si.valideer(payload)
+    except si.OngeldigeInstelling as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    oud = si.lees(org)
+    org.schouw_instellingen = json.dumps(nieuw)
+    db.commit()
+    log_action(db, request, current_user, action="schouw.instellingen",
+               entity_type="organization", entity_id=org.id,
+               before=oud, after=nieuw)
+    return _instellingen_antwoord(current_user)
+
+
+class ProefIn(BaseModel):
+    image_data_url: str = Field(..., min_length=32)
+
+
+@router.post("/proefbeeld")
+def proefbeeld(
+    payload: ProefIn,
+    current_user: User = Depends(get_current_user),
+):
+    """Eén beeld beoordelen met de huidige instellingen, zonder iets op te slaan.
+
+    Om instellingen te vergelijken op je eigen straat: hoe lang duurde het,
+    wat kwam eruit. Zelfde privacyregel als de schouw: de inspecteur richt.
+    """
+    _eis_beheer(current_user)
+    inst = si.lees(current_user.organization)
+    beeld, media_type = _data_url_naar_bytes(payload.image_data_url)
+    start = time.perf_counter()
+    uit = sv.analyseer_frame(image_bytes=beeld, image_media_type=media_type,
+                             privacy_gecontroleerd=True, instellingen=inst)
+    duur_ms = int((time.perf_counter() - start) * 1000)
+
+    items = [{"soort": "schade", "naam": w.get("naam"), "ernst": w.get("ernst"),
+              "kader": w.get("kader"), "zekerheid": w.get("zekerheid")}
+             for w in (uit.get("wegschade") or [])]
+    items += [{"soort": "gebied",
+               "naam": cs.DETECTIEKLASSEN.get(w.get("klasse"), {}).get("naam") or w.get("klasse"),
+               "niveau": w.get("klasse_niveau"), "waarde": w.get("waarde"),
+               "kader": w.get("kader"), "zekerheid": w.get("zekerheid")}
+              for w in (uit.get("gebied") or [])]
+    items += [{"soort": "object", "naam": o.get("naam"), "niveau": o.get("niveau"),
+               "kader": o.get("kader"), "zekerheid": o.get("zekerheid")}
+              for o in (uit.get("objecten") or [])]
+    return {
+        "bruikbaar": uit.get("bruikbaar"),
+        "reden_onbruikbaar": uit.get("reden_onbruikbaar"),
+        "duur_ms": duur_ms,
+        "model_id": uit.get("_model_id"),
+        "grondigheid": inst["grondigheid"],
+        "items": items,
+    }
 
 
 # ── Lesmateriaal ─────────────────────────────────────────────────────

@@ -69,6 +69,9 @@ MAX_OBJECTEN_PER_BEELD = 12
 
 OBJECT_NIVEAUS = ("A+", "A", "B", "C", "D")
 
+# Grondigheid uit de instellingen van de organisatie -> effort van het model.
+_EFFORT = {"snel": "low", "grondig": "medium"}
+
 # Boven deze zekerheid mag een waarneming zonder tussenkomst doorstromen naar
 # een beeldkwaliteitsscore. Bewust hoog: een onterecht "schoon" kost een
 # gemeente niets, een onterecht "vervuild" kost een aannemer geld.
@@ -101,7 +104,7 @@ OBJECT_NAMEN: dict[str, str] = {
 _OBJECT_ASPECTEN = ["heelheid", "reinheid", "stabiliteit", "functie"]
 
 
-def _systeem_prompt() -> str:
+def _systeem_prompt(instellingen: Optional[dict] = None) -> str:
     """De prompt vraagt om detectieklasse plus drager, niet om een meetlat.
 
     Een model ziet "hier zit graffiti op die nutskast", niet
@@ -112,6 +115,47 @@ def _systeem_prompt() -> str:
     klassen = "\n".join(
         f"- {k['code']} ({k['naam']}): waarop -> {', '.join(k['dragers'])}"
         for k in cs.detectieklassen() if k["code"] != "verharding")
+    inst = instellingen or {}
+    verhardingen = inst.get("verhardingen", list(cw.VERHARDINGEN))
+    objecttypen = inst.get("objecttypen", OBJECT_TYPES)
+    max_objecten = inst.get("max_objecten", MAX_OBJECTEN_PER_BEELD)
+
+    if verhardingen:
+        namen = ", ".join(v for v in cw.VERHARDINGEN if v in verhardingen)
+        schade_blok = f"""SCHADE AAN DE VERHARDING meld je NIET onder "gebied" maar onder "wegschade",
+met het schadebeeld uit deze catalogus. Kies eerst het verhardingstype ({namen})
+en daarna een schadebeeld dat bij dat type hoort. Andere verhardingen laat je
+bij deze schouw weg:
+{cw.prompt_tekst(verhardingen)}
+
+Per schade:
+- "ernst": L, M of E volgens de beschrijving bij dat schadebeeld
+- "omvang": hoeveel van de ZICHTBARE verharding het beslaat -- 1 plaatselijk,
+  2 over een deel, 3 over het grootste deel
+- "kader": waar de schade in het beeld zit, als [x_min, y_min, x_max, y_max],
+  elk een getal tussen 0 en 1 als fractie van de breedte en hoogte van het
+  beeld, gemeten vanaf linksboven. Leg het kader strak om het beschadigde deel.
+  Bij een lange scheur loopt het kader over de hele zichtbare lengte.
+- losse schades apart; hetzelfde schadebeeld op twee plekken is twee keer
+- hooguit {MAX_WEGSCHADE_PER_BEELD} schades per beeld, de duidelijkste eerst"""
+    else:
+        schade_blok = ('SCHADE AAN DE VERHARDING hoef je bij deze schouw niet te melden; '
+                       'laat "wegschade" leeg.')
+
+    if objecttypen and max_objecten > 0:
+        object_blok = f"""OBJECTEN: benoem ELK object uit deze lijst dat duidelijk in beeld staat, ook
+als het in orde is: {', '.join(t for t in OBJECT_TYPES if t in objecttypen)}
+Per object:
+- "niveau": hoe het eruitziet, op het slechtste zichtbare aspect
+  ({', '.join(_OBJECT_ASPECTEN)}): A+ als nieuw, A in orde, B licht gebrek,
+  C duidelijk gebrek, D sterk gebrek
+- "kader": waar het object in het beeld staat, zelfde notatie als bij schade
+- "aspect" en "waarneming" alleen als het niveau B of slechter is
+- hooguit {max_objecten} objecten, de grootste en duidelijkste eerst
+Beoordeel alleen wat zichtbaar is. Beoordeel niet of iets aan een norm
+voldoet, of iets veilig is, of hoe oud het is."""
+    else:
+        object_blok = 'OBJECTEN hoef je bij deze schouw niet te benoemen; laat "objecten" leeg.'
     return f"""Je beoordeelt één beeld uit een schouw van de Nederlandse openbare ruimte.
 
 Je taak is waarnemen, niet oordelen. Meld wat je ziet en hoe zeker je bent.
@@ -133,33 +177,9 @@ WAARDE:
 - bij scheefstand en markering geef je geen getal maar een letter in
   "klasse": A (recht/strak), B (licht), C (duidelijk), D (sterk)
 
-SCHADE AAN DE VERHARDING meld je NIET onder "gebied" maar onder "wegschade",
-met het schadebeeld uit deze catalogus. Kies eerst het verhardingstype (asfalt,
-elementen of beton) en daarna een schadebeeld dat bij dat type hoort:
-{cw.prompt_tekst()}
+{schade_blok}
 
-Per schade:
-- "ernst": L, M of E volgens de beschrijving bij dat schadebeeld
-- "omvang": hoeveel van de ZICHTBARE verharding het beslaat -- 1 plaatselijk,
-  2 over een deel, 3 over het grootste deel
-- "kader": waar de schade in het beeld zit, als [x_min, y_min, x_max, y_max],
-  elk een getal tussen 0 en 1 als fractie van de breedte en hoogte van het
-  beeld, gemeten vanaf linksboven. Leg het kader strak om het beschadigde deel.
-  Bij een lange scheur loopt het kader over de hele zichtbare lengte.
-- losse schades apart; hetzelfde schadebeeld op twee plekken is twee keer
-- hooguit {MAX_WEGSCHADE_PER_BEELD} schades per beeld, de duidelijkste eerst
-
-OBJECTEN: benoem ELK object uit deze lijst dat duidelijk in beeld staat, ook
-als het in orde is: {', '.join(OBJECT_TYPES)}
-Per object:
-- "niveau": hoe het eruitziet, op het slechtste zichtbare aspect
-  ({', '.join(_OBJECT_ASPECTEN)}): A+ als nieuw, A in orde, B licht gebrek,
-  C duidelijk gebrek, D sterk gebrek
-- "kader": waar het object in het beeld staat, zelfde notatie als bij schade
-- "aspect" en "waarneming" alleen als het niveau B of slechter is
-- hooguit {MAX_OBJECTEN_PER_BEELD} objecten, de grootste en duidelijkste eerst
-Beoordeel alleen wat zichtbaar is. Beoordeel niet of iets aan een norm
-voldoet, of iets veilig is, of hoe oud het is.
+{object_blok}
 
 KADERS: geef elk getal met twee decimalen. Ook bij "gebied" mag een kader,
 als de waarneming op één plek zit (een stapel afval, een scheve mast).
@@ -222,7 +242,7 @@ def _parse(ruw: str) -> dict:
     return json.loads(m.group(0))
 
 
-def _schoon(rauw: dict) -> dict:
+def _schoon(rauw: dict, instellingen: Optional[dict] = None) -> dict:
     """Antwoord opschonen en vertalen naar meetlatten.
 
     Een waarneming zonder herleidbare meetlat -- verzonnen klasse, of graffiti
@@ -231,6 +251,11 @@ def _schoon(rauw: dict) -> dict:
     hij de drager alsnog invullen. Weggooien zou betekenen dat de AI iets zag en
     niemand het te weten komt.
     """
+    inst = instellingen or {}
+    drempel = inst.get("drempel_automatisch", DREMPEL_AUTOMATISCH)
+    objecttypen = inst.get("objecttypen", OBJECT_TYPES)
+    max_objecten = inst.get("max_objecten", MAX_OBJECTEN_PER_BEELD)
+
     gebied = []
     for w in (rauw.get("gebied") or []):
         klasse = w.get("klasse")
@@ -260,19 +285,21 @@ def _schoon(rauw: dict) -> dict:
             "toelichting": (w.get("toelichting") or "")[:300] or None,
             "kader": _kader(w.get("kader")),
             "beoordeling_nodig": (code is None or zekerheid is None
-                                  or zekerheid < DREMPEL_AUTOMATISCH),
+                                  or zekerheid < drempel),
         })
 
-    wegschade = _schoon_wegschade(rauw.get("wegschade") or [])
+    wegschade = _schoon_wegschade(rauw.get("wegschade") or [], drempel=drempel,
+                                  verhardingen=inst.get("verhardingen"))
     if wegschade:
         # De oude, platte "verharding"-melding en een CROW-schadebeeld over
         # hetzelfde gat zouden dubbel tellen. Het schadebeeld zegt meer.
         gebied = [w for w in gebied if w["klasse"] != "verharding"]
 
     objecten = []
-    for o in (rauw.get("objecten") or [])[:MAX_OBJECTEN_PER_BEELD]:
-        if not isinstance(o, dict) or o.get("type") not in OBJECT_TYPES:
-            continue
+    # Wat de organisatie niet laat herkennen, bestaat voor deze schouw niet --
+    # ook niet als het model het toch noemt.
+    for o in [o for o in (rauw.get("objecten") or [])
+              if isinstance(o, dict) and o.get("type") in objecttypen][:max_objecten]:
         aspect = o.get("aspect")
         if aspect not in _OBJECT_ASPECTEN:
             aspect = None
@@ -286,7 +313,7 @@ def _schoon(rauw: dict) -> dict:
             "aspect": aspect,
             "waarneming": (o.get("waarneming") or "")[:300] or None,
             "zekerheid": zekerheid,
-            "beoordeling_nodig": zekerheid is None or zekerheid < DREMPEL_AUTOMATISCH,
+            "beoordeling_nodig": zekerheid is None or zekerheid < drempel,
         })
 
     return {
@@ -299,7 +326,8 @@ def _schoon(rauw: dict) -> dict:
     }
 
 
-def _schoon_wegschade(lijst: list) -> list[dict]:
+def _schoon_wegschade(lijst: list, *, drempel: float = DREMPEL_AUTOMATISCH,
+                      verhardingen: Optional[list[str]] = None) -> list[dict]:
     """Wegschade opschonen en koppelen aan de schouw.
 
     Een schadebeeld dat niet bij het verhardingstype hoort (rafeling op
@@ -316,7 +344,7 @@ def _schoon_wegschade(lijst: list) -> list[dict]:
         if not isinstance(w, dict):
             continue
         s = cw.zoek(w.get("verharding"), w.get("schadebeeld"))
-        if not s:
+        if not s or (verhardingen is not None and s["verharding"] not in verhardingen):
             continue
         ernst = w.get("ernst") if w.get("ernst") in cw.ERNST else None
         omvang = str(w.get("omvang")) if str(w.get("omvang")) in cw.OMVANG_BEELD else None
@@ -341,7 +369,7 @@ def _schoon_wegschade(lijst: list) -> list[dict]:
             "toelichting": (w.get("toelichting") or "")[:300] or None,
             # Zonder ernst valt er niets te scoren; die moet een mens invullen.
             "beoordeling_nodig": (ernst is None or zekerheid is None
-                                  or zekerheid < DREMPEL_AUTOMATISCH),
+                                  or zekerheid < drempel),
         })
     return uit
 
@@ -384,7 +412,8 @@ def analyseer_frame(*,
                     image_bytes: bytes,
                     image_media_type: str = "image/jpeg",
                     privacy_gecontroleerd: bool,
-                    context: Optional[str] = None) -> dict:
+                    context: Optional[str] = None,
+                    instellingen: Optional[dict] = None) -> dict:
     """Eén schouwbeeld analyseren.
 
     ``privacy_gecontroleerd`` moet expliciet True zijn: het beeld is dan
@@ -416,12 +445,12 @@ def analyseer_frame(*,
         inhoud.append({"type": "text", "text": context[:1000]})
 
     try:
-        rauw_tekst, model_id = _roep_aan(sleutel, inhoud)
+        rauw_tekst, model_id = _roep_aan(sleutel, inhoud, instellingen)
     except Exception as exc:  # noqa: BLE001 — één kapot frame stopt geen rit
         return _leeg(f"analyse mislukt: {exc}"[:200])
 
     try:
-        uit = _schoon(_parse(rauw_tekst))
+        uit = _schoon(_parse(rauw_tekst), instellingen)
     except Exception as exc:  # noqa: BLE001
         return _leeg(f"antwoord niet te lezen: {exc}"[:200])
 
@@ -434,7 +463,7 @@ def _base64(data: bytes) -> str:
     return base64.b64encode(data).decode("ascii")
 
 
-def _verzoek_extra(model: str) -> dict:
+def _verzoek_extra(model: str, effort: str = "low") -> dict:
     """Wat er per model extra meegaat, als extra_body/extra_headers.
 
     Via extra_* werkt het op elke versie van de SDK: requirements.txt pint
@@ -445,7 +474,7 @@ def _verzoek_extra(model: str) -> dict:
     body: dict = {}
     headers: dict = {}
     if not model.startswith("claude-haiku"):
-        body["output_config"] = {"effort": "low"}
+        body["output_config"] = {"effort": effort}
     if model in ("claude-opus-5", "claude-fable-5-1"):
         body["fallbacks"] = "default"
         headers["anthropic-beta"] = "server-side-fallback-2026-07-01"
@@ -457,21 +486,22 @@ def _verzoek_extra(model: str) -> dict:
     return extra
 
 
-def _roep_aan(sleutel: str, inhoud: list[dict]) -> tuple[str, Optional[str]]:
+def _roep_aan(sleutel: str, inhoud: list[dict],
+              instellingen: Optional[dict] = None) -> tuple[str, Optional[str]]:
     """Eén beeld naar het model. De catalogus staat in de system prompt en
     wordt gecachet: hij is bij elk beeld gelijk, dus na het eerste beeld
     betaal je hem voor een tiende."""
     import anthropic
 
     model = os.environ.get("SCHOUW_MODEL") or MODEL_STANDAARD
-    systeem = [{"type": "text", "text": _systeem_prompt(),
+    systeem = [{"type": "text", "text": _systeem_prompt(instellingen),
                 "cache_control": {"type": "ephemeral"}}]
 
     client = anthropic.Anthropic(api_key=sleutel)
     msg = client.messages.create(
         model=model, max_tokens=16000, system=systeem,
         messages=[{"role": "user", "content": inhoud}],
-        **_verzoek_extra(model))
+        **_verzoek_extra(model, _EFFORT.get((instellingen or {}).get("grondigheid"), "low")))
     if getattr(msg, "stop_reason", None) == "refusal":
         raise RuntimeError("beeld niet beoordeeld: model weigerde")
     tekst = "".join(b.text for b in msg.content

@@ -142,6 +142,9 @@ class Organization(Base):
     # opdrachtgever en horen niet door ons verzonnen te worden. Zonder
     # grenswaarden levert een schouw wel waarnemingen op maar geen A-D-score.
     schouw_drempels = Column(Text, nullable=True)
+    # Wat de schouwcamera herkent en hoe streng (zie schouw_instellingen).
+    # Leeg = de standaard, die gelijk is aan het gedrag van vóór de instelling.
+    schouw_instellingen = Column(Text, nullable=True)
     # Indexpercentage per jaar voor het MJOP. NULL = niet indexeren; dan staan
     # de bedragen op prijspeil en zeggen de exports dat er expliciet bij. Welk
     # percentage klopt staat in het contract of de eigen indexafspraak (CBS
