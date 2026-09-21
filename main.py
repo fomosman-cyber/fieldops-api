@@ -477,6 +477,11 @@ def _run_migrations():
             # MJOP-indexpercentage per organisatie. Nieuwe kolom op een
             # bestaande tabel, dus create_all() maakt hem niet aan.
             org_cols = [c["name"] for c in insp.get_columns("organizations")]
+            if "schouw_instellingen" not in org_cols:
+                with engine.begin() as conn:
+                    conn.execute(text(
+                        "ALTER TABLE organizations ADD COLUMN schouw_instellingen TEXT"))
+                print("[migration] organizations.schouw_instellingen toegevoegd.")
             if "mjop_index_pct" not in org_cols:
                 print("[migration] organizations.mjop_index_pct toevoegen...")
                 with engine.begin() as conn:
@@ -537,6 +542,7 @@ def _run_migrations():
                     "kader":            "TEXT",
                     "keer_gezien":      "INTEGER DEFAULT 1",
                     "laatst_gezien_op": "TIMESTAMP",
+                    "beeld_id":         "VARCHAR",
                 }
                 bestaand = [c["name"] for c in insp.get_columns("schouwwaarnemingen")]
                 schouw_missing = [c for c in schouw_cols if c not in bestaand]
@@ -550,6 +556,15 @@ def _run_migrations():
                             "CREATE INDEX IF NOT EXISTS ix_schouwwaarnemingen_crow_schadebeeld "
                             "ON schouwwaarnemingen(crow_schadebeeld)"))
                     print("[migration] schouwwaarnemingen kolommen toegevoegd.")
+
+            if "schouwritten" in insp.get_table_names():
+                rit_cols = [c["name"] for c in insp.get_columns("schouwritten")]
+                if "frames_geanonimiseerd" not in rit_cols:
+                    with engine.begin() as conn:
+                        conn.execute(text(
+                            "ALTER TABLE schouwritten ADD COLUMN frames_geanonimiseerd "
+                            "INTEGER NOT NULL DEFAULT 0"))
+                    print("[migration] schouwritten.frames_geanonimiseerd toegevoegd.")
     except Exception as e:
         print(f"[migration] Waarschuwing: {e}")
 
