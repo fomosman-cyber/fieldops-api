@@ -351,15 +351,18 @@ def klasse_indicatie(ernst: Optional[str], omvang: Optional[str]) -> Optional[st
     return None
 
 
-def prompt_tekst() -> str:
+def prompt_tekst(verhardingen: Optional[list[str]] = None) -> str:
     """De catalogus zoals de beeldherkenning hem krijgt.
 
     Statisch: dezelfde tekst bij elk beeld, zodat hij in de promptcache blijft
     staan. Een wisselende volgorde of datum hierin zou elk beeld de volle prijs
-    laten betalen.
+    laten betalen. `verhardingen` beperkt hem tot wat een organisatie laat
+    herkennen; de volgorde blijft die van VERHARDINGEN, wat er ook binnenkomt.
     """
     regels: list[str] = []
     for vcode, v in VERHARDINGEN.items():
+        if verhardingen is not None and vcode not in verhardingen:
+            continue
         regels.append(f"\n{v['naam'].upper()} (verharding: \"{vcode}\")")
         for s in schadebeelden():
             if s["verharding"] != vcode:

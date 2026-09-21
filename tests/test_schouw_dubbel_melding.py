@@ -105,8 +105,9 @@ def test_zelfde_kuil_in_twee_beelden_is_een_kuil(client, admin_user, beelden):
     assert w["id"] == eerste["gevonden"][0]["id"]
     assert w["samengevoegd"] is True and w["keer_gezien"] == 2
     # Rood in dit beeld hoort op de plek in dít beeld.
-    assert tweede["in_beeld"] == [{"id": w["id"], "naam": "Kuil", "ernst": "M",
-                                   "kader": [0.3, 0.6, 0.5, 0.9]}]
+    [rood] = tweede["in_beeld"]
+    assert (rood["soort"], rood["id"], rood["naam"], rood["ernst"], rood["kader"]) == (
+        "schade", w["id"], "Kuil", "M", [0.3, 0.6, 0.5, 0.9])
 
 
 def test_zekerder_beeld_wordt_het_bewijs(client, admin_user, beelden):
