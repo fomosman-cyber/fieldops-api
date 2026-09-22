@@ -18,6 +18,8 @@ _TEMP_DB = tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False)
 _TEMP_DB.close()
 os.environ["DATABASE_URL"] = f"sqlite:///{_TEMP_DB.name}"
 os.environ.pop("ANTHROPIC_API_KEY", None)
+# Opnames van een rijdende schouw meteen analyseren, niet in een achtergronddraad.
+os.environ["SCHOUW_ANALYSE_INLINE"] = "1"
 os.environ["SECRET_KEY"] = "test-secret-do-not-use-in-prod"
 os.environ["ALGORITHM"] = "HS256"
 
@@ -35,7 +37,7 @@ from models import (  # noqa: E402
     QualityInspection, QualityField, QualityRequirement,
     Oplevering, OpleveringPunt, OpleverRonde,
     QualityRegistration, QualityAnswer, QualityEvidence,
-    SchouwBeeld, Schouwwaarneming, Schouwrit,
+    SchouwBeeld, SchouwOpname, Schouwwaarneming, Schouwrit,
 )
 from auth import hash_password, create_access_token  # noqa: E402
 
@@ -62,7 +64,7 @@ def clean_db():
             OpleveringPunt, OpleverRonde, Oplevering,
             QualityEvidence, QualityAnswer, QualityRegistration,
             QualityField, QualityRequirement, QualityInspection,
-            SchouwBeeld, Schouwwaarneming, Schouwrit,
+            SchouwBeeld, SchouwOpname, Schouwwaarneming, Schouwrit,
             AIAnalysis, AuditLog, PasswordResetToken,
             Melding, Asset, Project, Invitation, DemoRequest,
             User, Organization,

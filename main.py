@@ -654,6 +654,12 @@ async def lifespan(app: FastAPI):
     # heeft die daarna uit de pas gaat lopen -- zie billing_planner.
     import billing_planner
     billing_task = asyncio.create_task(billing_planner.reconciliatie_lus())
+    # Opnames van een rijdende schouw die bij een herstart nog in de wachtrij
+    # stonden: verder analyseren. In een eigen draad, het opstarten wacht er niet op.
+    import threading
+    import schouw_analyse
+    if not schouw_analyse._inline():
+        threading.Thread(target=schouw_analyse.herstel_wachtrij, daemon=True).start()
     yield
     ping_task.cancel()
     billing_task.cancel()
@@ -982,8 +988,11 @@ async def request_id_middleware(request, call_next):
 # Security response headers — Mozilla Observatory / securityheaders.com baseline.
 # CSP bewust niet meegenomen: portaal.html heeft 200+ inline handlers + 5 CDN's.
 # Een strict CSP vereist aparte refactor en zou de portal breken.
+# camera=(self): de schouw, de opleverronde en foto's maken gebruiken de
+# camera van het toestel. Met camera=() weigert Chrome op Android die
+# volledig; alleen ons eigen domein mag hem, geen ingesloten pagina's.
 _PERMISSIONS_POLICY = (
-    "camera=(), microphone=(), geolocation=(self), payment=(), "
+    "camera=(self), microphone=(), geolocation=(self), payment=(), "
     "usb=(), magnetometer=(), gyroscope=(), accelerometer=(), "
     "fullscreen=(self)"
 )

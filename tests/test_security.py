@@ -224,7 +224,10 @@ def test_security_headers_present_on_health(client):
     assert h.get("x-frame-options") == "DENY"
     assert h.get("x-content-type-options") == "nosniff"
     assert h.get("referrer-policy") == "strict-origin-when-cross-origin"
-    assert "camera=()" in h.get("permissions-policy", "")
+    # Camera alleen voor het portaal zelf (schouw, opleverronde), nooit voor
+    # ingesloten pagina's; microfoon helemaal niet.
+    assert "camera=(self)" in h.get("permissions-policy", "")
+    assert "microphone=()" in h.get("permissions-policy", "")
     assert h.get("cross-origin-opener-policy") == "same-origin"
 
 

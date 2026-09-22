@@ -44,12 +44,13 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from typing import Optional
 
 import crow_schouw as cs
 import crow_wegschade as cw
 
-SCHOUW_VISION_VERSION = "schouw-vision.v3-2026-09"
+SCHOUW_VISION_VERSION = "schouw-vision.v4-2026-09"
 
 # Het model voor de schouw. Eigen omgevingsvariabele, zodat de schouw niet
 # meeverandert als iemand CLAUDE_MODEL voor de inspecties omzet. Elke paar
@@ -71,6 +72,13 @@ OBJECT_NIVEAUS = ("A+", "A", "B", "C", "D")
 
 # Grondigheid uit de instellingen van de organisatie -> effort van het model.
 _EFFORT = {"snel": "low", "grondig": "medium"}
+
+# Wat er van een beeld wordt gevraagd. "alles" is de lopende schouw: objecten,
+# vervuiling en schade. "wegdek" is de rijstand: alleen schade aan de
+# verharding, op een uitsnede van het wegdek. Daar wacht niemand op het
+# antwoord, dus het model mag er iets langer over doen.
+STANDEN = ("alles", "wegdek")
+_EFFORT_WEGDEK = {"snel": "medium", "grondig": "high"}
 
 # Boven deze zekerheid mag een waarneming zonder tussenkomst doorstromen naar
 # een beeldkwaliteitsscore. Bewust hoog: een onterecht "schoon" kost een
@@ -216,6 +224,64 @@ Zet "bruikbaar" op false als het beeld te donker, te onscherp of te vol is om
 iets zinnigs over te zeggen, en vul dan "reden_onbruikbaar" in. Dat is een
 nuttig antwoord: het vertelt de gebruiker dat er op dit stuk niets gemeten is,
 in plaats van dat het schoon zou zijn."""
+
+
+def _systeem_prompt_wegdek(instellingen: Optional[dict] = None) -> str:
+    """Alleen het wegdek, gezien vanuit een rijdende auto.
+
+    De meeste fouten bij wegschade zijn geen gemiste scheuren maar dingen die
+    op schade lijken: belijning, schaduw, een nat vlak, een reparatie. Die
+    staan er daarom met name in. Statisch, zodat de prompt in de cache blijft.
+    """
+    inst = instellingen or {}
+    verhardingen = inst.get("verhardingen", list(cw.VERHARDINGEN))
+    namen = ", ".join(v for v in cw.VERHARDINGEN if v in verhardingen) or "geen"
+    return f"""Je beoordeelt het wegdek voor een schouw van de Nederlandse openbare weg.
+
+HET BEELD is een uitsnede van het wegdek, gemaakt door een telefoon achter de
+voorruit van een auto die rijdt. Onderaan is dichtbij (een paar meter voor de
+auto), bovenaan verder weg (twintig meter of meer). Beoordeel vooral het
+onderste twee derde: verder weg is te klein om de ernst te zien. Meld daar
+alleen iets dat onmiskenbaar is, zoals een groot gat.
+
+MELD ALLEEN SCHADE AAN DE VERHARDING ({namen}), met het schadebeeld uit
+deze catalogus. Kies eerst het verhardingstype en daarna een schadebeeld dat
+bij dat type hoort:
+{cw.prompt_tekst(verhardingen)}
+
+GEEN SCHADE -- dit lijkt er vaak op, maar meld je niet:
+- wegmarkering en belijning: strepen, haaientanden, fietssymbolen, pijlen;
+- schaduw van bomen, palen, gebouwen of auto's;
+- natte plekken en plassen waar geen gat onder zit;
+- een reparatievlak (een rechthoek nieuwer of donkerder asfalt) dat zelf heel
+  is -- wel melden als er scheuren of rafeling in of langs zitten;
+- putdeksels, kolken, roosters, tramrails en verkeersdrempels;
+- de rechte naad tussen twee asfaltbanen of een aansluiting op een brug;
+- blad, zand, grind of bandensporen die op het wegdek liggen.
+
+Per schade:
+- "verharding" en "schadebeeld" uit de catalogus;
+- "ernst": L, M of E volgens de beschrijving bij dat schadebeeld;
+- "omvang": hoeveel van het ZICHTBARE wegdek het beslaat -- 1 plaatselijk,
+  2 over een deel, 3 over het grootste deel;
+- "kader": [x_min, y_min, x_max, y_max] als fracties 0 tot 1 van deze
+  uitsnede, vanaf linksboven, twee decimalen. Strak om het beschadigde deel;
+  bij een lange scheur over de hele zichtbare lengte;
+- "zekerheid" tussen 0 en 1. Streng: 0.9 of hoger alleen als het scherp in
+  beeld is en onmiskenbaar. Bij bewegingsonscherpte, tegenlicht of regen laag;
+- "toelichting": hooguit acht woorden, waar het zit.
+Losse schades apart, de duidelijkste eerst, hooguit {MAX_WEGSCHADE_PER_BEELD}.
+
+Antwoord met uitsluitend geldige JSON:
+{{"bruikbaar": true, "reden_onbruikbaar": null, "wegschade": [
+  {{"verharding": "asfalt", "schadebeeld": "scheurvorming-langs", "ernst": "M",
+    "omvang": "1", "kader": [0.42, 0.35, 0.61, 0.97], "zekerheid": 0.83,
+    "toelichting": "langsscheur rechter wielspoor"}}]}}
+
+Zet "bruikbaar" op false met een reden als het wegdek niet te beoordelen is:
+te donker, bewogen, een voorligger of ander voertuig vult het beeld, of er is
+geen wegdek te zien. Een lege lijst betekent: dit stuk is bekeken en er is
+geen schade gezien."""
 
 
 def _leeg(reden: str) -> dict:
@@ -413,7 +479,8 @@ def analyseer_frame(*,
                     image_media_type: str = "image/jpeg",
                     privacy_gecontroleerd: bool,
                     context: Optional[str] = None,
-                    instellingen: Optional[dict] = None) -> dict:
+                    instellingen: Optional[dict] = None,
+                    stand: str = "alles") -> dict:
     """Eén schouwbeeld analyseren.
 
     ``privacy_gecontroleerd`` moet expliciet True zijn: het beeld is dan
@@ -443,18 +510,26 @@ def analyseer_frame(*,
     }]
     if context:
         inhoud.append({"type": "text", "text": context[:1000]})
+    if stand not in STANDEN:
+        raise ValueError(f"onbekende stand: {stand}")
 
+    start = time.perf_counter()
     try:
-        rauw_tekst, model_id = _roep_aan(sleutel, inhoud, instellingen)
+        rauw_tekst, model_id = _roep_aan(sleutel, inhoud, instellingen, stand=stand)
     except Exception as exc:  # noqa: BLE001 — één kapot frame stopt geen rit
         return _leeg(f"analyse mislukt: {exc}"[:200])
 
     try:
-        uit = _schoon(_parse(rauw_tekst), instellingen)
+        rauw = _parse(rauw_tekst)
+        if stand == "wegdek":
+            # Wat het model buiten het wegdek toch noemt, hoort niet bij deze stand.
+            rauw = {k: v for k, v in rauw.items() if k not in ("gebied", "objecten")}
+        uit = _schoon(rauw, instellingen)
     except Exception as exc:  # noqa: BLE001
         return _leeg(f"antwoord niet te lezen: {exc}"[:200])
 
     uit["_model_id"] = model_id
+    uit["_duur_ms"] = int((time.perf_counter() - start) * 1000)
     return uit
 
 
@@ -487,21 +562,26 @@ def _verzoek_extra(model: str, effort: str = "low") -> dict:
 
 
 def _roep_aan(sleutel: str, inhoud: list[dict],
-              instellingen: Optional[dict] = None) -> tuple[str, Optional[str]]:
+              instellingen: Optional[dict] = None,
+              stand: str = "alles") -> tuple[str, Optional[str]]:
     """Eén beeld naar het model. De catalogus staat in de system prompt en
     wordt gecachet: hij is bij elk beeld gelijk, dus na het eerste beeld
     betaal je hem voor een tiende."""
     import anthropic
 
     model = os.environ.get("SCHOUW_MODEL") or MODEL_STANDAARD
-    systeem = [{"type": "text", "text": _systeem_prompt(instellingen),
-                "cache_control": {"type": "ephemeral"}}]
+    grondigheid = (instellingen or {}).get("grondigheid")
+    if stand == "wegdek":
+        tekst, effort = _systeem_prompt_wegdek(instellingen), _EFFORT_WEGDEK.get(grondigheid, "medium")
+    else:
+        tekst, effort = _systeem_prompt(instellingen), _EFFORT.get(grondigheid, "low")
+    systeem = [{"type": "text", "text": tekst, "cache_control": {"type": "ephemeral"}}]
 
     client = anthropic.Anthropic(api_key=sleutel)
     msg = client.messages.create(
         model=model, max_tokens=16000, system=systeem,
         messages=[{"role": "user", "content": inhoud}],
-        **_verzoek_extra(model, _EFFORT.get((instellingen or {}).get("grondigheid"), "low")))
+        **_verzoek_extra(model, effort))
     if getattr(msg, "stop_reason", None) == "refusal":
         raise RuntimeError("beeld niet beoordeeld: model weigerde")
     tekst = "".join(b.text for b in msg.content

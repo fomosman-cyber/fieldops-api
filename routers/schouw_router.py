@@ -34,6 +34,7 @@ import json
 import math
 import time
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -48,15 +49,16 @@ import schouw_vision as sv
 from audit import log_action
 from auth import get_current_user
 from database import get_db
-from models import Melding, Project, SchouwBeeld, Schouwrit, Schouwwaarneming, User
+from models import Melding, Project, SchouwBeeld, SchouwOpname, Schouwrit, Schouwwaarneming, User
 from models import generate_uuid
 from permissions import can_manage_toolbox, is_org_admin, require_module
 
 router = APIRouter(prefix="/api/schouw", tags=["Schouw"],
                    dependencies=[Depends(require_module("schouw"))])
 
-# Alleen deze modus is gebouwd; zie de docstring van Schouwrit.
-TOEGESTANE_PRIVACY_MODI = {"gericht"}
+# Zie de docstring van Schouwrit. Rijdend kan sinds het toestel mensen en
+# voertuigen verpixelt; een rijdende schouw neemt op en analyseert daarna.
+TOEGESTANE_PRIVACY_MODI = {"gericht", "rijdend"}
 
 
 # ── Schemas ──────────────────────────────────────────────────────────
@@ -86,6 +88,25 @@ class FrameIn(BaseModel):
     verpixeld: Optional[int] = Field(default=None, ge=0, le=500)
     breedte: Optional[int] = Field(default=None, ge=1, le=10000)
     hoogte: Optional[int] = Field(default=None, ge=1, le=10000)
+
+
+class OpnameIn(BaseModel):
+    """Eén beeld uit een rijdende schouw: alleen opnemen, analyseren doet de
+    server daarna."""
+    image_data_url: str = Field(..., min_length=32)
+    volgnummer: int = Field(..., ge=0, le=1_000_000)
+    gemaakt_op: Optional[datetime] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    nauwkeurigheid_m: Optional[float] = None
+    koers: Optional[float] = Field(default=None, ge=0, le=360)
+    snelheid_ms: Optional[float] = Field(default=None, ge=0, le=100)
+    breedte: Optional[int] = Field(default=None, ge=1, le=10000)
+    hoogte: Optional[int] = Field(default=None, ge=1, le=10000)
+    verpixeld: Optional[int] = Field(default=None, ge=0, le=500)
+    geanonimiseerd: bool = False
+    # Waar in het beeld het wegdek begint; de server snijdt het daar uit.
+    wegdek_boven: float = Field(default=0.4, ge=0.0, le=0.9)
 
 
 class WaarnemingIn(BaseModel):
@@ -332,7 +353,9 @@ def _kandidaten(db: Session, r: Schouwrit, schadebeelden: set[str],
     uit = []
     for w in rijen:
         laatst = _utc(w.laatst_gezien_op) or _utc(w.created_at)
-        if laatst and (nu - laatst).total_seconds() <= DUBBEL_TIJD_S:
+        # abs(): bij een rijdende schouw worden beelden na elkaar geanalyseerd,
+        # niet per se in de volgorde waarin ze zijn gemaakt.
+        if laatst and abs((nu - laatst).total_seconds()) <= DUBBEL_TIJD_S:
             uit.append(w)
     return uit
 
@@ -345,9 +368,10 @@ def _zoek_dubbel(kandidaten: list[Schouwwaarneming], w: dict, payload,
             continue
         if (k.crow_verharding, k.crow_schadebeeld) != (w.get("verharding"), w.get("schadebeeld")):
             continue
-        heeft_gps = None not in (k.lat, k.lng, payload.lat, payload.lng)
+        lat, lng = _plek(w, payload)
+        heeft_gps = None not in (k.lat, k.lng, lat, lng)
         if heeft_gps:
-            afstand = _afstand_m(k.lat, k.lng, payload.lat, payload.lng)
+            afstand = _afstand_m(k.lat, k.lng, lat, lng)
             if afstand > _straal_m(k.nauwkeurigheid_m, payload.nauwkeurigheid_m):
                 continue
         else:
@@ -368,7 +392,8 @@ def _voeg_samen(bestaand: Schouwwaarneming, w: dict, payload, foto, resultaat: d
     aan -- alleen de teller loopt op.
     """
     bestaand.keer_gezien = (bestaand.keer_gezien or 1) + 1
-    bestaand.laatst_gezien_op = nu
+    vorige = _utc(bestaand.laatst_gezien_op)
+    bestaand.laatst_gezien_op = nu if vorige is None or nu > vorige else vorige
     if bestaand.bevestigd or bestaand.afgewezen:
         return False
     if (w.get("zekerheid") or 0) <= (bestaand.zekerheid or 0):
@@ -380,12 +405,46 @@ def _voeg_samen(bestaand: Schouwwaarneming, w: dict, payload, foto, resultaat: d
     bestaand.zekerheid = w.get("zekerheid")
     bestaand.toelichting = w.get("toelichting")
     bestaand.photo_url = foto()
-    if payload.lat is not None and payload.lng is not None:
-        bestaand.lat, bestaand.lng = payload.lat, payload.lng
+    lat, lng = _plek(w, payload)
+    if lat is not None and lng is not None:
+        bestaand.lat, bestaand.lng = lat, lng
         bestaand.nauwkeurigheid_m = payload.nauwkeurigheid_m
     bestaand.model_id = resultaat.get("_model_id")
     bestaand.vision_versie = resultaat.get("_versie")
     return True
+
+
+def _plek(w: dict, payload) -> tuple[Optional[float], Optional[float]]:
+    """Waar een schade ligt: de geschatte plek op de weg als die er is (rijdend,
+    zie _projecteer), anders de plek van het toestel."""
+    if w.get("_lat") is not None and w.get("_lng") is not None:
+        return w["_lat"], w["_lng"]
+    return payload.lat, payload.lng
+
+
+# Een schade in beeld ligt niet waar de auto is, maar een stukje ervoor. Hoe
+# ver, volgt uit hoe laag hij in het beeld staat: onderaan is dichtbij. Een
+# schatting met een camera op ~1,3 m hoogte en ~50 graden beeldhoek in de
+# hoogte, met de horizon bij de wegdeklijn. Grof, maar een stuk beter dan
+# elke schade op de plek van de auto: daar lag hij juist niet.
+CAMERA_HOOGTE_M = 1.3
+BEELDHOEK_HOOGTE_GRADEN = 50.0
+MAX_VOORUIT_M = 30.0
+
+
+def _projecteer(lat: Optional[float], lng: Optional[float], koers: Optional[float],
+                snelheid_ms: Optional[float], kader: Optional[list[float]],
+                wegdek_boven: float) -> tuple[Optional[float], Optional[float]]:
+    if None in (lat, lng, koers) or not kader or (snelheid_ms or 0) < 1.5:
+        return lat, lng          # stilstaand zegt de koers niets
+    midden = (kader[1] + kader[3]) / 2
+    hoek = (midden - wegdek_boven) * BEELDHOEK_HOOGTE_GRADEN
+    afstand = MAX_VOORUIT_M if hoek <= 2.5 else min(
+        MAX_VOORUIT_M, CAMERA_HOOGTE_M / math.tan(math.radians(hoek)))
+    richting = math.radians(koers)
+    dlat = afstand * math.cos(richting) / 111_320.0
+    dlng = afstand * math.sin(richting) / (111_320.0 * max(0.2, math.cos(math.radians(lat))))
+    return round(lat + dlat, 7), round(lng + dlng, 7)
 
 
 def _kader_lezen(tekst: Optional[str]) -> Optional[list[float]]:
@@ -422,6 +481,14 @@ def _rit_dict(r: Schouwrit, *, detail: bool = False) -> dict:
         "gestart_op": r.gestart_op.isoformat() if r.gestart_op else None,
         "afgerond_op": r.afgerond_op.isoformat() if r.afgerond_op else None,
     }
+    if r.privacy_modus == "rijdend":
+        opnames = list(r.opnames or [])
+        uit["opnames"] = {
+            "totaal": len(opnames),
+            "wacht": sum(1 for o in opnames if o.status in ("wacht", "bezig")),
+            "klaar": sum(1 for o in opnames if o.status == "klaar"),
+            "mislukt": sum(1 for o in opnames if o.status == "mislukt"),
+        }
     if r.status == "bezig":
         uit["tussenstand"] = _tussenstand(r)
     if detail:
@@ -616,34 +683,16 @@ def detail(
     return _rit_dict(_rit_of_404(db, rit_id, current_user), detail=True)
 
 
-@router.post("/ritten/{rit_id}/frame")
-def frame(
-    rit_id: str,
-    payload: FrameIn,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """Eén live beeld analyseren en de waarnemingen teruggeven.
+def _verwerk_resultaat(db: Session, r: Schouwrit, resultaat: dict, payload, foto,
+                       organization_id: str, nu: datetime):
+    """Eén beoordeeld beeld verwerken: tellers, dezelfde schade samenvoegen,
+    nieuwe waarnemingen, wat er in beeld is, en lesmateriaal. Gedeeld door de
+    live schouw en de analyse van opnames, zodat beide hetzelfde doen.
 
-    Antwoordt met wat er in dít beeld is gezien, plus de tussenstand van de rit.
-    Zo kan het scherm meteen tonen wat er gevonden is terwijl de inspecteur er
-    nog staat.
+    `payload` levert plek en beeldgegevens (lat, lng, nauwkeurigheid_m,
+    straatnaam, bewaar_beeld, geanonimiseerd, breedte, hoogte, verpixeld);
+    `foto()` geeft de URL van het beeld; `nu` is het moment van het beeld.
     """
-    _eis_beheer(current_user)
-    r = _rit_of_404(db, rit_id, current_user)
-    _eis_bezig(r)
-
-    beeld, media_type = _data_url_naar_bytes(payload.image_data_url)
-
-    # De privacy-poort van schouw_vision. In de modus `gericht` bepaalt de
-    # inspecteur zelf wat er in beeld komt; die verantwoordelijkheid is bij het
-    # starten van de rit vastgelegd. Voor `rijdend` komt hier straks de blur.
-    resultaat = sv.analyseer_frame(
-        image_bytes=beeld, image_media_type=media_type,
-        privacy_gecontroleerd=(r.privacy_modus == "gericht"),
-        context=(f"Gebied: {r.gebied}" if r.gebied else None),
-        instellingen=si.lees(r.organization))
-
     r.frames = (r.frames or 0) + 1
     if not resultaat.get("bruikbaar"):
         r.frames_onbruikbaar = (r.frames_onbruikbaar or 0) + 1
@@ -653,20 +702,6 @@ def frame(
     # De zekerste eerst: die mag als eerste een bestaande schade claimen.
     wegschade = sorted(resultaat.get("wegschade") or [],
                        key=lambda w: -(w.get("zekerheid") or 0))
-    nu = datetime.now(timezone.utc)
-
-    # Een beeld met schade erop is bewijs, en zonder beeld kan het scherm het
-    # rode vak later niet meer laten zien. Dan bewaren we hem -- één keer, via
-    # de opslag voor foto's, en pas als er echt iets is dat hem gebruikt.
-    _foto: dict = {}
-
-    def foto() -> Optional[str]:
-        if "url" not in _foto:
-            from photo_storage import maybe_offload
-            _foto["url"] = maybe_offload(payload.image_data_url,
-                                         organization_id=current_user.organization_id,
-                                         kind="schouw") or payload.image_data_url
-        return _foto["url"]
 
     kandidaten = _kandidaten(db, r, {w.get("schadebeeld") for w in wegschade}, nu)
     gebruikt: set[str] = set()
@@ -686,8 +721,8 @@ def frame(
     for w in (resultaat.get("gebied") or []) + nieuwe_schade:
         rij = Schouwwaarneming(
             schouwrit_id=r.id,
-            organization_id=current_user.organization_id,
-            lat=payload.lat, lng=payload.lng,
+            organization_id=organization_id,
+            lat=_plek(w, payload)[0], lng=_plek(w, payload)[1],
             nauwkeurigheid_m=payload.nauwkeurigheid_m,
             straatnaam=payload.straatnaam,
             detectieklasse=w.get("klasse"),
@@ -750,7 +785,7 @@ def frame(
             wegschade or payload.bewaar_beeld or r.frames % LEERBEELD_ELKE == 0):
         beeld = SchouwBeeld(
             id=generate_uuid(), schouwrit_id=r.id,
-            organization_id=current_user.organization_id,
+            organization_id=organization_id,
             photo_url=foto(), breedte=payload.breedte, hoogte=payload.hoogte,
             verpixeld=payload.verpixeld or 0, lat=payload.lat, lng=payload.lng,
             kaders=json.dumps([
@@ -766,6 +801,58 @@ def frame(
             if vervangen:
                 d.beeld_id = beeld.id
 
+    return nieuw, samengevoegd, in_beeld
+
+
+@router.post("/ritten/{rit_id}/frame")
+def frame(
+    rit_id: str,
+    payload: FrameIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Eén live beeld analyseren en de waarnemingen teruggeven.
+
+    Antwoordt met wat er in dít beeld is gezien, plus de tussenstand van de rit.
+    Zo kan het scherm meteen tonen wat er gevonden is terwijl de inspecteur er
+    nog staat.
+    """
+    _eis_beheer(current_user)
+    r = _rit_of_404(db, rit_id, current_user)
+    _eis_bezig(r)
+    if r.privacy_modus == "rijdend":
+        raise HTTPException(status_code=400, detail=(
+            "Een rijdende schouw neemt op en analyseert daarna; stuur beelden naar /opnames"))
+
+    beeld, media_type = _data_url_naar_bytes(payload.image_data_url)
+
+    # De privacy-poort van schouw_vision. In de modus `gericht` bepaalt de
+    # inspecteur zelf wat er in beeld komt; die verantwoordelijkheid is bij het
+    # starten van de rit vastgelegd. Een rijdende schouw komt hier niet (zie
+    # /opnames): die verstuurt alleen op het toestel verpixelde beelden.
+    resultaat = sv.analyseer_frame(
+        image_bytes=beeld, image_media_type=media_type,
+        privacy_gecontroleerd=(r.privacy_modus == "gericht"),
+        context=(f"Gebied: {r.gebied}" if r.gebied else None),
+        instellingen=si.lees(r.organization))
+
+    # Een beeld met schade erop is bewijs, en zonder beeld kan het scherm het
+    # rode vak later niet meer laten zien. Dan bewaren we hem -- één keer, via
+    # de opslag voor foto's, en pas als er echt iets is dat hem gebruikt.
+    _foto: dict = {}
+
+    def foto() -> Optional[str]:
+        if "url" not in _foto:
+            from photo_storage import maybe_offload
+            _foto["url"] = maybe_offload(payload.image_data_url,
+                                         organization_id=current_user.organization_id,
+                                         kind="schouw") or payload.image_data_url
+        return _foto["url"]
+
+    nieuw, samengevoegd, in_beeld = _verwerk_resultaat(
+        db, r, resultaat, payload, foto, current_user.organization_id,
+        datetime.now(timezone.utc))
+
     db.commit()
     db.refresh(r)
     gevonden = [dict(_w_dict(w), samengevoegd=False, beeld_vervangen=True) for w in nieuw]
@@ -779,6 +866,175 @@ def frame(
         "objecten": resultaat.get("objecten") or [],
         "rit": _rit_dict(r),
     }
+
+
+MAX_OPNAME_BYTES = 4_000_000
+
+
+@router.post("/ritten/{rit_id}/opnames")
+def opname(
+    rit_id: str,
+    payload: OpnameIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Eén beeld uit een rijdende schouw opnemen. Antwoordt meteen; de
+    analyse volgt op de achtergrond (schouw_analyse). Een beeld dat na een
+    haperende verbinding opnieuw binnenkomt, telt niet dubbel."""
+    import photo_storage
+    import schouw_analyse
+
+    _eis_beheer(current_user)
+    r = _rit_of_404(db, rit_id, current_user)
+    if r.privacy_modus != "rijdend":
+        raise HTTPException(status_code=400, detail="Opnames horen bij een rijdende schouw")
+    # Ook na afronden: wat nog onderweg was, hoort bij deze ronde.
+    if r.status not in ("bezig", "afgerond"):
+        raise HTTPException(status_code=409, detail="Deze schouwrit neemt geen beelden meer aan")
+    if not payload.geanonimiseerd:
+        raise HTTPException(status_code=400, detail=(
+            "Een rijdende schouw verstuurt alleen beelden waarin mensen en voertuigen "
+            "op het toestel zijn verpixeld"))
+    bestaand = (db.query(SchouwOpname)
+                  .filter(SchouwOpname.schouwrit_id == r.id,
+                          SchouwOpname.volgnummer == payload.volgnummer)
+                  .first())
+    if bestaand:
+        return {"id": bestaand.id, "status": bestaand.status, "dubbel": True}
+
+    beeld, _media = _data_url_naar_bytes(payload.image_data_url)
+    if len(beeld) > MAX_OPNAME_BYTES:
+        raise HTTPException(status_code=413, detail="Beeld te groot (max 4 MB)")
+    foto = photo_storage.maybe_offload(payload.image_data_url,
+                                       organization_id=current_user.organization_id,
+                                       kind="schouw") or payload.image_data_url
+    o = SchouwOpname(
+        schouwrit_id=r.id, organization_id=current_user.organization_id,
+        volgnummer=payload.volgnummer,
+        gemaakt_op=_utc(payload.gemaakt_op) or datetime.now(timezone.utc),
+        lat=payload.lat, lng=payload.lng, nauwkeurigheid_m=payload.nauwkeurigheid_m,
+        koers=payload.koers, snelheid_ms=payload.snelheid_ms,
+        photo_url=foto, breedte=payload.breedte, hoogte=payload.hoogte,
+        verpixeld=payload.verpixeld or 0, wegdek_boven=payload.wegdek_boven,
+        status="wacht")
+    db.add(o)
+    db.commit()
+    schouw_analyse.aanbieden(o.id, beeld)
+    db.refresh(o)
+    return {"id": o.id, "status": o.status, "dubbel": False}
+
+
+@router.get("/ritten/{rit_id}/opnames")
+def opnames_stand(
+    rit_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Hoe ver de analyse is, voor het scherm tijdens en na de rit."""
+    from sqlalchemy import func
+
+    r = _rit_of_404(db, rit_id, current_user)
+    tellers = dict(db.query(SchouwOpname.status, func.count(SchouwOpname.id))
+                     .filter(SchouwOpname.schouwrit_id == r.id)
+                     .group_by(SchouwOpname.status).all())
+    gemiddeld = (db.query(func.avg(SchouwOpname.duur_ms))
+                   .filter(SchouwOpname.schouwrit_id == r.id,
+                           SchouwOpname.status == "klaar").scalar())
+    schades = [w for w in (r.waarnemingen or []) if w.crow_schadebeeld]
+    schades.sort(key=lambda w: _utc(w.created_at) or datetime.min.replace(tzinfo=timezone.utc),
+                 reverse=True)
+    return {
+        "totaal": sum(tellers.values()),
+        "wacht": tellers.get("wacht", 0) + tellers.get("bezig", 0),
+        "klaar": tellers.get("klaar", 0),
+        "mislukt": tellers.get("mislukt", 0),
+        "gemiddelde_analyse_s": round(gemiddeld / 1000, 1) if gemiddeld else None,
+        "schades": len(schades),
+        "laatste_schades": [_w_dict(w) for w in schades[:8]],
+        "rit": _rit_dict(r),
+    }
+
+
+def _wegdek_uitsnede(beeld: bytes, boven: Optional[float]) -> tuple[bytes, float]:
+    """Het wegdek uit het beeld snijden, in de hoogste resolutie die het model
+    gebruikt. Lucht en gevels zeggen niets over het wegdek en kosten pixels."""
+    import io as _io
+
+    from PIL import Image
+
+    boven = min(0.9, max(0.0, boven if boven is not None else 0.4))
+    with Image.open(_io.BytesIO(beeld)) as im:
+        im = im.convert("RGB")
+        b, h = im.size
+        uit = im.crop((0, int(h * boven), b, h))
+        uit.thumbnail((1568, 1568))
+        buf = _io.BytesIO()
+        uit.save(buf, format="JPEG", quality=88)
+    return buf.getvalue(), boven
+
+
+def _naar_heel_beeld(kader: Optional[list[float]], boven: float) -> Optional[list[float]]:
+    """Een kader in de uitsnede terug naar het hele beeld, zodat het rode vak
+    op de bewaarde foto op de goede plek staat."""
+    if not kader:
+        return kader
+    x0, y0, x1, y1 = kader
+    schaal = 1.0 - boven
+    return [x0, round(boven + y0 * schaal, 4), x1, round(boven + y1 * schaal, 4)]
+
+
+def analyseer_opname(db: Session, o: SchouwOpname, beeld: Optional[bytes] = None) -> None:
+    """Eén opname beoordelen en verwerken. Aangeroepen door schouw_analyse,
+    met de opname al op `bezig`. Een mislukte aanroep van het model gooit een
+    fout, zodat de wachtrij het later opnieuw probeert in plaats van het stuk
+    weg als 'niet te beoordelen' te boeken."""
+    import photo_storage
+
+    r = db.query(Schouwrit).filter(Schouwrit.id == o.schouwrit_id).first()
+    if r is None:
+        o.status, o.fout = "mislukt", "schouwrit bestaat niet meer"
+        db.commit()
+        return
+    data = beeld or photo_storage.lees_foto(o.photo_url)
+    if not data:
+        raise RuntimeError("beeld niet te lezen")
+    uitsnede, boven = _wegdek_uitsnede(data, o.wegdek_boven)
+    resultaat = sv.analyseer_frame(
+        image_bytes=uitsnede, image_media_type="image/jpeg",
+        privacy_gecontroleerd=True,        # alleen verpixelde beelden komen hier
+        context=(f"Gebied: {r.gebied}" if r.gebied else None),
+        instellingen=si.lees(r.organization), stand="wegdek")
+    reden = resultaat.get("reden_onbruikbaar") or ""
+    if reden.startswith("analyse mislukt"):
+        raise RuntimeError(reden)
+
+    for w in resultaat.get("wegschade") or []:
+        w["kader"] = _naar_heel_beeld(w.get("kader"), boven)
+        w["_lat"], w["_lng"] = _projecteer(o.lat, o.lng, o.koers, o.snelheid_ms,
+                                           w.get("kader"), boven)
+
+    # Eén opname tegelijk per rit: twee beelden van dezelfde kuil die tegelijk
+    # klaar zijn, mogen niet allebei denken dat ze de eerste zijn.
+    r = db.query(Schouwrit).filter(Schouwrit.id == r.id).with_for_update().first()
+    meta = SimpleNamespace(lat=o.lat, lng=o.lng, nauwkeurigheid_m=o.nauwkeurigheid_m,
+                           straatnaam=None, bewaar_beeld=False, geanonimiseerd=True,
+                           breedte=o.breedte, hoogte=o.hoogte, verpixeld=o.verpixeld)
+    _verwerk_resultaat(db, r, resultaat, meta, lambda: o.photo_url, o.organization_id,
+                       _utc(o.gemaakt_op) or datetime.now(timezone.utc))
+    o.status = "klaar"
+    o.fout = None if resultaat.get("bruikbaar") else (reden or "niet te beoordelen")[:300]
+    o.schades = len(resultaat.get("wegschade") or [])
+    o.duur_ms = resultaat.get("_duur_ms")
+    o.model_id = resultaat.get("_model_id")
+    o.geanalyseerd_op = datetime.now(timezone.utc)
+    if r.status == "afgerond":
+        # Wat na het afronden nog binnenkwam, telt mee in de uitslag.
+        db.flush()
+        db.refresh(r)
+        uitslag = _tussenstand(r)
+        r.beeldkwaliteit = uitslag.get("beeldkwaliteit")
+        r.voldoet = uitslag.get("voldoet")
+    db.commit()
 
 
 @router.post("/ritten/{rit_id}/waarneming")
@@ -1188,6 +1444,8 @@ def verwijderen(
     r = _rit_of_404(db, rit_id, current_user)
     # Lesbeelden expliciet mee: SQLite handhaaft ON DELETE CASCADE niet altijd.
     db.query(SchouwBeeld).filter(SchouwBeeld.schouwrit_id == r.id).delete(
+        synchronize_session=False)
+    db.query(SchouwOpname).filter(SchouwOpname.schouwrit_id == r.id).delete(
         synchronize_session=False)
     db.delete(r)
     db.commit()

@@ -1956,11 +1956,12 @@ class Schouwrit(Base):
         gericht   De inspecteur richt de camera bewust op een object of een
                   stuk straat en is verantwoordelijk voor wat er in beeld komt.
                   Dit is de enige modus die nu werkt.
-        rijdend   Doorlopend opnemen vanuit een voertuig. Vraagt automatisch
-                  blurren van gezichten en kentekens, en dat is nog niet
-                  gebouwd. De router weigert deze modus daarom -- liever een
-                  duidelijke weigering dan straatbeelden met omstanders erop
-                  naar een verwerker buiten de EU.
+        rijdend   Doorlopend opnemen vanuit een voertuig, zoals een
+                  wegbeheerder dat doet: elke paar meter een beeld van het
+                  wegdek. Het toestel verpixelt mensen en voertuigen vóór het
+                  versturen; een beeld dat niet verpixeld is, weigert de
+                  server. Tijdens het rijden wordt alleen opgenomen (zie
+                  SchouwOpname); de server analyseert daarna.
 
     Het gebiedstype bepaalt de gangbare ambitie; die kan per rit worden
     overschreven omdat een bestek vaak eigen afspraken kent.
@@ -2008,6 +2009,8 @@ class Schouwrit(Base):
     project = relationship("Project", foreign_keys=[project_id])
     inspecteur = relationship("User", foreign_keys=[inspecteur_id])
     beelden = relationship("SchouwBeeld", cascade="all, delete-orphan",
+                           passive_deletes=True)
+    opnames = relationship("SchouwOpname", cascade="all, delete-orphan",
                            passive_deletes=True)
     waarnemingen = relationship("Schouwwaarneming", back_populates="rit",
                                 cascade="all, delete-orphan",
@@ -2121,6 +2124,55 @@ class SchouwBeeld(Base):
 
     model_id = Column(String(80), nullable=True)
     vision_versie = Column(String(60), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class SchouwOpname(Base):
+    """Eén beeld uit een rijdende schouw, opgenomen en nog te analyseren.
+
+    Rijdend met 30 tot 50 km/u kun je niet op het model wachten: in de
+    seconden dat één beeld wordt beoordeeld, rijd je honderd meter verder.
+    Daarom scheidt de rijstand opnemen van analyseren, zoals wegbeheerders dat
+    doen: het toestel maakt elke paar meter een beeld en stuurt het op de
+    achtergrond; de server zet het in deze wachtrij en analyseert het zodra
+    er plek is. De schades verschijnen in de ronde, een paar minuten later.
+
+    Alleen verpixelde beelden komen hier (zie Schouwrit.privacy_modus).
+    """
+    __tablename__ = "schouw_opnames"
+    __table_args__ = (UniqueConstraint("schouwrit_id", "volgnummer",
+                                       name="uq_schouw_opname_volgnummer"),)
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    schouwrit_id = Column(String, ForeignKey("schouwritten.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    # Nummer van het toestel: een upload die na een haperende verbinding
+    # opnieuw binnenkomt, wordt zo herkend in plaats van dubbel geteld.
+    volgnummer = Column(Integer, nullable=False)
+
+    gemaakt_op = Column(DateTime, nullable=False)          # op het toestel, bij opnemen
+    lat = Column(Float, nullable=True)
+    lng = Column(Float, nullable=True)
+    nauwkeurigheid_m = Column(Float, nullable=True)
+    koers = Column(Float, nullable=True)                   # graden, 0 = noord
+    snelheid_ms = Column(Float, nullable=True)
+
+    photo_url = Column(Text, nullable=True)
+    breedte = Column(Integer, nullable=True)
+    hoogte = Column(Integer, nullable=True)
+    verpixeld = Column(Integer, nullable=False, default=0)
+    # Waar in het beeld het wegdek begint (0 = bovenrand, 1 = onderrand).
+    wegdek_boven = Column(Float, nullable=True)
+
+    # wacht -> bezig -> klaar | mislukt
+    status = Column(String(20), nullable=False, default="wacht", index=True)
+    pogingen = Column(Integer, nullable=False, default=0)
+    fout = Column(String(300), nullable=True)
+    schades = Column(Integer, nullable=True)
+    duur_ms = Column(Integer, nullable=True)
+    model_id = Column(String(80), nullable=True)
+    geanalyseerd_op = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
 
 
