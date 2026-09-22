@@ -12,7 +12,8 @@ psycopg2-binary
 anthropic>=0.40.0
 pywebpush>=2.0
 cryptography>=42
-fpdf2>=2.7
+fpdf2>=2.8
+openpyxl>=3.1
 pyotp>=2.9
 qrcode[pil]>=7.4
 pyshp>=2.3
