@@ -4579,6 +4579,28 @@
         <div id="schouwTussenstand" style="background:var(--card-bg);border:1px solid var(--border);
              border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:12px;"></div>
 
+        <!-- Schades waar nog geen mens naar heeft gekeken. -->
+        <div id="schouwBeoordeelBalk" style="display:none;align-items:center;justify-content:space-between;gap:10px;
+             flex-wrap:wrap;background:rgba(220,38,38,.06);border:1px solid rgba(220,38,38,.3);
+             border-radius:10px;padding:10px 12px;margin-bottom:12px;">
+          <span id="schouwBeoordeelTekst" style="font-size:13px;flex:1;min-width:200px;"></span>
+          <button class="btn-primary" onclick="schouwBeoordeelOpen()">Beoordelen</button>
+        </div>
+
+        <!-- Rijdend: welke stukken weg zijn bekeken. -->
+        <div id="schouwDekking" style="display:none;margin-bottom:12px;">
+          <h4 style="font-size:13.5px;margin:0 0 8px;color:var(--text-dim);">Dekking</h4>
+          <div id="schouwDekkingKaart" style="height:280px;border-radius:10px;overflow:hidden;border:1px solid var(--border);"></div>
+          <div id="schouwDekkingRegel" style="font-size:12.5px;color:var(--text-muted);margin-top:6px;"></div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text-muted);margin-top:4px;">
+            <span><span style="display:inline-block;width:18px;height:4px;background:#16A34A;vertical-align:middle;border-radius:2px;"></span> beoordeeld</span>
+            <span><span style="display:inline-block;width:18px;height:4px;background:#94A3B8;vertical-align:middle;border-radius:2px;"></span> niet te beoordelen</span>
+            <span><span style="display:inline-block;width:18px;border-top:3px dashed #EA580C;vertical-align:middle;"></span> niet bekeken</span>
+            <span><span style="display:inline-block;width:18px;border-top:3px dashed #0284C7;vertical-align:middle;"></span> nog bezig</span>
+            <span><span style="display:inline-block;width:10px;height:10px;background:#DC2626;border-radius:50%;vertical-align:middle;"></span> schade</span>
+          </div>
+        </div>
+
         <h4 style="font-size:13.5px;margin:0 0 8px;color:var(--text-dim);">Gevonden</h4>
         <div id="schouwWaarnemingen"></div>
         <p id="schouwMelding" style="display:none;margin:12px 0 0;font-size:13px;"></p>
@@ -4716,6 +4738,47 @@
   </main>
 
   <!-- ═══════ SCHOUW HANDMATIG ═══════ -->
+  <div class="modal-overlay" id="schouwBeoordeelModal">
+    <div class="modal" style="max-width:760px;">
+      <button class="modal-close" onclick="schouwBeoordeelSluit()">&times;</button>
+      <h2 id="schouwBoKop">Schades beoordelen</h2>
+      <p class="subtitle" id="schouwBoVoortgang"></p>
+      <div style="background:#000;border-radius:10px;overflow:hidden;">
+        <svg id="schouwBoBeeld" preserveAspectRatio="xMidYMid meet" style="width:100%;display:block;max-height:52vh;"
+             role="img" aria-label="Het beeld met een rood vak op de gemelde schade"></svg>
+      </div>
+      <div id="schouwBoInfo" style="margin:10px 0;font-size:13.5px;"></div>
+      <div id="schouwBoKnoppen" style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn-primary" onclick="schouwBoOordeel('klopt')" title="Sneltoets K">Klopt</button>
+        <button class="btn-secondary" onclick="schouwBoGeen()" title="Sneltoets N">Geen schade</button>
+        <button class="btn-secondary" onclick="schouwBoAnders()">Andere schade</button>
+        <button class="btn-secondary" onclick="schouwBoVolgende()" title="Sneltoets pijl rechts">Later</button>
+      </div>
+      <div id="schouwBoRedenen" style="display:none;margin-top:12px;">
+        <div style="font-size:12.5px;color:var(--text-muted);margin-bottom:6px;">Wat was het dan?</div>
+        <div id="schouwBoRedenKnoppen" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+      </div>
+      <div id="schouwBoAndersForm" style="display:none;margin-top:12px;">
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:8px;">
+          <label style="font-size:13px;color:var(--text-dim);">Schadebeeld
+            <select id="schouwBoSchadebeeld" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;margin-top:4px;"></select></label>
+          <label style="font-size:13px;color:var(--text-dim);">Ernst
+            <select id="schouwBoErnst" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;margin-top:4px;">
+              <option value="L">L &mdash; licht</option><option value="M">M &mdash; matig</option><option value="E">E &mdash; ernstig</option>
+            </select></label>
+        </div>
+        <div style="margin-top:8px;text-align:right;">
+          <button class="btn-primary" onclick="schouwBoAndersOpslaan()">Opslaan</button>
+        </div>
+      </div>
+      <p style="font-size:12px;color:var(--text-dim);margin:12px 0 0;">
+        Wat je afwijst of verbetert, gaat bij de volgende schouw mee als voorbeeld: zo leert de herkenning jullie wegen kennen.
+        Sneltoetsen: K klopt, N geen schade, &rarr; later.
+      </p>
+      <p id="schouwBoMelding" style="display:none;margin:10px 0 0;font-size:13px;"></p>
+    </div>
+  </div>
+
   <div class="modal-overlay" id="schouwHandmatigModal">
     <div class="modal" style="max-width:520px;">
       <button class="modal-close" onclick="document.getElementById('schouwHandmatigModal').classList.remove('active')">&times;</button>
@@ -10087,6 +10150,8 @@
 
     function _schouwToonKop() {
       if (!_schouwRit) return;
+      _schouwBekeken = _schouwRit.id;
+      _schouwBeoordeelBalk(_schouwRit);
       document.getElementById('schouwActiefGebied').textContent =
         _schouwRit.gebied || 'Schouwronde';
       document.getElementById('schouwActiefMeta').textContent =
@@ -10780,6 +10845,8 @@
       api('GET', '/api/schouw/ritten/' + _schouwRijD.rit + '/opnames').then(function (st) {
         if (!st) return;
         _schouwRijD.stand = st;
+        _schouwRijD.peilingen = (_schouwRijD.peilingen || 0) + 1;
+        if (_schouwRijD.peilingen % 3 === 1) _schouwDekkingLaad(_schouwRijD.rit);
         if (_schouwRit && _schouwRit.id === _schouwRijD.rit) {
           _schouwRit = st.rit;
           _schouwToonKop();
@@ -11403,13 +11470,235 @@
           document.getElementById('schouwStart').style.display = '';
           document.getElementById('schouwWaarnemingen').innerHTML = '';
           showToast('Schouwronde afgerond' + (r.beeldkwaliteit ? ': ' + r.beeldkwaliteit : ''), 'success');
+          if (r.privacy_modus === 'rijdend') openSchouwRit(r.id);
           loadSchouw();
         })
         .catch(function (e) { _schouwMeld('schouwMelding', e.message || 'Afronden mislukt', 'fout'); });
     }
 
+    // ══════════════════════════════════════
+    // ── SCHOUW: BEOORDELEN NA DE RIT, EN DEKKING ──
+    // ══════════════════════════════════════
+    var _schouwBekeken = null;      // id van de ronde op het scherm
+    var _schouwBo = null;           // { rit, lijst, i, gedaan }
+    var _schouwDekKaart = null, _schouwDekLaag = null, _schouwDekGezoomd = null;
+
+    function _schouwBeoordeelBalk(r) {
+      var balk = document.getElementById('schouwBeoordeelBalk');
+      if (!balk) return;
+      // Een afgeronde lopende ronde staat vast; een rijdende beoordeel je juist daarna.
+      var kan = r && (r.status === 'bezig' || r.privacy_modus === 'rijdend');
+      var n = kan ? (r.schades_te_beoordelen || 0) : 0;
+      balk.style.display = n ? 'flex' : 'none';
+      if (n) {
+        document.getElementById('schouwBeoordeelTekst').innerHTML = '<strong>' + n + '</strong> '
+          + (n === 1 ? 'schade wacht' : 'schades wachten') + ' op jouw oordeel. '
+          + '<span style="color:var(--text-muted);">Wat je afwijst of verbetert, leert de herkenning.</span>';
+      }
+    }
+
+    function _schouwBoOpen(w) {
+      return w.wegschade && !w.bevestigd && !w.afgewezen && w.photo_url && w.kader;
+    }
+
+    // Twijfelgevallen eerst: daar hangt de uitslag het meest van af.
+    function schouwBeoordeelOpen() {
+      var id = _schouwBekeken;
+      if (!id) return;
+      api('GET', '/api/schouw/ritten/' + id).then(function (r) {
+        var lijst = (r.waarnemingen || []).filter(_schouwBoOpen)
+          .sort(function (a, b) { return (a.zekerheid || 0) - (b.zekerheid || 0); });
+        if (!lijst.length) { showToast('Er wachten geen schades op beoordeling', 'info'); _schouwBeoordeelBalk(r); return; }
+        _schouwBo = { rit: id, lijst: lijst, i: 0, gedaan: 0 };
+        document.getElementById('schouwBeoordeelModal').classList.add('active');
+        _schouwBoToon();
+      }).catch(function (e) { showToast(e.message || 'Laden mislukt', 'error'); });
+    }
+
+    function _schouwBoToon() {
+      var bo = _schouwBo;
+      if (!bo) return;
+      var w = bo.lijst[bo.i];
+      document.getElementById('schouwBoRedenen').style.display = 'none';
+      document.getElementById('schouwBoAndersForm').style.display = 'none';
+      _schouwMeld('schouwBoMelding', '');
+      var svg = document.getElementById('schouwBoBeeld');
+      if (!w) {
+        document.getElementById('schouwBoKop').textContent = 'Klaar';
+        document.getElementById('schouwBoVoortgang').textContent = bo.gedaan + ' beoordeeld. Bij de volgende schouw '
+          + 'gaan jouw oordelen mee als voorbeeld voor de herkenning.';
+        svg.innerHTML = ''; svg.removeAttribute('viewBox');
+        document.getElementById('schouwBoInfo').innerHTML = '';
+        document.getElementById('schouwBoKnoppen').style.display = 'none';
+        return;
+      }
+      document.getElementById('schouwBoKnoppen').style.display = 'flex';
+      document.getElementById('schouwBoKop').textContent = 'Schade beoordelen';
+      document.getElementById('schouwBoVoortgang').textContent =
+        (bo.i + 1) + ' van ' + bo.lijst.length + ' · twijfelgevallen eerst';
+      var verharding = (_schouwCatalogus && _schouwCatalogus.wegschade
+        && _schouwCatalogus.wegschade.verhardingen[w.verharding]) || w.verharding || '';
+      document.getElementById('schouwBoInfo').innerHTML = '<strong>' + _esc(w.naam) + '</strong>'
+        + ' &middot; ' + _esc(verharding)
+        + (w.ernst ? ' &middot; ernst ' + _esc(w.ernst) : '')
+        + (w.zekerheid !== null && w.zekerheid !== undefined ? ' &middot; ' + Math.round(w.zekerheid * 100) + '% zeker' : '')
+        + ((w.keer_gezien || 1) > 1 ? ' &middot; ' + w.keer_gezien + '&times; gezien' : '')
+        + (w.toelichting ? '<div style="color:var(--text-muted);font-size:12.5px;margin-top:2px;">' + _esc(w.toelichting) + '</div>' : '');
+      svg.innerHTML = '';
+      var img = new Image();
+      img.onload = function () {
+        if (_schouwBo !== bo || bo.lijst[bo.i] !== w) return;
+        var beeld = { src: w.photo_url, w: img.naturalWidth, h: img.naturalHeight };
+        svg.setAttribute('viewBox', '0 0 ' + beeld.w + ' ' + beeld.h);
+        svg.innerHTML = _schouwKaderSvg(beeld, [{ soort: 'schade', kader: w.kader, naam: w.naam, ernst: w.ernst }],
+                                        Math.max(14, Math.round(beeld.w / 55)));
+      };
+      img.onerror = function () { _schouwMeld('schouwBoMelding', 'Het beeld kon niet geladen worden.', 'fout'); };
+      img.src = w.photo_url;
+    }
+
+    function schouwBoOordeel(soort, extra) {
+      var bo = _schouwBo;
+      var w = bo && bo.lijst[bo.i];
+      if (!w) return;
+      var body = soort === 'klopt' ? { bevestigd: true }
+        : (soort === 'anders' ? Object.assign({ bevestigd: true }, extra) : Object.assign({ afgewezen: true }, extra || {}));
+      api('PATCH', '/api/schouw/waarnemingen/' + w.id, body).then(function (nw) {
+        bo.gedaan++;
+        _schouwW[nw.id] = nw;
+        var rij = document.getElementById('sw-' + nw.id);
+        if (rij) rij.outerHTML = _schouwRij(nw);
+        bo.i++;
+        _schouwBoToon();
+      }).catch(function (e) { _schouwMeld('schouwBoMelding', e.message || 'Opslaan mislukt', 'fout'); });
+    }
+
+    function schouwBoGeen() {
+      var redenen = (_schouwCatalogus && _schouwCatalogus.afwijs_redenen) || { anders: 'Iets anders' };
+      document.getElementById('schouwBoAndersForm').style.display = 'none';
+      document.getElementById('schouwBoRedenKnoppen').innerHTML = Object.keys(redenen).map(function (code) {
+        return '<button class="btn-secondary" style="font-size:12.5px;padding:6px 10px;"'
+          + ' onclick="schouwBoOordeel(\'geen\', {afwijs_reden: \'' + code + '\'})">' + _esc(redenen[code]) + '</button>';
+      }).join('');
+      document.getElementById('schouwBoRedenen').style.display = '';
+    }
+
+    function schouwBoAnders() {
+      var w = _schouwBo && _schouwBo.lijst[_schouwBo.i];
+      if (!w || !_schouwCatalogus || !_schouwCatalogus.wegschade) return;
+      var ws = _schouwCatalogus.wegschade;
+      var sel = document.getElementById('schouwBoSchadebeeld');
+      sel.innerHTML = Object.keys(ws.verhardingen).map(function (v) {
+        return '<optgroup label="' + _esc(ws.verhardingen[v]) + '">' + ws.schadebeelden
+          .filter(function (sb) { return sb.verharding === v; })
+          .map(function (sb) {
+            return '<option value="' + _esc(v + '|' + sb.schadebeeld) + '">' + _esc(sb.naam) + '</option>';
+          }).join('') + '</optgroup>';
+      }).join('');
+      sel.value = w.verharding + '|' + w.schadebeeld;
+      document.getElementById('schouwBoErnst').value = w.ernst || 'M';
+      document.getElementById('schouwBoRedenen').style.display = 'none';
+      document.getElementById('schouwBoAndersForm').style.display = '';
+    }
+
+    function schouwBoAndersOpslaan() {
+      var delen = document.getElementById('schouwBoSchadebeeld').value.split('|');
+      schouwBoOordeel('anders', { verharding: delen[0], schadebeeld: delen[1],
+                                  ernst: document.getElementById('schouwBoErnst').value });
+    }
+
+    function schouwBoVolgende() {
+      if (!_schouwBo) return;
+      _schouwBo.i++;
+      _schouwBoToon();
+    }
+
+    function schouwBeoordeelSluit() {
+      document.getElementById('schouwBeoordeelModal').classList.remove('active');
+      var bo = _schouwBo;
+      _schouwBo = null;
+      if (!bo) return;
+      api('GET', '/api/schouw/ritten/' + bo.rit).then(function (r) {
+        _schouwBeoordeelBalk(r);
+        if (r.tussenstand) _schouwTussenstand(r.tussenstand);
+        _schouwDekkingLaad(bo.rit);
+      }).catch(function () {});
+    }
+
+    document.addEventListener('keydown', function (e) {
+      if (!_schouwBo) return;
+      var modal = document.getElementById('schouwBeoordeelModal');
+      if (!modal || !modal.classList.contains('active')) return;
+      var tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.key === 'k' || e.key === 'K') { schouwBoOordeel('klopt'); e.preventDefault(); }
+      else if (e.key === 'n' || e.key === 'N') { schouwBoGeen(); e.preventDefault(); }
+      else if (e.key === 'ArrowRight') { schouwBoVolgende(); e.preventDefault(); }
+      else if (e.key === 'Escape') { schouwBeoordeelSluit(); }
+    });
+
+    // Welke stukken weg zijn bekeken. Niets gemeten is iets anders dan niets
+    // gevonden: een gat tussen twee beelden staat als "niet bekeken" op de kaart.
+    function _schouwDekkingLaad(id) {
+      var blok = document.getElementById('schouwDekking');
+      if (!blok) return;
+      if (!id || typeof L === 'undefined') { blok.style.display = 'none'; return; }
+      api('GET', '/api/schouw/ritten/' + id + '/dekking').then(function (d) {
+        if (!d || !d.punten || !d.punten.length) { blok.style.display = 'none'; return; }
+        blok.style.display = '';
+        if (!_schouwDekKaart) {
+          _schouwDekKaart = L.map('schouwDekkingKaart', { preferCanvas: true });
+          L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19, attribution: '&copy; OpenStreetMap'
+          }).addTo(_schouwDekKaart);
+        }
+        if (_schouwDekLaag) _schouwDekLaag.remove();
+        _schouwDekLaag = L.layerGroup().addTo(_schouwDekKaart);
+        var stijl = {
+          beoordeeld: { color: '#16A34A', weight: 6 },
+          onbruikbaar: { color: '#94A3B8', weight: 6 },
+          bezig: { color: '#0284C7', weight: 5, dashArray: '4 7' },
+          niet_bekeken: { color: '#EA580C', weight: 5, dashArray: '2 9' }
+        };
+        d.stukken.forEach(function (st) {
+          L.polyline([st.van, st.naar], Object.assign({ opacity: 0.9, lineCap: 'round' },
+                     stijl[st.status] || stijl.bezig)).addTo(_schouwDekLaag);
+        });
+        d.schades.forEach(function (sc) {
+          L.circleMarker([sc.lat, sc.lng], {
+            radius: 7, color: '#FFFFFF', weight: 2, fillOpacity: 1,
+            fillColor: sc.afgewezen ? '#94A3B8' : '#DC2626'
+          }).bindTooltip(_esc(sc.naam) + (sc.ernst ? ' · ' + sc.ernst : '')
+                         + (sc.afgewezen ? ' (afgewezen)' : (sc.bevestigd ? ' (bevestigd)' : '')))
+            .addTo(_schouwDekLaag);
+        });
+        var km = function (x) { return String(x || 0).replace('.', ','); };
+        document.getElementById('schouwDekkingRegel').textContent = km(d.km_gereden) + ' km gereden · '
+          + km(d.km.beoordeeld) + ' km beoordeeld'
+          + (d.km.onbruikbaar ? ' · ' + km(d.km.onbruikbaar) + ' km niet te beoordelen' : '')
+          + (d.km.niet_bekeken ? ' · ' + km(d.km.niet_bekeken) + ' km niet bekeken' : '')
+          + (d.km.bezig ? ' · ' + km(d.km.bezig) + ' km nog bezig' : '');
+        // Inzoomen pas als de kaart zichtbaar is: in een verborgen blok rekent
+        // Leaflet met een breedte van nul en zoomt hij veel te ver uit.
+        var pogingen = 0;
+        (function zoom() {
+          var el = document.getElementById('schouwDekkingKaart');
+          if ((!el || !el.clientWidth) && pogingen++ < 20) { setTimeout(zoom, 150); return; }
+          _schouwDekKaart.invalidateSize();
+          if (_schouwDekGezoomd !== id && el && el.clientWidth) {
+            _schouwDekKaart.fitBounds(L.latLngBounds(d.punten.map(function (p) { return [p.lat, p.lng]; })),
+                                      { padding: [24, 24], maxZoom: 18 });
+            _schouwDekGezoomd = id;
+          }
+        })();
+      }).catch(function () {});
+    }
+
     function openSchouwRit(id) {
       api('GET', '/api/schouw/ritten/' + id).then(function (r) {
+        _schouwBekeken = r.id;
+        _schouwBeoordeelBalk(r);
+        _schouwDekkingLaad(r.id);
         document.getElementById('schouwWaarnemingen').innerHTML =
           (r.waarnemingen || []).map(_schouwRij).join('')
           || '<p style="color:var(--text-muted);font-size:13px;">Geen waarnemingen.</p>';
