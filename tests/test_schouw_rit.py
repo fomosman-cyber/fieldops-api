@@ -61,11 +61,20 @@ def _zeker(klasse="afval_los", drager="elementenverharding", waarde=3.0,
 # De privacy-poort
 # ---------------------------------------------------------------------------
 
-def test_rijdend_schouwen_wordt_geweigerd(client, admin_user):
-    """Zolang er niet geblurd wordt, gaat deze modus er niet in."""
+def test_rijdend_schouwen_alleen_met_verpixelde_beelden(client, admin_user):
+    """Rijdend mag sinds het toestel mensen en voertuigen verpixelt -- maar een
+    beeld dat niet verpixeld is, weigert de server. En een rijdende schouw
+    stuurt geen losse live beelden: die neemt op en analyseert daarna."""
     r = _rit(client, admin_user, privacy_modus="rijdend")
-    assert r.status_code == 400
-    assert "blurren" in r.text
+    assert r.status_code == 200, r.text
+    rit_id = r.json()["id"]
+    niet_verpixeld = client.post(f"/api/schouw/ritten/{rit_id}/opnames", headers=auth(admin_user),
+                                 json={"image_data_url": "data:image/jpeg;base64," + "A" * 64,
+                                       "volgnummer": 1, "geanonimiseerd": False})
+    assert niet_verpixeld.status_code == 400 and "verpixeld" in niet_verpixeld.text
+    live = client.post(f"/api/schouw/ritten/{rit_id}/frame", headers=auth(admin_user),
+                       json={"image_data_url": "data:image/jpeg;base64," + "A" * 64})
+    assert live.status_code == 400 and "/opnames" in live.text
 
 
 def test_gericht_schouwen_mag(client, admin_user):
@@ -76,7 +85,7 @@ def test_gericht_schouwen_mag(client, admin_user):
 
 def test_catalogus_meldt_welke_modi_bestaan(client, admin_user):
     d = client.get("/api/schouw/catalogus", headers=auth(admin_user)).json()
-    assert d["privacy_modi"] == ["gericht"]
+    assert d["privacy_modi"] == ["gericht", "rijdend"]
     assert d["zekerheidsdrempel"] == sv.DREMPEL_AUTOMATISCH
     assert len(d["detectieklassen"]) >= 10
 
