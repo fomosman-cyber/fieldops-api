@@ -560,6 +560,9 @@ def _run_migrations():
                     "keer_gezien":      "INTEGER DEFAULT 1",
                     "laatst_gezien_op": "TIMESTAMP",
                     "beeld_id":         "VARCHAR",
+                    "afwijs_reden":     "VARCHAR(20)",
+                    "oorspronkelijk_schadebeeld": "VARCHAR(40)",
+                    "beoordeeld_op":    "TIMESTAMP",
                 }
                 bestaand = [c["name"] for c in insp.get_columns("schouwwaarnemingen")]
                 schouw_missing = [c for c in schouw_cols if c not in bestaand]

@@ -2083,6 +2083,13 @@ class Schouwwaarneming(Base):
     # bewaard. Zo telt het oordeel van de inspecteur mee als label.
     beeld_id = Column(String, nullable=True, index=True)
 
+    # Het oordeel van de inspecteur, als lesmateriaal (zie schouw_leren):
+    # waarom iets geen schade was, en wat de herkenning eerst zei als de
+    # inspecteur het schadebeeld heeft verbeterd.
+    afwijs_reden = Column(String(20), nullable=True)
+    oorspronkelijk_schadebeeld = Column(String(40), nullable=True)
+    beoordeeld_op = Column(DateTime, nullable=True)
+
     model_id = Column(String(80), nullable=True)
     vision_versie = Column(String(60), nullable=True)
 

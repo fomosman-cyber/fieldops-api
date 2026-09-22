@@ -480,7 +480,8 @@ def analyseer_frame(*,
                     privacy_gecontroleerd: bool,
                     context: Optional[str] = None,
                     instellingen: Optional[dict] = None,
-                    stand: str = "alles") -> dict:
+                    stand: str = "alles",
+                    voorbeelden: Optional[list] = None) -> dict:
     """Eén schouwbeeld analyseren.
 
     ``privacy_gecontroleerd`` moet expliciet True zijn: het beeld is dan
@@ -503,7 +504,9 @@ def analyseer_frame(*,
     if not sleutel:
         return _leeg("geen AI geconfigureerd op deze omgeving")
 
-    inhoud: list[dict] = [{
+    # Voorbeelden uit eerdere ritten (schouw_leren) staan vóór het beeld, met
+    # hun eigen cache-breekpunt: ze zijn bij elk beeld van de organisatie gelijk.
+    inhoud: list[dict] = list(voorbeelden or []) + [{
         "type": "image",
         "source": {"type": "base64", "media_type": image_media_type,
                    "data": _base64(image_bytes)},

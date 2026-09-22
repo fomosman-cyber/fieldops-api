@@ -45,6 +45,7 @@ from sqlalchemy.orm import Session
 import crow_schouw as cs
 import crow_wegschade as cw
 import schouw_instellingen as si
+import schouw_leren
 import schouw_vision as sv
 from audit import log_action
 from auth import get_current_user
@@ -134,6 +135,13 @@ class DrempelsIn(BaseModel):
 class WaarnemingUpdate(BaseModel):
     bevestigd: Optional[bool] = None
     afgewezen: Optional[bool] = None
+    # Waarom het geen schade was (schouw_leren.AFWIJS_REDENEN).
+    afwijs_reden: Optional[str] = None
+    # Een ander schadebeeld of een andere ernst dan de herkenning zei.
+    verharding: Optional[str] = None
+    schadebeeld: Optional[str] = None
+    ernst: Optional[str] = Field(default=None, pattern=r"^(L|M|E)$")
+    omvang: Optional[str] = Field(default=None, pattern=r"^(1|2|3)$")
     drager: Optional[str] = None
     waarde: Optional[float] = None
     klasse_niveau: Optional[str] = Field(default=None, pattern=r"^(A\+|A|B|C|D)$")
@@ -294,6 +302,8 @@ def _w_dict(w: Schouwwaarneming) -> dict:
         "kader": _kader_lezen(w.kader),
         "keer_gezien": w.keer_gezien or 1,
         "melding_id": w.melding_id,
+        "afwijs_reden": w.afwijs_reden,
+        "oorspronkelijk_schadebeeld": w.oorspronkelijk_schadebeeld,
     }
 
 
@@ -476,6 +486,9 @@ def _rit_dict(r: Schouwrit, *, detail: bool = False) -> dict:
         "te_bevestigen": sum(1 for w in waarnemingen
                              if not w.bevestigd and not w.afgewezen
                              and (w.zekerheid or 0) < _drempel(r.organization)),
+        # Wegschade waar nog geen mens naar heeft gekeken: het beoordeelscherm.
+        "schades_te_beoordelen": sum(1 for w in waarnemingen
+                                     if w.crow_schadebeeld and not w.bevestigd and not w.afgewezen),
         "beeldkwaliteit": r.beeldkwaliteit,
         "voldoet": r.voldoet,
         "gestart_op": r.gestart_op.isoformat() if r.gestart_op else None,
@@ -525,6 +538,7 @@ def catalogus():
         "klassen": cs.KLASSE_CODES,
         "zekerheidsdrempel": sv.DREMPEL_AUTOMATISCH,
         "privacy_modi": sorted(TOEGESTANE_PRIVACY_MODI),
+        "afwijs_redenen": schouw_leren.AFWIJS_REDENEN,
         "wegschade": {
             "versie": cw.WEGSCHADE_VERSIE,
             "verhardingen": {k: v["naam"] for k, v in cw.VERHARDINGEN.items()},
@@ -834,7 +848,8 @@ def frame(
         image_bytes=beeld, image_media_type=media_type,
         privacy_gecontroleerd=(r.privacy_modus == "gericht"),
         context=(f"Gebied: {r.gebied}" if r.gebied else None),
-        instellingen=si.lees(r.organization))
+        instellingen=si.lees(r.organization),
+        voorbeelden=schouw_leren.voorbeelden(db, current_user.organization_id))
 
     # Een beeld met schade erop is bewijs, en zonder beeld kan het scherm het
     # rode vak later niet meer laten zien. Dan bewaren we hem -- één keer, via
@@ -1003,7 +1018,8 @@ def analyseer_opname(db: Session, o: SchouwOpname, beeld: Optional[bytes] = None
         image_bytes=uitsnede, image_media_type="image/jpeg",
         privacy_gecontroleerd=True,        # alleen verpixelde beelden komen hier
         context=(f"Gebied: {r.gebied}" if r.gebied else None),
-        instellingen=si.lees(r.organization), stand="wegdek")
+        instellingen=si.lees(r.organization), stand="wegdek",
+        voorbeelden=schouw_leren.voorbeelden(db, o.organization_id))
     reden = resultaat.get("reden_onbruikbaar") or ""
     if reden.startswith("analyse mislukt"):
         raise RuntimeError(reden)
@@ -1104,9 +1120,20 @@ def waarneming_bijwerken(
            .first())
     if not w:
         raise HTTPException(status_code=404, detail="Waarneming niet gevonden")
-    _eis_bezig(w.rit)
+    r = w.rit
+    # Een rijdende schouw wordt na de rit beoordeeld: de schades komen pas
+    # binnen als de beelden zijn geanalyseerd. Die mag je na afronden nog
+    # beoordelen; de uitslag rekent dan mee.
+    if not (r.privacy_modus == "rijdend" and r.status == "afgerond"):
+        _eis_bezig(r)
 
     velden = payload.model_dump(exclude_unset=True)
+    schade = {k: velden.pop(k) for k in ("verharding", "schadebeeld", "ernst", "omvang") if k in velden}
+    if schade:
+        _schade_verbeteren(w, schade)
+    if velden.get("afwijs_reden") is not None and velden["afwijs_reden"] not in schouw_leren.AFWIJS_REDENEN:
+        raise HTTPException(status_code=400, detail="Onbekende reden. Kies uit: "
+                            + ", ".join(schouw_leren.AFWIJS_REDENEN))
     if "drager" in velden and w.detectieklasse:
         try:
             w.meetlat = cs.meetlat_voor(w.detectieklasse, velden["drager"])
@@ -1116,13 +1143,104 @@ def waarneming_bijwerken(
         setattr(w, k, v)
     if velden.get("bevestigd"):
         w.afgewezen = False
+        w.afwijs_reden = None
         w.bevestigd_door_id = current_user.id
     if velden.get("afgewezen"):
         w.bevestigd = False
+    if velden.get("bevestigd") or velden.get("afgewezen"):
+        w.beoordeeld_op = datetime.now(timezone.utc)
 
     db.commit()
+    if r.status == "afgerond":
+        db.refresh(r)
+        uitslag = _tussenstand(r)
+        r.beeldkwaliteit = uitslag.get("beeldkwaliteit")
+        r.voldoet = uitslag.get("voldoet")
+        db.commit()
+    schouw_leren.vergeet(w.organization_id)
     db.refresh(w)
     return _w_dict(w)
+
+
+def _schade_verbeteren(w: Schouwwaarneming, velden: dict) -> None:
+    """Een ander schadebeeld, een andere ernst of omvang. Wat de herkenning
+    eerst zei, blijft bewaard: dat is precies wat het model moet leren."""
+    if not w.crow_schadebeeld:
+        raise HTTPException(status_code=400, detail="Alleen wegschade heeft een schadebeeld")
+    verharding = velden.get("verharding") or w.crow_verharding
+    schadebeeld = velden.get("schadebeeld") or w.crow_schadebeeld
+    s = cw.zoek(verharding, schadebeeld)
+    if not s:
+        raise HTTPException(status_code=400, detail="Dat schadebeeld hoort niet bij deze verharding")
+    if (s["verharding"], s["schadebeeld"]) != (w.crow_verharding, w.crow_schadebeeld):
+        if not w.oorspronkelijk_schadebeeld:
+            w.oorspronkelijk_schadebeeld = w.crow_schadebeeld
+        w.crow_verharding, w.crow_schadebeeld = s["verharding"], s["schadebeeld"]
+        w.crow_schadegroep = s["schadegroep"]
+        w.drager = cw.VERHARDINGEN[s["verharding"]]["schouw_drager"]
+        w.meetlat = cs.meetlat_voor("verharding", w.drager)
+    if velden.get("ernst"):
+        w.crow_ernst = velden["ernst"]
+        w.klasse_niveau = cw.ERNST_NAAR_NIVEAU.get(velden["ernst"])
+    if velden.get("omvang"):
+        w.crow_omvang = velden["omvang"]
+
+
+# ── Dekking: welk stuk weg is bekeken ────────────────────────────────
+# Rijdend is elk beeld het stuk weg vóór de auto tot het volgende beeld. Ligt
+# er meer dan DEKKING_GAT_M tussen twee beelden, dan is daar niets bekeken;
+# boven DEKKING_PAUZE_M is het een pauze of een GPS-sprong en telt het niet mee.
+DEKKING_GAT_M = 60.0
+DEKKING_PAUZE_M = 2000.0
+
+
+def _dek_status(o: SchouwOpname) -> str:
+    if o.status in ("wacht", "bezig"):
+        return "bezig"
+    if o.status == "mislukt":
+        return "onbruikbaar"
+    if o.fout:
+        return "onbruikbaar"
+    return "schade" if (o.schades or 0) > 0 else "schoon"
+
+
+@router.get("/ritten/{rit_id}/dekking")
+def dekking(
+    rit_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Welke stukken weg zijn bekeken, niet te beoordelen, of overgeslagen --
+    met de schades erbij. Niets gemeten is iets anders dan niets gevonden."""
+    r = _rit_of_404(db, rit_id, current_user)
+    opnames = (db.query(SchouwOpname)
+                 .filter(SchouwOpname.schouwrit_id == r.id,
+                         SchouwOpname.lat.isnot(None), SchouwOpname.lng.isnot(None))
+                 .order_by(SchouwOpname.volgnummer).all())
+    punten = [{"lat": o.lat, "lng": o.lng, "status": _dek_status(o), "schades": o.schades or 0}
+              for o in opnames]
+    totalen = {"beoordeeld": 0.0, "onbruikbaar": 0.0, "bezig": 0.0, "niet_bekeken": 0.0}
+    stukken = []
+    for a, b in zip(punten, punten[1:]):
+        lengte = _afstand_m(a["lat"], a["lng"], b["lat"], b["lng"])
+        if lengte > DEKKING_PAUZE_M:
+            continue
+        if lengte > DEKKING_GAT_M:
+            status = "niet_bekeken"
+        else:
+            status = {"schade": "beoordeeld", "schoon": "beoordeeld"}.get(a["status"], a["status"])
+        totalen[status] += lengte
+        stukken.append({"van": [a["lat"], a["lng"]], "naar": [b["lat"], b["lng"]], "status": status})
+    schades = [{"id": w.id, "lat": w.lat, "lng": w.lng, "naam": _w_dict(w)["naam"],
+                "ernst": w.crow_ernst, "bevestigd": w.bevestigd, "afgewezen": w.afgewezen}
+               for w in (r.waarnemingen or []) if w.crow_schadebeeld and w.lat is not None]
+    return {
+        "punten": punten,
+        "stukken": stukken,
+        "km": {k: round(v / 1000, 2) for k, v in totalen.items()},
+        "km_gereden": round(sum(totalen.values()) / 1000, 2),
+        "schades": schades,
+    }
 
 
 # ── Instellingen van de herkenning ───────────────────────────────────

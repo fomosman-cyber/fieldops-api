@@ -47,16 +47,17 @@ KUIL = {"verharding": "asfalt", "schadebeeld": "kuilen", "ernst": "M", "omvang":
         "kader": [0.40, 0.50, 0.60, 0.70], "zekerheid": 0.9, "toelichting": "gat rechts"}
 
 
-@pytest.fixture
-def model(monkeypatch):
+def nep_model(monkeypatch):
     """Nep-model: antwoordt met wat de test in `antwoorden` zet, en onthoudt
-    met welke stand het werd aangeroepen."""
+    met welke stand en inhoud het werd aangeroepen."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    staat = {"antwoorden": [], "standen": [], "beelden": []}
+    staat = {"antwoorden": [], "standen": [], "beelden": [], "inhoud": []}
 
     def roep_aan(sleutel, inhoud, instellingen=None, stand="alles"):
         staat["standen"].append(stand)
-        staat["beelden"].append(inhoud[0]["source"]["data"])
+        staat["inhoud"].append(inhoud)
+        # Het te beoordelen beeld is het laatste beeld; ervoor kunnen voorbeelden staan.
+        staat["beelden"].append([b for b in inhoud if b["type"] == "image"][-1]["source"]["data"])
         antwoord = staat["antwoorden"].pop(0) if staat["antwoorden"] else {"bruikbaar": True, "wegschade": []}
         if isinstance(antwoord, Exception):
             raise antwoord
@@ -64,6 +65,11 @@ def model(monkeypatch):
 
     monkeypatch.setattr(sv, "_roep_aan", roep_aan)
     return staat
+
+
+@pytest.fixture
+def model(monkeypatch):
+    return nep_model(monkeypatch)
 
 
 def _rit(client, user):
