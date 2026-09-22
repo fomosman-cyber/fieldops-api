@@ -136,6 +136,40 @@ def offload_photo(data_url: str, *, organization_id: str, kind: str = "melding")
         return None
 
 
+def lees_foto(value: Optional[str]) -> Optional[bytes]:
+    """De bytes van een foto terug: uit een data-URL, of uit onze eigen
+    bucket. Alleen voor foto's die we zelf hebben opgeslagen -- een willekeurige
+    URL van buiten wordt niet opgehaald."""
+    if not value:
+        return None
+    if is_data_url(value):
+        m = re.match(r"^data:[\w/+-]+;base64,(.+)$", value, flags=re.S)
+        return base64.b64decode(m.group(1)) if m else None
+    if not is_configured() or not value.startswith("https://"):
+        return None
+    # Alleen onze eigen voorvoegsels; wat daar niet mee begint, halen we niet op.
+    key = value.split("?", 1)[0]
+    for voorvoegsel in (f"{PHOTO_CDN_BASE}/" if PHOTO_CDN_BASE else None,
+                        f"{S3_ENDPOINT_URL.rstrip('/')}/{S3_BUCKET}/" if S3_ENDPOINT_URL else None,
+                        f"https://{S3_BUCKET}.s3.{S3_REGION}.amazonaws.com/"):
+        if voorvoegsel and key.startswith(voorvoegsel):
+            key = key[len(voorvoegsel):]
+            break
+    else:
+        return None
+    try:
+        import boto3
+        s3_kwargs = {"region_name": S3_REGION, "aws_access_key_id": AWS_ACCESS_KEY_ID,
+                     "aws_secret_access_key": AWS_SECRET_ACCESS_KEY}
+        if S3_ENDPOINT_URL:
+            s3_kwargs["endpoint_url"] = S3_ENDPOINT_URL
+        obj = boto3.client("s3", **s3_kwargs).get_object(Bucket=S3_BUCKET, Key=key)
+        return obj["Body"].read()
+    except Exception as e:  # noqa: BLE001
+        print(f"[photo_storage] lezen mislukt: {type(e).__name__}")
+        return None
+
+
 def maybe_offload(value: Optional[str], *, organization_id: str, kind: str = "melding") -> Optional[str]:
     """Convenience: offload als configureerd + data-URL, anders return as-is.
 

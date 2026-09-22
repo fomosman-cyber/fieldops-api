@@ -4483,10 +4483,15 @@
             </select>
           </div>
         </div>
-        <p style="font-size:12.5px;color:var(--text-muted);margin:12px 0 0;">
-          Je richt de camera zelf op wat je wilt beoordelen. Doorlopend filmen vanuit
-          een auto kan nog niet: dat vraagt automatisch blurren van gezichten en
-          kentekens, en dat is er nog niet.
+        <div style="margin-top:12px;">
+          <label style="font-size:13px;color:var(--text-dim);display:block;margin-bottom:4px;">Hoe schouw je?</label>
+          <select id="schouwStand" onchange="_schouwStandUitleg()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
+            <option value="gericht">Lopend &mdash; camera zelf richten: objecten, vervuiling en schade</option>
+            <option value="rijdend">Rijdend &mdash; alleen het wegdek, elke paar meter (auto)</option>
+          </select>
+        </div>
+        <p id="schouwStandUitleg" style="font-size:12.5px;color:var(--text-muted);margin:10px 0 0;">
+          Je richt de camera zelf op wat je wilt beoordelen; elk beeld wordt meteen beoordeeld.
         </p>
         <div style="margin-top:16px;display:flex;justify-content:flex-end;">
           <button class="btn-primary" onclick="schouwStart()">Start schouwronde</button>
@@ -4530,6 +4535,30 @@
           </div>
           <div id="schouwBadge" style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.6);
                color:#fff;border-radius:999px;padding:4px 10px;font-size:12px;">camera starten…</div>
+          <!-- Rijstand: vanaf deze lijn snijdt de server het wegdek uit. Zet de
+               telefoon zo dat de weg eronder valt. -->
+          <div id="schouwWegdekLijn" style="display:none;position:absolute;left:0;right:0;
+               border-top:2px dashed rgba(255,255,255,.85);pointer-events:none;">
+            <span style="position:absolute;right:8px;top:4px;background:rgba(0,0,0,.6);color:#fff;
+                  border-radius:999px;padding:2px 8px;font-size:11px;">wegdek vanaf hier</span>
+          </div>
+        </div>
+        <div id="schouwRijStand" style="display:none;margin:-4px 0 12px;">
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;">
+            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:8px 4px;">
+              <div id="schouwRijGemaakt" style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;">0</div>
+              <div style="font-size:11.5px;color:var(--text-muted);">opgenomen</div></div>
+            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:8px 4px;">
+              <div id="schouwRijVerstuurd" style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;">0</div>
+              <div style="font-size:11.5px;color:var(--text-muted);">verstuurd</div></div>
+            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:8px 4px;">
+              <div id="schouwRijKlaar" style="font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;">0</div>
+              <div style="font-size:11.5px;color:var(--text-muted);">beoordeeld</div></div>
+            <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:8px 4px;">
+              <div id="schouwRijSchades" style="font-size:22px;font-weight:700;color:var(--red);font-variant-numeric:tabular-nums;">0</div>
+              <div style="font-size:11.5px;color:var(--text-muted);">schades</div></div>
+          </div>
+          <div id="schouwRijRegel" style="font-size:12.5px;color:var(--text-muted);margin-top:8px;"></div>
         </div>
         <canvas id="schouwCanvas" style="display:none;"></canvas>
         <!-- Alleen zichtbaar als de telefoon het ondersteunt. -->
@@ -4585,6 +4614,26 @@
                     <option value="afstand-10">Elke 10 meter</option>
                     <option value="afstand-25">Elke 25 meter</option>
                   </select>
+                </label>
+                <label style="font-size:13px;color:var(--text-dim);">Rijdend: een beeld elke
+                  <select id="schouwCamRijAfstand" onchange="schouwCamOpslaan()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;margin-top:4px;">
+                    <option value="5">5 meter (heel fijnmazig, meer beelden)</option>
+                    <option value="10">10 meter</option>
+                    <option value="15">15 meter</option>
+                    <option value="20">20 meter</option>
+                  </select>
+                </label>
+                <label style="font-size:13px;color:var(--text-dim);">Rijdend: het wegdek begint op
+                  <select id="schouwCamWegdek" onchange="schouwCamOpslaan()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;margin-top:4px;">
+                    <option value="0.3">30% van boven</option>
+                    <option value="0.35">35% van boven</option>
+                    <option value="0.4">40% van boven</option>
+                    <option value="0.45">45% van boven</option>
+                    <option value="0.5">50% van boven</option>
+                    <option value="0.55">55% van boven</option>
+                    <option value="0.6">60% van boven</option>
+                  </select>
+                  <span style="display:block;font-size:12px;margin-top:3px;">De stippellijn in het camerabeeld. Alles eronder gaat naar de beoordeling.</span>
                 </label>
                 <label style="font-size:13px;display:flex;gap:8px;align-items:flex-start;">
                   <input type="checkbox" id="schouwCamScherp" onchange="schouwCamOpslaan()" style="margin-top:3px;">
@@ -9823,7 +9872,8 @@
 
     // Camera-instellingen van dit toestel. Alleen voorkeuren: wat mis gaat
     // bij het lezen, valt terug op de standaard.
-    var SCHOUW_CAM_STANDAARD = { lens: '', grootte: 1280, ritme: 'tijd-3', scherp: true, zelfde: true };
+    var SCHOUW_CAM_STANDAARD = { lens: '', grootte: 1280, ritme: 'tijd-3', scherp: true, zelfde: true,
+                                 rijAfstand: 10, wegdekBoven: 0.4 };
     var _schouwCam = Object.assign({}, SCHOUW_CAM_STANDAARD);
     try {
       Object.assign(_schouwCam, JSON.parse(localStorage.getItem('fieldops_schouw_camera') || '{}'));
@@ -9857,6 +9907,7 @@
     function loadSchouw() {
       _schouwCamVelden();
       _schouwHkLaad();
+      _schouwRijHervat();
       var klaar = _schouwCatalogus ? Promise.resolve(_schouwCatalogus)
                                    : api('GET', '/api/schouw/catalogus');
       klaar.then(function (c) {
@@ -10011,7 +10062,7 @@
       var body = {
         gebied: (document.getElementById('schouwGebied').value || '').trim(),
         gebiedstype: document.getElementById('schouwGebiedstype').value || null,
-        privacy_modus: 'gericht'
+        privacy_modus: (document.getElementById('schouwStand') || {}).value === 'rijdend' ? 'rijdend' : 'gericht'
       };
       var amb = document.getElementById('schouwRondeAmbitie').value;
       if (amb) body.ambitie = amb;
@@ -10023,6 +10074,7 @@
         _schouwRit = r;
         document.getElementById('schouwStart').style.display = 'none';
         document.getElementById('schouwActief').style.display = '';
+        _schouwRijWeergave();
         _schouwWeergaveKnop();
         _schouwToonKop();
         _schouwCameraAan();
@@ -10077,7 +10129,8 @@
     }
 
     function _schouwCamEisen(standaardLens) {
-      var breed = Number(_schouwCam.grootte) || 1280;
+      // Rijdend: fijne scheuren op een paar meter afstand vragen detail.
+      var breed = _schouwRijdend() ? 1920 : (Number(_schouwCam.grootte) || 1280);
       var eisen = { width: { ideal: breed }, height: { ideal: Math.round(breed * 9 / 16) } };
       if (_schouwCam.lens && !standaardLens) eisen.deviceId = { exact: _schouwCam.lens };
       else eisen.facingMode = { ideal: 'environment' };
@@ -10148,6 +10201,8 @@
       document.getElementById('schouwCamRitme').value = _schouwCam.ritme;
       document.getElementById('schouwCamScherp').checked = !!_schouwCam.scherp;
       document.getElementById('schouwCamZelfde').checked = !!_schouwCam.zelfde;
+      document.getElementById('schouwCamRijAfstand').value = String(_schouwCam.rijAfstand || 10);
+      document.getElementById('schouwCamWegdek').value = String(_schouwCam.wegdekBoven || 0.4);
     }
 
     function schouwCamOpslaan() {
@@ -10157,6 +10212,9 @@
       _schouwCam.ritme = document.getElementById('schouwCamRitme').value;
       _schouwCam.scherp = document.getElementById('schouwCamScherp').checked;
       _schouwCam.zelfde = document.getElementById('schouwCamZelfde').checked;
+      _schouwCam.rijAfstand = Number(document.getElementById('schouwCamRijAfstand').value) || 10;
+      _schouwCam.wegdekBoven = Number(document.getElementById('schouwCamWegdek').value) || 0.4;
+      _schouwWegdekLijnZet();
       try { localStorage.setItem('fieldops_schouw_camera', JSON.stringify(_schouwCam)); } catch (e) {}
       // Andere lens of beeldgrootte: de camera opnieuw openen, midden in de ronde.
       if (_schouwStream && (oud.lens !== _schouwCam.lens || oud.grootte !== _schouwCam.grootte)) {
@@ -10245,6 +10303,7 @@
     // De oude klok van zes seconden sloeg bij een trage verbinding tikken over
     // en liet bij een snelle verbinding onnodig lang wachten.
     function _schouwTimerAan() {
+      if (_schouwRijdend()) { _schouwRijAan(); return; }
       _schouwLoopt = true;
       _schouwPlan(0);
       document.getElementById('schouwPauzeBtn').textContent = 'Pauze';
@@ -10274,11 +10333,12 @@
       _schouwWatch = navigator.geolocation.watchPosition(function (pos) {
         _schouwPositie = pos;
       }, function () { /* geen GPS: waarnemingen komen zonder positie binnen */ },
-        { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 });
+        { enableHighAccuracy: true, maximumAge: _schouwRijdend() ? 1000 : 5000, timeout: 10000 });
     }
 
     // handmatig: de knop "Nu vastleggen". Die slaat nooit over.
     function schouwNu(handmatig) {
+      if (_schouwRijdend()) { if (handmatig) _schouwRijOpnemen(true); return; }
       if (!_schouwRit || _schouwBezig) return;
       var video = document.getElementById('schouwVideo');
       // Camera nog aan het opstarten: straks opnieuw, anders stopt de lus.
@@ -10435,6 +10495,375 @@
       return _schouwAnoniemBezig;
     }
 
+    // ══════════════════════════════════════
+    // ── SCHOUW RIJDEND: OPNEMEN, DAARNA ANALYSEREN ──
+    // ══════════════════════════════════════
+    // Met 30 tot 50 km/u kun je niet op het model wachten: in de seconden dat
+    // één beeld wordt beoordeeld, rijd je honderd meter verder. Dus neemt de
+    // telefoon alleen op: elke paar meter een beeld, mensen en voertuigen
+    // verpixeld, en op de achtergrond versturen. De server beoordeelt het
+    // wegdek daarna; de schades verschijnen een paar minuten later.
+    //
+    // Beelden die nog niet verstuurd zijn, staan ook in IndexedDB: valt de
+    // verbinding weg of herlaadt de pagina, dan gaan ze later alsnog.
+    var SCHOUW_RIJ_PARALLEL = 2;       // uploads tegelijk
+    var SCHOUW_RIJ_MAX_WACHT = 150;    // daarboven: eerst versturen, dan verder opnemen
+    var SCHOUW_RIJ_MAX_VERWERK = 6;    // vastgelegd, nog niet verpixeld (±8 MB per beeld)
+    var _schouwRijD = null;
+    var _schouwRijTik = null;
+    var _schouwRijPoll = null;
+    var _schouwRijWaak = null;         // wake lock: scherm blijft aan tijdens de rit
+
+    function _schouwRijdend() {
+      return !!(_schouwRit && _schouwRit.privacy_modus === 'rijdend');
+    }
+
+    function _schouwStandUitleg() {
+      var rijdend = (document.getElementById('schouwStand') || {}).value === 'rijdend';
+      document.getElementById('schouwStandUitleg').textContent = rijdend
+        ? 'Zet de telefoon liggend in een houder achter de voorruit, camera op de weg. Hij maakt elke paar ' +
+          'meter een beeld van het wegdek, verpixelt mensen en voertuigen en verstuurt het op de achtergrond. ' +
+          'Je hoeft niet te kijken: de schades verschijnen een paar minuten later in de ronde.'
+        : 'Je richt de camera zelf op wat je wilt beoordelen; elk beeld wordt meteen beoordeeld.';
+    }
+
+    // In de rijstand horen de tellers en de wegdeklijn erbij, en het
+    // wisselen tussen live en herkenning niet: er is geen beeld per beeld.
+    function _schouwRijWeergave() {
+      var rijdend = _schouwRijdend();
+      document.getElementById('schouwRijStand').style.display = rijdend ? '' : 'none';
+      document.getElementById('schouwWegdekLijn').style.display = rijdend ? '' : 'none';
+      var knop = document.getElementById('schouwWeergaveBtn');
+      if (knop) knop.style.display = rijdend ? 'none' : '';
+      if (rijdend) {
+        var video = document.getElementById('schouwVideo');
+        video.onloadedmetadata = _schouwWegdekLijnZet;
+        window.addEventListener('resize', _schouwWegdekLijnZet);
+        _schouwWegdekLijnZet();
+      }
+    }
+
+    // De lijn staat waar het wegdek in het BEELD begint. De video wordt met
+    // object-fit: cover getoond, dus boven en onder kan er iets wegvallen.
+    function _schouwWegdekLijnZet() {
+      var video = document.getElementById('schouwVideo');
+      var lijn = document.getElementById('schouwWegdekLijn');
+      if (!video || !lijn || !video.videoWidth) return;
+      var schaal = Math.max(video.clientWidth / video.videoWidth, video.clientHeight / video.videoHeight);
+      var getoond = video.videoHeight * schaal;
+      var boven = (video.clientHeight - getoond) / 2;
+      lijn.style.top = Math.round(boven + getoond * (Number(_schouwCam.wegdekBoven) || 0.4)) + 'px';
+    }
+
+    function _schouwRijAan() {
+      _schouwLoopt = true;
+      if (!_schouwRijD || _schouwRijD.rit !== _schouwRit.id) {
+        _schouwRijD = { rit: _schouwRit.id, volg: 0, gemaakt: 0, verstuurd: 0, rij: [], bezig: 0,
+                        laatstePlek: null, laatsteTijd: 0, vorigePlek: null, meters: 0,
+                        teVerwerken: [], verwerken: false, stand: null, verlopen: false };
+      }
+      document.getElementById('schouwPauzeBtn').textContent = 'Pauze';
+      document.getElementById('schouwBadge').textContent = 'opnemen';
+      clearInterval(_schouwRijTik);
+      _schouwRijTik = setInterval(_schouwRijStap, 300);
+      clearInterval(_schouwRijPoll);
+      _schouwRijPoll = setInterval(_schouwRijStandLaad, 5000);
+      _schouwRijWaakAan();
+      _schouwRijToon();
+    }
+
+    // Stopt het opnemen, niet het versturen: wat al gemaakt is, gaat nog.
+    function _schouwRijUit() {
+      clearInterval(_schouwRijTik); _schouwRijTik = null;
+      clearInterval(_schouwRijPoll); _schouwRijPoll = null;
+      if (_schouwRijWaak) { try { _schouwRijWaak.release(); } catch (e) {} _schouwRijWaak = null; }
+    }
+
+    function _schouwRijWaakAan() {
+      if (!('wakeLock' in navigator) || _schouwRijWaak) return;
+      navigator.wakeLock.request('screen').then(function (w) {
+        _schouwRijWaak = w;
+        w.addEventListener('release', function () { _schouwRijWaak = null; });
+      }).catch(function () {});
+    }
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible' && _schouwRijTik) _schouwRijWaakAan();
+    });
+
+    function _schouwRijStap() {
+      if (!_schouwLoopt || !_schouwRijdend() || !_schouwRijD) return;
+      var video = document.getElementById('schouwVideo');
+      if (!video || !video.videoWidth) return;
+      var c = _schouwPositie ? _schouwPositie.coords : null;
+      var plek = c ? { lat: c.latitude, lng: c.longitude } : null;
+      // Gereden meters, voor het scherm. Sprongen van een slechte fix tellen niet.
+      if (plek && _schouwRijD.vorigePlek && (c.accuracy || 0) < 30) {
+        var stuk = _schouwAfstandM(_schouwRijD.vorigePlek, plek);
+        if (stuk < 100) _schouwRijD.meters += stuk;
+      }
+      if (plek) _schouwRijD.vorigePlek = plek;
+
+      var nu = Date.now();
+      if (nu - _schouwRijD.laatsteTijd < 400) return;           // nooit sneller dan 2,5 per seconde
+      if (_schouwRijD.rij.length + _schouwRijD.bezig > SCHOUW_RIJ_MAX_WACHT) {
+        document.getElementById('schouwBadge').textContent = 'wacht op verbinding';
+        return;
+      }
+      if (plek && _schouwRijD.laatstePlek) {
+        if (c.speed !== null && c.speed !== undefined && c.speed < 1) {
+          document.getElementById('schouwBadge').textContent = 'stilstaand';
+          return;
+        }
+        if (_schouwAfstandM(plek, _schouwRijD.laatstePlek) < (Number(_schouwCam.rijAfstand) || 10)) return;
+      } else if (!plek && nu - _schouwRijD.laatsteTijd < 2000) {
+        return;                                                  // zonder GPS: elke twee seconden
+      }
+      _schouwRijOpnemen(false);
+    }
+
+    // Eén beeld vastleggen, op deze plek en dit moment. Verpixelen en
+    // inpakken gebeurt daarna in _schouwRijVerwerk, één voor één.
+    function _schouwRijOpnemen(handmatig) {
+      var d = _schouwRijD;
+      if (!d) return;
+      var video = document.getElementById('schouwVideo');
+      if (!video || !video.videoWidth) return;
+      if (d.teVerwerken.length >= SCHOUW_RIJ_MAX_VERWERK) {
+        document.getElementById('schouwBadge').textContent = 'telefoon loopt achter';
+        return;
+      }
+      var canvas = document.createElement('canvas');
+      var breed = Math.min(video.videoWidth, 1920);
+      canvas.width = breed;
+      canvas.height = Math.round(video.videoHeight * breed / video.videoWidth);
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Bewogen: niet opnemen, het volgende tikje opnieuw proberen.
+      if (!handmatig && _schouwCam.scherp) {
+        var meting = _schouwMeetBeeld(canvas);
+        var reden = meting ? _schouwOverslaanReden(meting) : null;
+        if (meting && reden !== 'bewogen') {
+          _schouwScherpRij.push(meting.scherpte);
+          if (_schouwScherpRij.length > 10) _schouwScherpRij.shift();
+        }
+        if (reden === 'bewogen') {
+          document.getElementById('schouwBadge').textContent = 'bewogen, opnieuw';
+          return;
+        }
+      }
+
+      var c = _schouwPositie ? _schouwPositie.coords : null;
+      var meta = {
+        volgnummer: ++d.volg,
+        gemaakt_op: new Date().toISOString(),
+        lat: c ? c.latitude : null, lng: c ? c.longitude : null,
+        nauwkeurigheid_m: c ? c.accuracy : null,
+        koers: (c && c.heading !== null && !isNaN(c.heading)) ? c.heading : null,
+        snelheid_ms: (c && c.speed !== null && !isNaN(c.speed)) ? c.speed : null,
+        breedte: canvas.width, hoogte: canvas.height,
+        wegdek_boven: Number(_schouwCam.wegdekBoven) || 0.4,
+        geanonimiseerd: true
+      };
+      d.laatsteTijd = Date.now();
+      if (c) d.laatstePlek = { lat: c.latitude, lng: c.longitude };
+      d.gemaakt++;
+      d.teVerwerken.push({ rit: d.rit, canvas: canvas, meta: meta });
+      _schouwRijToon();
+      _schouwRijVerwerk();
+    }
+
+    // Verpixelen en inpakken, één beeld tegelijk (het herkenningsmodel kan
+    // niet twee dingen tegelijk). Zonder verpixelen gaat er niets de deur uit.
+    function _schouwRijVerwerk() {
+      var d = _schouwRijD;
+      if (!d || d.verwerken || !d.teVerwerken.length) return;
+      d.verwerken = true;
+      var stuk = d.teVerwerken.shift();
+      _schouwAnoniemKlaar()
+        .then(function (model) {
+          if (!model) throw new Error('verpixelen');
+          return _schouwVerpixel(model, stuk.canvas);
+        })
+        .then(function (n) {
+          if (n === null) throw new Error('verpixelen');
+          stuk.meta.verpixeld = n;
+          // Zonder grafische chip rekent het model op de processor: seconden
+          // per beeld in plaats van een halve. Dat moet de inspecteur weten.
+          if (!d.traagGemeld && window.tf && tf.getBackend && tf.getBackend() === 'cpu') {
+            d.traagGemeld = true;
+            _schouwMeld('schouwMelding', 'Deze telefoon verpixelt zonder grafische chip (een paar seconden per beeld). ' +
+              'Er worden daardoor minder beelden gemaakt; rijd rustiger of kies bij Camera een beeld elke 15 of 20 meter.', 'fout');
+          }
+          return new Promise(function (ok) { stuk.canvas.toBlob(ok, 'image/jpeg', 0.85); });
+        })
+        .then(function (blob) {
+          if (!blob) throw new Error('beeld');
+          var item = { sleutel: stuk.rit + ':' + stuk.meta.volgnummer, rit: stuk.rit, blob: blob, meta: stuk.meta };
+          d.rij.push(item);
+          _schouwIdbZet(item);
+          _schouwRijVerstuur();
+        })
+        .catch(function (e) {
+          if (e && e.message === 'verpixelen') {
+            _schouwLoopt = false;
+            d.teVerwerken = [];
+            document.getElementById('schouwPauzeBtn').textContent = 'Hervatten';
+            document.getElementById('schouwBadge').textContent = 'gepauzeerd';
+            _schouwMeld('schouwMelding', 'Verpixelen lukt niet op dit toestel; rijdend opnemen is gepauzeerd. ' +
+              'Herlaad de pagina of probeer een andere browser.', 'fout');
+          }
+        })
+        .then(function () {
+          stuk.canvas.width = stuk.canvas.height = 0;     // geheugen vrij
+          d.verwerken = false;
+          if (_schouwLoopt && d.teVerwerken.length < SCHOUW_RIJ_MAX_VERWERK) {
+            document.getElementById('schouwBadge').textContent = 'opnemen';
+          }
+          _schouwRijToon();
+          _schouwRijVerwerk();
+        });
+    }
+
+    // Versturen met een eigen fetch: een haperende verbinding is hier normaal
+    // en mag de pagina niet naar de loginpagina sturen, zoals api() doet.
+    function _schouwRijVerstuur() {
+      var d = _schouwRijD;
+      if (!d || d.verlopen) return;
+      while (d.bezig < SCHOUW_RIJ_PARALLEL && d.rij.length) {
+        (function (item) {
+          d.bezig++;
+          _schouwBlobNaarDataUrl(item.blob).then(function (url) {
+            var body = Object.assign({ image_data_url: url }, item.meta);
+            return fetch(API_URL + '/api/schouw/ritten/' + item.rit + '/opnames', {
+              method: 'POST',
+              headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+              body: JSON.stringify(body)
+            });
+          }).then(function (res) {
+            if (res.ok) {
+              d.verstuurd++;
+              _schouwIdbWeg(item.sleutel);
+            } else if (res.status === 401) {
+              d.verlopen = true;
+              d.rij.unshift(item);
+              _schouwMeld('schouwMelding', 'Je sessie is verlopen. Log opnieuw in; de beelden blijven op dit toestel ' +
+                'bewaard en gaan daarna alsnog.', 'fout');
+            } else if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+              _schouwIdbWeg(item.sleutel);        // dit beeld wordt nooit geaccepteerd
+            } else {
+              throw new Error('HTTP ' + res.status);
+            }
+          }).catch(function () {
+            item.pogingen = (item.pogingen || 0) + 1;
+            setTimeout(function () { d.rij.unshift(item); _schouwRijVerstuur(); },
+                       Math.min(30000, 2000 * item.pogingen));
+          }).then(function () {
+            d.bezig--;
+            _schouwRijToon();
+            _schouwRijVerstuur();
+          });
+        })(d.rij.shift());
+      }
+    }
+
+    function _schouwBlobNaarDataUrl(blob) {
+      return new Promise(function (ok, fout) {
+        var lezer = new FileReader();
+        lezer.onload = function () { ok(lezer.result); };
+        lezer.onerror = fout;
+        lezer.readAsDataURL(blob);
+      });
+    }
+
+    function _schouwRijStandLaad() {
+      if (!_schouwRijD) return;
+      api('GET', '/api/schouw/ritten/' + _schouwRijD.rit + '/opnames').then(function (st) {
+        if (!st) return;
+        _schouwRijD.stand = st;
+        if (_schouwRit && _schouwRit.id === _schouwRijD.rit) {
+          _schouwRit = st.rit;
+          _schouwToonKop();
+        }
+        var lijst = document.getElementById('schouwWaarnemingen');
+        if (lijst && st.laatste_schades && st.laatste_schades.length) {
+          lijst.innerHTML = st.laatste_schades.map(_schouwRij).join('');
+        }
+        _schouwRijToon();
+      }).catch(function () {});
+    }
+
+    function _schouwRijToon() {
+      var d = _schouwRijD;
+      if (!d) return;
+      var st = d.stand || {};
+      document.getElementById('schouwRijGemaakt').textContent = d.gemaakt;
+      document.getElementById('schouwRijVerstuurd').textContent = d.verstuurd;
+      document.getElementById('schouwRijKlaar').textContent = st.klaar || 0;
+      document.getElementById('schouwRijSchades').textContent = st.schades || 0;
+      var delen = [];
+      if (d.meters) delen.push((d.meters / 1000).toFixed(d.meters < 10000 ? 2 : 1).replace('.', ',') + ' km gereden');
+      var wacht = d.rij.length + d.bezig + d.teVerwerken.length + (d.verwerken ? 1 : 0);
+      if (wacht) delen.push(wacht + ' nog te versturen');
+      if (st.wacht) delen.push(st.wacht + ' in beoordeling');
+      if (st.gemiddelde_analyse_s) delen.push('beoordeling ' + String(st.gemiddelde_analyse_s).replace('.', ',') + ' s per beeld');
+      if (st.mislukt) delen.push(st.mislukt + ' niet gelukt');
+      document.getElementById('schouwRijRegel').textContent = delen.join(' · ');
+    }
+
+    // ── Wachtrij op het toestel (IndexedDB) ──
+    function _schouwIdb() {
+      return new Promise(function (ok) {
+        if (!window.indexedDB) { ok(null); return; }
+        var verzoek;
+        try { verzoek = indexedDB.open('fieldops-schouw', 1); } catch (e) { ok(null); return; }
+        verzoek.onupgradeneeded = function (e) { e.target.result.createObjectStore('opnames', { keyPath: 'sleutel' }); };
+        verzoek.onsuccess = function (e) { ok(e.target.result); };
+        verzoek.onerror = function () { ok(null); };
+      });
+    }
+
+    function _schouwIdbZet(item) {
+      _schouwIdb().then(function (db) {
+        if (!db) return;
+        try { db.transaction('opnames', 'readwrite').objectStore('opnames').put(item); } catch (e) {}
+      });
+    }
+
+    function _schouwIdbWeg(sleutel) {
+      _schouwIdb().then(function (db) {
+        if (!db) return;
+        try { db.transaction('opnames', 'readwrite').objectStore('opnames').delete(sleutel); } catch (e) {}
+      });
+    }
+
+    // Beelden van een eerdere rit die nog op het toestel staan (verbinding
+    // weg, pagina herladen, sessie verlopen): alsnog versturen.
+    function _schouwRijHervat() {
+      if (_schouwRijD && _schouwRijD.rij.length) { _schouwRijD.verlopen = false; _schouwRijVerstuur(); return; }
+      _schouwIdb().then(function (db) {
+        if (!db) return;
+        var items = [];
+        var cursor = db.transaction('opnames', 'readonly').objectStore('opnames').openCursor();
+        cursor.onsuccess = function (e) {
+          var c = e.target.result;
+          if (c) { items.push(c.value); c.continue(); return; }
+          if (!items.length) return;
+          var rit = items[0].rit;
+          if (!_schouwRijD || _schouwRijD.rit !== rit) {
+            _schouwRijD = { rit: rit, volg: 0, gemaakt: 0, verstuurd: 0, rij: [], bezig: 0,
+                            laatstePlek: null, laatsteTijd: 0, vorigePlek: null, meters: 0,
+                            teVerwerken: [], verwerken: false, stand: null, verlopen: false };
+          }
+          items.forEach(function (it) {
+            if (it.rit === _schouwRijD.rit) _schouwRijD.rij.push(it);
+            _schouwRijD.volg = Math.max(_schouwRijD.volg, it.meta.volgnummer || 0);
+          });
+          showToast(items.length + ' beelden van een eerdere rit worden nog verstuurd', 'info');
+          _schouwRijVerstuur();
+        };
+      });
+    }
+
     function _schouwAnoniemKlaar() {
       if (_schouwAnoniem) return Promise.resolve(_schouwAnoniem);
       if (!_schouwAnoniemBezig) return Promise.resolve(null);
@@ -10449,13 +10878,24 @@
     // of twee blokken. Geeft het aantal verpixelde vakken, of null als het
     // herkennen misging -- dan claimen we ook niet dat het beeld anoniem is.
     function _schouwVerpixel(model, canvas) {
-      return model.detect(canvas, 40, 0.25).then(function (voorspellingen) {
+      // Herkennen op een kopie van 640 breed: het model werkt intern op
+      // 300x300, dus precisie kost het niet, en het scheelt op een toestel
+      // zonder grafische versnelling seconden per beeld.
+      var bron = canvas, factor = 1;
+      if (canvas.width > 800) {
+        factor = canvas.width / 640;
+        bron = document.createElement('canvas');
+        bron.width = 640;
+        bron.height = Math.max(1, Math.round(canvas.height / factor));
+        bron.getContext('2d').drawImage(canvas, 0, 0, bron.width, bron.height);
+      }
+      return model.detect(bron, 40, 0.25).then(function (voorspellingen) {
         var ctx = canvas.getContext('2d');
         var n = 0;
         voorspellingen.forEach(function (p) {
           var drempel = SCHOUW_PRIVACY_KLASSEN[p['class']];
           if (!drempel || p.score < drempel) return;
-          var b = p.bbox;
+          var b = p.bbox.map(function (v) { return v * factor; });
           if (p['class'] !== 'person'
               && (b[2] * b[3]) / (canvas.width * canvas.height) > SCHOUW_VOERTUIG_MAX_OPPERVLAK) return;
           var mx = b[2] * 0.12, my = b[3] * 0.12;
@@ -10925,6 +11365,7 @@
     function _schouwStop() {
       _schouwLoopt = false;
       _schouwPlan(0);
+      _schouwRijUit();
       schouwSchadeSluit();
       _schouwBeeldPer = {};
       _schouwBeeldRij = [];
@@ -10947,7 +11388,13 @@
 
     function schouwAfronden() {
       if (!_schouwRit) return;
-      if (!confirm('Hierna kun je niets meer toevoegen aan deze ronde. Doorgaan?')) return;
+      var nogTeSturen = _schouwRijD && _schouwRijD.rit === _schouwRit.id
+        ? _schouwRijD.rij.length + _schouwRijD.bezig + _schouwRijD.teVerwerken.length : 0;
+      var vraag = nogTeSturen
+        ? 'Er worden nog ' + nogTeSturen + ' beelden verstuurd. Laat deze pagina open tot dat klaar is; ' +
+          'de schades komen er daarna nog bij. Afronden?'
+        : 'Hierna kun je niets meer toevoegen aan deze ronde. Doorgaan?';
+      if (!confirm(vraag)) return;
       api('POST', '/api/schouw/ritten/' + _schouwRit.id + '/afronden')
         .then(function (r) {
           _schouwStop();
@@ -10969,7 +11416,10 @@
         document.getElementById('schouwActief').style.display = '';
         document.getElementById('schouwActiefGebied').textContent = r.gebied || 'Schouwronde';
         document.getElementById('schouwActiefMeta').textContent =
-          (r.gebiedstype_label || '') + ' · ' + r.status + ' · ' + r.frames + ' beelden';
+          (r.gebiedstype_label || '') + ' · ' + r.status + ' · ' + r.frames + ' beelden'
+          + (r.opnames && r.opnames.totaal
+             ? ' · rijdend: ' + r.opnames.klaar + ' van ' + r.opnames.totaal + ' beoordeeld'
+               + (r.opnames.wacht ? ', ' + r.opnames.wacht + ' nog bezig' : '') : '');
         _schouwTussenstand(r.tussenstand);
         // Een afgeronde ronde bekijk je alleen; camera en timer blijven uit.
         if (r.status !== 'bezig') { _schouwStop(); _schouwRit = null; }
