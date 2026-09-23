@@ -2613,14 +2613,21 @@
           <div class="num" id="dbStatManual">—</div>
           <div class="lbl" data-i18n="db_stat_manual">Handmatig</div>
         </div>
+        <div class="db-stat" title="Uitstoot van het materieel dat op deze dag is geregistreerd. Regels zonder ingevuld verbruik tellen niet mee en staan apart vermeld.">
+          <div class="num" id="dbStatCo2">—</div>
+          <div class="lbl">kg CO₂ materieel</div>
+        </div>
       </div>
 
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
         <button class="btn-primary" onclick="openDaybookEntryModal()" data-i18n="db_add_btn">+ Handmatige notitie</button>
+        <button class="btn-primary" onclick="openMaterieelModal()">🚜 + Materieel</button>
         <button class="btn-secondary" onclick="exportDaybookPDF()" data-i18n="db_pdf_btn">📄 PDF dagrapport</button>
         <button class="btn-secondary" onclick="openDaybookExportModal()" data-i18n="db_csv_btn">📊 Excel/CSV uren-export</button>
         <button class="btn-secondary" onclick="toggleDaybookMap()" id="dbMapToggleBtn">🗺️ Kaart aan</button>
         <button class="btn-secondary" onclick="openDaybookTeamOverview()" id="dbTeamBtn" style="display:none;" data-i18n="db_team_btn">👥 Team-overzicht</button>
+        <button class="btn-secondary" onclick="openCo2RapportModal()">🌱 CO₂-rapport</button>
+        <button class="btn-secondary" onclick="openMaterieelBeheer()" id="dbMaterieelBeheerBtn" style="display:none;">🚜 Materieelregister</button>
       </div>
 
       <!-- Dagboek-kaart: toont entries met GPS als markers -->
@@ -2676,6 +2683,10 @@
         </div>
       </div>
 
+      <!-- Materieel van deze dag: apart van de tijdlijn, want deze regels
+           zijn te bewerken en de automatische dagboekregels niet. -->
+      <div id="dbMaterieelBlok" style="display:none;margin-bottom:14px;"></div>
+
       <div id="dbEntriesList">
         <div class="db-empty" data-i18n="db_loading">Laden...</div>
       </div>
@@ -2722,6 +2733,162 @@
             <button type="submit" class="btn-primary" data-i18n="db_save_btn">Opslaan</button>
           </div>
         </form>
+      </div>
+    </div>
+
+
+    <!-- ═══════ MATERIEEL-INZET MODAL ═══════ -->
+    <div class="modal-overlay" id="materieelModal">
+      <div class="modal" style="max-width:580px;">
+        <button class="modal-close" onclick="closeMaterieelModal()">&times;</button>
+        <h2 id="materieelModalTitle">🚜 Materieel op deze dag</h2>
+        <p class="subtitle">Welke machine, van wie gehuurd, hoeveel uur gedraaid en hoeveel getankt. Daaruit volgt de CO₂ van deze dag.</p>
+        <form onsubmit="saveMaterieelInzet(event)">
+          <div class="form-group">
+            <label>Materieel *</label>
+            <select id="miMaterieel" onchange="onMaterieelKeuze()">
+              <option value="">— Kies uit het register —</option>
+            </select>
+          </div>
+          <div class="form-group" id="miNaamWrap" style="display:none;">
+            <label>Naam van het materieel *</label>
+            <input type="text" id="miNaam" maxlength="160" placeholder="bv. Aggregaat 20 kVA">
+            <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Eenmalig gehuurd? Typ de naam; dan hoeft er niets in het register.</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Leverancier</label>
+              <input type="text" id="miLeverancier" list="miLeveranciers" maxlength="160" placeholder="bv. Boels" autocomplete="off">
+              <datalist id="miLeveranciers"></datalist>
+            </div>
+            <div class="form-group">
+              <label>Brandstof / energie</label>
+              <select id="miEnergiedrager" onchange="updateMaterieelCo2()"></select>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Draaiuren</label>
+              <input type="number" id="miDraaiuren" step="0.25" min="0" max="24" placeholder="bv. 6" oninput="updateMaterieelCo2()">
+            </div>
+            <div class="form-group">
+              <label>Getankt / geladen (<span id="miEenheid">liter</span>)</label>
+              <input type="number" id="miHoeveelheid" step="0.1" min="0" placeholder="bv. 70" oninput="updateMaterieelCo2()">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Datum</label>
+              <input type="date" id="miDatum">
+            </div>
+            <div class="form-group">
+              <label>Project (optioneel)</label>
+              <select id="miProject"><option value="">— Geen project —</option></select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Opmerking</label>
+            <textarea id="miOpmerking" rows="2" placeholder="Optioneel"></textarea>
+          </div>
+          <div id="miCo2Voorbeeld" style="padding:10px 12px;border-radius:10px;background:var(--card-bg-hover);border:1px solid var(--border);font-size:12px;line-height:1.5;margin-bottom:12px;"></div>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" onclick="closeMaterieelModal()">Annuleren</button>
+            <button type="submit" class="btn-primary">Opslaan</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ═══════ CO₂-RAPPORT MODAL ═══════ -->
+    <div class="modal-overlay" id="co2RapportModal">
+      <div class="modal" style="max-width:640px;">
+        <button class="modal-close" onclick="closeCo2RapportModal()">&times;</button>
+        <h2>🌱 CO₂-registratie materieel</h2>
+        <p class="subtitle">Wat het materieel heeft uitgestoten, per periode. Gemeten en geschat staan apart — dat is wat een auditor van de CO₂-Prestatieladder wil zien.</p>
+        <div class="form-group">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+            <button type="button" class="btn-secondary" onclick="setCo2Preset('month')" style="font-size:11px;padding:5px 10px;">Deze maand</button>
+            <button type="button" class="btn-secondary" onclick="setCo2Preset('lastmonth')" style="font-size:11px;padding:5px 10px;">Vorige maand</button>
+            <button type="button" class="btn-secondary" onclick="setCo2Preset('quarter')" style="font-size:11px;padding:5px 10px;">Dit kwartaal</button>
+            <button type="button" class="btn-secondary" onclick="setCo2Preset('year')" style="font-size:11px;padding:5px 10px;">Dit jaar</button>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div>
+              <label style="font-size:11px;color:var(--text-dim);">Van</label>
+              <input type="date" id="co2From" onchange="loadCo2Rapport()">
+            </div>
+            <div>
+              <label style="font-size:11px;color:var(--text-dim);">Tot (incl.)</label>
+              <input type="date" id="co2To" onchange="loadCo2Rapport()">
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Project filter (optioneel)</label>
+          <select id="co2Project" onchange="loadCo2Rapport()"><option value="">— Alle projecten —</option></select>
+        </div>
+        <div id="co2RapportBody" style="max-height:44vh;overflow:auto;"></div>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" onclick="closeCo2RapportModal()">Sluiten</button>
+          <button type="button" class="btn-secondary" onclick="downloadCo2('pdf')">📄 PDF</button>
+          <button type="button" class="btn-primary" onclick="downloadCo2('xlsx')">📊 Excel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ MATERIEELREGISTER MODAL ═══════ -->
+    <div class="modal-overlay" id="materieelBeheerModal">
+      <div class="modal" style="max-width:820px;">
+        <button class="modal-close" onclick="closeMaterieelBeheer()">&times;</button>
+        <h2>🚜 Materieelregister</h2>
+        <p class="subtitle">Uw machines, voertuigen en gereedschap. Het verbruik per draaiuur is optioneel: zonder dat getal wordt er niets geschat, en dat is beter dan een verzonnen schatting.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <button type="button" class="btn-primary" onclick="openMaterieelStuk()">+ Materieel toevoegen</button>
+          <button type="button" class="btn-secondary" onclick="toggleMaterieelImport()">📥 Lijst importeren</button>
+          <button type="button" class="btn-secondary" onclick="toggleCo2Factoren()">⚙️ Emissiefactoren</button>
+        </div>
+
+        <div id="mbImportWrap" style="display:none;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--card-bg-hover);">
+          <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;">
+            Plak uw materieellijst uit Excel (met kopregel). Herkende kolommen: naam, soort, intern nummer, kenteken, eigendom, leverancier, brandstof, emissieklasse, bouwjaar, verbruik per uur, opmerking.
+          </div>
+          <textarea id="mbImportTekst" rows="6" placeholder="naam;soort;brandstof;verbruik per uur;leverancier" style="width:100%;font-family:'JetBrains Mono',monospace;font-size:12px;"></textarea>
+          <div id="mbImportUitslag" style="font-size:12px;margin:8px 0;"></div>
+          <div style="display:flex;gap:8px;">
+            <button type="button" class="btn-secondary" onclick="materieelImport(false)">Controleren</button>
+            <button type="button" class="btn-primary" onclick="materieelImport(true)">Importeren</button>
+          </div>
+        </div>
+
+        <div id="mbFactorenWrap" style="display:none;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;background:var(--card-bg-hover);">
+          <div id="mbFactorenUitleg" style="font-size:12px;color:var(--text-muted);margin-bottom:8px;line-height:1.5;"></div>
+          <div id="mbFactorenLijst"></div>
+          <div style="display:flex;gap:8px;margin-top:8px;">
+            <button type="button" class="btn-secondary" onclick="resetCo2Factoren()">Terug naar de landelijke lijst</button>
+            <button type="button" class="btn-primary" onclick="saveCo2Factoren()">Eigen factoren opslaan</button>
+          </div>
+        </div>
+
+        <div id="mbStukWrap" style="display:none;border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:12px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="form-group"><label>Naam *</label><input type="text" id="mbNaam" maxlength="160" placeholder="bv. Rupskraan 8t"></div>
+            <div class="form-group"><label>Soort</label><select id="mbSoort"></select></div>
+            <div class="form-group"><label>Intern nummer</label><input type="text" id="mbNummer" maxlength="60"></div>
+            <div class="form-group"><label>Kenteken</label><input type="text" id="mbKenteken" maxlength="20"></div>
+            <div class="form-group"><label>Eigendom</label><select id="mbEigendom"></select></div>
+            <div class="form-group"><label>Leverancier</label><input type="text" id="mbLeverancier" maxlength="160"></div>
+            <div class="form-group"><label>Brandstof / energie</label><select id="mbEnergiedrager"></select></div>
+            <div class="form-group"><label>Emissieklasse</label><select id="mbEmissieklasse"></select></div>
+            <div class="form-group"><label>Bouwjaar</label><input type="number" id="mbBouwjaar" min="1900" max="2100"></div>
+            <div class="form-group"><label>Verbruik per draaiuur</label><input type="number" id="mbVerbruik" step="0.1" min="0" placeholder="leeg laten als u het niet weet"></div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" onclick="sluitMaterieelStuk()">Annuleren</button>
+            <button type="button" class="btn-primary" onclick="saveMaterieelStuk()">Opslaan</button>
+          </div>
+        </div>
+
+        <div id="mbLijst" style="max-height:40vh;overflow:auto;"></div>
       </div>
     </div>
 
@@ -22674,6 +22841,7 @@
       if (currentUser && currentUser.is_org_admin) {
         _loadDaybookUserSelector();
       }
+      initMaterieel();
       loadDaybook();
     }
 
@@ -22733,6 +22901,7 @@
         daybookEntriesCache = data.entries || [];
         _renderDaybookStats(data);
         _renderDaybookEntries(data.entries || [], !!userId);
+        loadMaterieelDag(date, userId);
         // Re-render kaart-markers als kaart zichtbaar is
         if (dbMapVisible && dbMap) renderDaybookMapMarkers();
       }).catch(function(err) {
@@ -22795,6 +22964,619 @@
       }).join('');
     }
 
+
+    // ── Materieel & CO₂ ─────────────────────────────────────────
+    // Backend: routers/materieel_router.py
+    //   GET  /api/materieel/config | /leveranciers | /inzet | /co2
+    //   POST /api/materieel/inzet  · PATCH|DELETE /api/materieel/inzet/{id}
+    //   GET|POST|PATCH|DELETE /api/materieel  (het register)
+    //
+    // Het rekenvoorbeeld in het formulier gebruikt dezelfde regel als de
+    // server: getankt gaat vóór geschat, en zonder een van beide staat er
+    // geen getal. Als die twee uit elkaar lopen ziet de gebruiker in het
+    // formulier iets anders dan wat er wordt opgeslagen — daarom staan de
+    // factoren in /config en niet nog een keer hier.
+    var materieelConfig = null;
+    var materieelRegister = [];
+    var materieelDagRegels = [];
+
+    function _magMaterieelBeheren() {
+      return !!(currentUser && (currentUser.is_org_admin ||
+                currentUser.role === 'admin' || currentUser.role === 'manager'));
+    }
+
+    function initMaterieel() {
+      var beheerBtn = document.getElementById('dbMaterieelBeheerBtn');
+      if (beheerBtn) beheerBtn.style.display = _magMaterieelBeheren() ? '' : 'none';
+      if (materieelConfig) return;
+      api('GET', '/api/materieel/config').then(function (cfg) {
+        if (!cfg) return;
+        materieelConfig = cfg;
+        laadMaterieelRegister();
+      }).catch(function () { /* module uit: het dagboek werkt gewoon door */ });
+    }
+
+    function laadMaterieelRegister() {
+      return api('GET', '/api/materieel').then(function (data) {
+        materieelRegister = (data && data.materieel) || [];
+        return materieelRegister;
+      }).catch(function () { return []; });
+    }
+
+    function _eenheidVan(code) {
+      var d = ((materieelConfig || {}).energiedragers || []).filter(function (e) { return e.code === code; })[0];
+      return d ? d.eenheid : '';
+    }
+
+    function _factorVan(code) {
+      if (!materieelConfig) return null;
+      var eigen = materieelConfig.eigen_factoren || {};
+      if (typeof eigen[code] === 'number') return { kg: eigen[code], bron: 'eigen factor van uw organisatie' };
+      var drager = (materieelConfig.energiedragers || []).filter(function (e) { return e.code === code; })[0];
+      if (!drager || !drager.factor_code) return null;
+      var rij = ((materieelConfig.factoren || {}).rijen || []).filter(function (f) { return f.code === drager.factor_code; })[0];
+      if (!rij || rij.wtw === null || rij.wtw === undefined) return null;
+      return { kg: rij.wtw, bron: (materieelConfig.factoren.lijst || '') + ' ' + (materieelConfig.factoren.versie || '') };
+    }
+
+    // ── De dagregels ───────────────────────────────────────────
+
+    function loadMaterieelDag(datum, userId) {
+      var blok = document.getElementById('dbMaterieelBlok');
+      var stat = document.getElementById('dbStatCo2');
+      if (!blok) return;
+      var qs = 'datum=' + encodeURIComponent(datum);
+      if (userId) qs += '&user_id=' + encodeURIComponent(userId);
+      api('GET', '/api/materieel/inzet?' + qs).then(function (data) {
+        if (!data) return;
+        materieelDagRegels = data.regels || [];
+        if (stat) {
+          // Geen regels is iets anders dan nul kilo: dan staat er een streepje.
+          stat.textContent = materieelDagRegels.length
+            ? _nlGetal(data.totaal.kg_totaal) : '—';
+          stat.title = materieelDagRegels.length
+            ? (data.totaal.kg_geschat ? data.totaal.kg_geschat + ' kg daarvan is geschat' : 'volledig op getankte hoeveelheden')
+            : '';
+        }
+        _renderMaterieelDag(data, !!userId);
+      }).catch(function () { blok.style.display = 'none'; });
+    }
+
+    function _nlGetal(v) {
+      if (v === null || v === undefined) return '—';
+      return (Math.round(v * 10) / 10).toString().replace('.', ',');
+    }
+
+    function _renderMaterieelDag(data, isAnder) {
+      var blok = document.getElementById('dbMaterieelBlok');
+      if (!blok) return;
+      var regels = data.regels || [];
+      if (!regels.length) { blok.style.display = 'none'; blok.innerHTML = ''; return; }
+      blok.style.display = '';
+
+      var t = data.totaal || {};
+      var waarschuwing = t.regels_zonder_getal
+        ? '<div style="margin-top:6px;font-size:11px;color:var(--orange,#d97706);">' +
+          t.regels_zonder_getal + ' regel(s) zonder ingevuld verbruik — die tellen niet mee in het totaal.</div>'
+        : '';
+
+      blok.innerHTML =
+        '<div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--card-bg);">' +
+          '<div style="padding:10px 14px;background:var(--card-bg-hover);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">' +
+            '<div style="font-weight:700;font-size:13px;">🚜 Materieel op deze dag</div>' +
+            '<div style="font-size:12px;color:var(--text-muted);">' +
+              _nlGetal(t.kg_totaal) + ' kg CO₂' +
+              (t.kg_geschat ? ' <span style="opacity:.75;">(' + _nlGetal(t.kg_geschat) + ' kg geschat)</span>' : '') +
+            '</div>' +
+          '</div>' +
+          regels.map(function (r) { return _materieelRegelHtml(r, isAnder); }).join('') +
+        '</div>' + waarschuwing;
+    }
+
+    function _materieelRegelHtml(r, isAnder) {
+      var meta = [];
+      if (r.leverancier) meta.push('🏢 ' + escapeHtml(r.leverancier));
+      if (r.draaiuren) meta.push('⏱ ' + _nlGetal(r.draaiuren) + ' draaiuur');
+      if (r.brandstof_hoeveelheid !== null && r.brandstof_hoeveelheid !== undefined) {
+        meta.push('⛽ ' + _nlGetal(r.brandstof_hoeveelheid) + ' ' + (r.eenheid || ''));
+      }
+      if (r.project_naam) meta.push('📁 ' + escapeHtml(r.project_naam));
+
+      var co2;
+      if (r.co2_kg === null || r.co2_kg === undefined) {
+        co2 = '<span style="color:var(--text-dim);" title="Vul getankte hoeveelheid of draaiuren én een verbruik per uur in">geen CO₂ berekend</span>';
+      } else {
+        co2 = '<strong>' + _nlGetal(r.co2_kg) + ' kg</strong>' +
+              (r.co2_methode === 'geschat'
+                ? ' <span style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(217,119,6,.14);color:#b45309;">geschat</span>'
+                : ' <span style="font-size:10px;padding:1px 6px;border-radius:999px;background:rgba(5,150,105,.14);color:#047857;">gemeten</span>');
+      }
+
+      var acties = isAnder ? '' :
+        '<button onclick="bewerkMaterieelInzet(\'' + r.id + '\')" title="Bewerken" style="border:none;background:none;cursor:pointer;font-size:13px;">✏️</button>' +
+        '<button onclick="verwijderMaterieelInzet(\'' + r.id + '\')" title="Verwijderen" style="border:none;background:none;cursor:pointer;font-size:13px;">🗑</button>';
+
+      return '<div style="display:flex;gap:10px;align-items:flex-start;padding:10px 14px;border-top:1px solid var(--border);">' +
+          '<div style="font-size:18px;">🚜</div>' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:13px;font-weight:600;">' + escapeHtml(r.materieel_naam || '') + '</div>' +
+            (meta.length ? '<div style="font-size:11px;color:var(--text-dim);display:flex;gap:8px;flex-wrap:wrap;margin-top:3px;">' + meta.join(' · ') + '</div>' : '') +
+            (r.opmerking ? '<div style="font-size:12px;color:var(--text-muted);margin-top:4px;">' + escapeHtml(r.opmerking) + '</div>' : '') +
+          '</div>' +
+          '<div style="font-size:12px;text-align:right;white-space:nowrap;">' + co2 +
+            '<div style="font-size:10px;color:var(--text-dim);margin-top:2px;">' + escapeHtml(r.energiedrager_naam || '') + '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:2px;">' + acties + '</div>' +
+        '</div>';
+    }
+
+    // ── Het formulier ──────────────────────────────────────────
+
+    function openMaterieelModal(bestaande) {
+      var modal = document.getElementById('materieelModal');
+      if (!modal) return;
+      if (!materieelConfig) { showToast('Materieel wordt nog geladen…', 'info'); initMaterieel(); return; }
+
+      document.getElementById('materieelModalTitle').textContent =
+        bestaande ? '🚜 Materieelregel bewerken' : '🚜 Materieel op deze dag';
+
+      var sel = document.getElementById('miMaterieel');
+      sel.innerHTML = '<option value="">— Eenmalig, niet in het register —</option>';
+      materieelRegister.forEach(function (m) {
+        var opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.naam + (m.intern_nummer ? ' (' + m.intern_nummer + ')' : '');
+        sel.appendChild(opt);
+      });
+
+      var drag = document.getElementById('miEnergiedrager');
+      drag.innerHTML = '';
+      (materieelConfig.energiedragers || []).forEach(function (e) {
+        var opt = document.createElement('option');
+        opt.value = e.code; opt.textContent = e.naam;
+        drag.appendChild(opt);
+      });
+
+      var proj = document.getElementById('miProject');
+      proj.innerHTML = '<option value="">— Geen project —</option>';
+      (allProjects || []).forEach(function (p) {
+        var opt = document.createElement('option');
+        opt.value = p.id; opt.textContent = p.name;
+        proj.appendChild(opt);
+      });
+
+      api('GET', '/api/materieel/leveranciers').then(function (d) {
+        var dl = document.getElementById('miLeveranciers');
+        if (!dl || !d) return;
+        dl.innerHTML = (d.leveranciers || []).map(function (n) {
+          return '<option value="' + escapeHtml(n) + '"></option>';
+        }).join('');
+      }).catch(function () {});
+
+      sel.value = bestaande ? (bestaande.materieel_id || '') : '';
+      document.getElementById('miNaam').value = bestaande && !bestaande.materieel_id ? (bestaande.materieel_naam || '') : '';
+      document.getElementById('miLeverancier').value = bestaande ? (bestaande.leverancier || '') : '';
+      drag.value = bestaande ? bestaande.energiedrager : 'diesel';
+      document.getElementById('miDraaiuren').value = bestaande && bestaande.draaiuren !== null ? bestaande.draaiuren : '';
+      document.getElementById('miHoeveelheid').value = bestaande && bestaande.brandstof_hoeveelheid !== null ? bestaande.brandstof_hoeveelheid : '';
+      document.getElementById('miDatum').value = bestaande ? bestaande.datum : (daybookCurrentDate || _todayIso());
+      proj.value = bestaande ? (bestaande.project_id || '') : '';
+      document.getElementById('miOpmerking').value = bestaande ? (bestaande.opmerking || '') : '';
+
+      // Bij bewerken staat het materieelstuk vast: van machine wisselen is een
+      // andere regel, niet dezelfde regel met een ander etiket.
+      sel.disabled = !!bestaande;
+      modal.dataset.editingId = bestaande ? bestaande.id : '';
+      onMaterieelKeuze(true);
+      modal.classList.add('active');
+    }
+
+    function closeMaterieelModal() {
+      var m = document.getElementById('materieelModal');
+      if (m) { m.classList.remove('active'); m.dataset.editingId = ''; }
+    }
+
+    function onMaterieelKeuze(behoudInvoer) {
+      var id = document.getElementById('miMaterieel').value;
+      var stuk = materieelRegister.filter(function (m) { return m.id === id; })[0];
+      document.getElementById('miNaamWrap').style.display = id ? 'none' : '';
+      if (stuk && !behoudInvoer) {
+        document.getElementById('miEnergiedrager').value = stuk.energiedrager;
+        if (stuk.leverancier) document.getElementById('miLeverancier').value = stuk.leverancier;
+      }
+      updateMaterieelCo2();
+    }
+
+    function updateMaterieelCo2() {
+      var vak = document.getElementById('miCo2Voorbeeld');
+      if (!vak) return;
+      var code = document.getElementById('miEnergiedrager').value;
+      var eenheid = _eenheidVan(code);
+      var eenheidEl = document.getElementById('miEenheid');
+      if (eenheidEl) eenheidEl.textContent = eenheid || '—';
+
+      var stuk = materieelRegister.filter(function (m) {
+        return m.id === document.getElementById('miMaterieel').value;
+      })[0];
+      var getankt = parseFloat(document.getElementById('miHoeveelheid').value);
+      var uren = parseFloat(document.getElementById('miDraaiuren').value);
+      var factor = _factorVan(code);
+
+      if (!factor) {
+        vak.innerHTML = '<span style="color:var(--text-dim);">Voor deze energiedrager rekenen we geen CO₂ uit.</span>';
+        return;
+      }
+      var hoeveelheid = null, hoe = '';
+      if (!isNaN(getankt)) { hoeveelheid = getankt; hoe = 'gemeten'; }
+      else if (!isNaN(uren) && stuk && stuk.verbruik_per_uur) { hoeveelheid = uren * stuk.verbruik_per_uur; hoe = 'geschat'; }
+
+      if (hoeveelheid === null) {
+        vak.innerHTML = '<strong>Nog geen CO₂ te berekenen.</strong><br>' +
+          '<span style="color:var(--text-muted);">Vul in hoeveel er is getankt of geladen. ' +
+          (stuk && !stuk.verbruik_per_uur
+            ? 'Draaiuren alleen kan ook, maar dan moet er een verbruik per uur bij dit materieel staan.'
+            : 'Met alleen draaiuren wordt het een schatting.') + '</span>';
+        return;
+      }
+      var kg = hoeveelheid * factor.kg;
+      vak.innerHTML = '<strong>≈ ' + _nlGetal(kg) + ' kg CO₂</strong> (' + hoe + ')<br>' +
+        '<span style="color:var(--text-muted);">' + _nlGetal(hoeveelheid) + ' ' + eenheid + ' × ' +
+        factor.kg + ' kg/' + eenheid + ' — ' + escapeHtml(factor.bron) + '</span>';
+    }
+
+    function bewerkMaterieelInzet(id) {
+      var regel = materieelDagRegels.filter(function (r) { return r.id === id; })[0];
+      if (regel) openMaterieelModal(regel);
+    }
+
+    function saveMaterieelInzet(ev) {
+      ev.preventDefault();
+      var modal = document.getElementById('materieelModal');
+      var id = modal.dataset.editingId;
+      var materieelId = document.getElementById('miMaterieel').value;
+      var naam = document.getElementById('miNaam').value.trim();
+      if (!materieelId && !naam) { showToast('Kies materieel of vul een naam in', 'error'); return; }
+
+      function getal(elId) {
+        var v = parseFloat(document.getElementById(elId).value);
+        return isNaN(v) ? null : v;
+      }
+      var body = {
+        datum: document.getElementById('miDatum').value || null,
+        leverancier: document.getElementById('miLeverancier').value.trim() || null,
+        energiedrager: document.getElementById('miEnergiedrager').value,
+        project_id: document.getElementById('miProject').value || null,
+        draaiuren: getal('miDraaiuren'),
+        brandstof_hoeveelheid: getal('miHoeveelheid'),
+        opmerking: document.getElementById('miOpmerking').value.trim() || null
+      };
+      var verzoek;
+      if (id) {
+        // Alleen een losse regel draagt zijn naam zelf; bij een registerstuk
+        // hoort de naam in het register thuis en weigert de server hem hier.
+        if (!materieelId) body.materieel_naam = naam;
+        verzoek = api('PATCH', '/api/materieel/inzet/' + id, body);
+      } else {
+        body.materieel_id = materieelId || null;
+        body.materieel_naam = materieelId ? null : naam;
+        verzoek = api('POST', '/api/materieel/inzet', body);
+      }
+      verzoek.then(function () {
+        showToast(id ? 'Materieelregel bijgewerkt' : 'Materieel geregistreerd', 'success');
+        closeMaterieelModal();
+        loadDaybook();
+      }).catch(function (err) { showToast(err.message || 'Opslaan mislukt', 'error'); });
+    }
+
+    function verwijderMaterieelInzet(id) {
+      if (!confirm('Deze materieelregel verwijderen? De regel verdwijnt ook uit de tijdlijn.')) return;
+      api('DELETE', '/api/materieel/inzet/' + id).then(function () {
+        showToast('Regel verwijderd', 'success');
+        loadDaybook();
+      }).catch(function (err) { showToast(err.message || 'Verwijderen mislukt', 'error'); });
+    }
+
+    // ── Het CO₂-rapport ────────────────────────────────────────
+
+    function openCo2RapportModal() {
+      var modal = document.getElementById('co2RapportModal');
+      if (!modal) return;
+      var proj = document.getElementById('co2Project');
+      proj.innerHTML = '<option value="">— Alle projecten —</option>';
+      (allProjects || []).forEach(function (p) {
+        var opt = document.createElement('option');
+        opt.value = p.id; opt.textContent = p.name;
+        proj.appendChild(opt);
+      });
+      setCo2Preset('month');
+      modal.classList.add('active');
+    }
+
+    function closeCo2RapportModal() {
+      var m = document.getElementById('co2RapportModal');
+      if (m) m.classList.remove('active');
+    }
+
+    function _iso(d) {
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' +
+             String(d.getDate()).padStart(2, '0');
+    }
+
+    function setCo2Preset(welke) {
+      var nu = new Date(), van, tot;
+      if (welke === 'month') { van = new Date(nu.getFullYear(), nu.getMonth(), 1); tot = nu; }
+      else if (welke === 'lastmonth') { van = new Date(nu.getFullYear(), nu.getMonth() - 1, 1); tot = new Date(nu.getFullYear(), nu.getMonth(), 0); }
+      else if (welke === 'quarter') { van = new Date(nu.getFullYear(), Math.floor(nu.getMonth() / 3) * 3, 1); tot = nu; }
+      else { van = new Date(nu.getFullYear(), 0, 1); tot = nu; }
+      document.getElementById('co2From').value = _iso(van);
+      document.getElementById('co2To').value = _iso(tot);
+      loadCo2Rapport();
+    }
+
+    function loadCo2Rapport() {
+      var body = document.getElementById('co2RapportBody');
+      if (!body) return;
+      var van = document.getElementById('co2From').value;
+      var tot = document.getElementById('co2To').value;
+      if (!van || !tot) return;
+      var qs = 'from=' + encodeURIComponent(van) + '&to=' + encodeURIComponent(tot);
+      var proj = document.getElementById('co2Project').value;
+      if (proj) qs += '&project_id=' + encodeURIComponent(proj);
+      body.innerHTML = '<div style="padding:16px;color:var(--text-dim);">Laden…</div>';
+      api('GET', '/api/materieel/co2?' + qs).then(function (data) {
+        if (!data) return;
+        body.innerHTML = _co2RapportHtml(data);
+      }).catch(function (err) {
+        body.innerHTML = '<div style="padding:16px;color:var(--red);">' + escapeHtml(err.message || 'Fout bij laden') + '</div>';
+      });
+    }
+
+    function _co2RapportHtml(data) {
+      var t = data.totaal || {};
+      function tabel(titel, rijen) {
+        if (!rijen || !rijen.length) return '';
+        return '<div style="margin-top:14px;font-weight:700;font-size:12px;">' + titel + '</div>' +
+          '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:4px;">' +
+          '<tr style="text-align:left;color:var(--text-dim);font-size:11px;"><th>Naam</th><th>Uren</th><th>Gemeten</th><th>Geschat</th><th>Totaal</th></tr>' +
+          rijen.map(function (g) {
+            return '<tr style="border-top:1px solid var(--border);">' +
+              '<td style="padding:4px 0;">' + escapeHtml(g.naam) + '</td>' +
+              '<td>' + (g.draaiuren ? _nlGetal(g.draaiuren) : '—') + '</td>' +
+              '<td>' + _nlGetal(g.kg_gemeten) + '</td>' +
+              '<td>' + _nlGetal(g.kg_geschat) + '</td>' +
+              '<td><strong>' + _nlGetal(g.kg_totaal) + '</strong></td></tr>';
+          }).join('') + '</table>';
+      }
+      var kop =
+        '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">' +
+          '<div style="padding:10px;border:1px solid var(--border);border-radius:10px;"><div style="font-size:20px;font-weight:800;">' + _nlGetal(t.kg_totaal) + '</div><div style="font-size:10px;color:var(--text-dim);">KG CO₂ TOTAAL</div></div>' +
+          '<div style="padding:10px;border:1px solid var(--border);border-radius:10px;"><div style="font-size:20px;font-weight:800;">' + _nlGetal(t.kg_gemeten) + '</div><div style="font-size:10px;color:var(--text-dim);">GEMETEN</div></div>' +
+          '<div style="padding:10px;border:1px solid var(--border);border-radius:10px;"><div style="font-size:20px;font-weight:800;">' + _nlGetal(t.kg_geschat) + '</div><div style="font-size:10px;color:var(--text-dim);">GESCHAT</div></div>' +
+        '</div>';
+      var opmerking = t.regels_zonder_getal
+        ? '<div style="margin-top:8px;font-size:11px;color:var(--orange,#d97706);">' + t.regels_zonder_getal +
+          ' regel(s) zonder ingevuld verbruik. Die staan wel in de export, maar tellen niet mee in het totaal.</div>'
+        : '<div style="margin-top:8px;font-size:11px;color:var(--text-dim);">Alle regels in deze periode hebben een berekend getal.</div>';
+      var bron = (data.factorenlijst && data.factorenlijst.versie)
+        ? '<div style="margin-top:8px;font-size:11px;color:var(--text-dim);">Gerekend met ' +
+          escapeHtml(data.factorenlijst.lijst || '') + ', versie ' + escapeHtml(data.factorenlijst.versie) + '.</div>'
+        : '';
+      return kop + opmerking + bron +
+        tabel('Per materieel', data.per_materieel) +
+        tabel('Per project', data.per_project) +
+        tabel('Per leverancier', data.per_leverancier) +
+        tabel('Per energiedrager', data.per_energiedrager);
+    }
+
+    function downloadCo2(formaat) {
+      var van = document.getElementById('co2From').value;
+      var tot = document.getElementById('co2To').value;
+      if (!van || !tot) { showToast('Vul beide datums in', 'error'); return; }
+      var qs = 'from=' + encodeURIComponent(van) + '&to=' + encodeURIComponent(tot);
+      var proj = document.getElementById('co2Project').value;
+      if (proj) qs += '&project_id=' + encodeURIComponent(proj);
+      exportBestand('/api/materieel/co2.' + formaat + '?' + qs, {
+        naam: 'CO2_' + van + '_tot_' + tot + '.' + formaat,
+        klaar: formaat === 'xlsx' ? 'Excel gedownload' : 'PDF gedownload'
+      });
+    }
+
+    // ── Het register beheren ───────────────────────────────────
+
+    function openMaterieelBeheer() {
+      var modal = document.getElementById('materieelBeheerModal');
+      if (!modal) return;
+      sluitMaterieelStuk();
+      document.getElementById('mbImportWrap').style.display = 'none';
+      document.getElementById('mbFactorenWrap').style.display = 'none';
+      _vulMaterieelKeuzes();
+      laadMaterieelRegister().then(_renderMaterieelRegister);
+      modal.classList.add('active');
+    }
+
+    function closeMaterieelBeheer() {
+      var m = document.getElementById('materieelBeheerModal');
+      if (m) m.classList.remove('active');
+      loadDaybook();
+    }
+
+    function _vulMaterieelKeuzes() {
+      if (!materieelConfig) return;
+      function vul(elId, lijst) {
+        var el = document.getElementById(elId);
+        if (!el) return;
+        el.innerHTML = lijst.map(function (o) {
+          return '<option value="' + o.code + '">' + escapeHtml(o.naam) + '</option>';
+        }).join('');
+      }
+      vul('mbSoort', materieelConfig.soorten || []);
+      vul('mbEigendom', materieelConfig.eigendom || []);
+      vul('mbEnergiedrager', materieelConfig.energiedragers || []);
+      vul('mbEmissieklasse', materieelConfig.emissieklassen || []);
+    }
+
+    function _renderMaterieelRegister() {
+      var el = document.getElementById('mbLijst');
+      if (!el) return;
+      if (!materieelRegister.length) {
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:13px;">' +
+          'Nog geen materieel. Voeg het toe of plak uw lijst uit Excel.</div>';
+        return;
+      }
+      el.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+        '<tr style="text-align:left;color:var(--text-dim);font-size:11px;">' +
+        '<th>Naam</th><th>Soort</th><th>Leverancier</th><th>Brandstof</th><th>Klasse</th><th>l/uur</th><th></th></tr>' +
+        materieelRegister.map(function (m) {
+          return '<tr style="border-top:1px solid var(--border);">' +
+            '<td style="padding:5px 0;font-weight:600;">' + escapeHtml(m.naam) +
+              (m.intern_nummer ? '<div style="font-size:10px;color:var(--text-dim);">' + escapeHtml(m.intern_nummer) + '</div>' : '') + '</td>' +
+            '<td>' + escapeHtml(m.soort_naam || '') + '</td>' +
+            '<td>' + escapeHtml(m.leverancier || '—') + '</td>' +
+            '<td>' + escapeHtml(m.energiedrager_naam || '') + '</td>' +
+            '<td>' + escapeHtml(m.emissieklasse_naam || '') + '</td>' +
+            '<td>' + (m.verbruik_per_uur ? _nlGetal(m.verbruik_per_uur) : '—') + '</td>' +
+            '<td style="text-align:right;white-space:nowrap;">' +
+              '<button onclick="openMaterieelStuk(\'' + m.id + '\')" title="Bewerken" style="border:none;background:none;cursor:pointer;">✏️</button>' +
+              '<button onclick="archiveerMaterieel(\'' + m.id + '\')" title="Archiveren" style="border:none;background:none;cursor:pointer;">🗄</button>' +
+            '</td></tr>';
+        }).join('') + '</table>';
+    }
+
+    function openMaterieelStuk(id) {
+      var wrap = document.getElementById('mbStukWrap');
+      if (!wrap) return;
+      _vulMaterieelKeuzes();
+      var m = id ? materieelRegister.filter(function (x) { return x.id === id; })[0] : null;
+      document.getElementById('mbNaam').value = m ? m.naam : '';
+      document.getElementById('mbSoort').value = m ? m.soort : 'overig';
+      document.getElementById('mbNummer').value = m ? (m.intern_nummer || '') : '';
+      document.getElementById('mbKenteken').value = m ? (m.kenteken || '') : '';
+      document.getElementById('mbEigendom').value = m ? m.eigendom : 'eigen';
+      document.getElementById('mbLeverancier').value = m ? (m.leverancier || '') : '';
+      document.getElementById('mbEnergiedrager').value = m ? m.energiedrager : 'diesel';
+      document.getElementById('mbEmissieklasse').value = m ? m.emissieklasse : 'onbekend';
+      document.getElementById('mbBouwjaar').value = m && m.bouwjaar ? m.bouwjaar : '';
+      document.getElementById('mbVerbruik').value = m && m.verbruik_per_uur ? m.verbruik_per_uur : '';
+      wrap.dataset.editingId = m ? m.id : '';
+      wrap.style.display = '';
+    }
+
+    function sluitMaterieelStuk() {
+      var wrap = document.getElementById('mbStukWrap');
+      if (wrap) { wrap.style.display = 'none'; wrap.dataset.editingId = ''; }
+    }
+
+    function saveMaterieelStuk() {
+      var wrap = document.getElementById('mbStukWrap');
+      var naam = document.getElementById('mbNaam').value.trim();
+      if (!naam) { showToast('Vul een naam in', 'error'); return; }
+      var verbruik = parseFloat(document.getElementById('mbVerbruik').value);
+      var jaar = parseInt(document.getElementById('mbBouwjaar').value, 10);
+      var body = {
+        naam: naam,
+        soort: document.getElementById('mbSoort').value,
+        intern_nummer: document.getElementById('mbNummer').value.trim() || null,
+        kenteken: document.getElementById('mbKenteken').value.trim() || null,
+        eigendom: document.getElementById('mbEigendom').value,
+        leverancier: document.getElementById('mbLeverancier').value.trim() || null,
+        energiedrager: document.getElementById('mbEnergiedrager').value,
+        emissieklasse: document.getElementById('mbEmissieklasse').value,
+        bouwjaar: isNaN(jaar) ? null : jaar,
+        verbruik_per_uur: isNaN(verbruik) ? null : verbruik
+      };
+      var id = wrap.dataset.editingId;
+      var verzoek = id ? api('PATCH', '/api/materieel/' + id, body)
+                       : api('POST', '/api/materieel', body);
+      verzoek.then(function () {
+        showToast('Materieel opgeslagen', 'success');
+        sluitMaterieelStuk();
+        laadMaterieelRegister().then(_renderMaterieelRegister);
+      }).catch(function (err) { showToast(err.message || 'Opslaan mislukt', 'error'); });
+    }
+
+    function archiveerMaterieel(id) {
+      if (!confirm('Dit materieel uit de keuzelijst halen? Bestaande dagregels en rapporten blijven staan.')) return;
+      api('DELETE', '/api/materieel/' + id).then(function () {
+        showToast('Gearchiveerd', 'success');
+        laadMaterieelRegister().then(_renderMaterieelRegister);
+      }).catch(function (err) { showToast(err.message || 'Mislukt', 'error'); });
+    }
+
+    function toggleMaterieelImport() {
+      var w = document.getElementById('mbImportWrap');
+      w.style.display = w.style.display === 'none' ? '' : 'none';
+    }
+
+    function materieelImport(bevestigen) {
+      var tekst = document.getElementById('mbImportTekst').value;
+      if (!tekst.trim()) { showToast('Plak eerst een lijst', 'error'); return; }
+      var uit = document.getElementById('mbImportUitslag');
+      api('POST', '/api/materieel/import', { inhoud: tekst, bevestigen: !!bevestigen }).then(function (d) {
+        if (!d) return;
+        var regels = ['<strong>' + d.gelezen + '</strong> regel(s) gelezen.'];
+        if (bevestigen) {
+          regels.push('<strong>' + d.opgeslagen + '</strong> toegevoegd' +
+            (d.overgeslagen_want_bestond_al ? ', ' + d.overgeslagen_want_bestond_al + ' bestond al' : '') + '.');
+        } else {
+          regels.push('Nog niets opgeslagen — klik op Importeren.');
+        }
+        (d.waarschuwingen || []).forEach(function (w) {
+          regels.push('<span style="color:var(--orange,#d97706);">' + escapeHtml(w) + '</span>');
+        });
+        uit.innerHTML = regels.join('<br>');
+        if (bevestigen) laadMaterieelRegister().then(_renderMaterieelRegister);
+      }).catch(function (err) { uit.innerHTML = '<span style="color:var(--red);">' + escapeHtml(err.message || '') + '</span>'; });
+    }
+
+    function toggleCo2Factoren() {
+      var w = document.getElementById('mbFactorenWrap');
+      var aan = w.style.display === 'none';
+      w.style.display = aan ? '' : 'none';
+      if (aan) _renderCo2Factoren();
+    }
+
+    function _renderCo2Factoren() {
+      if (!materieelConfig) return;
+      var f = materieelConfig.factoren || {};
+      var eigen = materieelConfig.eigen_factoren || {};
+      document.getElementById('mbFactorenUitleg').innerHTML =
+        'Standaard rekenen we met <strong>' + escapeHtml(f.lijst || '') + '</strong>, versie ' +
+        escapeHtml(f.versie || '') + ' (<a href="' + escapeHtml(f.bron || '#') + '" target="_blank" rel="noopener">bron</a>). ' +
+        'Schrijft uw opdrachtgever of auditor andere factoren voor? Vul ze hier in; leeg laten betekent de landelijke factor.';
+      document.getElementById('mbFactorenLijst').innerHTML =
+        (materieelConfig.energiedragers || []).filter(function (e) { return e.factor_code; }).map(function (e) {
+          var rij = (f.rijen || []).filter(function (r) { return r.code === e.factor_code; })[0] || {};
+          return '<div style="display:flex;align-items:center;gap:10px;padding:4px 0;font-size:12px;">' +
+            '<div style="flex:1;">' + escapeHtml(e.naam) + '</div>' +
+            '<div style="color:var(--text-dim);">landelijk: ' + (rij.wtw !== undefined && rij.wtw !== null ? rij.wtw : '—') + ' kg/' + e.eenheid + '</div>' +
+            '<input type="number" step="0.001" min="0" data-drager="' + e.code + '" class="mb-factor" ' +
+              'style="width:110px;" placeholder="eigen" value="' +
+              (typeof eigen[e.code] === 'number' ? eigen[e.code] : '') + '">' +
+          '</div>';
+        }).join('');
+    }
+
+    function saveCo2Factoren() {
+      var factoren = {};
+      Array.prototype.forEach.call(document.querySelectorAll('.mb-factor'), function (inp) {
+        var v = parseFloat(inp.value);
+        if (!isNaN(v)) factoren[inp.dataset.drager] = v;
+      });
+      api('PUT', '/api/materieel/factoren', { factoren: factoren }).then(function (d) {
+        materieelConfig.eigen_factoren = (d && d.eigen_factoren) || {};
+        showToast('Emissiefactoren opgeslagen', 'success');
+        _renderCo2Factoren();
+      }).catch(function (err) { showToast(err.message || 'Opslaan mislukt', 'error'); });
+    }
+
+    function resetCo2Factoren() {
+      api('PUT', '/api/materieel/factoren', { factoren: {} }).then(function () {
+        materieelConfig.eigen_factoren = {};
+        showToast('Terug op de landelijke lijst', 'success');
+        _renderCo2Factoren();
+      }).catch(function (err) { showToast(err.message || 'Mislukt', 'error'); });
+    }
+
     function _daybookIconFor(entryType, source) {
       var map = {
         melding_created: '🔔',
@@ -22804,6 +23586,7 @@
         asset_visited: '📍',
         time_logged: '⏱',
         manual_note: '📝',
+        materieel_inzet: '🚜',
       };
       return map[entryType] || (source === 'auto' ? '⚙️' : '📝');
     }

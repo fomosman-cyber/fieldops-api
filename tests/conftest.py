@@ -38,6 +38,7 @@ from models import (  # noqa: E402
     Oplevering, OpleveringPunt, OpleverRonde,
     QualityRegistration, QualityAnswer, QualityEvidence,
     SchouwBeeld, SchouwOpname, Schouwwaarneming, Schouwrit,
+    DaybookEntry, Materieel, MaterieelInzet,
 )
 from auth import hash_password, create_access_token  # noqa: E402
 
@@ -65,6 +66,7 @@ def clean_db():
             QualityEvidence, QualityAnswer, QualityRegistration,
             QualityField, QualityRequirement, QualityInspection,
             SchouwBeeld, SchouwOpname, Schouwwaarneming, Schouwrit,
+            MaterieelInzet, Materieel, DaybookEntry,
             AIAnalysis, AuditLog, PasswordResetToken,
             Melding, Asset, Project, Invitation, DemoRequest,
             User, Organization,
