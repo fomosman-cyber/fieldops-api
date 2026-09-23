@@ -4509,6 +4509,8 @@
           <div style="display:flex;gap:8px;">
             <button class="btn-secondary" id="schouwWeergaveBtn" onclick="schouwWisselWeergave()">Toon live</button>
             <button class="btn-secondary" id="schouwPauzeBtn" onclick="schouwPauze()">Pauze</button>
+            <button class="btn-secondary" onclick="schouwRapport('pdf')" title="De hele ronde met de foto's erbij">📄 PDF</button>
+            <button class="btn-secondary" onclick="schouwRapport('xlsx')" title="Zelfde rapport als Excel, met de foto's in de cel">📊 Excel</button>
             <button class="btn-secondary" onclick="schouwAfronden()">Afronden</button>
           </div>
         </div>
@@ -11550,6 +11552,17 @@
     var _schouwBekeken = null;      // id van de ronde op het scherm
     var _schouwBo = null;           // { rit, lijst, i, gedaan }
     var _schouwDekKaart = null, _schouwDekLaag = null, _schouwDekGezoomd = null;
+
+    // De hele ronde als rapport: PDF of Excel, met de foto's erbij.
+    function schouwRapport(formaat) {
+      var id = _schouwBekeken || (_schouwRit && _schouwRit.id);
+      if (!id) { showToast('Open eerst een ronde', 'error'); return; }
+      exportBestand('/api/schouw/ritten/' + id + '/rapport.' + formaat, {
+        naam: 'schouwrapport.' + formaat,
+        bezig: 'Rapport maken…',
+        klaar: formaat === 'xlsx' ? 'Excel gedownload' : 'PDF gedownload'
+      });
+    }
 
     function _schouwBeoordeelBalk(r) {
       var balk = document.getElementById('schouwBeoordeelBalk');

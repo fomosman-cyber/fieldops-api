@@ -178,7 +178,13 @@ def klant_van(org: Any) -> Klant:
 # Wat er in een tabel staat: kolommen en hoe hun waarden eruitzien
 # ═══════════════════════════════════════════════════════════════════════════
 
-SOORTEN = ("tekst", "getal", "heel", "geld", "procent", "datum", "datumtijd", "jaar")
+SOORTEN = ("tekst", "getal", "heel", "geld", "procent", "datum", "datumtijd", "jaar", "foto")
+
+# Een foto in een tabel: klein genoeg om een rapport van honderd regels niet
+# onhandelbaar te maken, groot genoeg om te zien waar het over gaat.
+FOTO_BREEDTE_PX = 240
+FOTO_MM = 22.0                 # hoogte in de PDF-tabel
+FOTO_EXCEL_PX = 120
 
 _EXCEL_FORMAAT = {
     "heel": "#,##0",
@@ -205,8 +211,12 @@ class Kolom:
         return self.soort in ("getal", "heel", "geld", "procent")
 
     @property
+    def is_foto(self) -> bool:
+        return self.soort == "foto"
+
+    @property
     def vast(self) -> bool:
-        """Breekt nooit af: getallen, bedragen, datums, jaartallen."""
+        """Breekt nooit af: getallen, bedragen, datums, jaartallen, foto's."""
         return self.soort != "tekst"
 
     @property
@@ -270,6 +280,39 @@ def _als_datum(v: Any, met_tijd: bool) -> Optional[datetime | date]:
     return None
 
 
+def foto_bytes(waarde: Any, *, breedte: int = FOTO_BREEDTE_PX,
+               kader: Optional[list[float]] = None) -> Optional[bytes]:
+    """Een foto klaar om in te bedden: uit onze eigen opslag of als bytes,
+    verkleind, en met het rode vak erop als dat erbij hoort. Een foto die niet
+    te lezen is, laat de regel gewoon leeg -- een rapport valt er niet om."""
+    try:
+        from PIL import Image, ImageDraw
+
+        if isinstance(waarde, (bytes, bytearray)):
+            data = bytes(waarde)
+        else:
+            import photo_storage
+            data = photo_storage.lees_foto(waarde if isinstance(waarde, str) else None)
+        if not data:
+            return None
+        with Image.open(io.BytesIO(data)) as im:
+            im = im.convert("RGB")
+            if kader and len(kader) == 4:
+                b, h = im.size
+                vak = [kader[0] * b, kader[1] * h, kader[2] * b, kader[3] * h]
+                laag = Image.new("RGBA", im.size, (0, 0, 0, 0))
+                tekenaar = ImageDraw.Draw(laag)
+                tekenaar.rectangle(vak, fill=(255, 0, 0, 64),
+                                   outline=(255, 0, 0, 255), width=max(2, int(b / 250)))
+                im = Image.alpha_composite(im.convert("RGBA"), laag).convert("RGB")
+            im.thumbnail((breedte, breedte))
+            uit = io.BytesIO()
+            im.save(uit, format="JPEG", quality=82)
+        return uit.getvalue()
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def nl_getal(v: float, decimalen: int = 2) -> str:
     """1234.5 -> '1.234,50' (Nederlandse notatie)."""
     s = f"{v:,.{decimalen}f}"
@@ -279,6 +322,8 @@ def nl_getal(v: float, decimalen: int = 2) -> str:
 def als_tekst(kolom: Kolom, v: Any) -> str:
     """Zoals de waarde in de PDF staat. Excel krijgt de echte waarde met een
     celopmaak, zodat hij er ook mee kan rekenen."""
+    if kolom.is_foto:
+        return ""                       # de foto zelf, geen tekst
     if v is None or v == "":
         return ""
     if isinstance(v, bool):
@@ -567,7 +612,7 @@ class HuisstijlPDF(FPDF):
             tekst = als_tekst(k, v)
             return afbreekbaar(tekst) if k.soort == "tekst" else tekst
 
-        if len(rijen) > SNEL_VANAF:
+        if len(rijen) > SNEL_VANAF and not any(k.is_foto for k in kolommen):
             self._tabel_snel(kolommen, [[als_tekst(k, v) for k, v in zip(kolommen, r)] for r in rijen],
                              [als_tekst(k, v) for k, v in zip(kolommen, totaal)] if totaal is not None else None,
                              breedtes, grootte)
@@ -585,7 +630,11 @@ class HuisstijlPDF(FPDF):
             for rij in rijen:
                 r = t.row()
                 for k, v in zip(kolommen, rij):
-                    r.cell(cel(k, v))
+                    if k.is_foto:
+                        beeld = v if isinstance(v, (bytes, bytearray)) else foto_bytes(v)
+                        r.cell(img=io.BytesIO(beeld) if beeld else None, img_fill_width=bool(beeld))
+                    else:
+                        r.cell(cel(k, v))
             if totaal is not None:
                 r = t.row(style=FontFace(emphasis="BOLD", fill_color=rgb(LIJN)))
                 for k, v in zip(kolommen, totaal):
@@ -741,6 +790,7 @@ def _metingen(pdf: FPDF, kolommen, rijen, totaal, grootte: float) -> list[dict]:
         pdf.set_font(LETTER_PDF, "B", grootte)      # kop en totaalregel zijn vet
         uit.append({
             "vast": k.vast,
+            "foto": k.is_foto,
             "mm": float(k.breedte) if k.breedte else None,
             "breedste": breed[-1],
             "p85": breed[int((len(breed) - 1) * 0.85)],
@@ -764,6 +814,8 @@ def _probeer_breedtes(beschikbaar: float, metingen, schaal: float, kopregels: in
     for i, m in enumerate(metingen):
         if m["mm"]:
             vast[i] = m["mm"]        # door de export zelf vastgelegd
+        elif m["foto"]:
+            vast[i] = 26.0               # ruimte voor een duimnagel
         elif m["vast"]:
             vast[i] = max(m["breedste"], m["totaal"], m["kop"][kopregels]) * schaal + marge
         else:
@@ -890,6 +942,8 @@ def _bladnaam(naam: str, gebruikt: set[str]) -> str:
 
 def _excel_waarde(kolom: Kolom, v: Any) -> Any:
     from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
+    if kolom.is_foto:
+        return None                      # de foto komt als plaatje in de cel
     if v is None or v == "":
         return None
     if isinstance(v, bool):
@@ -1006,6 +1060,8 @@ def _teken_blad(ws, klant: Klant, blad: Blad, *, titel: str, ondertitel: str, me
         rr = kop_rij + 1 + j
         streep = j % 2 == 0          # zoals de PDF: de eerste regel gestreept
         hoogte = _excel_rijhoogte(rij_waarden, blad.kolommen, breedtes, afbreken)
+        if any(k.is_foto for k in blad.kolommen):
+            hoogte = max(hoogte or 0, FOTO_EXCEL_PX * 0.78)
         if hoogte:
             ws.row_dimensions[rr].height = hoogte
         for i, (k, v) in enumerate(zip(blad.kolommen, rij_waarden), start=1):
@@ -1021,6 +1077,20 @@ def _teken_blad(ws, klant: Klant, blad: Blad, *, titel: str, ondertitel: str, me
                                     vertical="center", wrap_text=afbreken[i - 1])
             if streep:
                 c.fill = vul(STREEP)
+            if k.is_foto:
+                beeld = v if isinstance(v, (bytes, bytearray)) else foto_bytes(v, breedte=FOTO_EXCEL_PX * 2)
+                if beeld:
+                    try:
+                        plaatje = XlImage(io.BytesIO(beeld))
+                        # Binnen de cel blijven: een plaatje dat breder is dan
+                        # de kolom, legt zich over de tekst ernaast.
+                        krimp = min(FOTO_EXCEL_PX / max(1, plaatje.width),
+                                    (FOTO_EXCEL_PX * 0.72) / max(1, plaatje.height))
+                        plaatje.width = int(plaatje.width * krimp)
+                        plaatje.height = int(plaatje.height * krimp)
+                        ws.add_image(plaatje, c.coordinate)
+                    except Exception:  # noqa: BLE001
+                        pass
     laatste_data = kop_rij + len(blad.rijen)
     if not blad.rijen:
         ws.cell(row=kop_rij + 1, column=1, value="Geen gegevens voor deze selectie.").font = f(
@@ -1092,7 +1162,10 @@ def _excel_kolommen(blad: Blad) -> tuple[list[float], list[bool]]:
         teksten = [als_tekst(k, v) for v in waarden[:3000]]
         gevuld = [t for t in teksten if t]
         kop = max((len(w) for w in k.naam.split()), default=6)
-        if k.soort == "datum":
+        if k.is_foto:
+            breedtes.append(FOTO_EXCEL_PX / 7.0 + 1)
+            afbreken.append(False)
+        elif k.soort == "datum":
             breedtes.append(max(12, kop + 2))
             afbreken.append(False)
         elif k.soort == "datumtijd":
