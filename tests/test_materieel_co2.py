@@ -490,3 +490,106 @@ def test_naam_uit_het_register_wijzig_je_in_het_register(client, admin_user):
     r = client.patch(f"/api/materieel/inzet/{regel['id']}", headers=auth(admin_user),
                      json={"materieel_naam": "Iets anders"})
     assert r.status_code == 400
+
+
+# ── Wie ziet wiens regels ────────────────────────────────────────────
+
+def _twee_regels(client, admin_user, technician_user):
+    """Eén regel van de beheerder, één van de technicus, zelfde dag."""
+    client.post("/api/materieel/inzet", headers=auth(technician_user), json={
+        "materieel_naam": "Kraan van de technicus", "energiedrager": "diesel",
+        "brandstof_hoeveelheid": 10})
+    client.post("/api/materieel/inzet", headers=auth(admin_user), json={
+        "materieel_naam": "Kraan van de beheerder", "energiedrager": "diesel",
+        "brandstof_hoeveelheid": 10})
+    return date.today().isoformat()
+
+
+def test_het_werkdagboek_toont_je_eigen_regels(client, admin_user, technician_user):
+    """Ook een beheerder ziet in zijn eigen dagboek alleen zijn eigen machines.
+
+    Anders stond in zijn werkdagboek het materieel van de hele ploeg naast een
+    tijdlijn met alleen zijn eigen regels, en telde de CO2-teller het
+    bedrijfstotaal.
+    """
+    vandaag = _twee_regels(client, admin_user, technician_user)
+    uit = client.get(f"/api/materieel/inzet?datum={vandaag}", headers=auth(admin_user)).json()
+    assert [r["materieel_naam"] for r in uit["regels"]] == ["Kraan van de beheerder"]
+
+    dag = client.get(f"/api/daybook/day?date={vandaag}", headers=auth(admin_user)).json()
+    tijdlijn = [e for e in dag["entries"] if e["entry_type"] == "materieel_inzet"]
+    assert len(tijdlijn) == len(uit["regels"]), "blok en tijdlijn horen hetzelfde te tellen"
+
+
+def test_beheerder_kan_gericht_over_de_schouder_kijken(client, admin_user, technician_user):
+    vandaag = _twee_regels(client, admin_user, technician_user)
+    uit = client.get(f"/api/materieel/inzet?datum={vandaag}&user_id={technician_user.id}",
+                     headers=auth(admin_user)).json()
+    assert [r["materieel_naam"] for r in uit["regels"]] == ["Kraan van de technicus"]
+
+    alles = client.get(f"/api/materieel/inzet?datum={vandaag}&iedereen=true",
+                       headers=auth(admin_user)).json()
+    assert alles["aantal"] == 2
+
+
+def test_zonder_beheerdersrol_kom_je_niet_bij_een_ander(client, admin_user, technician_user):
+    vandaag = _twee_regels(client, admin_user, technician_user)
+    r = client.get(f"/api/materieel/inzet?datum={vandaag}&user_id={admin_user.id}",
+                   headers=auth(technician_user))
+    assert r.status_code == 403
+
+    # En 'iedereen' levert stilletjes alleen de eigen regels op, geen 403:
+    # het is een verzoek om een overzicht, geen poging tot inbraak.
+    eigen = client.get(f"/api/materieel/inzet?datum={vandaag}&iedereen=true",
+                       headers=auth(technician_user)).json()
+    assert [r2["materieel_naam"] for r2 in eigen["regels"]] == ["Kraan van de technicus"]
+
+
+def test_het_rapport_gaat_over_het_bedrijf(client, admin_user, technician_user):
+    """Een CO2-rapportage telt de hele organisatie op -- dat is waar hij voor
+    dient. Wie geen beheerder is, ziet zijn eigen regels."""
+    vandaag = _twee_regels(client, admin_user, technician_user)
+    rapport = client.get(f"/api/materieel/co2?from={vandaag}&to={vandaag}",
+                         headers=auth(admin_user)).json()
+    assert len(rapport["per_materieel"]) == 2
+
+    eigen = client.get(f"/api/materieel/co2?from={vandaag}&to={vandaag}",
+                       headers=auth(technician_user)).json()
+    assert [g["naam"] for g in eigen["per_materieel"]] == ["Kraan van de technicus"]
+
+
+def test_het_bevroren_verbruik_komt_mee_terug(client, admin_user):
+    """Het scherm rekent zijn voorbeeld hiermee door; zonder dit veld toont het
+    bij het bewerken een ander getal dan de server opslaat."""
+    stuk = _maak_stuk(client, admin_user, verbruik_per_uur=12.0)
+    regel = client.post("/api/materieel/inzet", headers=auth(admin_user), json={
+        "materieel_id": stuk["id"], "draaiuren": 4}).json()
+    assert regel["verbruik_per_uur"] == 12.0
+
+    client.patch(f"/api/materieel/{stuk['id']}", headers=auth(admin_user),
+                 json={"verbruik_per_uur": 8.0})
+    opnieuw = client.get(f"/api/materieel/inzet?datum={regel['datum']}",
+                         headers=auth(admin_user)).json()["regels"][0]
+    assert opnieuw["verbruik_per_uur"] == 12.0, "de regel houdt het kengetal van toen"
+
+
+def test_het_scherm_haalt_de_projecten_op_als_de_lijst_leeg_is():
+    """Wie rechtstreeks naar het werkdagboek gaat heeft de projectenpagina
+    nooit geopend; zonder dit blijft de projectkeuze leeg."""
+    from pathlib import Path
+    portaal = (Path(__file__).resolve().parent.parent / "templates" / "portaal.html"
+               ).read_text(encoding="utf-8")
+    assert "_zorgVoorProjecten" in portaal
+    # Beide keuzelijsten gebruiken hem: de materieelregel en het CO2-rapport.
+    assert portaal.count("_zorgVoorProjecten().then") >= 2
+
+
+def test_een_regel_zonder_datum_krijgt_de_nederlandse_dag(client, admin_user):
+    """Een werkdagboek vul je 's avonds in. Met de UTC-datum belandt alles wat
+    na middernacht Nederlandse tijd wordt ingevuld op de dag ervoor."""
+    from export_huisstijl import naar_nl
+    from datetime import datetime as dt, timezone as tz
+    r = client.post("/api/materieel/inzet", headers=auth(admin_user), json={
+        "materieel_naam": "Losse pomp", "energiedrager": "diesel",
+        "brandstof_hoeveelheid": 5})
+    assert r.json()["datum"] == naar_nl(dt.now(tz.utc)).date().isoformat()

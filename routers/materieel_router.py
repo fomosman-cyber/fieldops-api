@@ -126,6 +126,18 @@ class FactorenIn(BaseModel):
 
 # ── Helpers ──────────────────────────────────────────────────────────
 
+def _vandaag() -> date_type:
+    """Vandaag in Nederlandse tijd, niet in UTC.
+
+    Een werkdagboek vul je 's avonds in. Met de UTC-datum belandt alles wat na
+    middernacht Nederlandse tijd wordt ingevuld op de dag ervoor -- in de zomer
+    zelfs alles na 22:00 zou het omgekeerd zijn geweest. Dezelfde valkuil als
+    bug #11 in het dagboek zelf, en dezelfde omrekening (`naar_nl`).
+    """
+    from export_huisstijl import naar_nl
+    return naar_nl(datetime.now(timezone.utc)).date()
+
+
 def _eigen_factoren(org) -> dict:
     ruw = getattr(org, "co2_factoren", None)
     if not ruw:
@@ -159,7 +171,7 @@ def _controleer_keuzes(soort=None, eigendom=None, energiedrager=None, emissiekla
 
 
 def _periode(van: Optional[str], tot: Optional[str]) -> tuple[date_type, date_type]:
-    vandaag = datetime.now(timezone.utc).date()
+    vandaag = _vandaag()
     try:
         d_van = date_type.fromisoformat(van) if van else vandaag.replace(day=1)
         d_tot = date_type.fromisoformat(tot) if tot else vandaag
@@ -173,19 +185,32 @@ def _periode(van: Optional[str], tot: Optional[str]) -> tuple[date_type, date_ty
 
 
 def _zichtbare_inzet(db: Session, user: User, d_van: date_type, d_tot: date_type,
-                     user_id: Optional[str] = None, project_id: Optional[str] = None):
-    """De regels die deze gebruiker mag zien, in de gevraagde periode."""
+                     *, user_id: Optional[str] = None, hele_organisatie: bool = False,
+                     project_id: Optional[str] = None):
+    """De regels die deze gebruiker mag zien, in de gevraagde periode.
+
+    **Standaard je eigen regels.** Het werkdagboek is een persoonlijk scherm:
+    de tijdlijn toont wat jij die dag deed. Een org-beheerder kreeg hier eerst
+    de regels van de hele organisatie terug, waardoor in zijn eigen dagboek de
+    machines van zijn ploeg stonden en de CO2-teller het bedrijfstotaal gaf
+    naast een tijdlijn met alleen zijn eigen regels. Wie over een ander wil
+    kijken vraagt daar nu om (`user_id`), en wie de hele organisatie wil zien
+    ook (`hele_organisatie`) -- dat laatste is wat de rapportage doet.
+    """
     q = (db.query(MaterieelInzet)
            .filter(MaterieelInzet.organization_id == user.organization_id,
                    MaterieelInzet.datum >= d_van,
                    MaterieelInzet.datum <= d_tot,
                    MaterieelInzet.deleted_at.is_(None)))
-    if not is_org_admin(user):
-        # Zonder beheerdersrol zie je je eigen regels. Hetzelfde uitgangspunt
-        # als in het werkdagboek zelf.
-        q = q.filter(MaterieelInzet.user_id == user.id)
-    elif user_id:
+    if hele_organisatie:
+        if not is_org_admin(user):
+            q = q.filter(MaterieelInzet.user_id == user.id)
+    elif user_id and user_id != user.id:
+        if not is_org_admin(user):
+            raise HTTPException(403, "Geen toegang tot de regels van een andere gebruiker")
         q = q.filter(MaterieelInzet.user_id == user_id)
+    else:
+        q = q.filter(MaterieelInzet.user_id == user.id)
     if project_id:
         q = q.filter(MaterieelInzet.project_id == project_id)
     return q.order_by(MaterieelInzet.datum.desc(), MaterieelInzet.created_at.desc())
@@ -220,6 +245,10 @@ def _toon(i: MaterieelInzet, users: dict, projecten: dict) -> dict:
         "eenheid": drager.get("eenheid", ""),
         "draaiuren": i.draaiuren,
         "brandstof_hoeveelheid": i.brandstof_hoeveelheid,
+        # Het kengetal zoals het gold toen de regel werd gemaakt. Het scherm
+        # rekent zijn voorbeeld hiermee door, anders laat het bij het bewerken
+        # een ander getal zien dan de server opslaat.
+        "verbruik_per_uur": i.verbruik_per_uur,
         "project_id": i.project_id,
         "project_naam": projecten.get(i.project_id) if i.project_id else None,
         "co2_kg": i.co2_kg,
@@ -327,6 +356,8 @@ def zet_factoren(body: FactorenIn, request: Request,
         schoon[drager] = float(waarde)
 
     org = current_user.organization
+    if org is None:
+        raise HTTPException(404, "Geen organisatie gevonden")
     org.co2_factoren = json.dumps(schoon) if schoon else None
     db.commit()
     log_action(db, request, current_user, action=ACTION.MATERIEEL_FACTOREN,
@@ -341,12 +372,16 @@ def lijst_inzet(
     datum: Optional[str] = Query(None, description="JJJJ-MM-DD; één dag"),
     van: Optional[str] = Query(None, alias="from"),
     tot: Optional[str] = Query(None, alias="to"),
-    user_id: Optional[str] = Query(None),
+    user_id: Optional[str] = Query(None, description="Andere gebruiker; alleen org-beheerder"),
+    iedereen: bool = Query(False, description="Hele organisatie; alleen org-beheerder"),
     project_id: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """De regels van één dag (`datum`) of een periode (`from`/`to`)."""
+    """De regels van één dag (`datum`) of een periode (`from`/`to`).
+
+    Standaard je eigen regels -- zie `_zichtbare_inzet`.
+    """
     if datum:
         try:
             d_van = d_tot = date_type.fromisoformat(datum)
@@ -355,7 +390,8 @@ def lijst_inzet(
     else:
         d_van, d_tot = _periode(van, tot)
 
-    regels = _zichtbare_inzet(db, current_user, d_van, d_tot, user_id, project_id).all()
+    regels = _zichtbare_inzet(db, current_user, d_van, d_tot, user_id=user_id,
+                              hele_organisatie=iedereen, project_id=project_id).all()
     users, projecten = _namen(db, regels)
     berekeningen = [mt.Berekening(kg=r.co2_kg, methode=r.co2_methode) for r in regels]
     return {
@@ -401,7 +437,7 @@ def nieuwe_inzet(body: InzetIn, request: Request,
     inzet = MaterieelInzet(
         organization_id=current_user.organization_id,
         user_id=current_user.id,
-        datum=body.datum or datetime.now(timezone.utc).date(),
+        datum=body.datum or _vandaag(),
         project_id=body.project_id,
         materieel_id=stuk.id if stuk else None,
         materieel_naam=naam[:160],
@@ -509,6 +545,9 @@ def verwijder_inzet(inzet_id: str, request: Request,
     """Regel terugdraaien. De spiegelregel in het dagboek gaat mee -- anders
     blijft het werkdagboek een machine tonen die er niet stond."""
     inzet = _eigen_regel(db, inzet_id, current_user)
+    # Vastleggen vóór de commit: daarna zijn de attributen verlopen en moet de
+    # rij opnieuw worden opgehaald om de auditregel te kunnen schrijven.
+    spoor = {"materieel": inzet.materieel_naam, "datum": inzet.datum.isoformat()}
     nu = datetime.now(timezone.utc)
     inzet.deleted_at = nu
     if inzet.daybook_entry_id:
@@ -517,8 +556,7 @@ def verwijder_inzet(inzet_id: str, request: Request,
             entry.deleted_at = nu
     db.commit()
     log_action(db, request, current_user, action=ACTION.MATERIEEL_INZET_DELETE,
-               entity_type="materieel_inzet", entity_id=inzet.id,
-               before={"materieel": inzet.materieel_naam, "datum": inzet.datum.isoformat()})
+               entity_type="materieel_inzet", entity_id=inzet_id, before=spoor)
     return {"verwijderd": True}
 
 
@@ -526,7 +564,11 @@ def verwijder_inzet(inzet_id: str, request: Request,
 
 def _rapport(db: Session, current_user: User, d_van: date_type, d_tot: date_type,
              project_id: Optional[str]) -> dict:
-    regels = _zichtbare_inzet(db, current_user, d_van, d_tot, None, project_id).all()
+    # Een rapportage gaat over het bedrijf, niet over één persoon: een
+    # beheerder telt de hele organisatie op, wie dat niet is ziet zijn eigen
+    # regels.
+    regels = _zichtbare_inzet(db, current_user, d_van, d_tot,
+                              hele_organisatie=True, project_id=project_id).all()
     users, projecten = _namen(db, regels)
 
     def optellen(sleutel) -> list[dict]:
