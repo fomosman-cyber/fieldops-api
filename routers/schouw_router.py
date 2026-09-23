@@ -7,6 +7,7 @@ Endpoints:
   GET    /api/schouw/ritten                 Lijst van ritten
   POST   /api/schouw/ritten                 Rit starten
   GET    /api/schouw/ritten/{id}            Detail met waarnemingen en tussenstand
+  GET    /api/schouw/ritten/{id}/rapport.pdf Rapport: elke schade met beeld
   POST   /api/schouw/ritten/{id}/frame      Eén live beeld + positie -> waarnemingen
   POST   /api/schouw/ritten/{id}/waarneming Handmatige waarneming toevoegen
   PATCH  /api/schouw/waarnemingen/{id}      Bevestigen, afwijzen of corrigeren
@@ -695,6 +696,24 @@ def detail(
     db: Session = Depends(get_db),
 ):
     return _rit_dict(_rit_of_404(db, rit_id, current_user), detail=True)
+
+
+@router.get("/ritten/{rit_id}/rapport.pdf")
+def rapport_pdf(
+    rit_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De ronde als PDF: gegevens, een overzicht, en elke schade met het beeld
+    en het rode vak erop. Ook voor een ronde die nog loopt (tussenstand)."""
+    import schouw_rapport
+    from export_huisstijl import bestandsnaam, pdf_antwoord
+
+    r = _rit_of_404(db, rit_id, current_user)
+    drempel = _drempel(r.organization)
+    inhoud = schouw_rapport.maak_pdf(r, telt_mee=lambda w: _telt_mee(w, drempel),
+                                     organization=r.organization)
+    return pdf_antwoord(inhoud, bestandsnaam("Schouwrapport", r.gebied or r.naam, ext="pdf"))
 
 
 def _verwerk_resultaat(db: Session, r: Schouwrit, resultaat: dict, payload, foto,

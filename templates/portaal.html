@@ -4506,7 +4506,8 @@
             <strong id="schouwActiefGebied" style="font-size:15px;"></strong>
             <div id="schouwActiefMeta" style="font-size:12.5px;color:var(--text-muted);margin-top:2px;"></div>
           </div>
-          <div style="display:flex;gap:8px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn-secondary" onclick="schouwRapportPdf()" title="Rapport met elke schade en de foto erbij">&#128196; PDF</button>
             <button class="btn-secondary" id="schouwWeergaveBtn" onclick="schouwWisselWeergave()">Toon live</button>
             <button class="btn-secondary" id="schouwPauzeBtn" onclick="schouwPauze()">Pauze</button>
             <button class="btn-secondary" onclick="schouwAfronden()">Afronden</button>
@@ -10033,7 +10034,10 @@
           + ' &middot; ' + r.frames + ' beelden &middot; ' + r.waarnemingen_totaal + ' waarnemingen</div></div>'
           + '<div style="text-align:right;font-size:12.5px;white-space:nowrap;">'
           + '<div style="font-weight:600;">' + (r.beeldkwaliteit || '-') + '</div>'
-          + '<div style="color:var(--text-muted);">' + _esc(r.status) + '</div></div></div>';
+          + '<div style="color:var(--text-muted);">' + _esc(r.status) + '</div>'
+          + '<button class="btn-secondary" style="margin-top:4px;padding:2px 8px;font-size:11.5px;"'
+          + ' onclick="event.stopPropagation();schouwRapportPdf(\'' + r.id + '\', this)">PDF</button>'
+          + '</div></div>';
       }).join('');
     }
 
@@ -11263,7 +11267,7 @@
     // geheugen van deze sessie, anders het beeld dat de server bewaarde.
     function schouwToonInBeeld(id) {
       var w = _schouwW[id];
-      if (!w || !w.kader) return;
+      if (!w) return;
       var laag = document.getElementById('schouwSchadeLaag');
       var toon = function (beeld) {
         _schouwToonSchade(beeld, [w], 0);
@@ -11314,9 +11318,15 @@
           + ' onclick="schouwBevestig(\'' + w.id + '\',true)">Klopt</button> '
           + '<button class="btn-secondary" style="padding:3px 10px;font-size:12px;"'
           + ' onclick="schouwBevestig(\'' + w.id + '\',false)">Niet</button>';
+      var foto = w.photo_url
+        ? '<img src="' + _esc(w.photo_url) + '" alt="" loading="lazy" onclick="schouwToonInBeeld(\'' + w.id + '\')"'
+          + ' title="Toon groot" style="width:72px;height:48px;object-fit:cover;border-radius:6px;'
+          + 'border:1px solid var(--border);cursor:pointer;flex:none;">'
+        : '';
       return '<div id="sw-' + w.id + '" style="padding:9px 0;border-bottom:1px solid var(--border);">'
-        + '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">'
-        + '<div style="flex:1;"><div style="font-weight:600;font-size:13.5px;">'
+        + '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;">'
+        + foto
+        + '<div style="flex:1;min-width:160px;"><div style="font-weight:600;font-size:13.5px;">'
         + (w.wegschade
             ? '<span style="display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;'
               + 'background:rgba(255,0,0,.25);border:2px solid #FF0000;"></span>'
@@ -11334,7 +11344,7 @@
         + (w.meetlat ? '' : ' &middot; drager onbekend')
         + '</div></div>'
         + '<div style="white-space:nowrap;">'
-        + (w.wegschade && w.kader
+        + ((w.wegschade && w.kader) || w.photo_url
             ? '<button class="btn-secondary" style="padding:3px 10px;font-size:12px;"'
               + ' onclick="schouwToonInBeeld(\'' + w.id + '\')">Toon in beeld</button> '
             : '')
@@ -11498,7 +11508,9 @@
     }
 
     function _schouwBoOpen(w) {
-      return w.wegschade && !w.bevestigd && !w.afgewezen && w.photo_url && w.kader;
+      // Elke schade die de balk telt, ook zonder beeld of vak: anders zegt de
+      // balk "12 wachten" en krijg je er maar een paar te zien.
+      return w.wegschade && !w.bevestigd && !w.afgewezen;
     }
 
     // Twijfelgevallen eerst: daar hangt de uitslag het meest van af.
@@ -11545,6 +11557,12 @@
         + ((w.keer_gezien || 1) > 1 ? ' &middot; ' + w.keer_gezien + '&times; gezien' : '')
         + (w.toelichting ? '<div style="color:var(--text-muted);font-size:12.5px;margin-top:2px;">' + _esc(w.toelichting) + '</div>' : '');
       svg.innerHTML = '';
+      if (!w.photo_url) {
+        svg.setAttribute('viewBox', '0 0 640 120');
+        svg.innerHTML = '<text x="320" y="66" text-anchor="middle" font-size="18" fill="#94A3B8"'
+          + ' font-family="system-ui, sans-serif">Van deze schade is geen beeld bewaard</text>';
+        return;
+      }
       var img = new Image();
       img.onload = function () {
         if (_schouwBo !== bo || bo.lijst[bo.i] !== w) return;
@@ -11713,6 +11731,16 @@
         // Een afgeronde ronde bekijk je alleen; camera en timer blijven uit.
         if (r.status !== 'bezig') { _schouwStop(); _schouwRit = null; }
       }).catch(function (e) { showToast(e.message || 'Laden mislukt', 'error'); });
+    }
+
+    // Het rapport van de ronde: elke schade met de foto en het rode vak erop.
+    function schouwRapportPdf(id, knop) {
+      id = id || _schouwBekeken || (_schouwRit && _schouwRit.id);
+      if (!id) return;
+      if (knop) knop.disabled = true;
+      exportBestand('/api/schouw/ritten/' + id + '/rapport.pdf', {
+        naam: 'schouwrapport.pdf', bezig: 'Rapport maken…', klaar: 'PDF gedownload'
+      }).then(function () { if (knop) knop.disabled = false; });
     }
 
     function navigateTo(page) {
