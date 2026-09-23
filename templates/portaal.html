@@ -4680,8 +4680,21 @@
                     <strong style="font-size:13.5px;">Proef met één beeld</strong>
                     <div style="font-size:12px;color:var(--text-dim);">Met deze instellingen, zonder iets op te slaan.</div>
                   </div>
-                  <button class="btn-secondary" id="schouwProefBtn" onclick="schouwProef()">Maak proefbeeld</button>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                    <select id="schouwProefStand" style="padding:7px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;font-size:12.5px;">
+                      <option value="alles">Lopend &mdash; alles in beeld</option>
+                      <option value="wegdek">Rijdend &mdash; alleen het wegdek</option>
+                    </select>
+                    <button class="btn-secondary" id="schouwProefBtn" onclick="schouwProef()">Maak proefbeeld</button>
+                    <button class="btn-secondary" onclick="document.getElementById('schouwProefBestand').click()">Kies foto</button>
+                    <input type="file" id="schouwProefBestand" accept="image/*" style="display:none;"
+                           onchange="schouwProefBestand(this)">
+                  </div>
                 </div>
+                <p style="font-size:12px;color:var(--text-dim);margin:8px 0 0;">
+                  Met "Kies foto" test je een foto van een eerdere rit: je ziet precies wat de herkenning ervan maakt,
+                  en bij "Rijdend" ook welk deel van het beeld als wegdek wordt beoordeeld.
+                </p>
                 <video id="schouwProefVideo" playsinline muted style="display:none;"></video>
                 <div id="schouwProefUitslag" style="display:none;margin-top:12px;">
                   <div id="schouwProefStat" style="font-size:12.5px;margin-bottom:8px;"></div>
@@ -11203,32 +11216,87 @@
           return model ? _schouwVerpixel(model, canvas) : null;
         }).then(function (verpixeld) {
           var beeld = { src: canvas.toDataURL('image/jpeg', 0.8), w: canvas.width, h: canvas.height };
-          var t0 = Date.now();
-          return api('POST', '/api/schouw/proefbeeld', { image_data_url: beeld.src }).then(function (res) {
-            var totaal = Date.now() - start, reis = Date.now() - t0;
-            var nSchade = res.items.filter(function (i) { return i.soort === 'schade'; }).length;
-            var delen = [
-              '<strong>' + (reis / 1000).toFixed(1).replace('.', ',') + ' s</strong> tot antwoord',
-              'waarvan ' + (res.duur_ms / 1000).toFixed(1).replace('.', ',') + ' s herkenning',
-              res.items.length + ' herkend',
-              nSchade + (nSchade === 1 ? ' schade' : ' schades'),
-              (verpixeld === null ? 'niet verpixeld' : verpixeld + ' verpixeld'),
-              (res.grondigheid === 'grondig' ? 'grondig' : 'snel')
-            ];
-            if (!res.bruikbaar) delen.unshift('<span style="color:var(--danger,#dc2626);">onbruikbaar: ' + _esc(res.reden_onbruikbaar || '') + '</span>');
-            document.getElementById('schouwProefStat').innerHTML = delen.join(' &middot; ')
-              + ' <span style="color:var(--text-dim);">(' + (totaal / 1000).toFixed(1).replace('.', ',') + ' s totaal)</span>';
-            var svg = document.getElementById('schouwProefBeeld');
-            document.getElementById('schouwProefUitslag').style.display = 'block';
-            svg.setAttribute('viewBox', '0 0 ' + beeld.w + ' ' + beeld.h);
-            var breedte = svg.getBoundingClientRect().width || 400;
-            svg.innerHTML = _schouwKaderSvg(beeld, res.items, 13 * beeld.w / breedte);
-          });
+          return _schouwProefVerstuur(beeld, verpixeld, start);
         });
       }).catch(function (e) {
         if (eigen) eigen.getTracks().forEach(function (tr) { tr.stop(); });
         showToast(e.message || 'Proefbeeld mislukt', 'error');
       }).then(klaar);
+    }
+
+    // Een foto van het toestel door dezelfde molen: handig om met een beeld
+    // van een eerdere rit te zien wat de herkenning ervan maakt.
+    function schouwProefBestand(invoer) {
+      var bestand = invoer.files && invoer.files[0];
+      invoer.value = '';
+      if (!bestand) return;
+      var knop = document.getElementById('schouwProefBtn');
+      knop.disabled = true;
+      knop.textContent = 'Bezig…';
+      var start = Date.now();
+      var url = URL.createObjectURL(bestand);
+      var img = new Image();
+      img.onload = function () {
+        var canvas = document.createElement('canvas');
+        var breed = Math.min(img.naturalWidth, 1920);
+        canvas.width = breed;
+        canvas.height = Math.round(img.naturalHeight * breed / img.naturalWidth);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        (_schouwAnoniemLaad() || Promise.resolve(null)).then(function (model) {
+          return model ? _schouwVerpixel(model, canvas) : null;
+        }).then(function (verpixeld) {
+          return _schouwProefVerstuur({ src: canvas.toDataURL('image/jpeg', 0.85), w: canvas.width, h: canvas.height },
+                                      verpixeld, start);
+        }).catch(function (e) {
+          showToast(e.message || 'Proefbeeld mislukt', 'error');
+        }).then(function () { knop.disabled = false; knop.textContent = 'Maak proefbeeld'; });
+      };
+      img.onerror = function () {
+        URL.revokeObjectURL(url);
+        knop.disabled = false;
+        knop.textContent = 'Maak proefbeeld';
+        showToast('Die foto kon niet geladen worden', 'error');
+      };
+      img.src = url;
+    }
+
+    function _schouwProefVerstuur(beeld, verpixeld, start) {
+      var stand = (document.getElementById('schouwProefStand') || {}).value || 'alles';
+      var t0 = Date.now();
+      return api('POST', '/api/schouw/proefbeeld', {
+        image_data_url: beeld.src, stand: stand,
+        wegdek_boven: Number(_schouwCam.wegdekBoven) || 0.4
+      }).then(function (res) {
+        var totaal = Date.now() - start, reis = Date.now() - t0;
+        var nSchade = res.items.filter(function (i) { return i.soort === 'schade'; }).length;
+        var delen = [
+          '<strong>' + (reis / 1000).toFixed(1).replace('.', ',') + ' s</strong> tot antwoord',
+          'waarvan ' + (res.duur_ms / 1000).toFixed(1).replace('.', ',') + ' s herkenning',
+          res.items.length + ' herkend',
+          nSchade + (nSchade === 1 ? ' schade' : ' schades'),
+          (verpixeld === null ? 'niet verpixeld' : verpixeld + ' verpixeld'),
+          (res.grondigheid === 'grondig' ? 'grondig' : 'snel'),
+          (res.stand === 'wegdek' ? 'alleen wegdek' : 'alles in beeld')
+        ];
+        if (!res.bruikbaar) delen.unshift('<span style="color:var(--danger,#dc2626);">onbruikbaar: ' + _esc(res.reden_onbruikbaar || '') + '</span>');
+        document.getElementById('schouwProefStat').innerHTML = delen.join(' &middot; ')
+          + ' <span style="color:var(--text-dim);">(' + (totaal / 1000).toFixed(1).replace('.', ',') + ' s totaal)</span>';
+        var svg = document.getElementById('schouwProefBeeld');
+        document.getElementById('schouwProefUitslag').style.display = 'block';
+        // Bij "wegdek" toont de server de uitsnede die hij heeft beoordeeld;
+        // de kaders horen bij dat beeld.
+        var getoond = res.beeld && res.beeld !== beeld.src ? { src: res.beeld } : beeld;
+        var klaarMetBeeld = function (b) {
+          svg.setAttribute('viewBox', '0 0 ' + b.w + ' ' + b.h);
+          var breedte = svg.getBoundingClientRect().width || 400;
+          svg.innerHTML = _schouwKaderSvg(b, res.items, 13 * b.w / breedte);
+        };
+        if (getoond.w) { klaarMetBeeld(getoond); return; }
+        var img2 = new Image();
+        img2.onload = function () { klaarMetBeeld({ src: getoond.src, w: img2.naturalWidth, h: img2.naturalHeight }); };
+        img2.src = getoond.src;
+      });
     }
 
     function schouwLaagTik() {

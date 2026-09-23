@@ -30,6 +30,7 @@ bevestiging. Afwijzen verwijdert niets: de waarneming blijft staan met
 `afgewezen`, zodat het spoor van een gewijzigde score navolgbaar blijft.
 """
 
+import base64
 import json
 import math
 import time
@@ -970,22 +971,40 @@ def opnames_stand(
     }
 
 
-def _wegdek_uitsnede(beeld: bytes, boven: Optional[float]) -> tuple[bytes, float]:
-    """Het wegdek uit het beeld snijden, in de hoogste resolutie die het model
-    gebruikt. Lucht en gevels zeggen niets over het wegdek en kosten pixels."""
+# Het dichtstbijzijnde stuk wegdek, waar een haarscheur nog een paar pixels
+# breed is. Dat gaat er als tweede beeld naast, op volle scherpte: in het hele
+# wegdekbeeld verdwijnt zo'n scheur in het verkleinen.
+DICHTBIJ_DEEL = 0.30           # onderste deel van het hele beeld
+MODEL_MAX_ZIJDE = 1568         # groter maakt het model zelf toch kleiner
+
+
+def _wegdek_uitsnede(beeld: bytes, boven: Optional[float]) -> tuple[bytes, list[bytes], float]:
+    """Het wegdek uit het beeld snijden, plus een scherpe uitsnede van het
+    stuk vlak voor de auto. Lucht en gevels zeggen niets over het wegdek en
+    kosten pixels."""
     import io as _io
 
     from PIL import Image
 
     boven = min(0.9, max(0.0, boven if boven is not None else 0.4))
+
+    def als_jpeg(im) -> bytes:
+        buf = _io.BytesIO()
+        im.save(buf, format="JPEG", quality=92)
+        return buf.getvalue()
+
     with Image.open(_io.BytesIO(beeld)) as im:
         im = im.convert("RGB")
         b, h = im.size
-        uit = im.crop((0, int(h * boven), b, h))
-        uit.thumbnail((1568, 1568))
-        buf = _io.BytesIO()
-        uit.save(buf, format="JPEG", quality=88)
-    return buf.getvalue(), boven
+        wegdek = im.crop((0, int(h * boven), b, h))
+        wegdek.thumbnail((MODEL_MAX_ZIJDE, MODEL_MAX_ZIJDE))
+        extra = []
+        dichtbij_top = int(h * max(boven, 1.0 - DICHTBIJ_DEEL))
+        if h - dichtbij_top > 60 and dichtbij_top > int(h * boven) + 20:
+            dichtbij = im.crop((0, dichtbij_top, b, h))
+            dichtbij.thumbnail((MODEL_MAX_ZIJDE, MODEL_MAX_ZIJDE))
+            extra.append(als_jpeg(dichtbij))
+        return als_jpeg(wegdek), extra, boven
 
 
 def _naar_heel_beeld(kader: Optional[list[float]], boven: float) -> Optional[list[float]]:
@@ -1013,9 +1032,9 @@ def analyseer_opname(db: Session, o: SchouwOpname, beeld: Optional[bytes] = None
     data = beeld or photo_storage.lees_foto(o.photo_url)
     if not data:
         raise RuntimeError("beeld niet te lezen")
-    uitsnede, boven = _wegdek_uitsnede(data, o.wegdek_boven)
+    uitsnede, extra, boven = _wegdek_uitsnede(data, o.wegdek_boven)
     resultaat = sv.analyseer_frame(
-        image_bytes=uitsnede, image_media_type="image/jpeg",
+        image_bytes=uitsnede, extra_beelden=extra, image_media_type="image/jpeg",
         privacy_gecontroleerd=True,        # alleen verpixelde beelden komen hier
         context=(f"Gebied: {r.gebied}" if r.gebied else None),
         instellingen=si.lees(r.organization), stand="wegdek",
@@ -1289,12 +1308,18 @@ def instellingen_vastleggen(
 
 class ProefIn(BaseModel):
     image_data_url: str = Field(..., min_length=32)
+    # "wegdek" loopt precies zoals de rijstand: uitsnede van het wegdek plus
+    # het scherpe stuk vlak voor de auto. Zo test je met een foto van je eigen
+    # rit wat de herkenning ervan maakt.
+    stand: str = Field(default="alles", pattern="^(alles|wegdek)$")
+    wegdek_boven: float = Field(default=0.4, ge=0.0, le=0.9)
 
 
 @router.post("/proefbeeld")
 def proefbeeld(
     payload: ProefIn,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Eén beeld beoordelen met de huidige instellingen, zonder iets op te slaan.
 
@@ -1304,9 +1329,16 @@ def proefbeeld(
     _eis_beheer(current_user)
     inst = si.lees(current_user.organization)
     beeld, media_type = _data_url_naar_bytes(payload.image_data_url)
+    extra: list[bytes] = []
+    getoond = payload.image_data_url
+    if payload.stand == "wegdek":
+        beeld, extra, _boven = _wegdek_uitsnede(beeld, payload.wegdek_boven)
+        media_type = "image/jpeg"
+        getoond = "data:image/jpeg;base64," + base64.b64encode(beeld).decode("ascii")
     start = time.perf_counter()
-    uit = sv.analyseer_frame(image_bytes=beeld, image_media_type=media_type,
-                             privacy_gecontroleerd=True, instellingen=inst)
+    uit = sv.analyseer_frame(image_bytes=beeld, extra_beelden=extra, image_media_type=media_type,
+                             privacy_gecontroleerd=True, instellingen=inst, stand=payload.stand,
+                             voorbeelden=schouw_leren.voorbeelden(db, current_user.organization_id))
     duur_ms = int((time.perf_counter() - start) * 1000)
 
     items = [{"soort": "schade", "naam": w.get("naam"), "ernst": w.get("ernst"),
@@ -1326,6 +1358,9 @@ def proefbeeld(
         "duur_ms": duur_ms,
         "model_id": uit.get("_model_id"),
         "grondigheid": inst["grondigheid"],
+        "stand": payload.stand,
+        # Het beeld zoals het model het zag; bij "wegdek" dus de uitsnede.
+        "beeld": getoond,
         "items": items,
     }
 

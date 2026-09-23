@@ -109,7 +109,9 @@ def test_catalogus_noemt_de_redenen():
 def test_zonder_oordelen_geen_voorbeelden(client, admin_user, model):
     _schade_via_rit(client, admin_user, model)
     inhoud = model["inhoud"][-1]
-    assert inhoud[0]["type"] == "image" and len([b for b in inhoud if b["type"] == "image"]) == 1
+    # Alleen de twee beelden van het wegdek zelf, met hun labels.
+    assert inhoud[0]["text"] == "BEELD 1:"
+    assert len([b for b in inhoud if b["type"] == "image"]) == 2
 
 
 def test_oordelen_gaan_als_voorbeelden_mee_naar_het_volgende_beeld(client, admin_user, model):
@@ -123,9 +125,9 @@ def test_oordelen_gaan_als_voorbeelden_mee_naar_het_volgende_beeld(client, admin
     assert inhoud[0]["type"] == "text" and "VOORBEELDEN" in inhoud[0]["text"]
     assert any("AFGEWEZEN" in t and "wegmarkering" in t for t in teksten)
     assert "Vaak ten onrechte gemeld" in inhoud[0]["text"]
-    # Twee beelden: het voorbeeld en het te beoordelen beeld, dat als laatste.
+    # Eerst het voorbeeld, daarna de twee beelden van dit stuk weg.
     beelden = [i for i, b in enumerate(inhoud) if b["type"] == "image"]
-    assert len(beelden) == 2 and beelden[-1] > max(i for i, b in enumerate(inhoud) if "cache_control" in b)
+    assert len(beelden) == 3 and beelden[-1] > max(i for i, b in enumerate(inhoud) if "cache_control" in b)
 
 
 def test_nieuw_oordeel_ververst_de_voorbeelden(client, admin_user, model):
