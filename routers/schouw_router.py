@@ -45,6 +45,7 @@ from sqlalchemy.orm import Session
 
 import crow_schouw as cs
 import crow_wegschade as cw
+import schouw_camera as sc
 import schouw_instellingen as si
 import schouw_leren
 import schouw_vision as sv
@@ -1304,6 +1305,119 @@ def instellingen_vastleggen(
                entity_type="organization", entity_id=org.id,
                before=oud, after=nieuw)
     return _instellingen_antwoord(current_user)
+
+
+# ── Hoe de telefoon opneemt ──────────────────────────────────────────
+# De herkenning hierboven is van de organisatie; het opnemen is van de
+# gebruiker. Zie de docstring van schouw_camera voor waarom, en waarom de lens
+# er niet in zit.
+
+def _camera_antwoord(current_user: User) -> dict:
+    org = current_user.organization
+    return {
+        "instellingen": sc.lees(current_user, org),
+        "eigen": bool(getattr(current_user, "schouw_camera", None)),
+        "organisatie_standaard": sc.organisatie_standaard(org),
+        "kan_standaard_zetten": bool(is_org_admin(current_user)),
+        "keuzes": {"groottes": list(sc.GROOTTES), "ritmes": list(sc.RITMES),
+                   "rijafstanden": list(sc.RIJAFSTANDEN)},
+    }
+
+
+@router.get("/camera")
+def camera_lezen(current_user: User = Depends(get_current_user)):
+    """Hoe deze gebruiker opneemt. Op een nieuw toestel komt dit terug."""
+    return _camera_antwoord(current_user)
+
+
+@router.put("/camera")
+def camera_vastleggen(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Eigen instellingen vastleggen. Geldt vanaf nu op elk toestel waarop
+    deze gebruiker inlogt."""
+    try:
+        nieuw = sc.valideer(payload)
+    except sc.OngeldigeInstelling as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    gebruiker = db.query(User).filter(User.id == current_user.id).first()
+    if gebruiker is None:
+        raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
+    gebruiker.schouw_camera = json.dumps(nieuw)
+    db.commit()
+    db.refresh(gebruiker)
+    return _camera_antwoord(gebruiker)
+
+
+@router.delete("/camera")
+def camera_terugzetten(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Eigen instellingen loslaten en weer de standaard van de organisatie
+    volgen."""
+    gebruiker = db.query(User).filter(User.id == current_user.id).first()
+    if gebruiker is None:
+        raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
+    gebruiker.schouw_camera = None
+    db.commit()
+    db.refresh(gebruiker)
+    return _camera_antwoord(gebruiker)
+
+
+@router.put("/camera/standaard")
+def camera_standaard_vastleggen(
+    payload: dict,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Het startpunt voor de hele organisatie.
+
+    Dit overschrijft niemands eigen keuze -- het geldt voor wie zelf nog niets
+    heeft ingesteld. Anders zou halverwege een ronde de manier van opnemen
+    onder iemand vandaan schuiven.
+    """
+    if not is_org_admin(current_user):
+        raise HTTPException(status_code=403,
+                            detail="Alleen een beheerder zet de standaard voor de organisatie")
+    org = current_user.organization
+    if org is None:
+        raise HTTPException(status_code=404, detail="Geen organisatie gevonden")
+    try:
+        nieuw = sc.valideer(payload)
+    except sc.OngeldigeInstelling as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    oud = sc.organisatie_standaard(org)
+    org.schouw_camera_standaard = json.dumps(nieuw)
+    db.commit()
+    log_action(db, request, current_user, action="schouw.camera_standaard",
+               entity_type="organization", entity_id=org.id, before=oud, after=nieuw)
+    return _camera_antwoord(current_user)
+
+
+@router.delete("/camera/standaard")
+def camera_standaard_wissen(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De organisatiestandaard loslaten. Wie zelf iets heeft ingesteld merkt
+    er niets van; de rest valt terug op de standaard van het pakket."""
+    if not is_org_admin(current_user):
+        raise HTTPException(status_code=403,
+                            detail="Alleen een beheerder zet de standaard voor de organisatie")
+    org = current_user.organization
+    if org is None:
+        raise HTTPException(status_code=404, detail="Geen organisatie gevonden")
+    oud = sc.organisatie_standaard(org)
+    org.schouw_camera_standaard = None
+    db.commit()
+    log_action(db, request, current_user, action="schouw.camera_standaard",
+               entity_type="organization", entity_id=org.id, before=oud, after=None)
+    return _camera_antwoord(current_user)
 
 
 class ProefIn(BaseModel):

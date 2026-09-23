@@ -4543,6 +4543,8 @@
                   border-radius:999px;padding:2px 8px;font-size:11px;">wegdek vanaf hier</span>
           </div>
         </div>
+        <div id="schouwGrootteWaarschuwing" style="display:none;margin:0 0 10px;padding:8px 12px;
+             border-radius:10px;background:rgba(217,119,6,.12);color:#b45309;font-size:12.5px;"></div>
         <div id="schouwRijStand" style="display:none;margin:-4px 0 12px;">
           <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center;">
             <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:10px;padding:8px 4px;">
@@ -4612,13 +4614,16 @@
           <div style="display:grid;gap:24px;margin-top:14px;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));align-items:start;">
 
             <section>
-              <h4 style="margin:0 0 2px;font-size:14px;">Camera</h4>
-              <p style="margin:0 0 12px;font-size:12.5px;color:var(--text-dim);">Geldt alleen voor dit toestel. Wordt meteen bewaard.</p>
+              <h4 style="margin:0 0 2px;font-size:14px;">Opnemen</h4>
+              <p id="schouwCamHerkomst" style="margin:0 0 12px;font-size:12.5px;color:var(--text-dim);">Wordt meteen bewaard.</p>
               <div style="display:grid;gap:12px;">
+
+                <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);font-family:'JetBrains Mono',monospace;">Deze telefoon</div>
                 <label style="font-size:13px;color:var(--text-dim);">Lens
                   <select id="schouwCamLens" onchange="schouwCamOpslaan()" style="width:100%;margin-top:4px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
                     <option value="">Automatisch (hoofdcamera achter)</option>
                   </select>
+                  <span style="display:block;font-size:12px;margin-top:3px;">Blijft op dit toestel &mdash; een lens van de ene telefoon bestaat niet op de andere.</span>
                 </label>
                 <label style="font-size:13px;color:var(--text-dim);">Beeldgrootte
                   <select id="schouwCamGrootte" onchange="schouwCamOpslaan()" style="width:100%;margin-top:4px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
@@ -4626,26 +4631,41 @@
                     <option value="1280">Normaal &mdash; 1280 breed</option>
                     <option value="1920">Detail &mdash; 1920 breed (fijne scheuren, trager)</option>
                   </select>
+                  <span style="display:block;font-size:12px;margin-top:3px;">Geldt in elke stand. Rijdend is 1920 aan te raden.</span>
                 </label>
-                <label style="font-size:13px;color:var(--text-dim);">Ritme
+                <div style="font-size:12px;color:var(--text-dim);">De zoom staat bij het camerabeeld zelf en wordt onthouden.</div>
+
+                <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);font-family:'JetBrains Mono',monospace;margin-top:6px;">Lopend of staand</div>
+                <label style="font-size:13px;color:var(--text-dim);">Hij maakt een beeld
                   <select id="schouwCamRitme" onchange="schouwCamOpslaan()" style="width:100%;margin-top:4px;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;">
                     <option value="tijd-3">Elke 3 seconden</option>
                     <option value="tijd-5">Elke 5 seconden</option>
                     <option value="tijd-10">Elke 10 seconden</option>
-                    <option value="afstand-5">Elke 5 meter</option>
-                    <option value="afstand-10">Elke 10 meter</option>
-                    <option value="afstand-25">Elke 25 meter</option>
+                    <option value="afstand-5">Elke 5 meter gelopen</option>
+                    <option value="afstand-10">Elke 10 meter gelopen</option>
+                    <option value="afstand-25">Elke 25 meter gelopen</option>
                   </select>
                 </label>
-                <label style="font-size:13px;color:var(--text-dim);">Rijdend: een beeld elke
+                <label style="font-size:13px;display:flex;gap:8px;align-items:flex-start;">
+                  <input type="checkbox" id="schouwCamScherp" onchange="schouwCamOpslaan()" style="margin-top:3px;">
+                  <span>Bewogen beelden overslaan<br><span style="color:var(--text-dim);font-size:12px;">De telefoon kijkt zelf of het beeld scherp is, v&oacute;&oacute;r het versturen.</span></span>
+                </label>
+                <label style="font-size:13px;display:flex;gap:8px;align-items:flex-start;">
+                  <input type="checkbox" id="schouwCamZelfde" onchange="schouwCamOpslaan()" style="margin-top:3px;">
+                  <span>Zelfde beeld niet opnieuw beoordelen<br><span style="color:var(--text-dim);font-size:12px;">Sta je stil met de camera op dezelfde plek, dan wacht hij tot er iets verandert.</span></span>
+                </label>
+
+                <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);font-family:'JetBrains Mono',monospace;margin-top:6px;">Rijdend</div>
+                <label style="font-size:13px;color:var(--text-dim);">Hij maakt een beeld elke
                   <select id="schouwCamRijAfstand" onchange="schouwCamOpslaan()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;margin-top:4px;">
                     <option value="5">5 meter (heel fijnmazig, meer beelden)</option>
                     <option value="10">10 meter</option>
                     <option value="15">15 meter</option>
                     <option value="20">20 meter</option>
                   </select>
+                  <span style="display:block;font-size:12px;margin-top:3px;">Rijdend telt alleen de afstand; het ritme hierboven geldt dan niet.</span>
                 </label>
-                <label style="font-size:13px;color:var(--text-dim);">Rijdend: het wegdek begint op
+                <label style="font-size:13px;color:var(--text-dim);">Het wegdek begint op
                   <select id="schouwCamWegdek" onchange="schouwCamOpslaan()" style="width:100%;padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg);color:var(--text);font-family:inherit;margin-top:4px;">
                     <option value="0.3">30% van boven</option>
                     <option value="0.35">35% van boven</option>
@@ -4657,14 +4677,11 @@
                   </select>
                   <span style="display:block;font-size:12px;margin-top:3px;">De stippellijn in het camerabeeld. Alles eronder gaat naar de beoordeling.</span>
                 </label>
-                <label style="font-size:13px;display:flex;gap:8px;align-items:flex-start;">
-                  <input type="checkbox" id="schouwCamScherp" onchange="schouwCamOpslaan()" style="margin-top:3px;">
-                  <span>Bewogen beelden overslaan<br><span style="color:var(--text-dim);font-size:12px;">De telefoon kijkt zelf of het beeld scherp is, vóór het versturen.</span></span>
-                </label>
-                <label style="font-size:13px;display:flex;gap:8px;align-items:flex-start;">
-                  <input type="checkbox" id="schouwCamZelfde" onchange="schouwCamOpslaan()" style="margin-top:3px;">
-                  <span>Zelfde beeld niet opnieuw beoordelen<br><span style="color:var(--text-dim);font-size:12px;">Sta je stil met de camera op dezelfde plek, dan wacht hij tot er iets verandert.</span></span>
-                </label>
+
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+                  <button type="button" class="btn-secondary" id="schouwCamTerugBtn" onclick="schouwCamTerug()" style="display:none;font-size:12px;padding:6px 12px;">Terug naar de standaard</button>
+                  <button type="button" class="btn-secondary" id="schouwCamStandaardBtn" onclick="schouwCamAlsStandaard()" style="display:none;font-size:12px;padding:6px 12px;">Als standaard voor de organisatie</button>
+                </div>
               </div>
             </section>
 
@@ -9948,8 +9965,12 @@
 
     // Camera-instellingen van dit toestel. Alleen voorkeuren: wat mis gaat
     // bij het lezen, valt terug op de standaard.
+    // Alleen `lens` blijft op dit toestel: een deviceId zegt elders niets.
+    // De rest hoort bij de gebruiker en staat op de server (zie schouw_camera.py).
     var SCHOUW_CAM_STANDAARD = { lens: '', grootte: 1280, ritme: 'tijd-3', scherp: true, zelfde: true,
-                                 rijAfstand: 10, wegdekBoven: 0.4 };
+                                 rijAfstand: 10, wegdekBoven: 0.4, zoom: null };
+    var SCHOUW_CAM_SERVERVELDEN = ['grootte', 'ritme', 'scherp', 'zelfde', 'rijAfstand',
+                                   'wegdekBoven', 'zoom'];
     var _schouwCam = Object.assign({}, SCHOUW_CAM_STANDAARD);
     try {
       Object.assign(_schouwCam, JSON.parse(localStorage.getItem('fieldops_schouw_camera') || '{}'));
@@ -9982,6 +10003,7 @@
 
     function loadSchouw() {
       _schouwCamVelden();
+      _schouwCamLaad();
       _schouwHkLaad();
       _schouwRijHervat();
       var klaar = _schouwCatalogus ? Promise.resolve(_schouwCatalogus)
@@ -10207,8 +10229,12 @@
     }
 
     function _schouwCamEisen(standaardLens) {
-      // Rijdend: fijne scheuren op een paar meter afstand vragen detail.
-      var breed = _schouwRijdend() ? 1920 : (Number(_schouwCam.grootte) || 1280);
+      // De ingestelde beeldgrootte geldt in elke stand. Rijdend stond hier
+      // 1920 hardgecodeerd: de keuze in het scherm deed dan niets, terwijl er
+      // wel een keuzelijst stond. Fijne scheuren vragen inderdaad detail, maar
+      // dat zeggen we nu in het scherm (_schouwGrootteWaarschuwing) in plaats
+      // van het stilletjes over de gebruiker heen te zetten.
+      var breed = Number(_schouwCam.grootte) || 1280;
       var eisen = { width: { ideal: breed }, height: { ideal: Math.round(breed * 9 / 16) } };
       if (_schouwCam.lens && !standaardLens) eisen.deviceId = { exact: _schouwCam.lens };
       else eisen.facingMode = { ideal: 'environment' };
@@ -10227,6 +10253,13 @@
         var zoom = document.getElementById('schouwZoom');
         zoom.min = kan.zoom.min; zoom.max = kan.zoom.max; zoom.step = kan.zoom.step || 0.1;
         var nu = (spoor.getSettings && spoor.getSettings().zoom) || kan.zoom.min;
+        // De bewaarde zoom terugzetten. Het bereik verschilt per toestel, dus
+        // knippen we hem bij: een 5× van de vorige telefoon wordt hier wat
+        // deze camera maximaal kan, en niet een mislukte applyConstraints.
+        if (_schouwCam.zoom) {
+          nu = Math.min(Math.max(Number(_schouwCam.zoom), kan.zoom.min), kan.zoom.max);
+          spoor.applyConstraints({ advanced: [{ zoom: nu }] }).catch(function () {});
+        }
         zoom.value = nu;
         document.getElementById('schouwZoomWaarde').textContent = Number(nu).toFixed(1) + '×';
       }
@@ -10241,11 +10274,18 @@
       return _schouwStream ? _schouwStream.getVideoTracks()[0] : null;
     }
 
+    var _schouwZoomTik = null;
+
     function schouwZoom(waarde) {
       var spoor = _schouwSpoor();
       if (!spoor) return;
       document.getElementById('schouwZoomWaarde').textContent = Number(waarde).toFixed(1) + '×';
       spoor.applyConstraints({ advanced: [{ zoom: Number(waarde) }] }).catch(function () {});
+      // Slepen geeft tientallen events; pas als de vinger stilligt bewaren we,
+      // anders staat er een PUT per pixel.
+      _schouwCam.zoom = Number(waarde);
+      clearTimeout(_schouwZoomTik);
+      _schouwZoomTik = setTimeout(function () { _schouwCamBewaar(false); }, 600);
     }
 
     function schouwZaklamp() {
@@ -10293,14 +10333,86 @@
       _schouwCam.rijAfstand = Number(document.getElementById('schouwCamRijAfstand').value) || 10;
       _schouwCam.wegdekBoven = Number(document.getElementById('schouwCamWegdek').value) || 0.4;
       _schouwWegdekLijnZet();
-      try { localStorage.setItem('fieldops_schouw_camera', JSON.stringify(_schouwCam)); } catch (e) {}
+      _schouwGrootteWaarschuwing();
+      _schouwCamBewaar(true);
       // Andere lens of beeldgrootte: de camera opnieuw openen, midden in de ronde.
       if (_schouwStream && (oud.lens !== _schouwCam.lens || oud.grootte !== _schouwCam.grootte)) {
         _schouwStream.getTracks().forEach(function (tr) { tr.stop(); });
         _schouwStream = null;
         _schouwCameraAan();
       }
-      showToast('Camera-instelling bewaard', 'success');
+    }
+
+    // Lokaal én bij de gebruiker. Lokaal is de kopie waarmee je zonder bereik
+    // verder kunt; de server is waar het vandaan komt op een nieuw toestel.
+    function _schouwCamBewaar(metMelding) {
+      try { localStorage.setItem('fieldops_schouw_camera', JSON.stringify(_schouwCam)); } catch (e) {}
+      var voorServer = {};
+      SCHOUW_CAM_SERVERVELDEN.forEach(function (k) { voorServer[k] = _schouwCam[k]; });
+      api('PUT', '/api/schouw/camera', voorServer).then(function (d) {
+        if (d) _schouwCamStatus(d);
+        if (metMelding) showToast('Camera-instelling bewaard', 'success');
+      }).catch(function () {
+        // Geen bereik in het veld is normaal. Lokaal staat hij al goed; bij de
+        // volgende wijziging mét bereik gaat hij alsnog mee.
+        if (metMelding) showToast('Bewaard op dit toestel; nog niet op je account', 'info');
+      });
+    }
+
+    // De instellingen van deze gebruiker ophalen. Wat de server zegt wint van
+    // wat er lokaal staat -- behalve de lens, want die is van dit toestel.
+    function _schouwCamLaad() {
+      return api('GET', '/api/schouw/camera').then(function (d) {
+        if (!d || !d.instellingen) return;
+        SCHOUW_CAM_SERVERVELDEN.forEach(function (k) {
+          if (d.instellingen[k] !== undefined) _schouwCam[k] = d.instellingen[k];
+        });
+        try { localStorage.setItem('fieldops_schouw_camera', JSON.stringify(_schouwCam)); } catch (e) {}
+        _schouwCamVelden();
+        _schouwCamStatus(d);
+        _schouwWegdekLijnZet();
+        _schouwGrootteWaarschuwing();
+      }).catch(function () { /* offline: lokaal blijft gelden */ });
+    }
+
+    function _schouwCamStatus(d) {
+      var regel = document.getElementById('schouwCamHerkomst');
+      if (regel) {
+        regel.textContent = d.eigen
+          ? 'Dit zijn jouw instellingen; ze komen mee op elk toestel waarop je inlogt.'
+          : (d.organisatie_standaard
+              ? 'Je volgt de standaard van je organisatie. Zodra je iets wijzigt, is het van jou.'
+              : 'Nog niets ingesteld — dit is de standaard.');
+      }
+      var terug = document.getElementById('schouwCamTerugBtn');
+      if (terug) terug.style.display = d.eigen ? '' : 'none';
+      var standaard = document.getElementById('schouwCamStandaardBtn');
+      if (standaard) standaard.style.display = d.kan_standaard_zetten ? '' : 'none';
+    }
+
+    function schouwCamTerug() {
+      if (!confirm('Je eigen instellingen loslaten en weer de standaard volgen?')) return;
+      api('DELETE', '/api/schouw/camera').then(function (d) {
+        if (!d || !d.instellingen) return;
+        SCHOUW_CAM_SERVERVELDEN.forEach(function (k) { _schouwCam[k] = d.instellingen[k]; });
+        try { localStorage.setItem('fieldops_schouw_camera', JSON.stringify(_schouwCam)); } catch (e) {}
+        _schouwCamVelden();
+        _schouwCamStatus(d);
+        _schouwWegdekLijnZet();
+        _schouwGrootteWaarschuwing();
+        showToast('Terug op de standaard', 'success');
+      }).catch(function (err) { showToast(err.message || 'Mislukt', 'error'); });
+    }
+
+    function schouwCamAlsStandaard() {
+      if (!confirm('Deze instellingen als startpunt voor de hele organisatie? '
+                 + 'Wie zelf al iets heeft ingesteld, houdt zijn eigen keuze.')) return;
+      var voorServer = {};
+      SCHOUW_CAM_SERVERVELDEN.forEach(function (k) { voorServer[k] = _schouwCam[k]; });
+      api('PUT', '/api/schouw/camera/standaard', voorServer).then(function (d) {
+        if (d) _schouwCamStatus(d);
+        showToast('Standaard voor de organisatie gezet', 'success');
+      }).catch(function (err) { showToast(err.message || 'Mislukt', 'error'); });
     }
 
     // Minimale tijd tussen de start van twee beelden, uit het ritme. Per
@@ -10607,8 +10719,23 @@
 
     // In de rijstand horen de tellers en de wegdeklijn erbij, en het
     // wisselen tussen live en herkenning niet: er is geen beeld per beeld.
+    // Rijdend is 1920 het verschil tussen een leesbare scheur en een vlek.
+    // Wie minder kiest mag dat, maar hoort het te weten voordat hij wegrijdt.
+    function _schouwGrootteWaarschuwing() {
+      var vak = document.getElementById('schouwGrootteWaarschuwing');
+      if (!vak) return;
+      var breed = Number(_schouwCam.grootte) || 1280;
+      var tonen = _schouwRijdend() && breed < 1920;
+      vak.style.display = tonen ? '' : 'none';
+      if (tonen) {
+        vak.textContent = 'Beeldgrootte staat op ' + breed + ' breed. Rijdend worden fijne '
+          + 'scheuren daarmee gemist; 1920 staat bij Camera en herkenning.';
+      }
+    }
+
     function _schouwRijWeergave() {
       var rijdend = _schouwRijdend();
+      _schouwGrootteWaarschuwing();
       document.getElementById('schouwRijStand').style.display = rijdend ? '' : 'none';
       document.getElementById('schouwWegdekLijn').style.display = rijdend ? '' : 'none';
       var knop = document.getElementById('schouwWeergaveBtn');

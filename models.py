@@ -145,6 +145,11 @@ class Organization(Base):
     # Wat de schouwcamera herkent en hoe streng (zie schouw_instellingen).
     # Leeg = de standaard, die gelijk is aan het gedrag van vóór de instelling.
     schouw_instellingen = Column(Text, nullable=True)
+    # Het startpunt voor hoe er opgenomen wordt (zie schouw_camera): geldt voor
+    # wie zelf nog niets heeft ingesteld. Niet hetzelfde als de regel hierboven:
+    # herkenning is van de organisatie, opnemen is van de gebruiker, en dit is
+    # alleen waar hij begint.
+    schouw_camera_standaard = Column(Text, nullable=True)
     # Clusters: werkdag, maximale afstand en de eigen dagproductie per
     # werksoort (zie orchestration.cluster_instellingen). Leeg = kengetallen.
     cluster_instellingen = Column(Text, nullable=True)
@@ -222,6 +227,12 @@ class User(Base):
     # Backup-codes (10x, single-use). JSON-array van bcrypt-hashes — plain
     # text wordt nooit opgeslagen. Bij gebruik wordt de hash verwijderd uit lijst.
     mfa_backup_codes = Column(Text, nullable=True)
+
+    # Hoe deze gebruiker opneemt met de schouwcamera (zie schouw_camera), als
+    # JSON. Leeg = de standaard van zijn organisatie, en anders die van het
+    # pakket. De lens staat hier bewust niet in: dat is een deviceId van één
+    # browser en zegt op een ander toestel niets.
+    schouw_camera = Column(Text, nullable=True)
 
     organization = relationship("Organization", back_populates="users")
 
