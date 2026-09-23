@@ -4510,6 +4510,8 @@
             <button class="btn-secondary" id="schouwWeergaveBtn" onclick="schouwWisselWeergave()">Toon live</button>
             <button class="btn-secondary" id="schouwPauzeBtn" onclick="schouwPauze()">Pauze</button>
             <button class="btn-secondary" onclick="schouwAfronden()">Afronden</button>
+            <button class="btn-secondary" id="schouwVerwijderBtn" onclick="schouwRondeVerwijderen()"
+                    style="display:none;color:var(--red);">Verwijderen</button>
           </div>
         </div>
 
@@ -10029,6 +10031,8 @@
       _schouwLaadDrempels();
     }
 
+    var _schouwRondes = [];
+
     function _schouwRenderLijst(rijen) {
       var box = document.getElementById('schouwList');
       if (!rijen.length) {
@@ -10037,17 +10041,67 @@
           + '<p style="color:var(--text-muted);font-size:13.5px;">Start er hierboven een.</p></div>';
         return;
       }
+      _schouwRondes = rijen;
       box.innerHTML = rijen.map(function (r) {
-        return '<div style="display:flex;justify-content:space-between;gap:12px;padding:12px 0;'
+        // De knop zit binnen de klikbare regel, dus hij moet de klik tegenhouden:
+        // anders opent hij de ronde onder de bevestigingsvraag door.
+        var verwijder = _magSchouwBeheren()
+          ? '<button onclick="event.stopPropagation();schouwRondeVerwijderen(\'' + r.id + '\')" '
+            + 'title="Ronde verwijderen" aria-label="Ronde verwijderen" '
+            + 'style="border:none;background:none;cursor:pointer;font-size:14px;padding:4px;">&#128465;</button>'
+          : '';
+        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;'
           + 'border-bottom:1px solid var(--border);cursor:pointer;" onclick="openSchouwRit(\'' + r.id + '\')">'
           + '<div><div style="font-weight:600;">' + _esc(r.gebied || r.naam || 'Schouwronde') + '</div>'
           + '<div style="font-size:12.5px;color:var(--text-muted);">'
           + _esc(r.gebiedstype_label || '') + ' &middot; ambitie ' + _esc(r.ambitie)
           + ' &middot; ' + r.frames + ' beelden &middot; ' + r.waarnemingen_totaal + ' waarnemingen</div></div>'
+          + '<div style="display:flex;align-items:center;gap:10px;">'
           + '<div style="text-align:right;font-size:12.5px;white-space:nowrap;">'
           + '<div style="font-weight:600;">' + (r.beeldkwaliteit || '-') + '</div>'
-          + '<div style="color:var(--text-muted);">' + _esc(r.status) + '</div></div></div>';
+          + '<div style="color:var(--text-muted);">' + _esc(r.status) + '</div></div>'
+          + verwijder + '</div></div>';
       }).join('');
+    }
+
+    // Dezelfde groep als die een schouw mag uitvoeren (_eis_beheer in de
+    // router): beheerder, projectleider. Wie het niet mag, krijgt van de
+    // server toch een 403 en hoeft de knop niet te zien.
+    function _magSchouwBeheren() {
+      return !!(currentUser && (currentUser.is_org_admin ||
+                currentUser.role === 'admin' || currentUser.role === 'manager'));
+    }
+
+    // Een ronde weggooien is onomkeerbaar, dus vraagt het scherm het na met de
+    // aantallen erbij. Zonder id: de ronde die nu openstaat.
+    function schouwRondeVerwijderen(id) {
+      id = id || _schouwBekeken;
+      if (!id) return;
+      var r = (_schouwRondes || []).filter(function (x) { return x.id === id; })[0] || {};
+      var naam = r.gebied || r.naam || 'deze schouwronde';
+      var wat = [];
+      if (r.frames) wat.push(r.frames + ' beeld' + (r.frames === 1 ? '' : 'en'));
+      if (r.waarnemingen_totaal) wat.push(r.waarnemingen_totaal + ' waarneming'
+        + (r.waarnemingen_totaal === 1 ? '' : 'en'));
+
+      var vraag = '"' + naam + '" verwijderen?';
+      if (wat.length) vraag += '\n\nWeg zijn: ' + wat.join(' en ') + '.';
+      vraag += '\n\nDe beelden verdwijnen, en daarmee de voorbeelden waarvan de '
+             + 'herkenning leert. Meldingen die je uit een waarneming hebt gemaakt '
+             + 'blijven wel bestaan.\n\nDit kan niet ongedaan worden gemaakt.';
+      if (!confirm(vraag)) return;
+
+      api('DELETE', '/api/schouw/ritten/' + id).then(function (d) {
+        showToast('Schouwronde verwijderd', 'success');
+        // Stond deze ronde open of liep hij nog? Dan eerst de camera en de
+        // timer stil, anders blijft een verwijderde ronde beelden versturen.
+        if (_schouwRit && _schouwRit.id === id) { _schouwStop(); _schouwRit = null; }
+        if (_schouwBekeken === id) {
+          _schouwBekeken = null;
+          document.getElementById('schouwActief').style.display = 'none';
+        }
+        api('GET', '/api/schouw/ritten').then(_schouwRenderLijst).catch(function () {});
+      }).catch(function (e) { showToast(e.message || 'Verwijderen mislukt', 'error'); });
     }
 
 
@@ -11771,6 +11825,8 @@
           (r.waarnemingen || []).map(_schouwRij).join('')
           || '<p style="color:var(--text-muted);font-size:13px;">Geen waarnemingen.</p>';
         document.getElementById('schouwActief').style.display = '';
+        var wegBtn = document.getElementById('schouwVerwijderBtn');
+        if (wegBtn) wegBtn.style.display = _magSchouwBeheren() ? '' : 'none';
         document.getElementById('schouwActiefGebied').textContent = r.gebied || 'Schouwronde';
         document.getElementById('schouwActiefMeta').textContent =
           (r.gebiedstype_label || '') + ' · ' + r.status + ' · ' + r.frames + ' beelden'

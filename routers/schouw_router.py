@@ -1593,15 +1593,34 @@ def verwijderen(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Een ronde en alles wat eraan hangt weghalen. Onomkeerbaar.
+
+    Meldingen die uit een waarneming zijn gemaakt blijven staan. Die leven
+    verder als gewone melding met een eigen opvolging, en die gooi je niet weg
+    omdat de ronde waarin ze zijn gezien wordt opgeruimd -- zelfde keuze als
+    bij het verwijderen van een project.
+
+    Wat wel verdwijnt zijn de beelden, en daarmee de voorbeelden waarmee de
+    herkenning bijleert. Het scherm zegt dat erbij voordat het vraagt.
+    """
     _eis_beheer(current_user)
     r = _rit_of_404(db, rit_id, current_user)
-    # Lesbeelden expliciet mee: SQLite handhaaft ON DELETE CASCADE niet altijd.
-    db.query(SchouwBeeld).filter(SchouwBeeld.schouwrit_id == r.id).delete(
-        synchronize_session=False)
-    db.query(SchouwOpname).filter(SchouwOpname.schouwrit_id == r.id).delete(
-        synchronize_session=False)
+    # Alle drie expliciet: SQLite handhaaft ON DELETE CASCADE niet altijd, en
+    # de waarnemingen stonden hier niet bij. Die bleven dus als losse rijen
+    # achter -- onzichtbaar, want alles wordt per rit opgevraagd, maar ze
+    # groeiden wel mee.
+    aantallen = {
+        "waarnemingen": db.query(Schouwwaarneming).filter(
+            Schouwwaarneming.schouwrit_id == r.id).delete(synchronize_session=False),
+        "beelden": db.query(SchouwBeeld).filter(
+            SchouwBeeld.schouwrit_id == r.id).delete(synchronize_session=False),
+        "opnames": db.query(SchouwOpname).filter(
+            SchouwOpname.schouwrit_id == r.id).delete(synchronize_session=False),
+    }
+    gebied = r.gebied
     db.delete(r)
     db.commit()
     log_action(db, request, current_user, action="schouw.delete",
-               entity_type="schouwrit", entity_id=rit_id)
-    return {"status": "verwijderd"}
+               entity_type="schouwrit", entity_id=rit_id,
+               before={"gebied": gebied}, extra=aantallen)
+    return {"status": "verwijderd", "gebied": gebied, **aantallen}
