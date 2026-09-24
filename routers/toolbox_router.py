@@ -27,7 +27,7 @@ import unicodedata
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fpdf.fonts import FontFace
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -40,7 +40,7 @@ from export_huisstijl import (BLAUW, GRIJS, INKT, LETTER_PDF, LIJN, STREEP, WIT,
                               HuisstijlPDF, Kolom, als_tekst, excel_antwoord, excel_van,
                               klant_van, naar_nl, pdf_antwoord, rgb)
 from models import Asset, Melding, Organization, Project, Toolbox, ToolboxDeelnemer, User
-from permissions import can_manage_toolbox, require_module
+from permissions import can_manage_toolbox, eis_verwijderen, require_module
 
 router = APIRouter(prefix="/api/toolbox", tags=["Veiligheid"],
                    dependencies=[Depends(require_module("veiligheid"))])
@@ -341,12 +341,15 @@ def update_toolbox(
 def delete_toolbox(
     toolbox_id: str,
     request: Request,
+    bevestig: bool = Query(False, description="Ook als hij is afgesloten"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     _eis_beheer(current_user)
     t = _get_toolbox_or_404(db, toolbox_id, current_user)
-    _eis_niet_afgesloten(t)
+    # Afgesloten met handtekeningen: alleen na een tweede bevestiging.
+    eis_verwijderen(current_user, afgerond=t.status == "afgesloten", bevestigd=bevestig,
+                    wat="Deze toolbox")
 
     onderwerp = t.onderwerp
     db.delete(t)          # deelnemers gaan mee via cascade

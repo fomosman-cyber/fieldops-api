@@ -137,6 +137,41 @@ def can_manage_toolbox(user: User) -> bool:
     return role is not None and role in _CAN_MANAGE_ASSETS
 
 
+# Verwijderen: één regel voor alle modules.
+#
+#   - Een lezer (opdrachtgever) verwijdert nooit iets.
+#   - Een beheerder of projectleider mag alles verwijderen, ook wat afgerond of
+#     ondertekend is. Dat laatste pas na een tweede, uitdrukkelijke bevestiging
+#     (`bevestigd`): het is bewijs dat iemand ooit nodig kan hebben, en de
+#     auditlog bewaart wat er stond.
+#   - Ieder ander verwijdert alleen wat hij zelf maakte, zolang het niet af is.
+#
+# De 409 begint met BEVESTIGING_NODIG, zodat het portaal weet dat het de
+# gebruiker nog een keer moet vragen en dan met ?bevestig=true terugkomt.
+
+BEVESTIGING_NODIG = "Bevestiging nodig"
+
+
+def eis_verwijderen(user: User, *, maker_id: Optional[str] = None, afgerond: bool = False,
+                    bevestigd: bool = False, wat: str = "Dit") -> None:
+    if _user_role(user) == UserRole.VIEWER and not is_org_admin(user):
+        raise HTTPException(403, "Met een leesaccount kun je niets verwijderen")
+    if can_manage_assets(user):
+        if afgerond and not bevestigd:
+            raise HTTPException(409, f"{BEVESTIGING_NODIG}: {wat} is afgerond of ondertekend. "
+                                     "Weet je zeker dat je het wilt verwijderen? "
+                                     "Het verdwijnt voor iedereen; de auditlog bewaart wat er stond.")
+        return
+    if not maker_id:
+        raise HTTPException(403, "Alleen een beheerder of projectleider kan dit verwijderen")
+    if maker_id != user.id:
+        raise HTTPException(403, "Alleen wie het maakte, of een beheerder of projectleider, "
+                                 "kan dit verwijderen")
+    if afgerond:
+        raise HTTPException(403, f"{wat} is afgerond; alleen een beheerder of projectleider "
+                                 "kan het nog verwijderen")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # FastAPI Depends-fabrieken
 # ─────────────────────────────────────────────────────────────────────────────

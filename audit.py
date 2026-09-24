@@ -88,6 +88,7 @@ class ACTION:
     AI_ANALYSIS_RUN     = "ai.analysis.run"
     AI_ANALYSIS_ACCEPT  = "ai.analysis.accept"
     AI_ANALYSIS_REJECT  = "ai.analysis.reject"
+    AI_ANALYSIS_DELETE  = "ai.analysis.delete"
 
     # Kunstwerken-inspecties (NEN 2767-2 + CROW 134)
     INSPECTION_CREATE        = "inspection.create"

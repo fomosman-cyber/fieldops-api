@@ -102,20 +102,20 @@ def test_admin_can_edit_all_fields(client, admin_user):
 
 # ─── DELETE: alleen org-admin ────────────────────────────────────────────
 
-def test_only_org_admin_can_delete(client, admin_user, manager_user, viewer_user):
+def test_beheerder_en_projectleider_kunnen_verwijderen(client, admin_user, manager_user,
+                                                       viewer_user, inspector_user):
     m = _create_melding_via_admin(client, admin_user)
 
-    # Manager (niet org-admin) → 403
-    r1 = client.delete(f"/api/meldingen/{m['id']}", headers=auth(manager_user))
-    assert r1.status_code == 403
+    # Viewer en toezichthouder → 403
+    assert client.delete(f"/api/meldingen/{m['id']}", headers=auth(viewer_user)).status_code == 403
+    assert client.delete(f"/api/meldingen/{m['id']}", headers=auth(inspector_user)).status_code == 403
 
-    # Viewer → 403
-    r2 = client.delete(f"/api/meldingen/{m['id']}", headers=auth(viewer_user))
-    assert r2.status_code == 403
+    # Projectleider → 200 (sinds "de beheerder mag alles verwijderen")
+    assert client.delete(f"/api/meldingen/{m['id']}", headers=auth(manager_user)).status_code == 200
 
     # Org-admin → 200
-    r3 = client.delete(f"/api/meldingen/{m['id']}", headers=auth(admin_user))
-    assert r3.status_code == 200
+    m = _create_melding_via_admin(client, admin_user)
+    assert client.delete(f"/api/meldingen/{m['id']}", headers=auth(admin_user)).status_code == 200
 
 
 # ─── LIST: gescoped per organisatie ──────────────────────────────────────
