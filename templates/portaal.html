@@ -2622,6 +2622,7 @@
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
         <button class="btn-primary" onclick="openDaybookEntryModal()" data-i18n="db_add_btn">+ Handmatige notitie</button>
         <button class="btn-primary" onclick="openMaterieelModal()">🚜 + Materieel</button>
+        <button class="btn-primary" onclick="openBegrotingModal()">🧮 Werk begroten</button>
         <button class="btn-secondary" onclick="exportDaybookPDF()" data-i18n="db_pdf_btn">📄 PDF dagrapport</button>
         <button class="btn-secondary" onclick="openDaybookExportModal()" data-i18n="db_csv_btn">📊 Excel/CSV uren-export</button>
         <button class="btn-secondary" onclick="toggleDaybookMap()" id="dbMapToggleBtn">🗺️ Kaart aan</button>
@@ -2799,6 +2800,49 @@
       </div>
     </div>
 
+    <!-- ═══════ WERK BEGROTEN ═══════ -->
+    <div class="modal-overlay" id="begrotingModal">
+      <div class="modal" style="max-width:720px;">
+        <button class="modal-close" onclick="closeBegrotingModal()">&times;</button>
+        <h2>🧮 Werk begroten</h2>
+        <p class="subtitle">Zeg wat je gaat doen en met hoeveel. Je krijgt terug welk materieel erbij hoort, hoeveel draaiuren dat is en wat dat aan brandstof en CO₂ betekent. Alles is daarna nog aan te passen.</p>
+
+        <div class="form-group">
+          <label>Wat ga je doen?</label>
+          <textarea id="bgOmschrijving" rows="2" placeholder="bv. Asfalt frezen en herstraten op de Dijkweg, twee dagen, ploeg van drie"></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>Werkzaamheden en aantallen</label>
+          <div id="bgWerkRegels"></div>
+          <button type="button" class="btn-secondary" onclick="bgRegelToevoegen()" style="font-size:12px;padding:5px 12px;margin-top:6px;">+ Regel</button>
+        </div>
+
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+          <button type="button" class="btn-primary" onclick="bgUitrekenen()" id="bgRekenBtn">Laat uitrekenen</button>
+        </div>
+
+        <div id="bgUitslag"></div>
+
+        <div id="bgOvernemen" style="display:none;border-top:1px solid var(--border);padding-top:12px;margin-top:12px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Datum</label>
+              <input type="date" id="bgDatum">
+            </div>
+            <div class="form-group">
+              <label>Project (optioneel)</label>
+              <select id="bgProject"><option value="">— Geen project —</option></select>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" onclick="closeBegrotingModal()">Sluiten</button>
+            <button type="button" class="btn-primary" onclick="bgOvernemen()">Overnemen in het dagboek</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ═══════ CO₂-RAPPORT MODAL ═══════ -->
     <div class="modal-overlay" id="co2RapportModal">
       <div class="modal" style="max-width:640px;">
@@ -2876,7 +2920,7 @@
             <div class="form-group"><label>Intern nummer</label><input type="text" id="mbNummer" maxlength="60"></div>
             <div class="form-group"><label>Kenteken</label><input type="text" id="mbKenteken" maxlength="20"></div>
             <div class="form-group"><label>Eigendom</label><select id="mbEigendom"></select></div>
-            <div class="form-group"><label>Leverancier</label><input type="text" id="mbLeverancier" maxlength="160"></div>
+            <div class="form-group"><label>Leverancier</label><input type="text" id="mbLeverancier" list="mbLeveranciers" maxlength="160" autocomplete="off"><datalist id="mbLeveranciers"></datalist></div>
             <div class="form-group"><label>Brandstof / energie</label><select id="mbEnergiedrager"></select></div>
             <div class="form-group"><label>Emissieklasse</label><select id="mbEmissieklasse"></select></div>
             <div class="form-group"><label>Bouwjaar</label><input type="number" id="mbBouwjaar" min="1900" max="2100"></div>
@@ -23361,13 +23405,7 @@
       _vulProjectKeuze('miProject', gekozenProject);
       _zorgVoorProjecten().then(function () { _vulProjectKeuze('miProject', gekozenProject); });
 
-      api('GET', '/api/materieel/leveranciers').then(function (d) {
-        var dl = document.getElementById('miLeveranciers');
-        if (!dl || !d) return;
-        dl.innerHTML = (d.leveranciers || []).map(function (n) {
-          return '<option value="' + escapeHtml(n) + '"></option>';
-        }).join('');
-      }).catch(function () {});
+      _vulLeveranciers('miLeveranciers');
 
       sel.value = bestaande ? (bestaande.materieel_id || '') : '';
       document.getElementById('miNaam').value = bestaande && !bestaande.materieel_id ? (bestaande.materieel_naam || '') : '';
@@ -23389,6 +23427,23 @@
         ? String(bestaande.verbruik_per_uur) : '';
       onMaterieelKeuze(true);
       modal.classList.add('active');
+    }
+
+    // Eigen namen eerst, daarna de startlijst met bekende verhuurders en
+    // onderaannemers. Wat je typt wordt onthouden en schuift vanzelf naar voren.
+    function _vulLeveranciers(elId) {
+      var dl = document.getElementById(elId);
+      if (!dl) return;
+      api('GET', '/api/materieel/leveranciers').then(function (d) {
+        if (!d) return;
+        var eigen = (d.leveranciers || []).map(function (n) {
+          return '<option value="' + escapeHtml(n) + '"></option>';
+        });
+        var suggesties = (d.suggesties || []).map(function (b) {
+          return '<option value="' + escapeHtml(b.naam) + '">' + escapeHtml(b.soort) + '</option>';
+        });
+        dl.innerHTML = eigen.concat(suggesties).join('');
+      }).catch(function () {});
     }
 
     function closeMaterieelModal() {
@@ -23502,6 +23557,256 @@
         showToast('Regel verwijderd', 'success');
         loadDaybook();
       }).catch(function (err) { showToast(err.message || 'Verwijderen mislukt', 'error'); });
+    }
+
+
+    // ── Werk begroten ──────────────────────────────────────────
+    // Je zegt wat je gaat doen; de server vraagt het uit aan Claude en rekent
+    // het antwoord door naar liters en kilo's (routers/materieel_router.py →
+    // materieel_begroting.py). Het blijft een voorstel: er wordt niets
+    // opgeslagen tot je op "Overnemen" drukt, en elke regel is tot dat moment
+    // aan te passen.
+    var _bgEenheden = [];
+    var _bgVoorstel = null;
+
+    function openBegrotingModal() {
+      var modal = document.getElementById('begrotingModal');
+      if (!modal) return;
+      document.getElementById('bgOmschrijving').value = '';
+      document.getElementById('bgUitslag').innerHTML = '';
+      document.getElementById('bgOvernemen').style.display = 'none';
+      document.getElementById('bgDatum').value = daybookCurrentDate || _todayIso();
+      _bgVoorstel = null;
+
+      _vulProjectKeuze('bgProject');
+      _zorgVoorProjecten().then(function () { _vulProjectKeuze('bgProject'); });
+
+      if (!_bgEenheden.length) {
+        api('GET', '/api/materieel/eenheden').then(function (d) {
+          _bgEenheden = (d && d.eenheden) || [];
+          _bgRegelsTekenen();
+        }).catch(function () { _bgRegelsTekenen(); });
+      }
+      document.getElementById('bgWerkRegels').innerHTML = '';
+      bgRegelToevoegen();
+      modal.classList.add('active');
+    }
+
+    function closeBegrotingModal() {
+      var m = document.getElementById('begrotingModal');
+      if (m) m.classList.remove('active');
+    }
+
+    function bgRegelToevoegen() {
+      var wrap = document.getElementById('bgWerkRegels');
+      if (!wrap) return;
+      var rij = document.createElement('div');
+      rij.className = 'bg-werkregel';
+      rij.style.cssText = 'display:grid;grid-template-columns:1fr 90px 110px 32px;gap:8px;margin-bottom:6px;align-items:center;';
+      rij.innerHTML =
+        '<input type="text" class="bg-werk" maxlength="200" placeholder="bv. Asfalt frezen">' +
+        '<input type="number" class="bg-aantal" min="0" step="any" placeholder="aantal">' +
+        '<select class="bg-eenheid">' + _bgEenheidOpties() + '</select>' +
+        '<button type="button" onclick="this.parentNode.remove()" title="Regel weg" ' +
+        'style="border:none;background:none;cursor:pointer;font-size:15px;color:var(--text-dim);">&times;</button>';
+      wrap.appendChild(rij);
+      rij.querySelector('.bg-werk').focus();
+    }
+
+    function _bgEenheidOpties() {
+      if (!_bgEenheden.length) return '<option value="">—</option>';
+      return _bgEenheden.map(function (e) {
+        return '<option value="' + e.code + '">' + escapeHtml(e.naam) + '</option>';
+      }).join('');
+    }
+
+    function _bgRegelsTekenen() {
+      // De eenheden kwamen later binnen dan de eerste lege regel: keuzelijsten
+      // alsnog vullen zonder wat er al is ingetypt weg te gooien.
+      Array.prototype.forEach.call(document.querySelectorAll('.bg-eenheid'), function (sel) {
+        if (sel.options.length > 1) return;
+        var gekozen = sel.value;
+        sel.innerHTML = _bgEenheidOpties();
+        if (gekozen) sel.value = gekozen;
+      });
+    }
+
+    function bgUitrekenen() {
+      var regels = [];
+      Array.prototype.forEach.call(document.querySelectorAll('.bg-werkregel'), function (rij) {
+        var werk = rij.querySelector('.bg-werk').value.trim();
+        if (!werk) return;
+        var aantal = parseFloat(rij.querySelector('.bg-aantal').value);
+        regels.push({
+          werk: werk,
+          aantal: isNaN(aantal) ? null : aantal,
+          eenheid: rij.querySelector('.bg-eenheid').value || null
+        });
+      });
+      var omschrijving = document.getElementById('bgOmschrijving').value.trim();
+      if (!regels.length && !omschrijving) {
+        showToast('Vul in wat je gaat doen', 'error');
+        return;
+      }
+
+      var knop = document.getElementById('bgRekenBtn');
+      knop.disabled = true;
+      knop.textContent = 'Bezig…';
+      document.getElementById('bgUitslag').innerHTML =
+        '<div style="padding:16px;color:var(--text-dim);">Even rekenen…</div>';
+
+      api('POST', '/api/materieel/begroting', {omschrijving: omschrijving, werkregels: regels})
+        .then(function (d) {
+          _bgVoorstel = d;
+          _bgUitslagTekenen(d);
+          document.getElementById('bgOvernemen').style.display = '';
+        })
+        .catch(function (err) {
+          document.getElementById('bgUitslag').innerHTML =
+            '<div style="padding:12px;color:var(--red);">' + escapeHtml(err.message || 'Mislukt') + '</div>';
+        })
+        .then(function () { knop.disabled = false; knop.textContent = 'Laat uitrekenen'; });
+    }
+
+    function _bgUitslagTekenen(d) {
+      var vak = document.getElementById('bgUitslag');
+      if (!vak) return;
+      var t = d.totaal || {};
+
+      // Waar het vandaan komt hoort erbij te staan: een uitgerekende begroting
+      // leest anders dan een lege lijst waarin je zelf de uren zet.
+      var herkomst = d.bron === 'claude'
+        ? '<span style="font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(5,150,105,.14);color:#047857;">uitgerekend</span>'
+        : '<span style="font-size:11px;padding:2px 8px;border-radius:999px;background:rgba(217,119,6,.14);color:#b45309;">zelf invullen</span>';
+
+      var kop =
+        '<div style="display:flex;gap:10px;align-items:center;margin-bottom:6px;">' +
+          '<strong style="font-size:13px;">Voorstel</strong>' + herkomst +
+        '</div>' +
+        (d.samenvatting ? '<div style="font-size:12px;color:var(--text-muted);margin-bottom:10px;line-height:1.5;">'
+          + escapeHtml(d.samenvatting) + '</div>' : '');
+
+      var rijen = (d.regels || []).map(function (r, i) {
+        var co2 = (r.co2_kg === null || r.co2_kg === undefined)
+          ? '<span style="color:var(--text-dim);">—</span>'
+          : '<strong>' + _nlGetal(r.co2_kg) + '</strong>';
+        var liters = (r.brandstof_hoeveelheid === null || r.brandstof_hoeveelheid === undefined)
+          ? '—' : _nlGetal(r.brandstof_hoeveelheid) + ' ' + (r.eenheid || '');
+        return '<tr style="border-top:1px solid var(--border);" data-bg-rij="' + i + '">' +
+          '<td style="padding:6px 0;">' + escapeHtml(r.naam || '') +
+            (r.toelichting ? '<div style="font-size:11px;color:var(--text-dim);">'
+              + escapeHtml(r.toelichting) + '</div>' : '') +
+            (r.materieel_id ? '' : '<div style="font-size:10px;color:var(--text-dim);">niet in het register — wordt een losse regel</div>') +
+          '</td>' +
+          '<td style="width:88px;"><input type="number" class="bg-uren" min="0" max="500" step="0.5" ' +
+            'value="' + (r.draaiuren === null || r.draaiuren === undefined ? '' : r.draaiuren) + '" ' +
+            'oninput="bgUrenGewijzigd(' + i + ', this.value)" style="width:100%;"></td>' +
+          '<td style="width:96px;font-size:12px;">' + liters + '</td>' +
+          '<td style="width:86px;text-align:right;font-size:12px;">' + co2 + '</td></tr>';
+      }).join('');
+
+
+      vak.innerHTML = kop +
+        '<table style="width:100%;border-collapse:collapse;font-size:12.5px;">' +
+        '<tr style="text-align:left;color:var(--text-dim);font-size:11px;">' +
+        '<th>Materieel</th><th>Draaiuren</th><th>Brandstof</th><th style="text-align:right;">kg CO₂</th></tr>' +
+        rijen + '</table>' +
+        '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:12.5px;">' +
+          '<span id="bgTotaalUren" style="color:var(--text-muted);"></span>' +
+          '<strong id="bgTotaalCo2"></strong>' +
+        '</div>' +
+        '<div id="bgWaarschuwing" style="margin-top:8px;font-size:11px;color:var(--orange,#d97706);"></div>';
+      _bgVoetBijwerken();
+    }
+
+    // Voet en waarschuwing op één plek, zodat ze niet uit elkaar lopen met de
+    // rijen erboven. Dat gebeurde: de voetregel bleef op nul staan terwijl de
+    // regels wel bijwerkten.
+    function _bgVoetBijwerken() {
+      var t = (_bgVoorstel && _bgVoorstel.totaal) || {};
+      var uren = document.getElementById('bgTotaalUren');
+      var co2 = document.getElementById('bgTotaalCo2');
+      var waarschuwing = document.getElementById('bgWaarschuwing');
+      if (uren) uren.textContent = _nlGetal(_bgVoorstel ? _bgVoorstel.totaal_draaiuren : 0) + ' draaiuren';
+      if (co2) co2.textContent = _nlGetal(t.kg_totaal) + ' kg CO₂ (geschat)';
+      if (waarschuwing) {
+        waarschuwing.style.display = t.regels_zonder_getal ? '' : 'none';
+        waarschuwing.textContent = t.regels_zonder_getal
+          ? t.regels_zonder_getal + ' regel(s) zonder getal: vul de draaiuren in, of zet een '
+            + 'verbruik per draaiuur bij dat materieel in het register.'
+          : '';
+      }
+    }
+
+    // Draaiuren aanpassen rekent opnieuw door. Bewust op de server, met
+    // dezelfde factoren als bij het opslaan: twee rekenregels die uit elkaar
+    // lopen is precies wat je niet wilt in een getal dat naar een opdrachtgever
+    // gaat.
+    var _bgHerrekenTik = null;
+
+    function bgUrenGewijzigd(index, waarde) {
+      if (!_bgVoorstel || !_bgVoorstel.regels[index]) return;
+      var uren = parseFloat(waarde);
+      _bgVoorstel.regels[index].draaiuren = isNaN(uren) ? null : uren;
+      clearTimeout(_bgHerrekenTik);
+      _bgHerrekenTik = setTimeout(_bgHerrekenen, 500);
+    }
+
+    function _bgHerrekenen() {
+      var regels = _bgVoorstel.regels.map(function (r) {
+        return {materieel_id: r.materieel_id, naam: r.naam, draaiuren: r.draaiuren};
+      });
+      api('POST', '/api/materieel/begroting/doorrekenen', {regels: regels}).then(function (d) {
+        if (!d) return;
+        // Alleen de getallen bijwerken; de ingetypte uren laten staan zodat de
+        // cursor niet uit het veld springt terwijl je typt.
+        d.regels.forEach(function (nieuw, i) {
+          var oud = _bgVoorstel.regels[i];
+          if (!oud) return;
+          oud.brandstof_hoeveelheid = nieuw.brandstof_hoeveelheid;
+          oud.co2_kg = nieuw.co2_kg;
+          oud.co2_methode = nieuw.co2_methode;
+        });
+        _bgVoorstel.totaal = d.totaal;
+        _bgVoorstel.totaal_draaiuren = d.totaal_draaiuren;
+        _bgGetallenBijwerken();
+      }).catch(function () { /* stil: de uren staan er nog, alleen niet doorgerekend */ });
+    }
+
+    function _bgGetallenBijwerken() {
+      _bgVoorstel.regels.forEach(function (r, i) {
+        var rij = document.querySelector('[data-bg-rij="' + i + '"]');
+        if (!rij) return;
+        var cellen = rij.querySelectorAll('td');
+        cellen[2].textContent = (r.brandstof_hoeveelheid === null || r.brandstof_hoeveelheid === undefined)
+          ? '—' : _nlGetal(r.brandstof_hoeveelheid) + ' ' + (r.eenheid || '');
+        cellen[3].innerHTML = (r.co2_kg === null || r.co2_kg === undefined)
+          ? '<span style="color:var(--text-dim);">—</span>'
+          : '<strong>' + _nlGetal(r.co2_kg) + '</strong>';
+      });
+      _bgVoetBijwerken();
+    }
+
+    function bgOvernemen() {
+      if (!_bgVoorstel) return;
+      var bruikbaar = _bgVoorstel.regels.filter(function (r) { return r.draaiuren; });
+      if (!bruikbaar.length) {
+        showToast('Vul eerst bij minstens één regel de draaiuren in', 'error');
+        return;
+      }
+      api('POST', '/api/materieel/begroting/overnemen', {
+        datum: document.getElementById('bgDatum').value || null,
+        project_id: document.getElementById('bgProject').value || null,
+        regels: bruikbaar.map(function (r) {
+          return {materieel_id: r.materieel_id, naam: r.naam, draaiuren: r.draaiuren};
+        })
+      }).then(function (d) {
+        showToast(d.aangemaakt + ' regel(s) in het dagboek gezet', 'success');
+        closeBegrotingModal();
+        var datum = document.getElementById('bgDatum').value;
+        if (datum) { document.getElementById('dbDate').value = datum; }
+        loadDaybook();
+      }).catch(function (err) { showToast(err.message || 'Overnemen mislukt', 'error'); });
     }
 
     // ── Het CO₂-rapport ────────────────────────────────────────
@@ -23671,6 +23976,7 @@
       var wrap = document.getElementById('mbStukWrap');
       if (!wrap) return;
       _vulMaterieelKeuzes();
+      _vulLeveranciers('mbLeveranciers');
       var m = id ? materieelRegister.filter(function (x) { return x.id === id; })[0] : null;
       document.getElementById('mbNaam').value = m ? m.naam : '';
       document.getElementById('mbSoort').value = m ? m.soort : 'overig';
