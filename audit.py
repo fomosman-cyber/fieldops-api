@@ -122,6 +122,16 @@ class ACTION:
     KWALITEIT_BEWIJS_ADD       = "kwaliteit.bewijs.toegevoegd"
     KWALITEIT_BEWIJS_DELETE    = "kwaliteit.bewijs.delete"
 
+    # Materieel & CO2
+    MATERIEEL_CREATE        = "materieel.create"
+    MATERIEEL_UPDATE        = "materieel.update"
+    MATERIEEL_ARCHIVE       = "materieel.archive"
+    MATERIEEL_IMPORT        = "materieel.import"
+    MATERIEEL_FACTOREN      = "materieel.co2_factoren"
+    MATERIEEL_INZET_CREATE  = "materieel.inzet.create"
+    MATERIEEL_INZET_UPDATE  = "materieel.inzet.update"
+    MATERIEEL_INZET_DELETE  = "materieel.inzet.delete"
+
     # Compliance / GDPR
     AUDIT_EXPORT        = "audit.export.csv"       # admin downloadt audit-log
     DATA_EXPORT_SELF    = "user.data.export.self"  # GDPR Art.15 — DSAR door betrokkene

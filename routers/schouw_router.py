@@ -31,6 +31,7 @@ bevestiging. Afwijzen verwijdert niets: de waarneming blijft staan met
 `afgewezen`, zodat het spoor van een gewijzigde score navolgbaar blijft.
 """
 
+import base64
 import json
 import math
 import time
@@ -45,6 +46,7 @@ from sqlalchemy.orm import Session
 
 import crow_schouw as cs
 import crow_wegschade as cw
+import schouw_camera as sc
 import schouw_instellingen as si
 import schouw_leren
 import schouw_vision as sv
@@ -989,22 +991,40 @@ def opnames_stand(
     }
 
 
-def _wegdek_uitsnede(beeld: bytes, boven: Optional[float]) -> tuple[bytes, float]:
-    """Het wegdek uit het beeld snijden, in de hoogste resolutie die het model
-    gebruikt. Lucht en gevels zeggen niets over het wegdek en kosten pixels."""
+# Het dichtstbijzijnde stuk wegdek, waar een haarscheur nog een paar pixels
+# breed is. Dat gaat er als tweede beeld naast, op volle scherpte: in het hele
+# wegdekbeeld verdwijnt zo'n scheur in het verkleinen.
+DICHTBIJ_DEEL = 0.30           # onderste deel van het hele beeld
+MODEL_MAX_ZIJDE = 1568         # groter maakt het model zelf toch kleiner
+
+
+def _wegdek_uitsnede(beeld: bytes, boven: Optional[float]) -> tuple[bytes, list[bytes], float]:
+    """Het wegdek uit het beeld snijden, plus een scherpe uitsnede van het
+    stuk vlak voor de auto. Lucht en gevels zeggen niets over het wegdek en
+    kosten pixels."""
     import io as _io
 
     from PIL import Image
 
     boven = min(0.9, max(0.0, boven if boven is not None else 0.4))
+
+    def als_jpeg(im) -> bytes:
+        buf = _io.BytesIO()
+        im.save(buf, format="JPEG", quality=92)
+        return buf.getvalue()
+
     with Image.open(_io.BytesIO(beeld)) as im:
         im = im.convert("RGB")
         b, h = im.size
-        uit = im.crop((0, int(h * boven), b, h))
-        uit.thumbnail((1568, 1568))
-        buf = _io.BytesIO()
-        uit.save(buf, format="JPEG", quality=88)
-    return buf.getvalue(), boven
+        wegdek = im.crop((0, int(h * boven), b, h))
+        wegdek.thumbnail((MODEL_MAX_ZIJDE, MODEL_MAX_ZIJDE))
+        extra = []
+        dichtbij_top = int(h * max(boven, 1.0 - DICHTBIJ_DEEL))
+        if h - dichtbij_top > 60 and dichtbij_top > int(h * boven) + 20:
+            dichtbij = im.crop((0, dichtbij_top, b, h))
+            dichtbij.thumbnail((MODEL_MAX_ZIJDE, MODEL_MAX_ZIJDE))
+            extra.append(als_jpeg(dichtbij))
+        return als_jpeg(wegdek), extra, boven
 
 
 def _naar_heel_beeld(kader: Optional[list[float]], boven: float) -> Optional[list[float]]:
@@ -1032,9 +1052,9 @@ def analyseer_opname(db: Session, o: SchouwOpname, beeld: Optional[bytes] = None
     data = beeld or photo_storage.lees_foto(o.photo_url)
     if not data:
         raise RuntimeError("beeld niet te lezen")
-    uitsnede, boven = _wegdek_uitsnede(data, o.wegdek_boven)
+    uitsnede, extra, boven = _wegdek_uitsnede(data, o.wegdek_boven)
     resultaat = sv.analyseer_frame(
-        image_bytes=uitsnede, image_media_type="image/jpeg",
+        image_bytes=uitsnede, extra_beelden=extra, image_media_type="image/jpeg",
         privacy_gecontroleerd=True,        # alleen verpixelde beelden komen hier
         context=(f"Gebied: {r.gebied}" if r.gebied else None),
         instellingen=si.lees(r.organization), stand="wegdek",
@@ -1306,14 +1326,133 @@ def instellingen_vastleggen(
     return _instellingen_antwoord(current_user)
 
 
+# ── Hoe de telefoon opneemt ──────────────────────────────────────────
+# De herkenning hierboven is van de organisatie; het opnemen is van de
+# gebruiker. Zie de docstring van schouw_camera voor waarom, en waarom de lens
+# er niet in zit.
+
+def _camera_antwoord(current_user: User) -> dict:
+    org = current_user.organization
+    return {
+        "instellingen": sc.lees(current_user, org),
+        "eigen": bool(getattr(current_user, "schouw_camera", None)),
+        "organisatie_standaard": sc.organisatie_standaard(org),
+        "kan_standaard_zetten": bool(is_org_admin(current_user)),
+        "keuzes": {"groottes": list(sc.GROOTTES), "ritmes": list(sc.RITMES),
+                   "rijafstanden": list(sc.RIJAFSTANDEN)},
+    }
+
+
+@router.get("/camera")
+def camera_lezen(current_user: User = Depends(get_current_user)):
+    """Hoe deze gebruiker opneemt. Op een nieuw toestel komt dit terug."""
+    return _camera_antwoord(current_user)
+
+
+@router.put("/camera")
+def camera_vastleggen(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Eigen instellingen vastleggen. Geldt vanaf nu op elk toestel waarop
+    deze gebruiker inlogt."""
+    try:
+        nieuw = sc.valideer(payload)
+    except sc.OngeldigeInstelling as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    gebruiker = db.query(User).filter(User.id == current_user.id).first()
+    if gebruiker is None:
+        raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
+    gebruiker.schouw_camera = json.dumps(nieuw)
+    db.commit()
+    db.refresh(gebruiker)
+    return _camera_antwoord(gebruiker)
+
+
+@router.delete("/camera")
+def camera_terugzetten(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Eigen instellingen loslaten en weer de standaard van de organisatie
+    volgen."""
+    gebruiker = db.query(User).filter(User.id == current_user.id).first()
+    if gebruiker is None:
+        raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
+    gebruiker.schouw_camera = None
+    db.commit()
+    db.refresh(gebruiker)
+    return _camera_antwoord(gebruiker)
+
+
+@router.put("/camera/standaard")
+def camera_standaard_vastleggen(
+    payload: dict,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Het startpunt voor de hele organisatie.
+
+    Dit overschrijft niemands eigen keuze -- het geldt voor wie zelf nog niets
+    heeft ingesteld. Anders zou halverwege een ronde de manier van opnemen
+    onder iemand vandaan schuiven.
+    """
+    if not is_org_admin(current_user):
+        raise HTTPException(status_code=403,
+                            detail="Alleen een beheerder zet de standaard voor de organisatie")
+    org = current_user.organization
+    if org is None:
+        raise HTTPException(status_code=404, detail="Geen organisatie gevonden")
+    try:
+        nieuw = sc.valideer(payload)
+    except sc.OngeldigeInstelling as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    oud = sc.organisatie_standaard(org)
+    org.schouw_camera_standaard = json.dumps(nieuw)
+    db.commit()
+    log_action(db, request, current_user, action="schouw.camera_standaard",
+               entity_type="organization", entity_id=org.id, before=oud, after=nieuw)
+    return _camera_antwoord(current_user)
+
+
+@router.delete("/camera/standaard")
+def camera_standaard_wissen(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De organisatiestandaard loslaten. Wie zelf iets heeft ingesteld merkt
+    er niets van; de rest valt terug op de standaard van het pakket."""
+    if not is_org_admin(current_user):
+        raise HTTPException(status_code=403,
+                            detail="Alleen een beheerder zet de standaard voor de organisatie")
+    org = current_user.organization
+    if org is None:
+        raise HTTPException(status_code=404, detail="Geen organisatie gevonden")
+    oud = sc.organisatie_standaard(org)
+    org.schouw_camera_standaard = None
+    db.commit()
+    log_action(db, request, current_user, action="schouw.camera_standaard",
+               entity_type="organization", entity_id=org.id, before=oud, after=None)
+    return _camera_antwoord(current_user)
+
+
 class ProefIn(BaseModel):
     image_data_url: str = Field(..., min_length=32)
+    # "wegdek" loopt precies zoals de rijstand: uitsnede van het wegdek plus
+    # het scherpe stuk vlak voor de auto. Zo test je met een foto van je eigen
+    # rit wat de herkenning ervan maakt.
+    stand: str = Field(default="alles", pattern="^(alles|wegdek)$")
+    wegdek_boven: float = Field(default=0.4, ge=0.0, le=0.9)
 
 
 @router.post("/proefbeeld")
 def proefbeeld(
     payload: ProefIn,
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Eén beeld beoordelen met de huidige instellingen, zonder iets op te slaan.
 
@@ -1323,9 +1462,16 @@ def proefbeeld(
     _eis_beheer(current_user)
     inst = si.lees(current_user.organization)
     beeld, media_type = _data_url_naar_bytes(payload.image_data_url)
+    extra: list[bytes] = []
+    getoond = payload.image_data_url
+    if payload.stand == "wegdek":
+        beeld, extra, _boven = _wegdek_uitsnede(beeld, payload.wegdek_boven)
+        media_type = "image/jpeg"
+        getoond = "data:image/jpeg;base64," + base64.b64encode(beeld).decode("ascii")
     start = time.perf_counter()
-    uit = sv.analyseer_frame(image_bytes=beeld, image_media_type=media_type,
-                             privacy_gecontroleerd=True, instellingen=inst)
+    uit = sv.analyseer_frame(image_bytes=beeld, extra_beelden=extra, image_media_type=media_type,
+                             privacy_gecontroleerd=True, instellingen=inst, stand=payload.stand,
+                             voorbeelden=schouw_leren.voorbeelden(db, current_user.organization_id))
     duur_ms = int((time.perf_counter() - start) * 1000)
 
     items = [{"soort": "schade", "naam": w.get("naam"), "ernst": w.get("ernst"),
@@ -1345,6 +1491,9 @@ def proefbeeld(
         "duur_ms": duur_ms,
         "model_id": uit.get("_model_id"),
         "grondigheid": inst["grondigheid"],
+        "stand": payload.stand,
+        # Het beeld zoals het model het zag; bij "wegdek" dus de uitsnede.
+        "beeld": getoond,
         "items": items,
     }
 
@@ -1577,15 +1726,34 @@ def verwijderen(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Een ronde en alles wat eraan hangt weghalen. Onomkeerbaar.
+
+    Meldingen die uit een waarneming zijn gemaakt blijven staan. Die leven
+    verder als gewone melding met een eigen opvolging, en die gooi je niet weg
+    omdat de ronde waarin ze zijn gezien wordt opgeruimd -- zelfde keuze als
+    bij het verwijderen van een project.
+
+    Wat wel verdwijnt zijn de beelden, en daarmee de voorbeelden waarmee de
+    herkenning bijleert. Het scherm zegt dat erbij voordat het vraagt.
+    """
     _eis_beheer(current_user)
     r = _rit_of_404(db, rit_id, current_user)
-    # Lesbeelden expliciet mee: SQLite handhaaft ON DELETE CASCADE niet altijd.
-    db.query(SchouwBeeld).filter(SchouwBeeld.schouwrit_id == r.id).delete(
-        synchronize_session=False)
-    db.query(SchouwOpname).filter(SchouwOpname.schouwrit_id == r.id).delete(
-        synchronize_session=False)
+    # Alle drie expliciet: SQLite handhaaft ON DELETE CASCADE niet altijd, en
+    # de waarnemingen stonden hier niet bij. Die bleven dus als losse rijen
+    # achter -- onzichtbaar, want alles wordt per rit opgevraagd, maar ze
+    # groeiden wel mee.
+    aantallen = {
+        "waarnemingen": db.query(Schouwwaarneming).filter(
+            Schouwwaarneming.schouwrit_id == r.id).delete(synchronize_session=False),
+        "beelden": db.query(SchouwBeeld).filter(
+            SchouwBeeld.schouwrit_id == r.id).delete(synchronize_session=False),
+        "opnames": db.query(SchouwOpname).filter(
+            SchouwOpname.schouwrit_id == r.id).delete(synchronize_session=False),
+    }
+    gebied = r.gebied
     db.delete(r)
     db.commit()
     log_action(db, request, current_user, action="schouw.delete",
-               entity_type="schouwrit", entity_id=rit_id)
-    return {"status": "verwijderd"}
+               entity_type="schouwrit", entity_id=rit_id,
+               before={"gebied": gebied}, extra=aantallen)
+    return {"status": "verwijderd", "gebied": gebied, **aantallen}

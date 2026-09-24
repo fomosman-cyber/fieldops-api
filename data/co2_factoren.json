@@ -1,0 +1,88 @@
+{
+  "lijst": "Nederlandse CO2-emissiefactoren",
+  "versie": "2026-01-26",
+  "bron": "https://co2emissiefactoren.nl/",
+  "toelichting": "WTW (well-to-wheel) telt de verbranding en de keten samen; dat is wat de CO2-Prestatieladder voor scope 1 vraagt. TTW is alleen de verbranding. Deze getallen zijn overgenomen van de landelijke lijst en horen jaarlijks gecontroleerd te worden: een organisatie die andere factoren moet hanteren (bestek, auditor) vult ze zelf in bij de instellingen.",
+  "factoren": [
+    {
+      "code": "diesel",
+      "naam": "Diesel B7",
+      "eenheid": "liter",
+      "wtw": 3.251,
+      "ttw": 2.462,
+      "wtt": 0.788,
+      "toelichting": "Pompdiesel: circa 7% biodiesel (FAME), 93% fossiel.",
+      "bron": "https://co2emissiefactoren.nl/factoren/2026/30/67/brandstoffen-voertuigen-en-schepen-fossiele-brandstoffen-met-bio-bijmenging-diesel-b7/"
+    },
+    {
+      "code": "hvo100",
+      "naam": "HVO100 (biodiesel)",
+      "eenheid": "liter",
+      "wtw": 0.468,
+      "ttw": 0.026,
+      "wtt": 0.442,
+      "toelichting": "Geldt voor HVO uit duurzame grondstoffen, met name gebruikt frituurvet. HVO uit niet-duurzame grondstoffen ligt fors hoger; wie dat tankt hoort een eigen factor in te vullen.",
+      "bron": "https://co2emissiefactoren.nl/factoren/2026/31/71/brandstoffen-voertuigen-en-schepen-hernieuwbare-brandstoffen-biodiesel-hvo/"
+    },
+    {
+      "code": "benzine",
+      "naam": "Benzine E10",
+      "eenheid": "liter",
+      "wtw": 2.794,
+      "ttw": null,
+      "wtt": null,
+      "toelichting": "",
+      "bron": "https://co2emissiefactoren.nl/factoren/2026/9/brandstoffen-voertuigen-en-schepen/"
+    },
+    {
+      "code": "gtl",
+      "naam": "GTL (diesel)",
+      "eenheid": "liter",
+      "wtw": 3.263,
+      "ttw": 2.46,
+      "wtt": 0.803,
+      "toelichting": "",
+      "bron": "https://co2emissiefactoren.nl/factoren/2026/29/59/brandstoffen-voertuigen-en-schepen-fossiele-brandstoffen-gtl-diesel/"
+    },
+    {
+      "code": "lpg",
+      "naam": "LPG",
+      "eenheid": "liter",
+      "wtw": 1.792,
+      "ttw": null,
+      "wtt": null,
+      "toelichting": "",
+      "bron": "https://co2emissiefactoren.nl/factoren/2026/9/brandstoffen-voertuigen-en-schepen/"
+    },
+    {
+      "code": "cng",
+      "naam": "CNG (aardgas)",
+      "eenheid": "kg",
+      "wtw": 2.831,
+      "ttw": null,
+      "wtt": null,
+      "toelichting": "Per kilogram, niet per liter.",
+      "bron": "https://co2emissiefactoren.nl/factoren/2026/9/brandstoffen-voertuigen-en-schepen/"
+    },
+    {
+      "code": "elektrisch_net",
+      "naam": "Elektrisch — netstroom (grijs)",
+      "eenheid": "kWh",
+      "wtw": 0.483,
+      "ttw": 0.0,
+      "wtt": 0.483,
+      "toelichting": "Stroom waarvan de herkomst niet is vastgelegd. Bij verbranding komt er niets vrij; alles zit in de opwekking en de keten.",
+      "bron": "https://co2emissiefactoren.nl/factoren/2026/11/elektriciteit/"
+    },
+    {
+      "code": "elektrisch_groen",
+      "naam": "Elektrisch — groene stroom (wind of zon)",
+      "eenheid": "kWh",
+      "wtw": 0.0,
+      "ttw": 0.0,
+      "wtt": 0.0,
+      "toelichting": "Nul volgens de landelijke lijst voor wind en zon. Alleen te gebruiken als de herkomst ook aantoonbaar is; anders is netstroom de eerlijke keuze.",
+      "bron": "https://co2emissiefactoren.nl/factoren/2026/11/elektriciteit/"
+    }
+  ]
+}

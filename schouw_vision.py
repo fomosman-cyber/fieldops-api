@@ -50,7 +50,7 @@ from typing import Optional
 import crow_schouw as cs
 import crow_wegschade as cw
 
-SCHOUW_VISION_VERSION = "schouw-vision.v4-2026-09"
+SCHOUW_VISION_VERSION = "schouw-vision.v5-2026-09"
 
 # Het model voor de schouw. Eigen omgevingsvariabele, zodat de schouw niet
 # meeverandert als iemand CLAUDE_MODEL voor de inspecties omzet. Elke paar
@@ -78,7 +78,9 @@ _EFFORT = {"snel": "low", "grondig": "medium"}
 # verharding, op een uitsnede van het wegdek. Daar wacht niemand op het
 # antwoord, dus het model mag er iets langer over doen.
 STANDEN = ("alles", "wegdek")
-_EFFORT_WEGDEK = {"snel": "medium", "grondig": "high"}
+# Wegdek wordt na de rit beoordeeld, dus niemand wacht erop: liever beter
+# kijken dan sneller klaar zijn.
+_EFFORT_WEGDEK = {"snel": "high", "grondig": "high"}
 
 # Boven deze zekerheid mag een waarneming zonder tussenkomst doorstromen naar
 # een beeldkwaliteitsscore. Bewust hoog: een onterecht "schoon" kost een
@@ -238,11 +240,37 @@ def _systeem_prompt_wegdek(instellingen: Optional[dict] = None) -> str:
     namen = ", ".join(v for v in cw.VERHARDINGEN if v in verhardingen) or "geen"
     return f"""Je beoordeelt het wegdek voor een schouw van de Nederlandse openbare weg.
 
-HET BEELD is een uitsnede van het wegdek, gemaakt door een telefoon achter de
-voorruit van een auto die rijdt. Onderaan is dichtbij (een paar meter voor de
-auto), bovenaan verder weg (twintig meter of meer). Beoordeel vooral het
-onderste twee derde: verder weg is te klein om de ernst te zien. Meld daar
-alleen iets dat onmiskenbaar is, zoals een groot gat.
+JE KRIJGT TWEE BEELDEN van hetzelfde wegdek, gemaakt door een telefoon achter
+de voorruit van een rijdende auto.
+- BEELD 1 is het wegdek vooruit. Onderaan is dichtbij (een paar meter voor de
+  auto), bovenaan verder weg (twintig meter of meer).
+- BEELD 2 is het dichtstbijzijnde stuk uit hetzelfde beeld, op volle
+  scherpte. Gebruik dat om te zien wat fijn is: haarscheuren, rafeling, het
+  begin van een gat. Wat je daar ziet, telt net zo goed als in beeld 1.
+Geef kaders ALTIJD in de coördinaten van BEELD 1.
+
+ZO KIJK JE: loop het wegdek na van dichtbij naar verder weg, en let vooral op
+de wielsporen (de twee banen waar auto's rijden), de as tussen de rijstroken,
+de naden en de wegrand. Verder weg dan ongeveer twintig meter is te klein om
+de ernst te bepalen; meld daar alleen iets onmiskenbaars, zoals een groot gat.
+
+LICHTE SCHADE IS OOK SCHADE. Op een gewone gemeentelijke weg is beginnende
+rafeling of een enkele langsscheur heel normaal. Meld die met ernst L. Een
+schouw die alleen de ergste gaten meldt, is niets waard: de meeste
+onderhoudsbeslissingen gaan juist over L en M.
+
+WAARAAN JE HET HERKENT, vanuit een rijdende auto:
+- rafeling: het oppervlak oogt korrelig en open, lichter of grijzer dan glad
+  asfalt ernaast, met losse steentjes en kleine putjes; begint meestal in de
+  wielsporen en langs de wegrand;
+- langsscheur: een donkere lijn die met de rijrichting meeloopt, vaak in het
+  wielspoor of op de naad; een haarscheur is dun maar wel zichtbaar;
+- dwarsscheur: een donkere lijn haaks op de rijrichting, over de hele breedte
+  of een deel ervan;
+- craquelé of schollen: een net van scheuren, als een puzzel in het oppervlak;
+- kuil: een gat met een scherpe rand en een donkere binnenkant, vaak met los
+  materiaal of water erin;
+- oneffenheid en verzakking: het wegdek golft of ligt lager rond een put.
 
 MELD ALLEEN SCHADE AAN DE VERHARDING ({namen}), met het schadebeeld uit
 deze catalogus. Kies eerst het verhardingstype en daarna een schadebeeld dat
@@ -267,8 +295,10 @@ Per schade:
 - "kader": [x_min, y_min, x_max, y_max] als fracties 0 tot 1 van deze
   uitsnede, vanaf linksboven, twee decimalen. Strak om het beschadigde deel;
   bij een lange scheur over de hele zichtbare lengte;
-- "zekerheid" tussen 0 en 1. Streng: 0.9 of hoger alleen als het scherp in
-  beeld is en onmiskenbaar. Bij bewegingsonscherpte, tegenlicht of regen laag;
+- "zekerheid" tussen 0 en 1: hoe zeker je bent dat dit die schade is. Geef een
+  eerlijke inschatting, geen lage uit voorzichtigheid: twijfel je tussen twee
+  schadebeelden, kies dan het waarschijnlijkste en zet de zekerheid rond 0.5.
+  0.9 of hoger alleen als het scherp in beeld staat en onmiskenbaar is;
 - "toelichting": hooguit acht woorden, waar het zit.
 Losse schades apart, de duidelijkste eerst, hooguit {MAX_WEGSCHADE_PER_BEELD}.
 
@@ -281,7 +311,7 @@ Antwoord met uitsluitend geldige JSON:
 Zet "bruikbaar" op false met een reden als het wegdek niet te beoordelen is:
 te donker, bewogen, een voorligger of ander voertuig vult het beeld, of er is
 geen wegdek te zien. Een lege lijst betekent: dit stuk is bekeken en er is
-geen schade gezien."""
+geen schade gezien -- dat mag, maar kijk dan eerst nog een keer naar beeld 2."""
 
 
 def _leeg(reden: str) -> dict:
@@ -476,6 +506,7 @@ def is_geconfigureerd() -> bool:
 
 def analyseer_frame(*,
                     image_bytes: bytes,
+                    extra_beelden: Optional[list[bytes]] = None,
                     image_media_type: str = "image/jpeg",
                     privacy_gecontroleerd: bool,
                     context: Optional[str] = None,
@@ -506,11 +537,13 @@ def analyseer_frame(*,
 
     # Voorbeelden uit eerdere ritten (schouw_leren) staan vóór het beeld, met
     # hun eigen cache-breekpunt: ze zijn bij elk beeld van de organisatie gelijk.
-    inhoud: list[dict] = list(voorbeelden or []) + [{
-        "type": "image",
-        "source": {"type": "base64", "media_type": image_media_type,
-                   "data": _base64(image_bytes)},
-    }]
+    inhoud: list[dict] = list(voorbeelden or [])
+    for nummer, beeld in enumerate([image_bytes] + list(extra_beelden or []), start=1):
+        if len(extra_beelden or []) > 0:
+            inhoud.append({"type": "text", "text": f"BEELD {nummer}:"})
+        inhoud.append({"type": "image",
+                       "source": {"type": "base64", "media_type": image_media_type,
+                                  "data": _base64(beeld)}})
     if context:
         inhoud.append({"type": "text", "text": context[:1000]})
     if stand not in STANDEN:

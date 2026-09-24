@@ -4,8 +4,9 @@ Wat hier vastligt:
 
 1. **Opnemen wacht nergens op.** Een opname is meteen binnen; de analyse volgt
    (in de tests direct, op de server in een wachtrij).
-2. **Alleen het wegdek gaat naar het model**, als uitsnede, en de rode vakken
-   komen terug op de goede plek in het hele beeld.
+2. **Alleen het wegdek gaat naar het model**: het wegdek vooruit plus een
+   scherpe uitsnede van het stuk vlak voor de auto, en de rode vakken komen
+   terug op de goede plek in het hele beeld.
 3. **Een beeld telt één keer**, ook als de upload na een haperende verbinding
    opnieuw binnenkomt.
 4. **Een haperend model is geen schoon stuk weg.** Het beeld gaat terug in de
@@ -134,10 +135,15 @@ def test_opname_wordt_als_wegdek_geanalyseerd_met_vak_op_de_goede_plek(client, a
 
 
 def test_alleen_het_wegdek_gaat_naar_het_model(model):
-    uitsnede, boven = _wegdek_uitsnede(_jpeg(1920, 1080), 0.4)
+    uitsnede, extra, boven = _wegdek_uitsnede(_jpeg(1920, 1080), 0.4)
     with Image.open(io.BytesIO(uitsnede)) as im:
         assert im.size[0] <= 1568
         assert abs(im.size[1] / im.size[0] - (1080 * 0.6) / 1920) < 0.01
+    # Het stuk vlak voor de auto gaat er scherp naast: daar is een haarscheur
+    # nog een paar pixels breed.
+    assert len(extra) == 1
+    with Image.open(io.BytesIO(extra[0])) as im:
+        assert abs(im.size[1] / im.size[0] - (1080 * 0.3) / 1920) < 0.02
     assert _naar_heel_beeld([0.1, 0.0, 0.2, 1.0], 0.4) == [0.1, 0.4, 0.2, 1.0]
 
 
@@ -334,3 +340,25 @@ def test_verpixelen_rekent_de_vakken_terug_naar_het_hele_beeld():
 def test_camera_mag_van_het_portaal_zelf():
     import main
     assert "camera=(self)" in main._PERMISSIONS_POLICY
+
+
+def test_de_wegdek_prompt_legt_uit_hoe_schade_er_vanuit_een_auto_uitziet():
+    tekst = sv._systeem_prompt_wegdek()
+    for stuk in ("BEELD 2", "wielsporen", "LICHTE SCHADE IS OOK SCHADE", "haarscheur", "rafeling:"):
+        assert stuk in tekst, stuk
+    # Niemand wacht op deze beoordeling, dus liever beter kijken.
+    assert sv._EFFORT_WEGDEK["snel"] == "high"
+
+
+def test_proefbeeld_kan_een_foto_als_wegdek_beoordelen(client, admin_user, model):
+    """Een foto van een eerdere rit door dezelfde molen: zo zie je wat de
+    herkenning ervan maakt, en welk deel als wegdek is beoordeeld."""
+    model["antwoorden"].append({"bruikbaar": True, "wegschade": [KUIL]})
+    r = client.post("/api/schouw/proefbeeld", headers=auth(admin_user),
+                    json={"image_data_url": _data_url(), "stand": "wegdek", "wegdek_boven": 0.4})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["stand"] == "wegdek" and model["standen"][-1] == "wegdek"
+    assert d["beeld"].startswith("data:image/jpeg;base64,") and d["beeld"] != _data_url()
+    assert len([b for b in model["inhoud"][-1] if b["type"] == "image"]) == 2
+    assert [i["soort"] for i in d["items"]] == ["schade"]
