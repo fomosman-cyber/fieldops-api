@@ -37,6 +37,7 @@ die we meeschrijven heeft daarom bewust geen `duration_minutes`.
 """
 
 from datetime import date as date_type, datetime, time, timezone
+from pathlib import Path
 from typing import Optional
 
 import json
@@ -47,6 +48,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 import materieel as mt
+import materieel_begroting as mb
 from audit import ACTION, log_action
 from auth import get_current_user
 from database import get_db
@@ -339,7 +341,16 @@ def leveranciers(current_user: User = Depends(get_current_user),
         MaterieelInzet.organization_id == current_user.organization_id,
         MaterieelInzet.leverancier.isnot(None), MaterieelInzet.leverancier != "").distinct().all()
     namen = {r[0].strip() for r in list(uit_register) + list(uit_inzet) if r[0] and r[0].strip()}
-    return {"leveranciers": sorted(namen, key=str.lower)}
+    # Wat de organisatie zelf gebruikt staat voorop; de startlijst eronder is
+    # invulhulp voor wie voor het eerst iets huurt. Namen die al in eigen
+    # gebruik zijn komen niet dubbel terug.
+    gebruikt = {n.lower() for n in namen}
+    suggesties = [b for b in _bedrijvenlijst().get("bedrijven", [])
+                  if b.get("naam") and b["naam"].lower() not in gebruikt]
+    return {
+        "leveranciers": sorted(namen, key=str.lower),
+        "suggesties": suggesties,
+    }
 
 
 @router.put("/factoren")
@@ -363,6 +374,195 @@ def zet_factoren(body: FactorenIn, request: Request,
     log_action(db, request, current_user, action=ACTION.MATERIEEL_FACTOREN,
                entity_type="organization", entity_id=org.id, after=schoon)
     return {"eigen_factoren": schoon}
+
+
+# ── Standaardbedrijven ───────────────────────────────────────────────
+
+_bedrijven_cache: Optional[dict] = None
+
+
+def _bedrijvenlijst() -> dict:
+    """De startlijst met bedrijfsnamen, eenmalig ingelezen.
+
+    Invulhulp, geen bedrijvenadministratie: wie een naam typt die er niet in
+    staat is daarmee klaar, en die naam komt vanzelf boven de suggesties te
+    staan zodra hij één keer is gebruikt.
+    """
+    global _bedrijven_cache
+    if _bedrijven_cache is None:
+        try:
+            pad = Path(__file__).resolve().parent.parent / "data" / "bedrijven.json"
+            _bedrijven_cache = json.loads(pad.read_text(encoding="utf-8"))
+        except Exception:
+            _bedrijven_cache = {"bedrijven": []}
+    return _bedrijven_cache
+
+
+# ── Werk begroten ────────────────────────────────────────────────────
+
+class WerkRegel(BaseModel):
+    werk: str = Field(..., min_length=1, max_length=200)
+    aantal: Optional[float] = Field(default=None, ge=0, le=10_000_000)
+    eenheid: Optional[str] = Field(default=None, max_length=10)
+
+
+class BegrotingIn(BaseModel):
+    omschrijving: Optional[str] = Field(default=None, max_length=2000)
+    werkregels: list[WerkRegel] = Field(default_factory=list)
+
+
+class OvernemenRegel(BaseModel):
+    materieel_id: Optional[str] = None
+    naam: str = Field(..., min_length=1, max_length=160)
+    draaiuren: Optional[float] = Field(default=None, ge=0, le=500)
+    leverancier: Optional[str] = Field(default=None, max_length=160)
+
+
+class OvernemenIn(BaseModel):
+    """Een bewerkte begroting wegschrijven als dagregels.
+
+    Bewust een aparte stap: het voorstel is een voorstel tot de gebruiker het
+    overneemt. Wat hier binnenkomt is wat er op het scherm stond, niet wat de
+    AI zei.
+    """
+    datum: Optional[date_type] = None
+    project_id: Optional[str] = None
+    opmerking: Optional[str] = Field(default=None, max_length=1000)
+    regels: list[OvernemenRegel]
+
+
+@router.get("/eenheden")
+def eenheden():
+    """De eenheden waarin werk wordt opgegeven."""
+    return {"eenheden": [{"code": k, "naam": v} for k, v in mb.EENHEDEN.items()]}
+
+
+@router.post("/begroting")
+def begroting(body: BegrotingIn, current_user: User = Depends(get_current_user),
+              db: Session = Depends(get_db)):
+    """Vertel wat je gaat doen en met hoeveel; hier komt het materieel uit.
+
+    Slaat niets op. Het antwoord is een voorstel met draaiuren, liters en
+    kilogrammen, en `bron` zegt of het is uitgerekend of dat er geen AI
+    beschikbaar was. Elke regel is daarna nog te wijzigen.
+
+    Een begroting is per definitie een schatting -- er is nog niets getankt --
+    dus elke regel komt terug als `geschat` of, zonder verbruik per uur bij het
+    materieel, zonder getal.
+    """
+    register = [_toon_stuk(m) for m in db.query(Materieel).filter(
+        Materieel.organization_id == current_user.organization_id,
+        Materieel.actief.is_(True)).order_by(Materieel.naam.asc()).all()]
+    return mb.begroot(
+        omschrijving=body.omschrijving or "",
+        werkregels=[r.model_dump() for r in body.werkregels],
+        register=register,
+        eigen_factoren=_eigen_factoren(current_user.organization),
+    )
+
+
+class DoorrekenIn(BaseModel):
+    regels: list[OvernemenRegel]
+
+
+@router.post("/begroting/doorrekenen")
+def begroting_doorrekenen(body: DoorrekenIn,
+                          current_user: User = Depends(get_current_user),
+                          db: Session = Depends(get_db)):
+    """Aangepaste draaiuren opnieuw doorrekenen, zonder de AI erbij.
+
+    Het scherm zou dit zelf kunnen, maar dan staan er twee rekenregels in de
+    codebase en lopen die op een dag uit elkaar -- in een getal dat naar een
+    opdrachtgever gaat. Hier rekent dezelfde functie als bij het opslaan.
+    """
+    register = [_toon_stuk(m) for m in db.query(Materieel).filter(
+        Materieel.organization_id == current_user.organization_id,
+        Materieel.actief.is_(True)).all()]
+    voorstel = {"bron": "doorgerekend", "reden": "", "samenvatting": "",
+                "regels": [r.model_dump() for r in body.regels]}
+    return mb.reken_door(voorstel, register, _eigen_factoren(current_user.organization))
+
+
+@router.post("/begroting/overnemen", status_code=201)
+def begroting_overnemen(body: OvernemenIn, request: Request,
+                        current_user: User = Depends(get_current_user),
+                        db: Session = Depends(get_db)):
+    """De begroting wegschrijven als dagregels in het werkdagboek.
+
+    Daarna is het gewone inzet: zichtbaar in de tijdlijn, te wijzigen, en het
+    telt mee in de CO2-rapportage. Regels zonder draaiuren worden overgeslagen
+    -- die zeggen niets en zouden alleen het overzicht vervuilen.
+    """
+    if not body.regels:
+        raise HTTPException(400, "Er is niets om over te nemen")
+    if body.project_id:
+        bestaat = db.query(Project.id).filter(
+            Project.id == body.project_id,
+            Project.organization_id == current_user.organization_id).first()
+        if not bestaat:
+            raise HTTPException(404, "Project niet gevonden")
+
+    datum = body.datum or _vandaag()
+    eigen = _eigen_factoren(current_user.organization)
+    gemaakt, overgeslagen = [], 0
+
+    for regel in body.regels:
+        if not regel.draaiuren:
+            overgeslagen += 1
+            continue
+        stuk = None
+        if regel.materieel_id:
+            stuk = db.query(Materieel).filter(
+                Materieel.id == regel.materieel_id,
+                Materieel.organization_id == current_user.organization_id).first()
+            if not stuk:
+                raise HTTPException(404, f"Materieel niet gevonden: {regel.naam}")
+
+        inzet = MaterieelInzet(
+            organization_id=current_user.organization_id,
+            user_id=current_user.id,
+            datum=datum,
+            project_id=body.project_id,
+            materieel_id=stuk.id if stuk else None,
+            materieel_naam=(stuk.naam if stuk else regel.naam)[:160],
+            soort=stuk.soort if stuk else None,
+            leverancier=((regel.leverancier or (stuk.leverancier if stuk else None) or "")
+                         .strip()[:160] or None),
+            energiedrager=stuk.energiedrager if stuk else "diesel",
+            draaiuren=regel.draaiuren,
+            verbruik_per_uur=stuk.verbruik_per_uur if stuk else None,
+            opmerking=body.opmerking,
+        )
+        _schrijf_berekening(inzet, eigen)
+        db.add(inzet)
+        db.commit()
+        db.refresh(inzet)
+
+        titel, tekst = _dagboektekst(inzet)
+        entry = log_daybook(
+            db, user_id=current_user.id, organization_id=current_user.organization_id,
+            entry_type="materieel_inzet", title=titel, description=tekst,
+            source_type="materieel", source_id=inzet.id,
+            occurred_at=datetime.combine(inzet.datum, time(12, 0), tzinfo=timezone.utc),
+            project_id=inzet.project_id)
+        if entry is not None:
+            inzet.daybook_entry_id = entry.id
+            db.commit()
+        gemaakt.append(inzet)
+
+    if not gemaakt:
+        raise HTTPException(400, "Geen enkele regel had draaiuren ingevuld")
+
+    log_action(db, request, current_user, action=ACTION.MATERIEEL_BEGROTING,
+               entity_type="materieel_inzet",
+               extra={"regels": len(gemaakt), "overgeslagen": overgeslagen,
+                      "datum": datum.isoformat()})
+    users, projecten = _namen(db, gemaakt)
+    return {
+        "aangemaakt": len(gemaakt),
+        "overgeslagen_zonder_uren": overgeslagen,
+        "regels": [_toon(i, users, projecten) for i in gemaakt],
+    }
 
 
 # ── Inzet per dag ────────────────────────────────────────────────────
