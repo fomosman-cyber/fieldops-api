@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Enum as SQLEnum, Text, Float, UniqueConstraint
+from sqlalchemy import Column, String, Integer, Boolean, Date, DateTime, ForeignKey, Enum as SQLEnum, Text, Float, UniqueConstraint
 from sqlalchemy.orm import relationship, validates
 from database import Base
 from crypto_fields import EncryptedText
@@ -145,6 +145,11 @@ class Organization(Base):
     # Wat de schouwcamera herkent en hoe streng (zie schouw_instellingen).
     # Leeg = de standaard, die gelijk is aan het gedrag van vóór de instelling.
     schouw_instellingen = Column(Text, nullable=True)
+    # Het startpunt voor hoe er opgenomen wordt (zie schouw_camera): geldt voor
+    # wie zelf nog niets heeft ingesteld. Niet hetzelfde als de regel hierboven:
+    # herkenning is van de organisatie, opnemen is van de gebruiker, en dit is
+    # alleen waar hij begint.
+    schouw_camera_standaard = Column(Text, nullable=True)
     # Clusters: werkdag, maximale afstand en de eigen dagproductie per
     # werksoort (zie orchestration.cluster_instellingen). Leeg = kengetallen.
     cluster_instellingen = Column(Text, nullable=True)
@@ -154,6 +159,11 @@ class Organization(Base):
     # GWW-index, RAW-index) -- dat weet de organisatie, wij niet. Zelfde keuze
     # als bij schouw_drempels hierboven.
     mjop_index_pct = Column(Float, nullable=True)
+    # Eigen CO2-emissiefactoren, als JSON: {"diesel": 3.21, ...} in kg CO2 per
+    # liter, kg of kWh. Leeg = de landelijke lijst uit data/co2_factoren.json.
+    # Een organisatie vult dit alleen als haar opdrachtgever of auditor andere
+    # factoren voorschrijft; dan wint haar getal van het onze.
+    co2_factoren = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     users = relationship("User", back_populates="organization")
@@ -222,6 +232,12 @@ class User(Base):
     # Backup-codes (10x, single-use). JSON-array van bcrypt-hashes — plain
     # text wordt nooit opgeslagen. Bij gebruik wordt de hash verwijderd uit lijst.
     mfa_backup_codes = Column(Text, nullable=True)
+
+    # Hoe deze gebruiker opneemt met de schouwcamera (zie schouw_camera), als
+    # JSON. Leeg = de standaard van zijn organisatie, en anders die van het
+    # pakket. De lens staat hier bewust niet in: dat is een deviceId van één
+    # browser en zegt op een ander toestel niets.
+    schouw_camera = Column(Text, nullable=True)
 
     organization = relationship("Organization", back_populates="users")
 
@@ -2653,3 +2669,118 @@ class OpleverRonde(Base):
     creator = relationship("User", foreign_keys=[created_by])
     punten = relationship("OpleveringPunt", back_populates="ronde",
                           order_by="OpleveringPunt.order_index")
+
+
+class Materieel(Base):
+    """Eén machine, voertuig of stuk gereedschap dat een dag kan draaien.
+
+    Dit is het register, niet de inzet. De kraan staat hier één keer; dat hij
+    op dinsdag zes uur heeft gedraaid staat in MaterieelInzet. Wie die twee
+    samenvoegt kan geen jaaroverzicht per machine meer maken en moet bij elke
+    dag opnieuw het kenteken intypen.
+
+    `leverancier` staat hier én op de inzet. Dat lijkt dubbel maar is het niet:
+    hier staat van wie je hem gewoonlijk huurt, op de inzet van wie hij die
+    week daadwerkelijk kwam. Dezelfde 8-tons kraan komt de ene maand van Boels
+    en de andere van de buurman, en het rapport moet de werkelijkheid van die
+    week laten zien, niet de gewoonte.
+    """
+
+    __tablename__ = "materieel"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+
+    naam = Column(String(160), nullable=False)
+    soort = Column(String(30), nullable=False, default="overig", index=True)  # materieel.SOORTEN
+    omschrijving = Column(Text, nullable=True)
+
+    # Waaraan je hem herkent op de bon van de verhuurder of in het wagenpark.
+    intern_nummer = Column(String(60), nullable=True, index=True)
+    kenteken = Column(String(20), nullable=True, index=True)
+
+    eigendom = Column(String(20), nullable=False, default="eigen")   # materieel.EIGENDOM
+    leverancier = Column(String(160), nullable=True, index=True)
+
+    energiedrager = Column(String(24), nullable=False, default="diesel")  # materieel.ENERGIEDRAGERS
+    # Kengetal voor de schatting: liter, kg of kWh per draaiuur. Bewust leeg bij
+    # aanmaken. Een verzonnen verbruik levert een CO2-getal op dat nergens op
+    # slaat maar er wel uitziet als een meting; leeg levert eerlijk niets op.
+    verbruik_per_uur = Column(Float, nullable=True)
+
+    emissieklasse = Column(String(20), nullable=False, default="onbekend")  # materieel.EMISSIEKLASSEN
+    bouwjaar = Column(Integer, nullable=True)
+
+    actief = Column(Boolean, nullable=False, default=True, index=True)
+    opmerking = Column(Text, nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+    organization = relationship("Organization")
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class MaterieelInzet(Base):
+    """Eén machine, één dag, één project.
+
+    De regel die iemand 's avonds invult: welke kraan, van wie, hoeveel uur,
+    hoeveel getankt. Daaruit rolt de CO2 (zie ``materieel.bereken``).
+
+    `materieel_id` mag leeg zijn. Wie eenmalig een aggregaat huurt hoeft daar
+    geen registerregel voor aan te maken; dan vult hij de naam vrij in en
+    blijft het een losse regel. Wat niet mag is een regel zonder naam én
+    zonder verwijzing -- dan weet niemand meer waar de liters bij horen.
+
+    De dagboekregel (`daybook_entry_id`) is de spiegel in de tijdlijn. Hij
+    wordt meegeschreven, bijgewerkt en meeverwijderd, zodat het werkdagboek
+    niet iets blijft tonen wat is teruggedraaid.
+    """
+
+    __tablename__ = "materieel_inzet"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+
+    datum = Column(Date, nullable=False, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+
+    materieel_id = Column(String, ForeignKey("materieel.id"), nullable=True, index=True)
+    # Wat er op de regel staat, ook als het registerstuk later wordt hernoemd
+    # of verwijderd. Een rapport over vorig jaar hoort niet te veranderen omdat
+    # iemand vandaag het wagenpark opruimt.
+    materieel_naam = Column(String(160), nullable=False)
+    soort = Column(String(30), nullable=True, index=True)
+    leverancier = Column(String(160), nullable=True, index=True)
+    energiedrager = Column(String(24), nullable=False, default="diesel", index=True)
+
+    draaiuren = Column(Float, nullable=True)
+    # Getankt of geladen, in de eenheid van de energiedrager (liter, kg, kWh).
+    brandstof_hoeveelheid = Column(Float, nullable=True)
+    # Het verbruikskengetal zoals het gold op het moment van invoeren. Ook dit
+    # is bevroren: als het register later wordt bijgesteld verandert een oude
+    # schatting niet met terugwerkende kracht mee.
+    verbruik_per_uur = Column(Float, nullable=True)
+
+    # Uitkomst van de berekening, bewaard zodat een rapport over een oud jaar
+    # hetzelfde blijft als de landelijke factorenlijst wordt bijgewerkt.
+    co2_kg = Column(Float, nullable=True)
+    co2_methode = Column(String(12), nullable=False, default="onbekend")  # gemeten|geschat|onbekend
+    co2_factor = Column(Float, nullable=True)
+    co2_bron = Column(String(255), nullable=True)
+
+    opmerking = Column(Text, nullable=True)
+    daybook_entry_id = Column(String, nullable=True, index=True)
+
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
+
+    organization = relationship("Organization")
+    user = relationship("User", foreign_keys=[user_id])
+    project = relationship("Project", foreign_keys=[project_id])
+    materieel = relationship("Materieel", foreign_keys=[materieel_id])

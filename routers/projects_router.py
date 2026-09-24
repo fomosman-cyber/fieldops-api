@@ -195,9 +195,9 @@ def delete_project(
     # veiligheidsdossiers die je niet kwijt wilt raken omdat een project opgeruimd
     # wordt.
     from models import (Asset, BouwInspectie, DaybookEntry, EmailInboxRoute,
-                        Incident, IncomingWebhook, Inspection, Lmra, Oplevering,
-                        Organization, QualityInspection, Schouwrit, Toolbox,
-                        Werkplekinspectie)
+                        Incident, IncomingWebhook, Inspection, Lmra, MaterieelInzet,
+                        Oplevering, Organization, QualityInspection, Schouwrit,
+                        Toolbox, Werkplekinspectie)
 
     losgemaakt = {}
     for label, model, kolom in (
@@ -215,6 +215,7 @@ def delete_project(
         ("bouwinspecties", BouwInspectie, BouwInspectie.project_id),
         ("schouwritten", Schouwrit,       Schouwrit.project_id),
         ("keuringen",   QualityInspection, QualityInspection.project_id),
+        ("materieelinzet", MaterieelInzet, MaterieelInzet.project_id),
     ):
         aantal = (db.query(model)
                     .filter(kolom == project_id)
