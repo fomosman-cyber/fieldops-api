@@ -132,6 +132,19 @@ class ACTION:
     MATERIEEL_INZET_UPDATE  = "materieel.inzet.update"
     MATERIEEL_INZET_DELETE  = "materieel.inzet.delete"
 
+    # Projectdagrapport
+    DAGRAPPORT_DAG          = "dagrapport.dag"
+    DAGRAPPORT_PERSONEEL_CREATE = "dagrapport.personeel.create"
+    DAGRAPPORT_PERSONEEL_UPDATE = "dagrapport.personeel.update"
+    DAGRAPPORT_PERSONEEL_DELETE = "dagrapport.personeel.delete"
+    DAGRAPPORT_PERSONEEL_KOPIEER = "dagrapport.personeel.kopieer"
+    DAGRAPPORT_MATERIAAL_CREATE = "dagrapport.materiaal.create"
+    DAGRAPPORT_MATERIAAL_UPDATE = "dagrapport.materiaal.update"
+    DAGRAPPORT_MATERIAAL_DELETE = "dagrapport.materiaal.delete"
+    DAGRAPPORT_AFWIJKING_CREATE = "dagrapport.afwijking.create"
+    DAGRAPPORT_AFWIJKING_UPDATE = "dagrapport.afwijking.update"
+    DAGRAPPORT_AFWIJKING_DELETE = "dagrapport.afwijking.delete"
+
     # Compliance / GDPR
     AUDIT_EXPORT        = "audit.export.csv"       # admin downloadt audit-log
     DATA_EXPORT_SELF    = "user.data.export.self"  # GDPR Art.15 — DSAR door betrokkene

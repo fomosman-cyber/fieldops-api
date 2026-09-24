@@ -2710,6 +2710,9 @@ class Materieel(Base):
 
     emissieklasse = Column(String(20), nullable=False, default="onbekend")  # materieel.EMISSIEKLASSEN
     bouwjaar = Column(Integer, nullable=True)
+    # Motorvermogen. Rekent niet mee; het staat in het weekrapport naast de
+    # brandstof en de Stage, zoals opdrachtgevers het vragen.
+    vermogen_kw = Column(Float, nullable=True)
 
     actief = Column(Boolean, nullable=False, default=True, index=True)
     opmerking = Column(Text, nullable=True)
@@ -2764,6 +2767,13 @@ class MaterieelInzet(Base):
     # is bevroren: als het register later wordt bijgesteld verandert een oude
     # schatting niet met terugwerkende kracht mee.
     verbruik_per_uur = Column(Float, nullable=True)
+    # Waar het kengetal vandaan kwam als er geen registerstuk is: een regel uit
+    # data/materieel_catalogus.json (de standaardlijst GWW-materieel).
+    catalogus_code = Column(String(40), nullable=True)
+    # Voor het weekrapport, bevroren zoals de rest: ook als het registerstuk
+    # later een andere motor krijgt.
+    vermogen_kw = Column(Float, nullable=True)
+    emissieklasse = Column(String(20), nullable=True)
 
     # Uitkomst van de berekening, bewaard zodat een rapport over een oud jaar
     # hetzelfde blijft als de landelijke factorenlijst wordt bijgewerkt.
@@ -2784,3 +2794,120 @@ class MaterieelInzet(Base):
     user = relationship("User", foreign_keys=[user_id])
     project = relationship("Project", foreign_keys=[project_id])
     materieel = relationship("Materieel", foreign_keys=[materieel_id])
+
+
+# ── Projectdagrapport ────────────────────────────────────────────────
+# Het dagrapport van een project, zoals een uitvoerder het bijhoudt: wat er
+# die dag gebeurde (log, weer), wie er stond, welk materiaal kwam of ging en
+# wat er afweek van het plan. Het materieel van die dag staat in
+# `materieel_inzet` (met project en datum); dat is dezelfde regel als in het
+# werkdagboek, zodat CO2 op één plek wordt berekend.
+#
+# Anders dan het werkdagboek is dit geen persoonlijk scherm: iedereen op het
+# project vult hetzelfde rapport aan. Daarom staat op elke regel wie hem
+# maakte, en gaat elke wijziging naar de auditlog.
+#
+# `project_id` is nulbaar om dezelfde reden als bij de andere tabellen: wie een
+# project hard verwijdert, maakt de verwijzingen los in plaats van de historie
+# weg te gooien (zie projects_router). Aangemaakt wordt een regel altijd met
+# een project.
+
+
+class DagrapportDag(Base):
+    """De kop van één dag op één project: weer, temperatuur en het logboek."""
+    __tablename__ = "dagrapport_dagen"
+    __table_args__ = (UniqueConstraint("project_id", "datum", name="uq_dagrapport_project_datum"),)
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    datum = Column(Date, nullable=False, index=True)
+
+    weer = Column(String(40), nullable=True)          # dagrapport.WEER
+    temp_min = Column(Float, nullable=True)
+    temp_max = Column(Float, nullable=True)
+    log = Column(Text, nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=True)
+    updated_by = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class DagrapportPersoneel(Base):
+    """Eén persoon, één dag, één project, met de uren.
+
+    Een eigen medewerker heeft een `user_id`; iemand van een onderaannemer of
+    uitzendbureau alleen een naam en een bedrijf. Bij inhuur is de naam vaak
+    niet bekend ("2 verkeersregelaars van Buko"), dus mag de naam leeg zijn
+    zolang er een functie of bedrijf staat.
+    """
+    __tablename__ = "dagrapport_personeel"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    datum = Column(Date, nullable=False, index=True)
+
+    user_id = Column(String, ForeignKey("users.id"), nullable=True, index=True)
+    naam = Column(String(160), nullable=True)
+    functie = Column(String(80), nullable=True)
+    bedrijf = Column(String(160), nullable=True)
+    uren = Column(Float, nullable=False, default=0)
+    opmerking = Column(Text, nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class DagrapportMateriaal(Base):
+    """Materiaal dat die dag is aangevoerd of afgevoerd (asfalt, puin, zand)."""
+    __tablename__ = "dagrapport_materiaal"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    datum = Column(Date, nullable=False, index=True)
+
+    leverancier = Column(String(160), nullable=True)
+    materiaal = Column(String(160), nullable=False)
+    richting = Column(String(10), nullable=False, default="aanvoer")   # aanvoer | afvoer
+    hoeveelheid = Column(Float, nullable=False, default=0)
+    eenheid = Column(String(10), nullable=False, default="ton")        # dagrapport.EENHEDEN
+    opmerking = Column(Text, nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class DagrapportAfwijking(Base):
+    """Iets wat anders liep dan gepland: meerwerk, stagnatie, een verzoek.
+
+    Dit is het bewijs bij een meerwerkclaim of een vertragingsdiscussie, dus
+    staat er wat er gebeurde, wat er aan gedaan wordt, waar, hoe lang het werk
+    stillag en wat het kost.
+    """
+    __tablename__ = "dagrapport_afwijkingen"
+
+    id = Column(String, primary_key=True, default=generate_uuid)
+    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
+    project_id = Column(String, ForeignKey("projects.id"), nullable=True, index=True)
+    datum = Column(Date, nullable=False, index=True)
+
+    omschrijving = Column(Text, nullable=False)
+    maatregel = Column(Text, nullable=True)
+    adres = Column(String(255), nullable=True)
+    stagnatie = Column(String(20), nullable=False, default="geen")     # dagrapport.STAGNATIE
+    duur_uren = Column(Float, nullable=True)
+    soort = Column(String(20), nullable=False, default="geen")         # dagrapport.AFWIJKING_SOORTEN
+    bedrag = Column(Float, nullable=True)
+
+    created_by = Column(String, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)

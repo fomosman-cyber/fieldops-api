@@ -2581,8 +2581,42 @@
           #page-dagboek .db-entry { flex-wrap:wrap; }
           #page-dagboek .db-entry-time { width:auto; }
         }
+        #page-dagboek .db-tabs { display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap; }
+        #page-dagboek .db-tab {
+          padding:9px 16px;border-radius:999px;border:1px solid var(--border);background:var(--card-bg);
+          color:var(--text);font-family:inherit;font-size:13.5px;font-weight:600;cursor:pointer;
+        }
+        #page-dagboek .db-tab.active { background:#0369a1;border-color:#0369a1;color:#fff; }
+        #page-dagboek .dr-card {
+          background:var(--card-bg);border:1px solid var(--border);border-radius:12px;
+          padding:14px 16px;margin-bottom:14px;
+        }
+        #page-dagboek .dr-kop { display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px; }
+        #page-dagboek .dr-kop h3 { margin:0;font-size:15px; }
+        #page-dagboek .dr-kop span { font-size:12px;color:var(--text-dim); }
+        #page-dagboek .dr-grid { display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:10px; }
+        #page-dagboek .dr-grid label, #page-dagboek .dr-veld label { display:block;font-size:11.5px;color:var(--text-dim);margin-bottom:3px; }
+        #page-dagboek .dr-grid input, #page-dagboek .dr-grid select, #page-dagboek .dr-veld textarea,
+        #page-dagboek .dr-veld input {
+          width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);
+          color:var(--text);font-family:inherit;font-size:13px;box-sizing:border-box;
+        }
+        #page-dagboek .dr-regel { display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--border);font-size:13px; }
+        #page-dagboek .dr-regel:first-child { border-top:none; }
+        #page-dagboek .dr-regel .dr-hoofd { flex:1;min-width:0; }
+        #page-dagboek .dr-regel .dr-sub { font-size:11.5px;color:var(--text-dim); }
+        #page-dagboek .dr-regel button.dr-weg { border:none;background:none;cursor:pointer;font-size:14px;color:var(--text-dim); }
+        #page-dagboek .dr-uren { width:72px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-family:inherit;text-align:right; }
+        #page-dagboek .dr-leeg { font-size:12.5px;color:var(--text-dim);padding:4px 0 8px; }
+        #page-dagboek .dr-invoer { border-top:1px dashed var(--border);margin-top:8px;padding-top:10px; }
       </style>
 
+      <div class="db-tabs" role="tablist">
+        <button class="db-tab active" id="dbTabMijn" role="tab" onclick="dbTab('mijn')">📖 Mijn werkdagboek</button>
+        <button class="db-tab" id="dbTabProject" role="tab" onclick="dbTab('project')">🏗️ Projectdagrapport</button>
+      </div>
+
+      <div id="dbMijnWrap">
       <div class="day-bar">
         <div>
           <h2>📖 <span data-i18n="db_title">Werkdagboek</span></h2>
@@ -2695,6 +2729,124 @@
         Auto-entries (meldingen, status-wijzigingen) komen automatisch — die kun je niet bewerken of verwijderen (audit-integriteit).
         Handmatige notities mag je vrij toevoegen en aanpassen.
       </p>
+      </div>
+
+      <!-- Projectdagrapport: van het project, niet van één persoon. De hele
+           ploeg vult hetzelfde rapport aan; het weekrapport zet het naast
+           elkaar met een kolom per dag. -->
+      <div id="dbProjectWrap" style="display:none;">
+        <div class="day-bar" style="background:linear-gradient(135deg,#0369a1 0%,#0c4a6e 100%);">
+          <div>
+            <h2>🏗️ Projectdagrapport</h2>
+            <p>Logboek, personeel, materieel, materiaal en afwijkingen per project per dag. De hele ploeg vult het samen aan.</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select id="drProject" data-leeg="— Kies een project —" onchange="drProjectGekozen()" style="padding:8px 12px;border:1px solid rgba(255,255,255,0.3);border-radius:8px;background:rgba(255,255,255,0.12);color:#fff;font-family:inherit;font-size:13px;max-width:260px;"></select>
+            <button onclick="drShift(-1)" title="Vorige dag" style="padding:8px 12px;border:1px solid rgba(255,255,255,0.3);border-radius:8px;background:rgba(255,255,255,0.12);color:#fff;cursor:pointer;font-size:14px;">←</button>
+            <input type="date" id="drDatum" onchange="laadDagrapport()" style="padding:8px 12px;border:1px solid rgba(255,255,255,0.3);border-radius:8px;background:rgba(255,255,255,0.12);color:#fff;font-family:inherit;font-size:13px;">
+            <button onclick="drShift(1)" title="Volgende dag" style="padding:8px 12px;border:1px solid rgba(255,255,255,0.3);border-radius:8px;background:rgba(255,255,255,0.12);color:#fff;cursor:pointer;font-size:14px;">→</button>
+          </div>
+        </div>
+
+        <div id="drLeeg" class="db-empty">Kies bovenaan een project om het dagrapport te openen.</div>
+
+        <div id="drInhoud" style="display:none;">
+          <div class="db-stats">
+            <div class="db-stat" title="CO₂ van het materieel op dit project vandaag, van iedereen. Geschatte regels tellen mee en staan apart vermeld.">
+              <div class="num" id="drStatCo2">—</div><div class="lbl">kg CO₂ materieel</div></div>
+            <div class="db-stat" title="Wat dezelfde liters op diesel B7 hadden uitgestoten, min de werkelijke uitstoot (bijvoorbeeld bij HVO100).">
+              <div class="num" id="drStatReductie" style="color:#16a34a;">—</div><div class="lbl">kg reductie t.o.v. diesel</div></div>
+            <div class="db-stat"><div class="num" id="drStatPersoneel">—</div><div class="lbl">uur personeel</div></div>
+            <div class="db-stat"><div class="num" id="drStatMaterieel">—</div><div class="lbl">uur materieel</div></div>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center;">
+            <span id="drWeekLabel" style="font-size:13px;color:var(--text-muted);"></span>
+            <button class="btn-secondary" onclick="drWeekExport('pdf')">📄 Weekrapport PDF</button>
+            <button class="btn-secondary" onclick="drWeekExport('xlsx')">📊 Weekrapport Excel</button>
+          </div>
+
+          <div id="drAlleenLezen" class="dr-leeg" style="display:none;margin-bottom:10px;">Je hebt een leesaccount: je ziet het dagrapport, maar kunt het niet aanvullen.</div>
+
+          <div class="dr-card">
+            <div class="dr-kop"><h3>📝 Dagboek</h3><span id="drDagMeta"></span></div>
+            <div class="dr-grid">
+              <div><label for="drWeer">Weer</label><select id="drWeer"></select></div>
+              <div><label for="drTempMin">Temperatuur min (°C)</label><input type="number" id="drTempMin" step="1" min="-40" max="50"></div>
+              <div><label for="drTempMax">Temperatuur max (°C)</label><input type="number" id="drTempMax" step="1" min="-40" max="50"></div>
+            </div>
+            <div class="dr-veld">
+              <label for="drLog">Logboek van de dag</label>
+              <textarea id="drLog" rows="6" maxlength="20000" placeholder="Wat is er vandaag gebeurd? Bijvoorbeeld: locatie 1 begonnen met frezen om 07:00 uur, afzetting geplaatst op 3 locaties, big bag brekerzand geleverd…"></textarea>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap;" class="dr-schrijf">
+              <button class="btn-primary" id="drDagOpslaan" onclick="drDagOpslaan()">Dagboek opslaan</button>
+              <span id="drDagStatus" style="font-size:12px;color:var(--text-dim);"></span>
+            </div>
+          </div>
+
+          <div class="dr-card">
+            <div class="dr-kop"><h3>👷 Personeel</h3><span id="drPersoneelTotaal"></span></div>
+            <div id="drPersoneelLijst"></div>
+            <div class="dr-invoer dr-schrijf">
+              <div class="dr-grid">
+                <div><label for="drPMedewerker">Medewerker</label><select id="drPMedewerker" onchange="drPMedewerkerGekozen()"></select></div>
+                <div id="drPNaamWrap"><label for="drPNaam">Naam (inhuur)</label><input type="text" id="drPNaam" maxlength="160" placeholder="optioneel"></div>
+                <div><label for="drPFunctie">Functie</label><input type="text" id="drPFunctie" list="drFuncties" maxlength="80" placeholder="bv. Machinist" autocomplete="off"><datalist id="drFuncties"></datalist></div>
+                <div id="drPBedrijfWrap"><label for="drPBedrijf">Bedrijf</label><input type="text" id="drPBedrijf" maxlength="160" placeholder="bv. Buko Infrasupport"></div>
+                <div><label for="drPUren">Uren</label><input type="number" id="drPUren" min="0" max="24" step="0.25" value="8"></div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn-primary" id="drPToevoegen" onclick="drPersoneelToevoegen()">+ Toevoegen</button>
+                <button class="btn-secondary" id="drPKopieer" onclick="drPloegOvernemen()">↺ Ploeg van vorige werkdag overnemen</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="dr-card">
+            <div class="dr-kop"><h3>🚜 Materieel</h3><span id="drMaterieelTotaal"></span></div>
+            <div id="drMaterieelLijst"></div>
+            <div class="dr-invoer dr-schrijf">
+              <button class="btn-primary" onclick="drMaterieelToevoegen()">+ Materieel</button>
+              <span style="font-size:11.5px;color:var(--text-dim);margin-left:8px;">Kies uit het register of de standaardlijst GWW-materieel; de CO₂ wordt meteen berekend.</span>
+            </div>
+          </div>
+
+          <div class="dr-card">
+            <div class="dr-kop"><h3>🚛 Materiaal</h3><span>aan- en afvoer</span></div>
+            <div id="drMateriaalLijst"></div>
+            <div class="dr-invoer dr-schrijf">
+              <div class="dr-grid">
+                <div><label for="drMLeverancier">Leverancier</label><input type="text" id="drMLeverancier" maxlength="160" placeholder="bv. Bnext.nl Amsterdam"></div>
+                <div><label for="drMMateriaal">Materiaal</label><input type="text" id="drMMateriaal" maxlength="160" placeholder="bv. TH Asfalt"></div>
+                <div><label for="drMRichting">Aan/afvoer</label><select id="drMRichting"></select></div>
+                <div><label for="drMHoeveelheid">Hoeveelheid</label><input type="number" id="drMHoeveelheid" min="0" step="0.01"></div>
+                <div><label for="drMEenheid">Eenheid</label><select id="drMEenheid"></select></div>
+              </div>
+              <button class="btn-primary" id="drMToevoegen" onclick="drMateriaalToevoegen()">+ Toevoegen</button>
+            </div>
+          </div>
+
+          <div class="dr-card">
+            <div class="dr-kop"><h3>⚠️ Afwijkingen</h3><span>meerwerk, stagnatie, verzoeken</span></div>
+            <div id="drAfwijkingLijst"></div>
+            <div class="dr-invoer dr-schrijf">
+              <div class="dr-veld" style="margin-bottom:8px;"><label for="drAOmschrijving">Wat week af?</label>
+                <textarea id="drAOmschrijving" rows="2" maxlength="5000" placeholder="bv. Door overhang van bossages kunnen de machines niet tot de zijkant van het fietspad komen"></textarea></div>
+              <div class="dr-veld" style="margin-bottom:8px;"><label for="drAMaatregel">Te nemen maatregel</label>
+                <textarea id="drAMaatregel" rows="2" maxlength="5000" placeholder="bv. Eerste uur bossages snoeien met een kettingzaag"></textarea></div>
+              <div class="dr-grid">
+                <div><label for="drAAdres">Adres</label><input type="text" id="drAAdres" maxlength="255" placeholder="bv. Baanakkerspad 1024 PH"></div>
+                <div><label for="drAStagnatie">Stagnatie</label><select id="drAStagnatie"></select></div>
+                <div><label for="drADuur">Duur (uur)</label><input type="number" id="drADuur" min="0" step="0.25"></div>
+                <div><label for="drASoort">Afwijking</label><select id="drASoort"></select></div>
+                <div><label for="drABedrag">Bedrag (€)</label><input type="number" id="drABedrag" step="0.01"></div>
+              </div>
+              <button class="btn-primary" id="drAToevoegen" onclick="drAfwijkingToevoegen()">+ Toevoegen</button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ═══════ DAYBOOK ENTRY MODAL ═══════ -->
@@ -2750,10 +2902,31 @@
               <option value="">— Kies uit het register —</option>
             </select>
           </div>
+          <div class="form-group" id="miCatalogusWrap" style="display:none;">
+            <label>Uit de standaardlijst GWW-materieel</label>
+            <select id="miCatalogus" onchange="onCatalogusKeuze()">
+              <option value="">— Zelf invullen —</option>
+            </select>
+            <div id="miCatalogusUitleg" style="font-size:11px;color:var(--text-dim);margin-top:4px;">Kies het type machine: dan staan vermogen en een geschat verbruik per uur al klaar, en levert alleen draaiuren invullen ook een (geschatte) CO₂ op.</div>
+          </div>
           <div class="form-group" id="miNaamWrap" style="display:none;">
             <label>Naam van het materieel *</label>
-            <input type="text" id="miNaam" maxlength="160" placeholder="bv. Aggregaat 20 kVA">
+            <input type="text" id="miNaam" maxlength="160" placeholder="bv. Hitachi ZX150W-7 of Aggregaat 20 kVA" oninput="this.dataset.uitLijst='0'">
             <div style="font-size:11px;color:var(--text-dim);margin-top:4px;">Eenmalig gehuurd? Typ de naam; dan hoeft er niets in het register.</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+            <div class="form-group">
+              <label>Stage / euroklasse</label>
+              <select id="miEmissieklasse"><option value="">— Onbekend —</option></select>
+            </div>
+            <div class="form-group">
+              <label>Vermogen (kW)</label>
+              <input type="number" id="miVermogen" min="0" step="1" placeholder="bv. 105">
+            </div>
+            <div class="form-group">
+              <label>Verbruik per uur</label>
+              <input type="number" id="miVerbruik" min="0" step="0.1" placeholder="standaard" oninput="updateMaterieelCo2()">
+            </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div class="form-group">
@@ -23063,6 +23236,9 @@
       }
       initMaterieel();
       loadDaybook();
+      var tab = null;
+      try { tab = localStorage.getItem('fieldops_dagboek_tab'); } catch (e) {}
+      if (tab === 'project') dbTab('project');
     }
 
     function _todayIso() {
@@ -23359,7 +23535,10 @@
 
     // ── Het formulier ──────────────────────────────────────────
 
-    function openMaterieelModal(bestaande) {
+    // `vooraf` (optioneel): {project_id, datum, bron} als het formulier vanuit
+    // het projectdagrapport wordt geopend. Na opslaan ververst dan dat scherm.
+    function openMaterieelModal(bestaande, vooraf) {
+      vooraf = vooraf || {};
       var modal = document.getElementById('materieelModal');
       if (!modal) return;
       if (!materieelConfig) { showToast('Materieel wordt nog geladen…', 'info'); initMaterieel(); return; }
@@ -23384,7 +23563,31 @@
         drag.appendChild(opt);
       });
 
-      var gekozenProject = bestaande ? (bestaande.project_id || '') : '';
+      var klasse = document.getElementById('miEmissieklasse');
+      klasse.innerHTML = '<option value="">— Onbekend —</option>';
+      (materieelConfig.emissieklassen || []).forEach(function (k) {
+        if (k.code === 'onbekend') return;
+        var opt = document.createElement('option');
+        opt.value = k.code; opt.textContent = k.naam;
+        klasse.appendChild(opt);
+      });
+
+      // De standaardlijst, per soort gegroepeerd.
+      var kat = document.getElementById('miCatalogus');
+      var soortNaam = {};
+      (materieelConfig.soorten || []).forEach(function (x) { soortNaam[x.code] = x.naam; });
+      var groepen = {};
+      ((materieelConfig.catalogus || {}).materieel || []).forEach(function (m) {
+        (groepen[m.soort] = groepen[m.soort] || []).push(m);
+      });
+      kat.innerHTML = '<option value="">— Zelf invullen —</option>' + Object.keys(groepen).map(function (soort) {
+        return '<optgroup label="' + escapeHtml(soortNaam[soort] || soort) + '">' + groepen[soort].map(function (m) {
+          return '<option value="' + escapeHtml(m.code) + '">' + escapeHtml(m.naam) + ' · ' + m.vermogen_kw + ' kW</option>';
+        }).join('') + '</optgroup>';
+      }).join('');
+      kat.value = '';
+
+      var gekozenProject = bestaande ? (bestaande.project_id || '') : (vooraf.project_id || '');
       _vulProjectKeuze('miProject', gekozenProject);
       _zorgVoorProjecten().then(function () { _vulProjectKeuze('miProject', gekozenProject); });
 
@@ -23398,16 +23601,25 @@
 
       sel.value = bestaande ? (bestaande.materieel_id || '') : '';
       document.getElementById('miNaam').value = bestaande && !bestaande.materieel_id ? (bestaande.materieel_naam || '') : '';
+      document.getElementById('miNaam').dataset.uitLijst = '';
       document.getElementById('miLeverancier').value = bestaande ? (bestaande.leverancier || '') : '';
       drag.value = bestaande ? bestaande.energiedrager : 'diesel';
       document.getElementById('miDraaiuren').value = bestaande && bestaande.draaiuren !== null ? bestaande.draaiuren : '';
       document.getElementById('miHoeveelheid').value = bestaande && bestaande.brandstof_hoeveelheid !== null ? bestaande.brandstof_hoeveelheid : '';
-      document.getElementById('miDatum').value = bestaande ? bestaande.datum : (daybookCurrentDate || _todayIso());
+      document.getElementById('miDatum').value = bestaande ? bestaande.datum
+        : (vooraf.datum || daybookCurrentDate || _todayIso());
+      klasse.value = bestaande && bestaande.emissieklasse && bestaande.emissieklasse !== 'onbekend' ? bestaande.emissieklasse : '';
+      document.getElementById('miVermogen').value = bestaande && bestaande.vermogen_kw ? bestaande.vermogen_kw : '';
+      // Leeg = het kengetal uit register of standaardlijst. Bij bewerken het
+      // bevroren getal, zodat zichtbaar is waarmee gerekend wordt.
+      document.getElementById('miVerbruik').value = bestaande && bestaande.verbruik_per_uur ? bestaande.verbruik_per_uur : '';
+      modal.dataset.bron = vooraf.bron || '';
       document.getElementById('miOpmerking').value = bestaande ? (bestaande.opmerking || '') : '';
 
       // Bij bewerken staat het materieelstuk vast: van machine wisselen is een
       // andere regel, niet dezelfde regel met een ander etiket.
       sel.disabled = !!bestaande;
+      document.getElementById('miCatalogusWrap').dataset.nieuw = bestaande ? '' : '1';
       modal.dataset.editingId = bestaande ? bestaande.id : '';
       // Het verbruik zoals het bij deze regel is vastgelegd. Bij het bewerken
       // rekent de server daarmee, dus moet het voorbeeld dat ook doen; anders
@@ -23427,9 +23639,37 @@
       var id = document.getElementById('miMaterieel').value;
       var stuk = materieelRegister.filter(function (m) { return m.id === id; })[0];
       document.getElementById('miNaamWrap').style.display = id ? 'none' : '';
+      // De standaardlijst alleen bij een nieuwe losse regel: een registerstuk
+      // heeft zijn eigen gegevens, en een bestaande regel houdt zijn kengetal.
+      var katWrap = document.getElementById('miCatalogusWrap');
+      katWrap.style.display = (!id && katWrap.dataset.nieuw) ? '' : 'none';
+      if (id) document.getElementById('miCatalogus').value = '';
       if (stuk && !behoudInvoer) {
         document.getElementById('miEnergiedrager').value = stuk.energiedrager;
         if (stuk.leverancier) document.getElementById('miLeverancier').value = stuk.leverancier;
+        document.getElementById('miEmissieklasse').value = stuk.emissieklasse && stuk.emissieklasse !== 'onbekend' ? stuk.emissieklasse : '';
+        document.getElementById('miVermogen').value = stuk.vermogen_kw || '';
+      }
+      updateMaterieelCo2();
+    }
+
+    function _catalogusItem(code) {
+      return (((materieelConfig || {}).catalogus || {}).materieel || []).filter(function (m) { return m.code === code; })[0];
+    }
+
+    function onCatalogusKeuze() {
+      var m = _catalogusItem(document.getElementById('miCatalogus').value);
+      var uitleg = document.getElementById('miCatalogusUitleg');
+      if (m) {
+        var naam = document.getElementById('miNaam');
+        // Een zelf getypte naam (bv. het merk en type) blijft staan.
+        if (!naam.value.trim() || naam.dataset.uitLijst === '1') { naam.value = m.naam; naam.dataset.uitLijst = '1'; }
+        document.getElementById('miVermogen').value = m.vermogen_kw;
+        document.getElementById('miEnergiedrager').value = m.energiedrager || 'diesel';
+        uitleg.textContent = m.vermogen_kw + ' kW · geschat ' + String(m.verbruik_per_uur).replace('.', ',') +
+          ' liter per draaiuur (vermogen × gemiddelde belasting × 0,24 l/kWh). Vul het getankte aantal liters in voor een gemeten waarde.';
+      } else {
+        uitleg.textContent = 'Kies het type machine: dan staan vermogen en een geschat verbruik per uur al klaar.';
       }
       updateMaterieelCo2();
     }
@@ -23449,9 +23689,14 @@
       var bevroren = parseFloat(modal.dataset.verbruik || '');
       // Bestaande regel: het bevroren kengetal. Nieuwe regel: wat er nu in het
       // register staat.
-      var perUur = modal.dataset.editingId
-        ? (isNaN(bevroren) ? null : bevroren)
-        : (stuk && stuk.verbruik_per_uur ? stuk.verbruik_per_uur : null);
+      var kat = _catalogusItem(document.getElementById('miCatalogus').value);
+      var eigen = parseFloat(document.getElementById('miVerbruik').value);
+      // Zelfde volgorde als de server: eigen getal, dan register, dan de
+      // standaardlijst. Bij bewerken het bevroren getal.
+      var perUur = !isNaN(eigen) ? eigen
+        : modal.dataset.editingId
+          ? (isNaN(bevroren) ? null : bevroren)
+          : (stuk && stuk.verbruik_per_uur ? stuk.verbruik_per_uur : (kat ? kat.verbruik_per_uur : null));
       var getankt = parseFloat(document.getElementById('miHoeveelheid').value);
       var uren = parseFloat(document.getElementById('miDraaiuren').value);
       var factor = _factorVan(code);
@@ -23503,8 +23748,13 @@
         project_id: document.getElementById('miProject').value || null,
         draaiuren: getal('miDraaiuren'),
         brandstof_hoeveelheid: getal('miHoeveelheid'),
+        emissieklasse: document.getElementById('miEmissieklasse').value || null,
+        vermogen_kw: getal('miVermogen'),
         opmerking: document.getElementById('miOpmerking').value.trim() || null
       };
+      // Alleen meesturen als het is ingevuld: leeg betekent "het kengetal".
+      if (getal('miVerbruik') !== null) body.verbruik_per_uur = getal('miVerbruik');
+      var bron = modal.dataset.bron;
       var verzoek;
       if (id) {
         // Alleen een losse regel draagt zijn naam zelf; bij een registerstuk
@@ -23514,13 +23764,17 @@
       } else {
         body.materieel_id = materieelId || null;
         body.materieel_naam = materieelId ? null : naam;
+        body.catalogus_code = materieelId ? null : (document.getElementById('miCatalogus').value || null);
         verzoek = api('POST', '/api/materieel/inzet', body);
       }
+      var knop = ev.submitter || modal.querySelector('button[type=submit]');
+      if (knop) knop.disabled = true;           // geen dubbele regel bij een dubbelklik
       verzoek.then(function () {
         showToast(id ? 'Materieelregel bijgewerkt' : 'Materieel geregistreerd', 'success');
         closeMaterieelModal();
-        loadDaybook();
-      }).catch(function (err) { showToast(err.message || 'Opslaan mislukt', 'error'); });
+        if (bron === 'dagrapport') laadDagrapport(); else loadDaybook();
+      }).catch(function (err) { showToast(err.message || 'Opslaan mislukt', 'error'); })
+        .then(function () { if (knop) knop.disabled = false; });
     }
 
     function verwijderMaterieelInzet(id) {
@@ -23529,6 +23783,361 @@
         showToast('Regel verwijderd', 'success');
         loadDaybook();
       }).catch(function (err) { showToast(err.message || 'Verwijderen mislukt', 'error'); });
+    }
+
+    // ══════════════════════════════════════
+    // ── PROJECTDAGRAPPORT ──
+    // ══════════════════════════════════════
+    // Het rapport van een project op een dag, door de hele ploeg aangevuld:
+    // dagboek (weer, temperatuur, log), personeel, materieel (de regels uit
+    // /api/materieel/inzet, dus dezelfde CO₂ als in het werkdagboek),
+    // materiaal en afwijkingen. Zie routers/dagrapport_router.py.
+    var drConfig = null;
+    var drData = null;
+    var drTeller = 0;          // alleen het antwoord op de laatste vraag telt
+
+    function dbTab(welke) {
+      var project = welke === 'project';
+      document.getElementById('dbMijnWrap').style.display = project ? 'none' : '';
+      document.getElementById('dbProjectWrap').style.display = project ? '' : 'none';
+      document.getElementById('dbTabMijn').classList.toggle('active', !project);
+      document.getElementById('dbTabProject').classList.toggle('active', project);
+      try { localStorage.setItem('fieldops_dagboek_tab', welke); } catch (e) {}
+      if (project) initDagrapport();
+    }
+
+    function initDagrapport() {
+      initMaterieel();
+      var datum = document.getElementById('drDatum');
+      if (!datum.value) datum.value = daybookCurrentDate || _todayIso();
+      var klaar = drConfig ? Promise.resolve(drConfig) : api('GET', '/api/dagrapport/config').then(function (c) {
+        drConfig = c;
+        _drVulKeuzes();
+        return c;
+      });
+      Promise.all([klaar, _zorgVoorProjecten()]).then(function () {
+        var sel = document.getElementById('drProject');
+        var gekozen = sel.value;
+        if (!gekozen) { try { gekozen = localStorage.getItem('fieldops_dagrapport_project') || ''; } catch (e) {} }
+        _vulProjectKeuze('drProject', gekozen);
+        if (gekozen && sel.value !== gekozen) sel.value = '';
+        laadDagrapport();
+      }).catch(function (e) { showToast(e.message || 'Dagrapport laden mislukt', 'error'); });
+    }
+
+    function _drOpties(elId, lijst, leeg) {
+      var el = document.getElementById(elId);
+      if (!el) return;
+      el.innerHTML = (leeg ? '<option value="">' + leeg + '</option>' : '') + lijst.map(function (x) {
+        return '<option value="' + escapeHtml(x.code) + '">' + escapeHtml(x.naam) + '</option>';
+      }).join('');
+    }
+
+    function _drVulKeuzes() {
+      var c = drConfig;
+      _drOpties('drWeer', c.weer, '— Kies —');
+      _drOpties('drMRichting', c.richtingen);
+      _drOpties('drMEenheid', c.eenheden);
+      _drOpties('drAStagnatie', c.stagnatie);
+      _drOpties('drASoort', c.afwijking_soorten);
+      document.getElementById('drFuncties').innerHTML = c.functies.map(function (f) {
+        return '<option value="' + escapeHtml(f) + '"></option>';
+      }).join('');
+      var mw = document.getElementById('drPMedewerker');
+      mw.innerHTML = '<option value="">— Extern / inhuur —</option>' + c.medewerkers.map(function (m) {
+        return '<option value="' + escapeHtml(m.id) + '">' + escapeHtml(m.naam) + (m.rol ? ' · ' + escapeHtml(m.rol) : '') + '</option>';
+      }).join('');
+      drPMedewerkerGekozen();
+      var lezen = !c.mag_schrijven;
+      document.getElementById('drAlleenLezen').style.display = lezen ? '' : 'none';
+      document.querySelectorAll('#dbProjectWrap .dr-schrijf').forEach(function (el) { el.style.display = lezen ? 'none' : ''; });
+      ['drWeer', 'drTempMin', 'drTempMax', 'drLog'].forEach(function (id) { document.getElementById(id).disabled = lezen; });
+    }
+
+    function drPMedewerkerGekozen() {
+      var extern = !document.getElementById('drPMedewerker').value;
+      document.getElementById('drPNaamWrap').style.display = extern ? '' : 'none';
+      document.getElementById('drPBedrijfWrap').style.display = extern ? '' : 'none';
+    }
+
+    function drProjectGekozen() {
+      try { localStorage.setItem('fieldops_dagrapport_project', document.getElementById('drProject').value); } catch (e) {}
+      laadDagrapport();
+    }
+
+    function drShift(dagen) {
+      var input = document.getElementById('drDatum');
+      var d = new Date((input.value || _todayIso()) + 'T00:00:00');
+      d.setDate(d.getDate() + dagen);
+      input.value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      laadDagrapport();
+    }
+
+    function _drKeuze() {
+      return { project: document.getElementById('drProject').value, datum: document.getElementById('drDatum').value };
+    }
+
+    function laadDagrapport() {
+      var k = _drKeuze();
+      var leeg = document.getElementById('drLeeg'), inhoud = document.getElementById('drInhoud');
+      if (!k.project || !k.datum) { leeg.style.display = ''; inhoud.style.display = 'none'; drData = null; return; }
+      var vraag = ++drTeller;
+      api('GET', '/api/dagrapport/dag?project_id=' + encodeURIComponent(k.project) + '&datum=' + encodeURIComponent(k.datum))
+        .then(function (d) {
+          // Snel van dag of project gewisseld: een later binnenkomend antwoord
+          // van een eerdere keuze mag het scherm niet overschrijven.
+          if (vraag !== drTeller || !d) return;
+          drData = d;
+          leeg.style.display = 'none'; inhoud.style.display = '';
+          _drToon(d);
+        }).catch(function (e) {
+          if (vraag !== drTeller) return;
+          showToast(e.message || 'Dagrapport laden mislukt', 'error');
+        });
+    }
+
+    function _drMagWeg(r) {
+      return drConfig && drConfig.mag_schrijven && (r.created_by === currentUser.id || _magVastleggen());
+    }
+
+    function _drToon(d) {
+      document.getElementById('drStatCo2').textContent = d.materieel.length ? _nlGetal(d.co2.uitstoot_kg) : '—';
+      document.getElementById('drStatCo2').parentNode.title = d.co2.waarvan_geschat_kg
+        ? _nlGetal(d.co2.waarvan_geschat_kg) + ' kg daarvan is geschat uit draaiuren' : '';
+      document.getElementById('drStatReductie').textContent = d.materieel.length ? _nlGetal(d.co2.reductie_kg) : '—';
+      document.getElementById('drStatPersoneel').textContent = _nlGetal(d.uren_personeel);
+      var urenMat = d.materieel.reduce(function (s, r) { return s + (r.draaiuren || 0); }, 0);
+      document.getElementById('drStatMaterieel').textContent = _nlGetal(urenMat);
+      document.getElementById('drWeekLabel').textContent = 'Week ' + d.week;
+
+      // Dagboek
+      var dag = d.dag;
+      document.getElementById('drWeer').value = dag.weer || '';
+      document.getElementById('drTempMin').value = dag.temp_min === null ? '' : dag.temp_min;
+      document.getElementById('drTempMax').value = dag.temp_max === null ? '' : dag.temp_max;
+      document.getElementById('drLog').value = dag.log || '';
+      document.getElementById('drDagMeta').textContent = dag.bijgewerkt_door
+        ? 'bijgewerkt door ' + dag.bijgewerkt_door + ' · ' + new Date(dag.bijgewerkt_op).toLocaleString('nl-NL', { dateStyle: 'short', timeStyle: 'short' })
+        : 'nog niets vastgelegd';
+      document.getElementById('drDagStatus').textContent = '';
+
+      // Personeel
+      var magUren = drConfig && drConfig.mag_schrijven;
+      document.getElementById('drPersoneelTotaal').textContent = d.personeel.length
+        ? d.personeel.length + ' personen · ' + _nlGetal(d.uren_personeel) + ' uur' : '';
+      document.getElementById('drPersoneelLijst').innerHTML = d.personeel.length ? d.personeel.map(function (p) {
+        // Inhuur zonder naam: de functie is de titel, dan niet nog eens eronder.
+        var titel = p.naam_toon || p.functie || p.bedrijf || '';
+        var sub = [p.naam_toon ? p.functie : '', titel === p.bedrijf ? '' : p.bedrijf].filter(Boolean).map(escapeHtml).join(' · ');
+        return '<div class="dr-regel"><div class="dr-hoofd"><div>' + escapeHtml(titel) +
+          (p.eigen ? '' : ' <span style="font-size:10.5px;padding:1px 6px;border-radius:999px;background:var(--card-bg-hover);">inhuur</span>') +
+          '</div>' + (sub ? '<div class="dr-sub">' + sub + '</div>' : '') + '</div>' +
+          (magUren
+            ? '<input class="dr-uren" type="number" min="0" max="24" step="0.25" value="' + p.uren + '" aria-label="Uren" onchange="drUrenWijzigen(\'' + p.id + '\', this)"> uur'
+            : '<span>' + _nlGetal(p.uren) + ' uur</span>') +
+          (_drMagWeg(p) ? '<button class="dr-weg" title="Verwijderen" onclick="drWeg(\'personeel\', \'' + p.id + '\')">🗑</button>' : '') +
+          '</div>';
+      }).join('') : '<div class="dr-leeg">Nog niemand op deze dag. Voeg mensen toe, of neem de ploeg van de vorige werkdag over.</div>';
+
+      // Materieel
+      var t = d.co2;
+      document.getElementById('drMaterieelTotaal').textContent = d.materieel.length
+        ? _nlGetal(urenMat) + ' draaiuur · ' + _nlGetal(t.uitstoot_kg) + ' kg CO₂' +
+          (t.reductie_kg ? ' · ' + _nlGetal(t.reductie_kg) + ' kg reductie' : '') : '';
+      document.getElementById('drMaterieelLijst').innerHTML = d.materieel.length ? d.materieel.map(function (r) {
+        var sub = [r.leverancier, r.energiedrager_naam, r.emissieklasse_naam && r.emissieklasse_naam !== 'Onbekend' ? r.emissieklasse_naam : '',
+                   r.vermogen_kw ? r.vermogen_kw + ' kW' : '', r.user_naam ? 'door ' + r.user_naam : '']
+          .filter(Boolean).map(escapeHtml).join(' · ');
+        var co2 = r.co2_kg === null || r.co2_kg === undefined
+          ? '<span class="dr-sub" title="Vul getankte liters in, of draaiuren bij materieel met een verbruik per uur">geen CO₂</span>'
+          : '<strong>' + _nlGetal(r.co2_kg) + ' kg</strong> <span class="dr-sub">' + (r.co2_methode === 'geschat' ? 'geschat' : 'gemeten') + '</span>' +
+            (r.reductie_kg ? '<div class="dr-sub" style="color:#16a34a;">−' + _nlGetal(r.reductie_kg) + ' kg t.o.v. diesel</div>' : '');
+        var eigen = r.user_id === currentUser.id || currentUser.is_org_admin;
+        return '<div class="dr-regel"><div class="dr-hoofd"><div>' + escapeHtml(r.materieel_naam || '') +
+          (r.draaiuren ? ' — ' + _nlGetal(r.draaiuren) + ' uur' : '') + '</div>' +
+          (sub ? '<div class="dr-sub">' + sub + '</div>' : '') + '</div>' +
+          '<div style="text-align:right;white-space:nowrap;">' + co2 + '</div>' +
+          (eigen && drConfig.mag_schrijven
+            ? '<button class="dr-weg" title="Bewerken" onclick="drMaterieelBewerken(\'' + r.id + '\')">✏️</button>' +
+              '<button class="dr-weg" title="Verwijderen" onclick="drMaterieelWeg(\'' + r.id + '\')">🗑</button>'
+            : '') + '</div>';
+      }).join('') : '<div class="dr-leeg">Nog geen materieel op deze dag.</div>';
+
+      // Materiaal
+      document.getElementById('drMateriaalLijst').innerHTML = d.materiaal.length ? d.materiaal.map(function (m) {
+        return '<div class="dr-regel"><div class="dr-hoofd"><div>' + escapeHtml(m.materiaal) + '</div>' +
+          '<div class="dr-sub">' + [m.richting_naam, m.leverancier].filter(Boolean).map(escapeHtml).join(' · ') + '</div></div>' +
+          '<strong>' + _nlGetal(m.hoeveelheid) + ' ' + escapeHtml(m.eenheid_naam) + '</strong>' +
+          (_drMagWeg(m) ? '<button class="dr-weg" title="Verwijderen" onclick="drWeg(\'materiaal\', \'' + m.id + '\')">🗑</button>' : '') +
+          '</div>';
+      }).join('') : '<div class="dr-leeg">Geen aan- of afvoer vastgelegd.</div>';
+
+      // Afwijkingen
+      document.getElementById('drAfwijkingLijst').innerHTML = d.afwijkingen.length ? d.afwijkingen.map(function (a) {
+        var sub = [a.stagnatie !== 'geen' ? a.stagnatie_naam + (a.duur_uren ? ' ' + _nlGetal(a.duur_uren) + ' uur' : '') : '',
+                   a.soort !== 'geen' ? a.soort_naam : '', a.adres].filter(Boolean).map(escapeHtml).join(' · ');
+        return '<div class="dr-regel" style="align-items:flex-start;"><div class="dr-hoofd"><div>' + escapeHtml(a.omschrijving) + '</div>' +
+          (a.maatregel ? '<div class="dr-sub">Maatregel: ' + escapeHtml(a.maatregel) + '</div>' : '') +
+          (sub ? '<div class="dr-sub">' + sub + '</div>' : '') + '</div>' +
+          (a.bedrag !== null && a.bedrag !== undefined ? '<strong>€ ' + Number(a.bedrag).toLocaleString('nl-NL', { minimumFractionDigits: 2 }) + '</strong>' : '') +
+          (_drMagWeg(a) ? '<button class="dr-weg" title="Verwijderen" onclick="drWeg(\'afwijkingen\', \'' + a.id + '\')">🗑</button>' : '') +
+          '</div>';
+      }).join('') : '<div class="dr-leeg">Geen afwijkingen.</div>';
+    }
+
+    function _drGetal(id) {
+      var v = parseFloat(document.getElementById(id).value);
+      return isNaN(v) ? null : v;
+    }
+
+    // Een knop die tijdens het opslaan uit staat: een dubbelklik mag geen
+    // dubbele regel opleveren.
+    function _drBezig(knopId, verzoek) {
+      var knop = document.getElementById(knopId);
+      if (knop) { if (knop.disabled) return Promise.resolve(); knop.disabled = true; }
+      return verzoek().catch(function (e) { showToast(e.message || 'Opslaan mislukt', 'error'); throw e; })
+        .then(function (x) { if (knop) knop.disabled = false; return x; },
+              function () { if (knop) knop.disabled = false; });
+    }
+
+    function drDagOpslaan() {
+      var k = _drKeuze();
+      var body = { project_id: k.project, datum: k.datum, weer: document.getElementById('drWeer').value || null,
+                   temp_min: _drGetal('drTempMin'), temp_max: _drGetal('drTempMax'),
+                   log: document.getElementById('drLog').value };
+      _drBezig('drDagOpslaan', function () {
+        return api('PUT', '/api/dagrapport/dag', body).then(function (dag) {
+          if (!dag) return;
+          if (drData && k.project === _drKeuze().project && k.datum === _drKeuze().datum) {
+            drData.dag = dag;
+            document.getElementById('drDagMeta').textContent = 'bijgewerkt door ' + dag.bijgewerkt_door + ' · zojuist';
+          }
+          document.getElementById('drDagStatus').textContent = '✓ Opgeslagen';
+          showToast('Dagboek opgeslagen', 'success');
+        });
+      });
+    }
+
+    function drPersoneelToevoegen() {
+      var k = _drKeuze();
+      var mw = document.getElementById('drPMedewerker').value;
+      var body = { project_id: k.project, datum: k.datum, user_id: mw || null,
+                   naam: mw ? null : (document.getElementById('drPNaam').value.trim() || null),
+                   functie: document.getElementById('drPFunctie').value.trim() || null,
+                   bedrijf: mw ? null : (document.getElementById('drPBedrijf').value.trim() || null),
+                   uren: _drGetal('drPUren') };
+      if (body.uren === null) { showToast('Vul de uren in', 'error'); return; }
+      if (!mw && !body.naam && !body.functie && !body.bedrijf) { showToast('Kies een medewerker of vul naam, functie of bedrijf in', 'error'); return; }
+      _drBezig('drPToevoegen', function () {
+        return api('POST', '/api/dagrapport/personeel', body).then(function () {
+          document.getElementById('drPNaam').value = '';
+          showToast('Toegevoegd', 'success');
+          laadDagrapport();
+        });
+      });
+    }
+
+    function drUrenWijzigen(id, input) {
+      var uren = parseFloat(input.value);
+      if (isNaN(uren) || uren < 0 || uren > 24) { showToast('Uren tussen 0 en 24', 'error'); laadDagrapport(); return; }
+      api('PATCH', '/api/dagrapport/personeel/' + id, { uren: uren }).then(function () {
+        showToast('Uren bijgewerkt', 'success');
+        laadDagrapport();
+      }).catch(function (e) { showToast(e.message || 'Opslaan mislukt', 'error'); laadDagrapport(); });
+    }
+
+    function drPloegOvernemen() {
+      var k = _drKeuze();
+      var d = new Date(k.datum + 'T00:00:00');
+      var dow = d.getDay();                         // ma na het weekend: de vrijdag ervoor
+      d.setDate(d.getDate() - (dow === 1 ? 3 : (dow === 0 ? 2 : 1)));
+      var van = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      _drBezig('drPKopieer', function () {
+        return api('POST', '/api/dagrapport/personeel/kopieer', { project_id: k.project, van: van, naar: k.datum }).then(function (r) {
+          if (!r) return;
+          showToast(r.toegevoegd + ' overgenomen van ' + d.toLocaleDateString('nl-NL') +
+                    (r.overgeslagen ? ' (' + r.overgeslagen + ' stond er al)' : ''), 'success');
+          laadDagrapport();
+        });
+      });
+    }
+
+    function drMateriaalToevoegen() {
+      var k = _drKeuze();
+      var body = { project_id: k.project, datum: k.datum,
+                   leverancier: document.getElementById('drMLeverancier').value.trim() || null,
+                   materiaal: document.getElementById('drMMateriaal').value.trim(),
+                   richting: document.getElementById('drMRichting').value,
+                   hoeveelheid: _drGetal('drMHoeveelheid'),
+                   eenheid: document.getElementById('drMEenheid').value };
+      if (!body.materiaal) { showToast('Vul het materiaal in', 'error'); return; }
+      if (body.hoeveelheid === null) { showToast('Vul de hoeveelheid in', 'error'); return; }
+      _drBezig('drMToevoegen', function () {
+        return api('POST', '/api/dagrapport/materiaal', body).then(function () {
+          document.getElementById('drMMateriaal').value = '';
+          document.getElementById('drMHoeveelheid').value = '';
+          showToast('Toegevoegd', 'success');
+          laadDagrapport();
+        });
+      });
+    }
+
+    function drAfwijkingToevoegen() {
+      var k = _drKeuze();
+      var body = { project_id: k.project, datum: k.datum,
+                   omschrijving: document.getElementById('drAOmschrijving').value.trim(),
+                   maatregel: document.getElementById('drAMaatregel').value.trim() || null,
+                   adres: document.getElementById('drAAdres').value.trim() || null,
+                   stagnatie: document.getElementById('drAStagnatie').value,
+                   duur_uren: _drGetal('drADuur'),
+                   soort: document.getElementById('drASoort').value,
+                   bedrag: _drGetal('drABedrag') };
+      if (!body.omschrijving) { showToast('Beschrijf wat er afweek', 'error'); return; }
+      _drBezig('drAToevoegen', function () {
+        return api('POST', '/api/dagrapport/afwijkingen', body).then(function () {
+          ['drAOmschrijving', 'drAMaatregel', 'drAAdres', 'drADuur', 'drABedrag'].forEach(function (id) {
+            document.getElementById(id).value = '';
+          });
+          showToast('Afwijking vastgelegd', 'success');
+          laadDagrapport();
+        });
+      });
+    }
+
+    function drWeg(soort, id) {
+      if (!confirm('Deze regel verwijderen?')) return;
+      api('DELETE', '/api/dagrapport/' + soort + '/' + id).then(function () {
+        showToast('Verwijderd', 'success');
+        laadDagrapport();
+      }).catch(function (e) { showToast(e.message || 'Verwijderen mislukt', 'error'); });
+    }
+
+    function drMaterieelToevoegen() {
+      var k = _drKeuze();
+      openMaterieelModal(null, { project_id: k.project, datum: k.datum, bron: 'dagrapport' });
+    }
+
+    function drMaterieelBewerken(id) {
+      var r = ((drData || {}).materieel || []).filter(function (x) { return x.id === id; })[0];
+      if (r) openMaterieelModal(r, { bron: 'dagrapport' });
+    }
+
+    function drMaterieelWeg(id) {
+      if (!confirm('Deze materieelregel verwijderen? Hij verdwijnt ook uit het werkdagboek van wie hem invulde.')) return;
+      api('DELETE', '/api/materieel/inzet/' + id).then(function () {
+        showToast('Regel verwijderd', 'success');
+        laadDagrapport();
+      }).catch(function (e) { showToast(e.message || 'Verwijderen mislukt', 'error'); });
+    }
+
+    function drWeekExport(formaat) {
+      var k = _drKeuze();
+      if (!k.project) return;
+      exportBestand('/api/dagrapport/week.' + formaat + '?project_id=' + encodeURIComponent(k.project) +
+                    '&datum=' + encodeURIComponent(k.datum), {
+        naam: 'weekrapport.' + formaat, bezig: 'Weekrapport maken…',
+        klaar: formaat === 'pdf' ? 'Weekrapport (PDF) gedownload' : 'Weekrapport (Excel) gedownload'
+      });
     }
 
     // ── Het CO₂-rapport ────────────────────────────────────────
