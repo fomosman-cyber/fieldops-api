@@ -11,10 +11,11 @@ verwijderen. Komt er later een nieuwe foreign key bij zonder opruimregel, dan
 valt dit hier om in plaats van bij een klant.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from database import SessionLocal
-from models import (Asset, BouwInspectie, DaybookEntry, EmailInboxRoute,
+from models import (Asset, BouwInspectie, DagrapportAfwijking, DagrapportDag, DagrapportMateriaal,
+                    DagrapportPersoneel, DaybookEntry, EmailInboxRoute,
                     Incident, IncomingWebhook, Inspection, Melding, Oplevering,
                     OpleveringPunt, Organization, Project, Schouwrit, Toolbox,
                     Werkplekinspectie)
@@ -98,6 +99,15 @@ def test_project_met_alle_verwijzingen_is_verwijderbaar(client, admin_user, org)
                              created_by=admin_user.id))
         db.add(Schouwrit(organization_id=org.id, project_id=project_id,
                          created_by=admin_user.id))
+        # Het projectdagrapport: vier tabellen die naar het project wijzen.
+        db.add(DagrapportDag(organization_id=org.id, project_id=project_id,
+                             datum=date(2026, 9, 14), log="frezen"))
+        db.add(DagrapportPersoneel(organization_id=org.id, project_id=project_id,
+                                   datum=date(2026, 9, 14), naam="Piet", uren=8))
+        db.add(DagrapportMateriaal(organization_id=org.id, project_id=project_id,
+                                   datum=date(2026, 9, 14), materiaal="Asfalt", hoeveelheid=16))
+        db.add(DagrapportAfwijking(organization_id=org.id, project_id=project_id,
+                                   datum=date(2026, 9, 14), omschrijving="Meerwerk voetpad"))
         # De verraderlijkste: de organisatie zelf wijst naar dit project.
         o = db.query(Organization).filter(Organization.id == org.id).first()
         o.public_meld_default_project_id = project_id

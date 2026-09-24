@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 FACTOREN_BESTAND = Path(__file__).parent / "data" / "co2_factoren.json"
+CATALOGUS_BESTAND = Path(__file__).parent / "data" / "materieel_catalogus.json"
 
 
 # ── Wat voor materieel ───────────────────────────────────────────────
@@ -278,6 +279,70 @@ def totaal(berekeningen: list[Berekening]) -> dict[str, Any]:
         "regels_zonder_getal": onbekend,
         "volledig": onbekend == 0,
     }
+
+
+# ── Reductie ─────────────────────────────────────────────────────────
+# Een opdrachtgever vraagt niet alleen hoeveel er is uitgestoten, maar ook
+# hoeveel minder dan gewoon: een kraan op HVO100 stoot zo'n 85% minder uit dan
+# dezelfde kraan op pompdiesel. Die "reductie" is wat hetzelfde aantal liters
+# op diesel B7 had uitgestoten, min wat er werkelijk uitkwam.
+#
+# Alleen voor vloeibare brandstof in liters: een liter HVO vervangt een liter
+# diesel, een kWh stroom vervangt geen vast aantal liters. Voor stroom, gas en
+# benzine rekenen we dus geen reductie uit in plaats van er een te verzinnen.
+
+VERGELIJKBAAR_MET_DIESEL = {"hvo100", "gtl"}
+
+
+def reductie_kg(*, energiedrager: Optional[str], co2_kg: Optional[float],
+                co2_factor: Optional[float],
+                eigen_factoren: Optional[dict] = None) -> Optional[float]:
+    """Hoeveel kg CO2 er minder is uitgestoten dan op diesel B7.
+
+    Rekent terug vanuit de bevroren uitkomst van de regel (kg en factor), zodat
+    de reductie bij hetzelfde aantal liters hoort als de uitstoot. None als er
+    niets te vergelijken valt; 0 voor diesel zelf.
+    """
+    if co2_kg is None:
+        return None
+    if energiedrager == "diesel":
+        return 0.0
+    if energiedrager not in VERGELIJKBAAR_MET_DIESEL or not co2_factor:
+        return None
+    diesel = factor_voor("diesel", eigen_factoren)
+    if diesel is None:
+        return None
+    liters = co2_kg / co2_factor
+    return round(liters * diesel.kg_co2_per_eenheid - co2_kg, 3)
+
+
+# ── Standaardlijst materieel ─────────────────────────────────────────
+# Wie een kraan huurt weet het type, zelden het verbruik. Met een kengetal uit
+# deze lijst levert een regel met alleen draaiuren toch een (geschatte) CO2
+# op in plaats van niets. Het blijft een schatting: het scherm en het rapport
+# zeggen dat erbij, en wie de getankte liters invult krijgt "gemeten".
+
+_catalogus_cache: Optional[dict] = None
+
+
+def catalogus() -> dict:
+    """De standaardlijst GWW-materieel met vermogen en verbruik per uur."""
+    global _catalogus_cache
+    if _catalogus_cache is None:
+        try:
+            _catalogus_cache = json.loads(CATALOGUS_BESTAND.read_text(encoding="utf-8"))
+        except Exception:
+            _catalogus_cache = {"toelichting": "", "materieel": []}
+    return _catalogus_cache
+
+
+def catalogus_item(code: Optional[str]) -> Optional[dict]:
+    if not code:
+        return None
+    for item in catalogus().get("materieel", []):
+        if item.get("code") == code:
+            return item
+    return None
 
 
 # ── Materieellijst inlezen ───────────────────────────────────────────

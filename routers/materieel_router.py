@@ -74,6 +74,7 @@ class MaterieelIn(BaseModel):
     verbruik_per_uur: Optional[float] = Field(default=None, ge=0, le=1000)
     emissieklasse: str = "onbekend"
     bouwjaar: Optional[int] = Field(default=None, ge=1900, le=2100)
+    vermogen_kw: Optional[float] = Field(default=None, ge=0, le=5000)
     opmerking: Optional[str] = None
     actief: bool = True
 
@@ -90,6 +91,7 @@ class MaterieelPatch(BaseModel):
     verbruik_per_uur: Optional[float] = Field(default=None, ge=0, le=1000)
     emissieklasse: Optional[str] = None
     bouwjaar: Optional[int] = Field(default=None, ge=1900, le=2100)
+    vermogen_kw: Optional[float] = Field(default=None, ge=0, le=5000)
     opmerking: Optional[str] = None
     actief: Optional[bool] = None
 
@@ -97,12 +99,20 @@ class MaterieelPatch(BaseModel):
 class InzetIn(BaseModel):
     datum: Optional[date_type] = None          # default = vandaag
     materieel_id: Optional[str] = None
+    # Een regel uit de standaardlijst (data/materieel_catalogus.json). Levert
+    # naam, soort, vermogen en een geschat verbruik per uur als die niet uit
+    # het register of het formulier komen.
+    catalogus_code: Optional[str] = Field(default=None, max_length=40)
     materieel_naam: Optional[str] = Field(default=None, max_length=160)
     leverancier: Optional[str] = Field(default=None, max_length=160)
     energiedrager: Optional[str] = None
     project_id: Optional[str] = None
     draaiuren: Optional[float] = Field(default=None, ge=0, le=24)
     brandstof_hoeveelheid: Optional[float] = Field(default=None, ge=0, le=100000)
+    # Eigen kengetal voor een losse regel; wint van register en standaardlijst.
+    verbruik_per_uur: Optional[float] = Field(default=None, ge=0, le=1000)
+    vermogen_kw: Optional[float] = Field(default=None, ge=0, le=5000)
+    emissieklasse: Optional[str] = None
     opmerking: Optional[str] = None
 
 
@@ -116,6 +126,9 @@ class InzetPatch(BaseModel):
     project_id: Optional[str] = None
     draaiuren: Optional[float] = Field(default=None, ge=0, le=24)
     brandstof_hoeveelheid: Optional[float] = Field(default=None, ge=0, le=100000)
+    verbruik_per_uur: Optional[float] = Field(default=None, ge=0, le=1000)
+    vermogen_kw: Optional[float] = Field(default=None, ge=0, le=5000)
+    emissieklasse: Optional[str] = None
     opmerking: Optional[str] = None
 
 
@@ -228,8 +241,11 @@ def _namen(db: Session, inzet: list[MaterieelInzet]) -> tuple[dict, dict]:
             {p.id: p.name for p in projecten})
 
 
-def _toon(i: MaterieelInzet, users: dict, projecten: dict) -> dict:
+def _toon(i: MaterieelInzet, users: dict, projecten: dict,
+          eigen_factoren: Optional[dict] = None) -> dict:
     drager = mt.ENERGIEDRAGERS.get(i.energiedrager or "", {})
+    klasse = i.emissieklasse or (i.materieel.emissieklasse if i.materieel_id and i.materieel else None)
+    vermogen = i.vermogen_kw or (i.materieel.vermogen_kw if i.materieel_id and i.materieel else None)
     return {
         "id": i.id,
         "datum": i.datum.isoformat() if i.datum else None,
@@ -255,6 +271,14 @@ def _toon(i: MaterieelInzet, users: dict, projecten: dict) -> dict:
         "co2_methode": i.co2_methode,
         "co2_factor": i.co2_factor,
         "co2_bron": i.co2_bron,
+        # Wat hetzelfde aantal liters op diesel B7 had uitgestoten, min wat er
+        # uitkwam (zie mt.reductie_kg). None: niet te vergelijken.
+        "reductie_kg": mt.reductie_kg(energiedrager=i.energiedrager, co2_kg=i.co2_kg,
+                                      co2_factor=i.co2_factor, eigen_factoren=eigen_factoren),
+        "catalogus_code": i.catalogus_code,
+        "vermogen_kw": vermogen,
+        "emissieklasse": klasse,
+        "emissieklasse_naam": mt.EMISSIEKLASSEN.get(klasse or "", klasse or ""),
         "opmerking": i.opmerking,
     }
 
@@ -278,6 +302,16 @@ def _dagboektekst(i: MaterieelInzet) -> tuple[str, str]:
     if i.opmerking:
         regels.append(i.opmerking)
     return titel[:255], "\n".join(regels)
+
+
+def _totaal_met_reductie(regels: list[MaterieelInzet], eigen_factoren: dict) -> dict:
+    """mt.totaal, plus de reductie ten opzichte van diesel over dezelfde regels."""
+    uit = mt.totaal([mt.Berekening(kg=r.co2_kg, methode=r.co2_methode) for r in regels])
+    reducties = [mt.reductie_kg(energiedrager=r.energiedrager, co2_kg=r.co2_kg,
+                                co2_factor=r.co2_factor, eigen_factoren=eigen_factoren)
+                 for r in regels]
+    uit["kg_reductie"] = round(sum(x for x in reducties if x), 2)
+    return uit
 
 
 def _schrijf_berekening(i: MaterieelInzet, eigen_factoren: dict) -> None:
@@ -320,6 +354,7 @@ def config(current_user: User = Depends(get_current_user)):
             "rijen": lijst.get("factoren", []),
         },
         "eigen_factoren": eigen,
+        "catalogus": mt.catalogus(),
     }
 
 
@@ -393,13 +428,13 @@ def lijst_inzet(
     regels = _zichtbare_inzet(db, current_user, d_van, d_tot, user_id=user_id,
                               hele_organisatie=iedereen, project_id=project_id).all()
     users, projecten = _namen(db, regels)
-    berekeningen = [mt.Berekening(kg=r.co2_kg, methode=r.co2_methode) for r in regels]
+    eigen = _eigen_factoren(current_user.organization)
     return {
         "van": d_van.isoformat(),
         "tot": d_tot.isoformat(),
         "aantal": len(regels),
-        "totaal": mt.totaal(berekeningen),
-        "regels": [_toon(r, users, projecten) for r in regels],
+        "totaal": _totaal_met_reductie(regels, eigen),
+        "regels": [_toon(r, users, projecten, eigen) for r in regels],
     }
 
 
@@ -420,12 +455,17 @@ def nieuwe_inzet(body: InzetIn, request: Request,
         if not stuk:
             raise HTTPException(404, "Materieel niet gevonden")
 
-    naam = (body.materieel_naam or (stuk.naam if stuk else "")).strip()
+    kat = mt.catalogus_item(body.catalogus_code)
+    if body.catalogus_code and kat is None:
+        raise HTTPException(400, f"Onbekend materieel in de standaardlijst: {body.catalogus_code}")
+
+    naam = (body.materieel_naam or (stuk.naam if stuk else "") or (kat["naam"] if kat else "")).strip()
     if not naam:
         raise HTTPException(400, "Kies materieel uit de lijst of vul een naam in")
 
-    energiedrager = body.energiedrager or (stuk.energiedrager if stuk else "diesel")
-    _controleer_keuzes(energiedrager=energiedrager)
+    energiedrager = (body.energiedrager or (stuk.energiedrager if stuk else None)
+                     or (kat.get("energiedrager") if kat else None) or "diesel")
+    _controleer_keuzes(energiedrager=energiedrager, emissieklasse=body.emissieklasse)
 
     if body.project_id:
         bestaat = db.query(Project.id).filter(
@@ -441,12 +481,19 @@ def nieuwe_inzet(body: InzetIn, request: Request,
         project_id=body.project_id,
         materieel_id=stuk.id if stuk else None,
         materieel_naam=naam[:160],
-        soort=stuk.soort if stuk else None,
+        soort=(stuk.soort if stuk else None) or (kat["soort"] if kat else None),
         leverancier=(body.leverancier or (stuk.leverancier if stuk else None) or "").strip()[:160] or None,
         energiedrager=energiedrager,
         draaiuren=body.draaiuren,
         brandstof_hoeveelheid=body.brandstof_hoeveelheid,
-        verbruik_per_uur=stuk.verbruik_per_uur if stuk else None,
+        # Eigen getal wint, dan het register, dan de standaardlijst.
+        verbruik_per_uur=_eerste(body.verbruik_per_uur,
+                                 stuk.verbruik_per_uur if stuk else None,
+                                 kat.get("verbruik_per_uur") if kat else None),
+        catalogus_code=kat["code"] if kat else None,
+        vermogen_kw=_eerste(body.vermogen_kw, stuk.vermogen_kw if stuk else None,
+                            kat.get("vermogen_kw") if kat else None),
+        emissieklasse=body.emissieklasse or (stuk.emissieklasse if stuk else None),
         opmerking=body.opmerking,
     )
     _schrijf_berekening(inzet, _eigen_factoren(current_user.organization))
@@ -474,7 +521,16 @@ def nieuwe_inzet(body: InzetIn, request: Request,
                after={"materieel": inzet.materieel_naam, "datum": inzet.datum.isoformat(),
                       "co2_kg": inzet.co2_kg, "methode": inzet.co2_methode})
     users, projecten = _namen(db, [inzet])
-    return _toon(inzet, users, projecten)
+    return _toon(inzet, users, projecten, _eigen_factoren(current_user.organization))
+
+
+def _eerste(*waarden):
+    """De eerste waarde die is ingevuld. 0 telt als ingevuld (een elektrische
+    machine verbruikt 0 liter per uur), None niet."""
+    for w in waarden:
+        if w is not None:
+            return w
+    return None
 
 
 def _eigen_regel(db: Session, inzet_id: str, current_user: User) -> MaterieelInzet:
@@ -512,6 +568,8 @@ def wijzig_inzet(inzet_id: str, body: InzetPatch, request: Request,
         raise HTTPException(400, "De naam komt uit het register en hoort daar te worden gewijzigd")
     if "energiedrager" in velden:
         _controleer_keuzes(energiedrager=velden["energiedrager"])
+    if velden.get("emissieklasse"):
+        _controleer_keuzes(emissieklasse=velden["emissieklasse"])
     if velden.get("project_id"):
         bestaat = db.query(Project.id).filter(
             Project.id == velden["project_id"],
@@ -535,7 +593,7 @@ def wijzig_inzet(inzet_id: str, body: InzetPatch, request: Request,
                before=voor, after={"co2_kg": inzet.co2_kg, "draaiuren": inzet.draaiuren,
                                    "brandstof": inzet.brandstof_hoeveelheid})
     users, projecten = _namen(db, [inzet])
-    return _toon(inzet, users, projecten)
+    return _toon(inzet, users, projecten, _eigen_factoren(current_user.organization))
 
 
 @router.delete("/inzet/{inzet_id}")
@@ -593,12 +651,12 @@ def _rapport(db: Session, current_user: User, d_van: date_type, d_tot: date_type
             e["kg_totaal"] = round(e["kg_gemeten"] + e["kg_geschat"], 2)
         return sorted(emmers.values(), key=lambda e: -e["kg_totaal"])
 
-    berekeningen = [mt.Berekening(kg=r.co2_kg, methode=r.co2_methode) for r in regels]
+    eigen = _eigen_factoren(current_user.organization)
     lijst = mt.factorenlijst()
     return {
         "van": d_van.isoformat(),
         "tot": d_tot.isoformat(),
-        "totaal": mt.totaal(berekeningen),
+        "totaal": _totaal_met_reductie(regels, eigen),
         "per_materieel": optellen(lambda r: r.materieel_naam),
         "per_project": optellen(lambda r: projecten.get(r.project_id) if r.project_id else None),
         "per_leverancier": optellen(lambda r: r.leverancier),
@@ -607,7 +665,7 @@ def _rapport(db: Session, current_user: User, d_van: date_type, d_tot: date_type
         "per_gebruiker": optellen(lambda r: users.get(r.user_id)),
         "factorenlijst": {"lijst": lijst.get("lijst", ""), "versie": lijst.get("versie", ""),
                           "bron": lijst.get("bron", "")},
-        "regels": [_toon(r, users, projecten) for r in regels],
+        "regels": [_toon(r, users, projecten, eigen) for r in regels],
     }
 
 
@@ -633,21 +691,22 @@ def _rapport_bladen(rapport: dict):
         Kolom("Datum", "datum"), Kolom("Materieel"), Kolom("Soort"), Kolom("Leverancier"),
         Kolom("Project"), Kolom("Energiedrager"), Kolom("Draaiuren", "getal", 2),
         Kolom("Getankt", "getal", 2), Kolom("Eenheid"), Kolom("CO2 (kg)", "getal", 2),
-        Kolom("Grondslag"), Kolom("Factor"),
+        Kolom("Reductie (kg)", "getal", 2), Kolom("Grondslag"), Kolom("Factor"),
     ]
     methode_naam = {"gemeten": "Gemeten", "geschat": "Geschat", "onbekend": "Niet berekend"}
     detail = [[
         date_type.fromisoformat(r["datum"]) if r["datum"] else None,
         r["materieel_naam"], r["soort_naam"], r["leverancier"] or "",
         r["project_naam"] or "", r["energiedrager_naam"], r["draaiuren"],
-        r["brandstof_hoeveelheid"], r["eenheid"], r["co2_kg"],
+        r["brandstof_hoeveelheid"], r["eenheid"], r["co2_kg"], r["reductie_kg"],
         methode_naam.get(r["co2_methode"], r["co2_methode"]),
         r["co2_factor"],
     ] for r in rapport["regels"]]
 
     t = rapport["totaal"]
     bladen = [Blad("Inzet per dag", detail_kolommen, detail,
-                   totaal=["", "Totaal", "", "", "", "", None, None, "", t["kg_totaal"], "", ""])]
+                   totaal=["", "Totaal", "", "", "", "", None, None, "", t["kg_totaal"],
+                           t.get("kg_reductie"), "", ""])]
 
     groep_kolommen = [Kolom("Naam"), Kolom("Regels", "heel"), Kolom("Draaiuren", "getal", 2),
                       Kolom("CO2 gemeten (kg)", "getal", 2), Kolom("CO2 geschat (kg)", "getal", 2),
@@ -670,6 +729,8 @@ def _rapport_ondertitel(rapport: dict) -> str:
                f"{date_type.fromisoformat(rapport['tot']).strftime('%d-%m-%Y')}")
     delen = [periode,
              f"{t['kg_totaal']:g} kg CO2 (waarvan {t['kg_geschat']:g} kg geschat)"]
+    if t.get("kg_reductie"):
+        delen.append(f"{t['kg_reductie']:g} kg minder dan op diesel")
     if t["regels_zonder_getal"]:
         delen.append(f"{t['regels_zonder_getal']} regel(s) zonder verbruik — niet meegeteld")
     lijst = rapport.get("factorenlijst", {})
@@ -787,7 +848,8 @@ def _toon_stuk(m: Materieel) -> dict:
         "verbruik_per_uur": m.verbruik_per_uur,
         "emissieklasse": m.emissieklasse,
         "emissieklasse_naam": mt.EMISSIEKLASSEN.get(m.emissieklasse or "", m.emissieklasse or ""),
-        "bouwjaar": m.bouwjaar, "actief": m.actief, "opmerking": m.opmerking,
+        "bouwjaar": m.bouwjaar, "vermogen_kw": m.vermogen_kw,
+        "actief": m.actief, "opmerking": m.opmerking,
     }
 
 
