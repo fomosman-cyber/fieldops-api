@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 import base64
 import re
 import json
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -25,7 +25,7 @@ import oplever_vision as ov
 from models import (User, Oplevering, OpleveringPunt, Asset,
                     OpleverRonde)
 from auth import get_current_user
-from permissions import require_module
+from permissions import eis_verwijderen, require_module
 from audit import log_action
 from email_service import send_oplevering_email
 
@@ -866,10 +866,15 @@ def update_oplevering(
 def delete_oplevering(
     oplevering_id: str,
     request: Request,
+    bevestig: bool = Query(False, description="Ook als hij is opgeleverd of aanvaard"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     o = _get_oplevering_or_404(db, oplevering_id, current_user)
+    # Voorheen kon iedereen in de organisatie, ook een lezer, elke oplevering
+    # weggooien. Nu: zie permissions.eis_verwijderen.
+    eis_verwijderen(current_user, maker_id=o.created_by, afgerond=(o.status or "concept") != "concept",
+                    bevestigd=bevestig, wat="Deze oplevering")
     title = o.title
     db.delete(o)
     db.commit()

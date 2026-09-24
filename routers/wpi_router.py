@@ -24,7 +24,7 @@ import io
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,7 @@ from database import get_db
 from export_huisstijl import (GRIJS, INKT, LETTER_PDF, Blad, HuisstijlPDF, Kolom,
                               excel_antwoord, excel_van, klant_van, pdf_antwoord, rgb)
 from models import Organization, Project, User, Werkplekinspectie, WerkplekinspectieAntwoord
-from permissions import can_manage_toolbox, require_module
+from permissions import can_manage_toolbox, eis_verwijderen, require_module
 
 router = APIRouter(prefix="/api/wpi", tags=["Veiligheid"],
                    dependencies=[Depends(require_module("veiligheid"))])
@@ -378,12 +378,14 @@ def afronden(
 def delete_wpi(
     wpi_id: str,
     request: Request,
+    bevestig: bool = Query(False, description="Ook als hij is afgerond"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     _eis_beheer(current_user)
     w = _get_wpi_or_404(db, wpi_id, current_user)
-    _eis_niet_afgerond(w)
+    eis_verwijderen(current_user, afgerond=w.status == "afgerond", bevestigd=bevestig,
+                    wat="Deze werkplekinspectie")
     db.delete(w)
     db.commit()
     log_action(db, request, current_user, action="wpi.delete",

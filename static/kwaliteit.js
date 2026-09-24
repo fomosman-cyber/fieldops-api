@@ -342,8 +342,13 @@ made_veld('Standaardkeuring',
           kpi('Afgekeurd', tel.afgekeurd || 0) +
           kpi('Afwijkend', tel.afwijkend || 0, tel.afwijkend ? 'var(--danger,#dc2626)' : null) +
         '</div>' +
-        '<button class="btn-primary" onclick="kwStartRegistratie(\'' + k.id + '\')">' +
-          'Registratie starten</button>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+          '<button class="btn-primary" onclick="kwStartRegistratie(\'' + k.id + '\')">' +
+            'Registratie starten</button>' +
+          (typeof _magVastleggen === 'function' && _magVastleggen()
+            ? '<button class="btn-secondary" style="color:var(--danger,#dc2626);" onclick="kwVerwijderKeuring()">Keuring verwijderen</button>'
+            : '') +
+        '</div>' +
       '</div>' +
 
       '<div class="card" style="margin-bottom:16px;">' +
@@ -1036,6 +1041,16 @@ made_veld('Standaardkeuring',
 
   // ── Navigatie binnen de module ───────────────────────────────────
 
+  // Met ingediende registraties hoort een keuring bij het dossier: dan vraagt
+  // de server een tweede bevestiging, en verwijderMetBevestiging stelt die vraag.
+  function kwVerwijderKeuring() {
+    var k = huidigeKeuring;
+    if (!k || typeof verwijderMetBevestiging !== 'function') return;
+    verwijderMetBevestiging('/api/kwaliteit/keuringen/' + k.id,
+      'Keuring "' + (k.naam || '') + '" verwijderen, met de velden, eisen en registraties?',
+      function () { huidigeKeuring = null; huidigeRegistratie = null; toon('kwLijst'); kwLaadKeuringen(); });
+  }
+
   function kwTerug() {
     if (el('kwRegistratie').style.display !== 'none' && huidigeKeuring) {
       kwOpenKeuring(huidigeKeuring.id);
@@ -1092,6 +1107,7 @@ made_veld('Standaardkeuring',
   // portaal.html roept deze aan vanuit onclick-handlers en navigateTo().
 
   window.kwOpen = kwOpen;
+  window.kwVerwijderKeuring = kwVerwijderKeuring;
   window.kwLaadKeuringen = kwLaadKeuringen;
   window.kwZoekDebounce = kwZoekDebounce;
   window.kwNieuweKeuring = kwNieuweKeuring;

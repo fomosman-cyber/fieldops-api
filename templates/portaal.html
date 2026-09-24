@@ -2726,8 +2726,8 @@
       </div>
 
       <p style="font-size:11px;color:var(--text-dim);margin-top:18px;line-height:1.5;" data-i18n="db_footnote">
-        Auto-entries (meldingen, status-wijzigingen) komen automatisch — die kun je niet bewerken of verwijderen (audit-integriteit).
-        Handmatige notities mag je vrij toevoegen en aanpassen.
+        Automatische regels (meldingen, status-wijzigingen) komen vanzelf. Je kunt ze uit je eigen dagboek halen; wat ze beschrijven blijft bestaan,
+        en de auditlog bewaart alles. Handmatige notities mag je vrij toevoegen, aanpassen en verwijderen.
       </p>
       </div>
 
@@ -5225,6 +5225,7 @@
       <div id="bouwVragen"></div>
 
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn-secondary" id="bouwVerwijderBtn" onclick="bouwVerwijderen()" style="color:var(--red,#dc2626);margin-right:auto;">Verwijderen</button>
         <button class="btn-secondary" onclick="bouwPdf()">PDF</button>
         <button class="btn-secondary" onclick="bouwExcel()">Excel</button>
         <button class="btn-primary" id="bouwAfrondBtn" onclick="bouwAfronden()">Afronden</button>
@@ -5373,7 +5374,7 @@
           <button class="btn-secondary" onclick="exportCurrentOpleveringPDF()">📄 PV (PDF)</button>
           <button class="btn-secondary" onclick="sendCurrentOpleveringEmail()">📧 Verstuur per mail</button>
           <button class="btn-secondary" onclick="editCurrentOplevering()">✎ Bewerken</button>
-          <button class="btn-secondary" style="color:#dc2626;border-color:#fee2e2;" onclick="deleteCurrentOplevering()">🗑️ Verwijderen</button>
+          <button class="btn-secondary" id="opVerwijderBtn" style="color:#dc2626;border-color:#fee2e2;" onclick="deleteCurrentOplevering()">🗑️ Verwijderen</button>
         </div>
       </div>
 
@@ -6507,6 +6508,7 @@
       </div>
 
       <div class="form-actions" style="display:flex;gap:10px;justify-content:flex-end;margin-top:22px;flex-wrap:wrap;">
+        <button class="btn-secondary" id="tbdVerwijderBtn" onclick="tbVerwijderen()" style="color:var(--red,#dc2626);margin-right:auto;">Verwijderen</button>
         <button class="btn-secondary" onclick="downloadToolboxPdf()" data-i18n="tb_pdf">PDF</button>
         <button class="btn-secondary" onclick="downloadToolboxExcel()">Excel</button>
         <button class="btn-secondary" id="tbdAfsluitBtn" onclick="sluitToolboxAf()" data-i18n="tb_afsluiten">Afsluiten</button>
@@ -6618,6 +6620,9 @@
           <button class="btn-primary" onclick="incAfhandelen()" data-i18n="inc_afhandelen">Afhandelen</button>
         </div>
       </div>
+      <div id="incdVerwijderRij" style="display:none;margin-top:16px;">
+        <button class="btn-secondary" onclick="incVerwijderen()" style="color:var(--red,#dc2626);">Incident verwijderen</button>
+      </div>
     </div>
   </div>
 
@@ -6650,6 +6655,7 @@
       </div>
 
       <div class="form-actions" style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+        <button class="btn-secondary" id="lmraVerwijderBtn" onclick="lmraVerwijderen()" style="color:var(--red,#dc2626);margin-right:auto;">Verwijderen</button>
         <button class="btn-secondary" onclick="closeLmra()">Sluiten</button>
         <button class="btn-secondary" id="lmraNietStartenKnop" style="border-color:#ef4444;color:#ef4444;" onclick="lmraAfronden('niet_starten')">Niet starten</button>
         <button class="btn-primary" id="lmraVeiligKnop" onclick="lmraAfronden('veilig')">Veilig — ik start</button>
@@ -6678,6 +6684,7 @@
       </div>
 
       <div class="form-actions" style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+        <button class="btn-secondary" id="wpiVerwijderBtn" onclick="wpiVerwijderen()" style="color:var(--red,#dc2626);margin-right:auto;">Verwijderen</button>
         <button class="btn-secondary" onclick="downloadWpiPdf()" data-i18n="tb_pdf">PDF</button>
         <button class="btn-secondary" onclick="downloadWpiExcel()">Excel</button>
         <button class="btn-primary" id="wpiAfrondKnop" onclick="rondWpiAf()" data-i18n="wpi_afronden">Afronden</button>
@@ -10108,6 +10115,14 @@
       });
     }
 
+    function bouwVerwijderen() {
+      var b = _bouwHuidig;
+      if (!b) return;
+      verwijderMetBevestiging('/api/bouw/' + b.id,
+        'Deze gebouwinspectie verwijderen' + (b.omschrijving ? ' (' + b.omschrijving + ')' : '') + '? Dit kan niet ongedaan worden.',
+        function () { document.getElementById('bouwModal').classList.remove('active'); _bouwHuidig = null; loadBouw(); });
+    }
+
     function openBouw(id) {
       api('GET', '/api/bouw/' + id).then(_bouwToon).catch(function (e) {
         showToast(e.message || 'Laden mislukt', 'error');
@@ -10124,6 +10139,7 @@
       document.getElementById('bouwIndruk').value = b.algemene_indruk || '';
       document.getElementById('bouwIndruk').disabled = b.status === 'afgerond';
       document.getElementById('bouwAfrondBtn').style.display = b.status === 'afgerond' ? 'none' : '';
+      document.getElementById('bouwVerwijderBtn').style.display = _magVastleggen() ? '' : 'none';
 
       var v = b.voortgang;
       // Alleen de pijlers die in deze opname zitten. Anders staat er "O: 0
@@ -18435,6 +18451,12 @@
       }).catch(function(){ /* silent */ });
     }
 
+    function clusterVerwijderen(id) {
+      verwijderMetBevestiging('/api/clusters/' + id,
+        'Dit cluster verwijderen? De meldingen blijven staan en worden weer los (niet toegewezen).',
+        function () { loadClusters(); });
+    }
+
     function renderClusterCard(c) {
       var statusColors = {
         proposed: {bg:'#e0f2fe', color:'#0369a1', label:'Voorgesteld'},
@@ -18467,7 +18489,11 @@
               + (c.estimated_hours ? ' · ~' + c.estimated_hours + ' u werk' : '')
             + '</div>'
           + '</div>'
-          + '<div style="display:flex;gap:6px;flex-shrink:0;">' + assignBtn + '</div>'
+          + '<div style="display:flex;gap:6px;flex-shrink:0;">' + assignBtn
+            + (_magVastleggen()
+                ? '<button class="btn-secondary" style="font-size:12px;padding:6px 10px;color:var(--red,#dc2626);" title="Cluster verwijderen; de meldingen blijven staan" onclick="clusterVerwijderen(\'' + c.id + '\')">🗑</button>'
+                : '')
+          + '</div>'
         + '</div>'
         + _clusterDagBlok(c)
         + savingsBar
@@ -18952,6 +18978,10 @@
     }
 
     function openOpleveringDetail(opleveringId) {
+      // Een lezer verwijdert niets (permissions.eis_verwijderen); de server
+      // weigert het toch, dus de knop hoeft hij niet te zien.
+      var opWeg = document.getElementById('opVerwijderBtn');
+      if (opWeg) opWeg.style.display = (currentUser && currentUser.role === 'viewer' && !currentUser.is_org_admin) ? 'none' : '';
       api('GET', '/api/opleveringen/' + opleveringId).then(function(o){
         _currentOplevering = o;
         renderOpleveringDetail(o);
@@ -19196,12 +19226,9 @@
         message: 'Dit verwijdert "' + o.title + '" en alle ' + (o.punten || []).length + ' opleverpunten. Niet ongedaan te maken.',
         actionLabel: 'Verwijderen',
         onConfirm: function() {
-          api('DELETE', '/api/opleveringen/' + o.id).then(function(){
-            showToast('Oplevering verwijderd', 'success');
+          verwijderMetBevestiging('/api/opleveringen/' + o.id, null, function () {
             closeOpleveringDetail();
             loadOpleveringen();
-          }).catch(function(err){
-            showToast('Fout: ' + (err.message || 'Onbekend'), 'error');
           });
         },
       });
@@ -20268,8 +20295,10 @@
       if (canSign) html += '<button class="btn-primary" onclick="openKwSignModal()" style="margin-right:8px;">' + t('kw_btn_onderteken') + '</button>';
       html += '<button class="btn-secondary" onclick="exportKunstwerkPDF()" style="margin-right:8px;">' + t('kw_btn_pdf') + '</button>';
       html += '<button class="btn-secondary" onclick="exportKunstwerkExcel()" style="margin-right:8px;">📊 Excel</button>';
-      if (!locked) {
-        html += '<button class="btn-secondary" onclick="deleteCurrentKunstwerk()" style="color:#dc2626;border-color:#fee2e2;">🗑️</button>';
+      // Ondertekend: alleen een beheerder of projectleider, na een tweede
+      // bevestiging (de server vraagt erom, verwijderMetBevestiging stelt de vraag).
+      if (!locked || _magVastleggen()) {
+        html += '<button class="btn-secondary" onclick="deleteCurrentKunstwerk()" title="Verwijderen" style="color:#dc2626;border-color:#fee2e2;">🗑️</button>';
       }
       actionsEl.innerHTML = html;
 
@@ -20834,12 +20863,10 @@
         message: 'Alle elementen en defecten worden verwijderd.',
         actionLabel: 'Verwijderen',
         onConfirm: function(){
-          api('DELETE', '/api/kunstwerken-inspecties/' + _currentKunstwerk.id)
-            .then(function(){
-              showToast('Inspectie verwijderd', 'success');
-              closeKunstwerkDetail();
-              loadKunstwerkInspecties();
-            }).catch(function(err){ showToast('Fout: ' + err.message, 'error'); });
+          verwijderMetBevestiging('/api/kunstwerken-inspecties/' + _currentKunstwerk.id, null, function () {
+            closeKunstwerkDetail();
+            loadKunstwerkInspecties();
+          });
         },
       });
     }
@@ -23342,9 +23369,11 @@
         if (e.source_type) meta.push((isAuto ? '🔗 ' : '') + e.source_type);
         var actions = '';
         // Eigen manuele entries: edit + delete
-        if (!isAuto && !isViewingOther) {
+        // Uit je eigen dagboek kun je alles halen, ook automatische regels;
+        // bewerken kan alleen wat je zelf schreef.
+        if (!isViewingOther) {
           actions =
-            '<button onclick="editDaybookEntry(\'' + e.id + '\')" title="Bewerken">✏️</button>' +
+            (isAuto ? '' : '<button onclick="editDaybookEntry(\'' + e.id + '\')" title="Bewerken">✏️</button>') +
             '<button onclick="deleteDaybookEntry(\'' + e.id + '\')" title="Verwijderen">🗑</button>';
         }
         return '<div class="db-entry">' +
@@ -24547,10 +24576,15 @@
     function deleteDaybookEntry(id) {
       var entry = daybookEntriesCache.find(function(e) { return e.id === id; });
       if (!entry) return;
+      var uitleg = entry.source !== 'auto'
+        ? '"' + (entry.title || '') + '" wordt uit je dagboek gehaald. Audit-trail blijft bewaard.'
+        : (entry.entry_type === 'materieel_inzet'
+            ? '"' + (entry.title || '') + '" wordt uit je dagboek gehaald, en de materieelregel met zijn CO₂ gaat mee.'
+            : '"' + (entry.title || '') + '" wordt uit je dagboek gehaald. Wat hij beschrijft (de melding, inspectie of oplevering) blijft gewoon bestaan.');
       showConfirm({
         icon: '🗑️',
-        title: 'Notitie verwijderen?',
-        message: '"' + (entry.title || '') + '" wordt uit je dagboek gehaald. Audit-trail blijft bewaard.',
+        title: entry.source === 'auto' ? 'Regel uit je dagboek halen?' : 'Notitie verwijderen?',
+        message: uitleg,
         actionLabel: 'Verwijderen',
         danger: true,
         onConfirm: function() {
@@ -25781,6 +25815,30 @@
         return false;
       });
     }
+
+    // Verwijderen, overal op dezelfde manier (zie permissions.eis_verwijderen).
+    // Eerst de gewone vraag. Is het afgerond of ondertekend, dan antwoordt de
+    // server met "Bevestiging nodig: …" en vragen we het een tweede keer, met
+    // die uitleg erbij; pas dan gaat hij met ?bevestig=true opnieuw.
+    // `vraag` leeg: de eerste vraag is al gesteld (bv. met showConfirm).
+    function verwijderMetBevestiging(pad, vraag, klaar) {
+      if (vraag && !confirm(vraag)) return Promise.resolve(false);
+      return api('DELETE', pad).catch(function (e) {
+        var msg = (e && e.message) || '';
+        if (msg.indexOf('Bevestiging nodig') !== 0) throw e;
+        if (!confirm(msg.replace(/^Bevestiging nodig:\s*/, ''))) return false;
+        return api('DELETE', pad + (pad.indexOf('?') < 0 ? '?' : '&') + 'bevestig=true');
+      }).then(function (r) {
+        if (r === false) return false;
+        showToast('Verwijderd', 'success');
+        if (klaar) klaar();
+        return true;
+      }).catch(function (e) {
+        showToast('Verwijderen mislukt: ' + ((e && e.message) || ''), 'error');
+        return false;
+      });
+    }
+    window.verwijderMetBevestiging = verwijderMetBevestiging;
 
     // Kolommen en rijen uit het portaal als Excel of PDF in de huisstijl;
     // de server tekent briefhoofd, kop en voet.
@@ -28047,6 +28105,7 @@
     function openToolboxDetail(id) {
       api('GET', '/api/toolbox/' + id).then(function (tb) {
         _tbHuidig = tb;
+        document.getElementById('tbdVerwijderBtn').style.display = _magVastleggen() ? '' : 'none';
         document.getElementById('tbdTitel').textContent = tb.onderwerp;
         document.getElementById('tbdSub').textContent =
           (tb.project_name || '-') + ' · ' + (tb.datum || '').slice(0, 10) +
@@ -28134,6 +28193,14 @@
         .then(function () { return api('GET', '/api/toolbox/' + _tbHuidig.id); })
         .then(function (tb) { _tbHuidig = tb; tekenDeelnemers(); loadToolboxen(); })
         .catch(function (err) { showToast(err.message || '', 'error'); });
+    }
+
+    function tbVerwijderen() {
+      var tb = _tbHuidig;
+      if (!tb) return;
+      verwijderMetBevestiging('/api/toolbox/' + tb.id,
+        'Toolbox "' + (tb.onderwerp || '') + '" verwijderen, met de presentielijst en handtekeningen?',
+        function () { closeToolboxDetail(); loadToolboxen(); });
     }
 
     function closeToolboxDetail() {
@@ -28394,6 +28461,7 @@
     function openIncidentDetail(id) {
       api('GET', '/api/incidenten/' + id).then(function (i) {
         _incHuidig = i;
+        document.getElementById('incdVerwijderRij').style.display = _magVastleggen() ? '' : 'none';
         document.getElementById('incdTitel').textContent = t(INC_SOORT_LABEL[i.soort] || 'Incident');
         document.getElementById('incdSub').textContent =
           (i.gebeurd_op || '').slice(0, 10) + ' · ' + (i.project_name || '-') +
@@ -28434,6 +28502,14 @@
       }).catch(function (err) {
         showToast(t('fout_laden') + ': ' + (err.message || ''), 'error');
       });
+    }
+
+    function incVerwijderen() {
+      var i = _incHuidig;
+      if (!i) return;
+      verwijderMetBevestiging('/api/incidenten/' + i.id,
+        'Dit incident verwijderen? De melding in het incidentenregister verdwijnt; de auditlog bewaart dat hij er was.',
+        function () { closeIncidentDetail(); loadIncidenten(); });
     }
 
     function closeIncidentDetail() {
@@ -28619,8 +28695,19 @@
 
     function openLmra(id) {
       api('GET', '/api/lmra/' + id)
-        .then(function (l) { _lmraHuidig = l; toonLmra(); })
+        .then(function (l) {
+          _lmraHuidig = l;
+          document.getElementById('lmraVerwijderBtn').style.display = _magVastleggen() ? '' : 'none';
+          toonLmra();
+        })
         .catch(function (err) { showToast('Kon de LMRA niet laden: ' + (err.message || ''), 'error'); });
+    }
+
+    function lmraVerwijderen() {
+      var l = _lmraHuidig;
+      if (!l) return;
+      verwijderMetBevestiging('/api/lmra/' + l.id, 'Deze LMRA verwijderen' + (l.taak ? ' (' + l.taak + ')' : '') + '?',
+        function () { closeLmra(); });
     }
 
     function closeLmra() {
@@ -28761,8 +28848,18 @@
 
     function openWpi(id) {
       api('GET', '/api/wpi/' + id)
-        .then(function (w) { _wpiHuidig = w; toonWpi(); })
+        .then(function (w) {
+          _wpiHuidig = w;
+          document.getElementById('wpiVerwijderBtn').style.display = _magVastleggen() ? '' : 'none';
+          toonWpi();
+        })
         .catch(function (err) { showToast(t('fout_laden') + ': ' + (err.message || ''), 'error'); });
+    }
+
+    function wpiVerwijderen() {
+      var w = _wpiHuidig;
+      if (!w) return;
+      verwijderMetBevestiging('/api/wpi/' + w.id, 'Deze werkplekinspectie verwijderen?', function () { closeWpi(); });
     }
 
     function closeWpi() {
