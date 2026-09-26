@@ -185,3 +185,62 @@ def test_portaal_heeft_beoordelen_en_dekking():
     assert "verharding: delen[0], schadebeeld: delen[1]" in html
     assert "'/api/schouw/ritten/' + id + '/dekking'" in html
     assert "niet_bekeken: { color: '#EA580C'" in html
+
+
+# ---------------------------------------------------------------------------
+# Rapport: de hele ronde als PDF of Excel, met de foto's erbij
+# ---------------------------------------------------------------------------
+
+def test_rapport_als_pdf_en_als_excel_met_fotos(client, admin_user, model):
+    import io as _io
+
+    from openpyxl import load_workbook
+
+    from export_huisstijl import XLSX_MIME
+
+    rit_id, wid = _schade_via_rit(client, admin_user, model)
+    _patch(client, admin_user, wid, bevestigd=True)
+    # Een tweede beeld met GPS, zodat er dekking te melden valt.
+    _opname(client, admin_user, rit_id, 2, lat=52.37, lng=4.63, nauwkeurigheid_m=4.0)
+
+    pdf = client.get(f"/api/schouw/ritten/{rit_id}/rapport.pdf", headers=auth(admin_user))
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    assert "Schouw" in pdf.headers["content-disposition"]
+
+    xl = client.get(f"/api/schouw/ritten/{rit_id}/rapport.xlsx", headers=auth(admin_user))
+    assert xl.status_code == 200 and xl.headers["content-type"] == XLSX_MIME
+    wb = load_workbook(_io.BytesIO(xl.content))
+    assert wb.sheetnames[:2] == ["Samenvatting", "Schades"]
+    schades = wb["Schades"]
+    assert [c.value for c in schades[11]][:3] == ["Nr", "Foto", "Schade"]
+    # De foto zit in het bestand zelf, niet als link.
+    assert len(schades._images) == 1
+    assert schades["I12"].value == "bevestigd"
+    # Rijdend: de dekking en de beelden horen erbij.
+    assert "Dekking" in wb.sheetnames and "Beelden" in wb.sheetnames
+
+
+def test_rapport_van_een_andere_organisatie_geeft_404(client, admin_user, model):
+    from models import AccountStatus, Organization, SubscriptionPlan
+
+    from .conftest import _make_user
+    rit_id = _rit(client, admin_user)
+    db = SessionLocal()
+    try:
+        ander = Organization(name="Andere Gemeente rapport", plan=SubscriptionPlan.PROFESSIONAL,
+                             status=AccountStatus.ACTIVE, max_users=5)
+        db.add(ander)
+        db.commit()
+        vreemde = _make_user(db, "vreemd-rapport@andere.nl", org=ander)
+    finally:
+        db.close()
+    assert client.get(f"/api/schouw/ritten/{rit_id}/rapport.pdf",
+                      headers=auth(vreemde)).status_code == 404
+
+
+def test_portaal_heeft_rapportknoppen():
+    import io as _io
+    with _io.open("templates/portaal.html", encoding="utf-8") as f:
+        html = f.read()
+    assert "schouwRapport('pdf')" in html and "schouwRapport('xlsx')" in html
+    assert "'/api/schouw/ritten/' + id + '/rapport.' + formaat" in html

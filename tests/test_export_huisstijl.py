@@ -276,3 +276,37 @@ def test_liggende_tabel_blijft_liggend_op_vervolgpaginas(aantal):
              re.findall(rb"/MediaBox \[0 0 ([\d.]+) ([\d.]+)\]", pdf.uitvoer())]
     assert len(maten) >= 4 and maten[0][0] < maten[0][1]          # eerste pagina staand
     assert all(b > hg for b, hg in maten[1:])
+
+
+# ---------------------------------------------------------------------------
+# Foto's in een tabel
+# ---------------------------------------------------------------------------
+
+def _jpeg_bytes(b=320, h=180):
+    buf = io.BytesIO()
+    Image.new("RGB", (b, h), (80, 80, 84)).save(buf, "JPEG")
+    return buf.getvalue()
+
+
+def test_foto_in_de_tabel_pdf_en_excel():
+    k = h.klant_van(_Org())
+    kol = [h.Kolom("Nr", "heel"), h.Kolom("Foto", "foto"), h.Kolom("Schade")]
+    rijen = [[1, _jpeg_bytes(), "Kuil"], [2, None, "Langsscheur"]]
+    blad = h.Blad("Schades", kol, rijen)
+
+    uit = h.pdf_van(k, "Rapport", [blad])
+    assert uit.startswith(b"%PDF") and b"/Image" in uit        # de foto zit erin
+
+    ws = load_workbook(io.BytesIO(h.excel_van(k, "Rapport", [blad]))).active
+    assert len(ws._images) == 1                                # alleen de regel mét foto
+    assert ws["B12"].value is None and ws["C12"].value == "Kuil"
+    assert ws.row_dimensions[12].height >= h.FOTO_EXCEL_PX * 0.7
+
+
+def test_een_onleesbare_foto_laat_de_regel_gewoon_leeg():
+    assert h.foto_bytes(None) is None
+    assert h.foto_bytes("https://ergens-anders.nl/foto.jpg") is None   # niet onze opslag
+    assert h.foto_bytes(b"geen plaatje") is None
+    klein = h.foto_bytes(_jpeg_bytes(1600, 900), breedte=200, kader=[0.4, 0.5, 0.6, 0.8])
+    with Image.open(io.BytesIO(klein)) as im:
+        assert im.size[0] <= 200
