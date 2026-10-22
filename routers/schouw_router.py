@@ -1092,6 +1092,129 @@ def analyseer_opname(db: Session, o: SchouwOpname, beeld: Optional[bytes] = None
     db.commit()
 
 
+# ── Excelrapport: de ronde met ingebedde foto's ─────────────────────
+#
+# "Met foto's erbij" is de kern: een schade zonder beeld is een bewering. In
+# de tabel staat een duimnagel met het rode vak erop; in Excel zit hetzelfde
+# plaatje in de cel, zodat het bestand op zichzelf staat.
+def _rapport_bladen(db: Session, r: Schouwrit, current_user: User) -> tuple[list, str]:
+    from export_huisstijl import Blad, Kolom, foto_bytes
+
+    waarnemingen = sorted((r.waarnemingen or []),
+                          key=lambda w: _utc(w.created_at) or datetime.min.replace(tzinfo=timezone.utc))
+    schades = [w for w in waarnemingen if w.crow_schadebeeld]
+    overig = [w for w in waarnemingen if not w.crow_schadebeeld]
+    uitslag = _tussenstand(r)
+    drempel = _drempel(r.organization)
+    dek = dekking(r.id, current_user, db) if r.privacy_modus == "rijdend" else None
+
+    def oordeel(w) -> str:
+        if w.afgewezen:
+            reden = schouw_leren.AFWIJS_REDENEN.get(w.afwijs_reden or "")
+            return "afgewezen" + (f" ({reden.lower()})" if reden else "")
+        return "bevestigd" if w.bevestigd else ("telt mee" if _telt_mee(w, drempel) else "nog te beoordelen")
+
+    samenvatting = [
+        ["Gebied", r.gebied or "-"],
+        ["Soort schouw", "rijdend (wegdek)" if r.privacy_modus == "rijdend" else "lopend"],
+        ["Gebiedstype", (cs.GEBIEDSTYPEN.get(r.gebiedstype or "") or {}).get("naam") or "-"],
+        ["Ambitie", r.ambitie or cs.gangbare_ambitie(r.gebiedstype) or "-"],
+        ["Inspecteur", r.inspecteur_naam or "-"],
+        ["Gestart", _utc(r.gestart_op)],
+        ["Afgerond", _utc(r.afgerond_op) if r.afgerond_op else "loopt nog"],
+        ["Beeldkwaliteit", r.beeldkwaliteit or uitslag.get("beeldkwaliteit") or "nog geen oordeel"],
+        ["Voldoet aan de ambitie", ("ja" if (r.voldoet if r.voldoet is not None else uitslag.get("voldoet")) else "nee")
+         if (r.voldoet if r.voldoet is not None else uitslag.get("voldoet")) is not None else "-"],
+        ["Beelden beoordeeld", r.frames or 0],
+        ["Beelden niet te beoordelen", r.frames_onbruikbaar or 0],
+        ["Schades gevonden", len(schades)],
+        ["Waarvan bevestigd", sum(1 for w in schades if w.bevestigd)],
+        ["Waarvan afgewezen", sum(1 for w in schades if w.afgewezen)],
+        ["Nog te beoordelen", sum(1 for w in schades if not w.bevestigd and not w.afgewezen)],
+    ]
+    if dek:
+        samenvatting += [["Gereden", f"{dek['km_gereden']:.2f} km".replace(".", ",")],
+                         ["Waarvan beoordeeld", f"{dek['km']['beoordeeld']:.2f} km".replace(".", ",")],
+                         ["Niet te beoordelen", f"{dek['km']['onbruikbaar']:.2f} km".replace(".", ",")],
+                         ["Niet bekeken", f"{dek['km']['niet_bekeken']:.2f} km".replace(".", ",")]]
+    samenvatting.append(["Herkenning", sv.SCHOUW_VISION_VERSION])
+
+    bladen = [Blad("Samenvatting", [Kolom("Onderdeel"), Kolom("Waarde")],
+                   [[k, ("" if v is None else v)] for k, v in samenvatting], liggend=False)]
+
+    kolommen = [Kolom("Nr", "heel", breedte=None), Kolom("Foto", "foto"), Kolom("Schade"),
+                Kolom("Verharding"), Kolom("Ernst"), Kolom("Omvang"), Kolom("Klasse"),
+                Kolom("Zekerheid", "procent"), Kolom("Oordeel"), Kolom("Gezien", "heel"),
+                Kolom("Straat"), Kolom("Breedtegraad", "getal", 6), Kolom("Lengtegraad", "getal", 6),
+                Kolom("Toelichting")]
+    rijen = []
+    for i, w in enumerate(schades, start=1):
+        foto = (foto_bytes(w.photo_url, kader=_kader_lezen(w.kader))
+                if w.photo_url else None)
+        d = _w_dict(w)
+        rijen.append([i, foto, d["naam"], w.crow_verharding, w.crow_ernst, w.crow_omvang,
+                      d["klasse_indicatie"], w.zekerheid, oordeel(w), w.keer_gezien or 1,
+                      w.straatnaam, w.lat, w.lng, w.toelichting])
+    bladen.append(Blad("Schades", kolommen, rijen, liggend=True,
+                       toelichting=["Het rode vak op de foto is waar de herkenning de schade zag.",
+                                    "Klasse is een indicatie uit ernst en omvang (CROW 146), geen meting.",
+                                    "Een lege fotocel betekent: geen beschikbaar of leesbaar beeld."]))
+
+    if overig:
+        bladen.append(Blad(
+            "Overige waarnemingen",
+            [Kolom("Nr", "heel"), Kolom("Foto", "foto"), Kolom("Waarneming"), Kolom("Drager"),
+             Kolom("Waarde", "getal", 1), Kolom("Niveau"), Kolom("Zekerheid", "procent"),
+             Kolom("Oordeel"), Kolom("Straat"), Kolom("Toelichting")],
+            [[i, (foto_bytes(w.photo_url) if w.photo_url else None),
+              _w_dict(w)["naam"], w.drager, w.waarde, w.klasse_niveau, w.zekerheid,
+              oordeel(w), w.straatnaam, w.toelichting]
+             for i, w in enumerate(overig, start=1)], liggend=True))
+
+    if dek and dek["punten"]:
+        # Zonder GPS valt er niets over dekking te zeggen; de beelden zelf
+        # horen er wel altijd bij.
+        bladen.append(Blad("Dekking", [Kolom("Wat"), Kolom("Kilometer", "getal", 2)],
+                           [["Gereden", dek["km_gereden"]],
+                            ["Beoordeeld", dek["km"]["beoordeeld"]],
+                            ["Niet te beoordelen", dek["km"]["onbruikbaar"]],
+                            ["Niet bekeken (gat groter dan 60 m)", dek["km"]["niet_bekeken"]],
+                            ["Nog in beoordeling", dek["km"]["bezig"]]],
+                           toelichting=["Niet bekeken betekent: daar is geen beeld van. "
+                                        "Dat is iets anders dan: daar is geen schade."]))
+    if r.privacy_modus == "rijdend":
+        opnames = (db.query(SchouwOpname)
+                     .filter(SchouwOpname.schouwrit_id == r.id)
+                     .order_by(SchouwOpname.volgnummer).all())
+        bladen.append(Blad(
+            "Beelden",
+            [Kolom("Nr", "heel"), Kolom("Tijd", "datumtijd"), Kolom("Status"), Kolom("Schades", "heel"),
+             Kolom("Breedtegraad", "getal", 6), Kolom("Lengtegraad", "getal", 6), Kolom("Opmerking")],
+            [[o.volgnummer, _utc(o.gemaakt_op), _dek_status(o), o.schades or 0, o.lat, o.lng, o.fout]
+             for o in opnames], liggend=True))
+
+    ondertitel = " · ".join(x for x in (
+        r.gebied, r.inspecteur_naam,
+        (_utc(r.gestart_op).strftime("%d-%m-%Y") if r.gestart_op else None)) if x)
+    return bladen, ondertitel
+
+
+@router.get("/ritten/{rit_id}/rapport.xlsx")
+def rapport_xlsx(
+    rit_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De ronde als Excel met schadegegevens en ingebedde foto’s."""
+    from export_huisstijl import bestandsnaam, excel_antwoord, excel_van, klant_van
+
+    r = _rit_of_404(db, rit_id, current_user)
+    bladen, ondertitel = _rapport_bladen(db, r, current_user)
+    inhoud = excel_van(klant_van(r.organization), "Schouwrapport", bladen,
+                       ondertitel=ondertitel)
+    return excel_antwoord(inhoud, bestandsnaam("Schouw", r.gebied, ext="xlsx"))
+
+
 @router.post("/ritten/{rit_id}/waarneming")
 def handmatige_waarneming(
     rit_id: str,

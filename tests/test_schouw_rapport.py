@@ -101,7 +101,8 @@ def test_schade_zonder_bewaard_beeld_staat_er_toch_in(client, admin_user):
     assert "Kuil" in tekst and "Geen beeld bewaard" in tekst
 
 
-def test_rapport_van_andere_organisatie_is_onvindbaar(client, admin_user):
+@pytest.mark.parametrize("ext", ["pdf", "xlsx"])
+def test_rapport_van_andere_organisatie_is_onvindbaar(client, admin_user, ext):
     db = SessionLocal()
     try:
         vreemd = Schouwrit(organization_id="een-andere-org", gebied="Elders", status="bezig",
@@ -111,7 +112,7 @@ def test_rapport_van_andere_organisatie_is_onvindbaar(client, admin_user):
         vreemd_id = vreemd.id
     finally:
         db.close()
-    r = client.get(f"/api/schouw/ritten/{vreemd_id}/rapport.pdf", headers=auth(admin_user))
+    r = client.get(f"/api/schouw/ritten/{vreemd_id}/rapport.{ext}", headers=auth(admin_user))
     assert r.status_code == 404
 
 
@@ -126,3 +127,53 @@ def test_rode_vak_komt_op_het_beeld():
     buiten = beeld.getpixel((2, 2))
     assert binnen[0] - binnen[1] > buiten[0] - buiten[1]
     assert schouw_rapport.beeld_met_vak(b"geen beeld", None) is None
+
+
+@pytest.mark.parametrize('ext', ['pdf', 'xlsx'])
+def test_rapport_vraagt_authenticatie_en_actieve_module(client, admin_user, ext):
+    rit_id = _rit(client, admin_user)
+    url = f'/api/schouw/ritten/{rit_id}/rapport.{ext}'
+    assert client.get(url).status_code == 401
+    db = SessionLocal()
+    try:
+        from models import Organization
+        org = db.get(Organization, admin_user.organization_id)
+        org.enabled_modules = '[]'
+        db.commit()
+    finally:
+        db.close()
+    assert client.get(url, headers=auth(admin_user)).status_code == 403
+
+
+def test_excel_schadegegevens_en_opmaak(client, admin_user, model):
+    from openpyxl import load_workbook
+    rit_id = _rit(client, admin_user)
+    model['antwoorden'].append({'bruikbaar': True, 'wegschade': [dict(KUIL)]})
+    _opname(client, admin_user, rit_id, 1)
+    schade = _schades(rit_id)[0]
+    client.patch(f'/api/schouw/waarnemingen/{schade.id}', headers=auth(admin_user),
+                 json={'afgewezen': True, 'afwijs_reden': 'schaduw'})
+    response = client.get(f'/api/schouw/ritten/{rit_id}/rapport.xlsx', headers=auth(admin_user))
+    assert response.status_code == 200
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+        assert any(n.startswith('xl/media/') for n in archive.namelist())
+        assert not any(n.startswith('xl/externalLinks/') for n in archive.namelist())
+    ws = load_workbook(io.BytesIO(response.content))['Schades']
+    assert 'schaduw' in ws['I12'].value.lower()
+    assert ws['E12'].value == KUIL['ernst']
+    assert ws['H12'].number_format == '0%'
+    image = ws._images[0]
+    assert image.anchor._from.col == 1 and image.anchor._from.row == 11
+    # Afbeelding blijft binnen de fotokolom en de rij, ook in afdruk.
+    assert image.anchor.ext.cx / 9525 <= ws.column_dimensions['B'].width * 7
+    assert image.anchor.ext.cy / 9525 <= ws.row_dimensions[12].height / 0.75
+
+
+def test_export_routes_zijn_uniek():
+    from routers.schouw_router import router
+    for ext in ("pdf", "xlsx"):
+        routes = [r for r in router.routes
+                  if getattr(r, "path", "") == f"/api/schouw/ritten/{{rit_id}}/rapport.{ext}"
+                  and "GET" in getattr(r, "methods", set())]
+        assert len(routes) == 1
