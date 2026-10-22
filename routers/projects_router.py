@@ -194,10 +194,11 @@ def delete_project(
     # gemaakt in plaats van de rijen mee te verwijderen: het zijn
     # veiligheidsdossiers die je niet kwijt wilt raken omdat een project opgeruimd
     # wordt.
-    from models import (Asset, BouwInspectie, DaybookEntry, EmailInboxRoute,
-                        Incident, IncomingWebhook, Inspection, Lmra, Oplevering,
-                        Organization, QualityInspection, Schouwrit, Toolbox,
-                        Werkplekinspectie)
+    from models import (Asset, BouwInspectie, DagrapportAfwijking, DagrapportDag,
+                        DagrapportMateriaal, DagrapportPersoneel, DaybookEntry, EmailInboxRoute,
+                        Incident, IncomingWebhook, Inspection, Lmra, MaterieelInzet,
+                        Oplevering, Organization, QualityInspection, Schouwrit,
+                        Toolbox, Werkplekinspectie)
 
     losgemaakt = {}
     for label, model, kolom in (
@@ -215,6 +216,11 @@ def delete_project(
         ("bouwinspecties", BouwInspectie, BouwInspectie.project_id),
         ("schouwritten", Schouwrit,       Schouwrit.project_id),
         ("keuringen",   QualityInspection, QualityInspection.project_id),
+        ("materieelinzet", MaterieelInzet, MaterieelInzet.project_id),
+        ("dagrapport-dagen", DagrapportDag, DagrapportDag.project_id),
+        ("dagrapport-personeel", DagrapportPersoneel, DagrapportPersoneel.project_id),
+        ("dagrapport-materiaal", DagrapportMateriaal, DagrapportMateriaal.project_id),
+        ("dagrapport-afwijkingen", DagrapportAfwijking, DagrapportAfwijking.project_id),
     ):
         aantal = (db.query(model)
                     .filter(kolom == project_id)

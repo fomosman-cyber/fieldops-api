@@ -296,9 +296,10 @@ def delete_cluster(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Verwijder cluster + ontkoppel meldingen (admin/manager only)."""
-    if current_user.role not in (UserRole.ADMIN, UserRole.MANAGER):
-        raise HTTPException(status_code=403, detail="Alleen admin/manager kan verwijderen")
+    """Verwijder cluster + ontkoppel meldingen: beheerder of projectleider
+    (permissions.eis_verwijderen). De meldingen zelf blijven staan."""
+    from permissions import eis_verwijderen
+    eis_verwijderen(current_user)
     jc = db.query(JobCluster).filter(
         JobCluster.id == cluster_id,
         JobCluster.organization_id == current_user.organization_id,

@@ -7,6 +7,7 @@ Endpoints:
   GET  /api/inspecties/{id}               detail
   POST /api/inspecties/{id}/accept        markeer als geaccepteerd, optioneel naar melding
   POST /api/inspecties/{id}/reject        markeer als afgewezen met reden
+  DELETE /api/inspecties/{id}             verwijderen (de melding die eruit volgde blijft)
 
 Mens-in-de-loop: het analyse-resultaat is een SUGGESTIE. Pas na een expliciete
 accept-action wordt 't naar een melding gepusht.
@@ -28,7 +29,7 @@ from schemas import (
     InspectionAcceptRequest, InspectionRejectRequest,
 )
 from auth import get_current_user
-from permissions import can_create_meldingen
+from permissions import can_create_meldingen, eis_verwijderen
 from audit import log_action, ACTION
 from inspections import analyze_image, detect_media_type, sha256_of, PROMPT_VERSION
 import inspection_cycle
@@ -421,3 +422,37 @@ def reject_inspection(
                action=ACTION.AI_ANALYSIS_REJECT, entity_type="ai_analysis", entity_id=rec.id,
                extra={"reason": payload.reason[:300]})
     return _serialize(rec)
+
+
+@router.delete("/{analysis_id}")
+def delete_inspection(
+    analysis_id: str,
+    request: Request,
+    bevestig: bool = Query(False, description="Ook als hij is geaccepteerd of afgewezen"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Een AI-inspectie weghalen. Een melding die eruit is gemaakt blijft
+    staan: die heeft een eigen opvolging. Een gebrek in een kunstwerkinspectie
+    dat naar deze analyse verwees, houdt zijn classificatie en verliest alleen
+    de verwijzing."""
+    from models import InspectionDefect
+    rec = db.query(AIAnalysis).filter(
+        AIAnalysis.id == analysis_id,
+        AIAnalysis.organization_id == current_user.organization_id,
+    ).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Analyse niet gevonden")
+    eis_verwijderen(current_user, maker_id=rec.created_by,
+                    afgerond=bool(rec.accepted_at or rec.rejected_at), bevestigd=bevestig,
+                    wat="Deze AI-inspectie")
+    spoor = {"schade_type": rec.schade_type, "ernst": rec.ernst, "melding_id": rec.melding_id,
+             "geaccepteerd": bool(rec.accepted_at), "afgewezen": bool(rec.rejected_at)}
+    (db.query(InspectionDefect)
+       .filter(InspectionDefect.ai_analysis_id == rec.id)
+       .update({InspectionDefect.ai_analysis_id: None}, synchronize_session=False))
+    db.delete(rec)
+    db.commit()
+    log_action(db, request, current_user, action=ACTION.AI_ANALYSIS_DELETE,
+               entity_type="ai_analysis", entity_id=analysis_id, before=spoor)
+    return {"verwijderd": True}

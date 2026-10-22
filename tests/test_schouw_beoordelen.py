@@ -242,5 +242,5 @@ def test_portaal_heeft_rapportknoppen():
     import io as _io
     with _io.open("templates/portaal.html", encoding="utf-8") as f:
         html = f.read()
-    assert "schouwRapport('pdf')" in html and "schouwRapport('xlsx')" in html
+    assert "schouwRapportPdf()" in html and "schouwRapport('xlsx')" in html
     assert "'/api/schouw/ritten/' + id + '/rapport.' + formaat" in html

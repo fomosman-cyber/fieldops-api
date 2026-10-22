@@ -20,7 +20,7 @@ from werksoorten import synchroniseer as werksoort_synchroniseer
 from auth import get_current_user
 from permissions import (
     can_create_meldingen, can_change_status, can_edit_melding_full,
-    is_inspector, require_org_admin,
+    eis_verwijderen, is_inspector, require_org_admin,
 )
 from audit import log_action, ACTION
 
@@ -1661,6 +1661,22 @@ def bulk_update(
     }
 
 
+def _ontkoppel_meldingen(db: Session, ids: list[str]) -> None:
+    """Wat naar deze meldingen verwijst losmaken voordat ze weg gaan.
+
+    Postgres weigert de DELETE zolang er één rij met een foreign key naar de
+    melding wijst (SQLite in de tests controleert dat niet, dus daar viel het
+    niet op). De AI-analyse, het gebrek in een inspectie en de LMRA blijven
+    bestaan; alleen de koppeling met de verdwenen melding gaat eraf.
+    """
+    if not ids:
+        return
+    from models import AIAnalysis, InspectionDefect, Lmra, Schouwwaarneming
+    for model in (AIAnalysis, InspectionDefect, Lmra, Schouwwaarneming):
+        (db.query(model).filter(model.melding_id.in_(ids))
+           .update({model.melding_id: None}, synchronize_session=False))
+
+
 class BulkMeldingDelete(BaseModel):
     melding_ids: list[str] = Field(..., min_length=1, max_length=500)
 
@@ -1678,6 +1694,7 @@ def bulk_delete(
         Melding.organization_id == current_user.organization_id,
     ).all()
     deleted = 0
+    _ontkoppel_meldingen(db, [m.id for m in meldingen])
     for m in meldingen:
         snapshot = {"title": m.title, "category": m.category, "status": m.status,
                     "project_id": m.project_id}
@@ -1697,10 +1714,13 @@ def bulk_delete(
 def delete_melding(
     melding_id: str,
     request: Request,
-    current_user: User = Depends(require_org_admin),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Melding verwijderen (alleen admin)."""
+    """Melding verwijderen: beheerder of projectleider (permissions.eis_verwijderen).
+    Een melding is een werkopdracht met opvolging; wie hem maakte kan hem niet
+    zelf weggooien."""
+    eis_verwijderen(current_user)
     melding = db.query(Melding).filter(
         Melding.id == melding_id,
         Melding.organization_id == current_user.organization_id,
@@ -1710,6 +1730,7 @@ def delete_melding(
 
     snapshot = {"title": melding.title, "category": melding.category,
                 "status": melding.status, "project_id": melding.project_id}
+    _ontkoppel_meldingen(db, [melding.id])
     db.delete(melding)
     db.commit()
     log_action(db, request, current_user,

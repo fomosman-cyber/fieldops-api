@@ -7,6 +7,7 @@ Endpoints:
   GET    /api/schouw/ritten                 Lijst van ritten
   POST   /api/schouw/ritten                 Rit starten
   GET    /api/schouw/ritten/{id}            Detail met waarnemingen en tussenstand
+  GET    /api/schouw/ritten/{id}/rapport.pdf Rapport: elke schade met beeld
   POST   /api/schouw/ritten/{id}/frame      Eén live beeld + positie -> waarnemingen
   POST   /api/schouw/ritten/{id}/waarneming Handmatige waarneming toevoegen
   PATCH  /api/schouw/waarnemingen/{id}      Bevestigen, afwijzen of corrigeren
@@ -45,6 +46,7 @@ from sqlalchemy.orm import Session
 
 import crow_schouw as cs
 import crow_wegschade as cw
+import schouw_camera as sc
 import schouw_instellingen as si
 import schouw_leren
 import schouw_vision as sv
@@ -698,6 +700,24 @@ def detail(
     return _rit_dict(_rit_of_404(db, rit_id, current_user), detail=True)
 
 
+@router.get("/ritten/{rit_id}/rapport.pdf")
+def rapport_pdf(
+    rit_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De ronde als PDF: gegevens, een overzicht, en elke schade met het beeld
+    en het rode vak erop. Ook voor een ronde die nog loopt (tussenstand)."""
+    import schouw_rapport
+    from export_huisstijl import bestandsnaam, pdf_antwoord
+
+    r = _rit_of_404(db, rit_id, current_user)
+    drempel = _drempel(r.organization)
+    inhoud = schouw_rapport.maak_pdf(r, telt_mee=lambda w: _telt_mee(w, drempel),
+                                     organization=r.organization)
+    return pdf_antwoord(inhoud, bestandsnaam("Schouwrapport", r.gebied or r.naam, ext="pdf"))
+
+
 def _verwerk_resultaat(db: Session, r: Schouwrit, resultaat: dict, payload, foto,
                        organization_id: str, nu: datetime):
     """Eén beoordeeld beeld verwerken: tellers, dezelfde schade samenvoegen,
@@ -1072,15 +1092,12 @@ def analyseer_opname(db: Session, o: SchouwOpname, beeld: Optional[bytes] = None
     db.commit()
 
 
-# ── Rapport: de hele ronde als PDF of Excel, met de foto's erbij ─────
+# ── Excelrapport: de ronde met ingebedde foto's ─────────────────────
 #
 # "Met foto's erbij" is de kern: een schade zonder beeld is een bewering. In
 # de tabel staat een duimnagel met het rode vak erop; in Excel zit hetzelfde
 # plaatje in de cel, zodat het bestand op zichzelf staat.
-MAX_FOTOS_IN_RAPPORT = 200
-
-
-def _rapport_bladen(db: Session, r: Schouwrit) -> tuple[list, str]:
+def _rapport_bladen(db: Session, r: Schouwrit, current_user: User) -> tuple[list, str]:
     from export_huisstijl import Blad, Kolom, foto_bytes
 
     waarnemingen = sorted((r.waarnemingen or []),
@@ -1088,13 +1105,14 @@ def _rapport_bladen(db: Session, r: Schouwrit) -> tuple[list, str]:
     schades = [w for w in waarnemingen if w.crow_schadebeeld]
     overig = [w for w in waarnemingen if not w.crow_schadebeeld]
     uitslag = _tussenstand(r)
-    dek = dekking(r.id, _SysteemGebruiker(r), db) if r.privacy_modus == "rijdend" else None
+    drempel = _drempel(r.organization)
+    dek = dekking(r.id, current_user, db) if r.privacy_modus == "rijdend" else None
 
     def oordeel(w) -> str:
         if w.afgewezen:
             reden = schouw_leren.AFWIJS_REDENEN.get(w.afwijs_reden or "")
             return "afgewezen" + (f" ({reden.lower()})" if reden else "")
-        return "bevestigd" if w.bevestigd else ("telt mee" if _telt_mee(w) else "nog te beoordelen")
+        return "bevestigd" if w.bevestigd else ("telt mee" if _telt_mee(w, drempel) else "nog te beoordelen")
 
     samenvatting = [
         ["Gebied", r.gebied or "-"],
@@ -1132,14 +1150,15 @@ def _rapport_bladen(db: Session, r: Schouwrit) -> tuple[list, str]:
     rijen = []
     for i, w in enumerate(schades, start=1):
         foto = (foto_bytes(w.photo_url, kader=_kader_lezen(w.kader))
-                if w.photo_url and i <= MAX_FOTOS_IN_RAPPORT else None)
+                if w.photo_url else None)
         d = _w_dict(w)
         rijen.append([i, foto, d["naam"], w.crow_verharding, w.crow_ernst, w.crow_omvang,
                       d["klasse_indicatie"], w.zekerheid, oordeel(w), w.keer_gezien or 1,
                       w.straatnaam, w.lat, w.lng, w.toelichting])
     bladen.append(Blad("Schades", kolommen, rijen, liggend=True,
                        toelichting=["Het rode vak op de foto is waar de herkenning de schade zag.",
-                                    "Klasse is een indicatie uit ernst en omvang (CROW 146), geen meting."]))
+                                    "Klasse is een indicatie uit ernst en omvang (CROW 146), geen meting.",
+                                    "Een lege fotocel betekent: geen beschikbaar of leesbaar beeld."]))
 
     if overig:
         bladen.append(Blad(
@@ -1147,7 +1166,7 @@ def _rapport_bladen(db: Session, r: Schouwrit) -> tuple[list, str]:
             [Kolom("Nr", "heel"), Kolom("Foto", "foto"), Kolom("Waarneming"), Kolom("Drager"),
              Kolom("Waarde", "getal", 1), Kolom("Niveau"), Kolom("Zekerheid", "procent"),
              Kolom("Oordeel"), Kolom("Straat"), Kolom("Toelichting")],
-            [[i, (foto_bytes(w.photo_url) if w.photo_url and i <= MAX_FOTOS_IN_RAPPORT else None),
+            [[i, (foto_bytes(w.photo_url) if w.photo_url else None),
               _w_dict(w)["naam"], w.drager, w.waarde, w.klasse_niveau, w.zekerheid,
               oordeel(w), w.straatnaam, w.toelichting]
              for i, w in enumerate(overig, start=1)], liggend=True))
@@ -1180,104 +1199,18 @@ def _rapport_bladen(db: Session, r: Schouwrit) -> tuple[list, str]:
     return bladen, ondertitel
 
 
-class _SysteemGebruiker:
-    """Zodat het rapport de dekking kan hergebruiken zonder de route na te bouwen."""
-
-    def __init__(self, r: Schouwrit):
-        self.organization_id = r.organization_id
-
-
-MAX_GROTE_FOTOS = 60
-FOTO_BIJLAGE_MM = 120.0
-
-
-def _fotobijlage(pdf, db: Session, r: Schouwrit) -> None:
-    """Elke schade nog een keer, groot genoeg om te zien wat het is."""
-    import io as _io
-
-    from export_huisstijl import GRIJS, INKT, foto_bytes
-    from export_huisstijl import rgb as _rgb
-
-    schades = [w for w in sorted((r.waarnemingen or []),
-                                 key=lambda w: _utc(w.created_at) or datetime.min.replace(tzinfo=timezone.utc))
-               if w.crow_schadebeeld and w.photo_url][:MAX_GROTE_FOTOS]
-    if not schades:
-        return
-    pdf.sectie("Foto's bij de schades")
-    # Twee naast elkaar op een liggende pagina: groot genoeg om te zien wat het
-    # is, zonder een pagina per foto.
-    breed = (pdf.w - 2 * pdf.MARGE - 10) / 2 if pdf.w > pdf.h else FOTO_BIJLAGE_MM
-    hoogte = breed * 0.62                       # de meeste beelden zijn 16:9
-    kolom, y = 0, pdf.get_y()
-    for i, w in enumerate(schades, start=1):
-        beeld = foto_bytes(w.photo_url, breedte=1100, kader=_kader_lezen(w.kader))
-        if not beeld:
-            continue
-        if kolom == 0:
-            pdf.set_y(y)
-            pdf.ruimte_nodig(hoogte + 18)      # past het niet meer: volgende pagina
-            y = pdf.get_y()
-        x = pdf.MARGE + kolom * (breed + 10)
-        d = _w_dict(w)
-        regel = f"{i}. {d['naam']}"
-        for stuk in (w.crow_verharding, f"ernst {w.crow_ernst}" if w.crow_ernst else None,
-                     f"klasse {d['klasse_indicatie']}" if d["klasse_indicatie"] else None,
-                     w.straatnaam,
-                     "bevestigd" if w.bevestigd else ("afgewezen" if w.afgewezen else None)):
-            if stuk:
-                regel += f" · {stuk}"
-        pdf.set_xy(x, y)
-        pdf.set_font(pdf.font_family, "B", 9.5)
-        pdf.cell(breed, 5, regel)
-        try:
-            pdf.image(_io.BytesIO(beeld), x=x, y=y + 5.5, w=breed)
-        except Exception:  # noqa: BLE001 — een kapot beeld stopt het rapport niet
-            continue
-        if w.toelichting:
-            pdf.set_xy(x, y + hoogte + 7)
-            pdf.set_font(pdf.font_family, "", 8)
-            pdf.set_text_color(*_rgb(GRIJS))
-            pdf.cell(breed, 4, w.toelichting[:90])
-            pdf.set_text_color(*_rgb(INKT))
-        kolom = (kolom + 1) % 2
-        if kolom == 0:
-            y += hoogte + 18
-    pdf.set_xy(pdf.MARGE, y + (hoogte + 18 if kolom else 0))
-
-
-@router.get("/ritten/{rit_id}/rapport.pdf")
-def rapport_pdf(
-    rit_id: str,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """De hele ronde als PDF, met de foto's van de schades erbij."""
-    from export_huisstijl import HuisstijlPDF, bestandsnaam, klant_van, pdf_antwoord
-
-    r = _rit_of_404(db, rit_id, current_user)
-    bladen, ondertitel = _rapport_bladen(db, r)
-    pdf = HuisstijlPDF(klant_van(current_user.organization), "Schouwrapport",
-                       ondertitel=ondertitel, liggend=True)
-    pdf.add_page()
-    pdf.titelblok()
-    for blad in bladen:
-        pdf.blad(blad)
-    _fotobijlage(pdf, db, r)
-    return pdf_antwoord(pdf.uitvoer(), bestandsnaam("Schouw", r.gebied, ext="pdf"))
-
-
 @router.get("/ritten/{rit_id}/rapport.xlsx")
 def rapport_xlsx(
     rit_id: str,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Dezelfde ronde als Excel: zelfde kolommen, met de foto's in de cel."""
+    """De ronde als Excel met schadegegevens en ingebedde foto’s."""
     from export_huisstijl import bestandsnaam, excel_antwoord, excel_van, klant_van
 
     r = _rit_of_404(db, rit_id, current_user)
-    bladen, ondertitel = _rapport_bladen(db, r)
-    inhoud = excel_van(klant_van(current_user.organization), "Schouwrapport", bladen,
+    bladen, ondertitel = _rapport_bladen(db, r, current_user)
+    inhoud = excel_van(klant_van(r.organization), "Schouwrapport", bladen,
                        ondertitel=ondertitel)
     return excel_antwoord(inhoud, bestandsnaam("Schouw", r.gebied, ext="xlsx"))
 
@@ -1514,6 +1447,119 @@ def instellingen_vastleggen(
                entity_type="organization", entity_id=org.id,
                before=oud, after=nieuw)
     return _instellingen_antwoord(current_user)
+
+
+# ── Hoe de telefoon opneemt ──────────────────────────────────────────
+# De herkenning hierboven is van de organisatie; het opnemen is van de
+# gebruiker. Zie de docstring van schouw_camera voor waarom, en waarom de lens
+# er niet in zit.
+
+def _camera_antwoord(current_user: User) -> dict:
+    org = current_user.organization
+    return {
+        "instellingen": sc.lees(current_user, org),
+        "eigen": bool(getattr(current_user, "schouw_camera", None)),
+        "organisatie_standaard": sc.organisatie_standaard(org),
+        "kan_standaard_zetten": bool(is_org_admin(current_user)),
+        "keuzes": {"groottes": list(sc.GROOTTES), "ritmes": list(sc.RITMES),
+                   "rijafstanden": list(sc.RIJAFSTANDEN)},
+    }
+
+
+@router.get("/camera")
+def camera_lezen(current_user: User = Depends(get_current_user)):
+    """Hoe deze gebruiker opneemt. Op een nieuw toestel komt dit terug."""
+    return _camera_antwoord(current_user)
+
+
+@router.put("/camera")
+def camera_vastleggen(
+    payload: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Eigen instellingen vastleggen. Geldt vanaf nu op elk toestel waarop
+    deze gebruiker inlogt."""
+    try:
+        nieuw = sc.valideer(payload)
+    except sc.OngeldigeInstelling as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    gebruiker = db.query(User).filter(User.id == current_user.id).first()
+    if gebruiker is None:
+        raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
+    gebruiker.schouw_camera = json.dumps(nieuw)
+    db.commit()
+    db.refresh(gebruiker)
+    return _camera_antwoord(gebruiker)
+
+
+@router.delete("/camera")
+def camera_terugzetten(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Eigen instellingen loslaten en weer de standaard van de organisatie
+    volgen."""
+    gebruiker = db.query(User).filter(User.id == current_user.id).first()
+    if gebruiker is None:
+        raise HTTPException(status_code=404, detail="Gebruiker niet gevonden")
+    gebruiker.schouw_camera = None
+    db.commit()
+    db.refresh(gebruiker)
+    return _camera_antwoord(gebruiker)
+
+
+@router.put("/camera/standaard")
+def camera_standaard_vastleggen(
+    payload: dict,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Het startpunt voor de hele organisatie.
+
+    Dit overschrijft niemands eigen keuze -- het geldt voor wie zelf nog niets
+    heeft ingesteld. Anders zou halverwege een ronde de manier van opnemen
+    onder iemand vandaan schuiven.
+    """
+    if not is_org_admin(current_user):
+        raise HTTPException(status_code=403,
+                            detail="Alleen een beheerder zet de standaard voor de organisatie")
+    org = current_user.organization
+    if org is None:
+        raise HTTPException(status_code=404, detail="Geen organisatie gevonden")
+    try:
+        nieuw = sc.valideer(payload)
+    except sc.OngeldigeInstelling as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    oud = sc.organisatie_standaard(org)
+    org.schouw_camera_standaard = json.dumps(nieuw)
+    db.commit()
+    log_action(db, request, current_user, action="schouw.camera_standaard",
+               entity_type="organization", entity_id=org.id, before=oud, after=nieuw)
+    return _camera_antwoord(current_user)
+
+
+@router.delete("/camera/standaard")
+def camera_standaard_wissen(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """De organisatiestandaard loslaten. Wie zelf iets heeft ingesteld merkt
+    er niets van; de rest valt terug op de standaard van het pakket."""
+    if not is_org_admin(current_user):
+        raise HTTPException(status_code=403,
+                            detail="Alleen een beheerder zet de standaard voor de organisatie")
+    org = current_user.organization
+    if org is None:
+        raise HTTPException(status_code=404, detail="Geen organisatie gevonden")
+    oud = sc.organisatie_standaard(org)
+    org.schouw_camera_standaard = None
+    db.commit()
+    log_action(db, request, current_user, action="schouw.camera_standaard",
+               entity_type="organization", entity_id=org.id, before=oud, after=None)
+    return _camera_antwoord(current_user)
 
 
 class ProefIn(BaseModel):
@@ -1803,15 +1849,34 @@ def verwijderen(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Een ronde en alles wat eraan hangt weghalen. Onomkeerbaar.
+
+    Meldingen die uit een waarneming zijn gemaakt blijven staan. Die leven
+    verder als gewone melding met een eigen opvolging, en die gooi je niet weg
+    omdat de ronde waarin ze zijn gezien wordt opgeruimd -- zelfde keuze als
+    bij het verwijderen van een project.
+
+    Wat wel verdwijnt zijn de beelden, en daarmee de voorbeelden waarmee de
+    herkenning bijleert. Het scherm zegt dat erbij voordat het vraagt.
+    """
     _eis_beheer(current_user)
     r = _rit_of_404(db, rit_id, current_user)
-    # Lesbeelden expliciet mee: SQLite handhaaft ON DELETE CASCADE niet altijd.
-    db.query(SchouwBeeld).filter(SchouwBeeld.schouwrit_id == r.id).delete(
-        synchronize_session=False)
-    db.query(SchouwOpname).filter(SchouwOpname.schouwrit_id == r.id).delete(
-        synchronize_session=False)
+    # Alle drie expliciet: SQLite handhaaft ON DELETE CASCADE niet altijd, en
+    # de waarnemingen stonden hier niet bij. Die bleven dus als losse rijen
+    # achter -- onzichtbaar, want alles wordt per rit opgevraagd, maar ze
+    # groeiden wel mee.
+    aantallen = {
+        "waarnemingen": db.query(Schouwwaarneming).filter(
+            Schouwwaarneming.schouwrit_id == r.id).delete(synchronize_session=False),
+        "beelden": db.query(SchouwBeeld).filter(
+            SchouwBeeld.schouwrit_id == r.id).delete(synchronize_session=False),
+        "opnames": db.query(SchouwOpname).filter(
+            SchouwOpname.schouwrit_id == r.id).delete(synchronize_session=False),
+    }
+    gebied = r.gebied
     db.delete(r)
     db.commit()
     log_action(db, request, current_user, action="schouw.delete",
-               entity_type="schouwrit", entity_id=rit_id)
-    return {"status": "verwijderd"}
+               entity_type="schouwrit", entity_id=rit_id,
+               before={"gebied": gebied}, extra=aantallen)
+    return {"status": "verwijderd", "gebied": gebied, **aantallen}

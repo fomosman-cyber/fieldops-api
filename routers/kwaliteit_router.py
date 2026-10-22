@@ -59,7 +59,7 @@ from database import get_db
 from models import (Asset, Project, QualityAnswer, QualityEvidence, QualityField,
                     QualityInspection, QualityRegistration, QualityRequirement,
                     User, UserRole)
-from permissions import can_manage_toolbox, is_org_admin, require_module
+from permissions import can_manage_toolbox, eis_verwijderen, is_org_admin, require_module
 
 router = APIRouter(prefix="/api/kwaliteit", tags=["Kwaliteit"],
                    dependencies=[Depends(require_module("kwaliteit"))])
@@ -971,13 +971,14 @@ def wijzig_keuring(
 def verwijder_keuring(
     keuring_id: str,
     request: Request,
+    bevestig: bool = Query(False, description="Ook met ingediende registraties"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Verwijderen mag alleen zolang er niets is ingediend.
-
-    Een keuring met ingediende registraties is onderdeel van het dossier. Die
-    weggooien wist bewijs dat iemand ooit nodig heeft; archiveren kan wel.
+    """Een keuring met ingediende registraties is onderdeel van het dossier.
+    Die weggooien wist bewijs dat iemand ooit nodig heeft, dus vraagt het
+    verwijderen dan een tweede bevestiging (zie permissions.eis_verwijderen);
+    archiveren blijft het alternatief.
     """
     _eis_beheer(current_user)
     k = _keuring_of_404(db, keuring_id, current_user)
@@ -987,18 +988,15 @@ def verwijder_keuring(
                            QualityRegistration.status.in_(
                                ["ingediend", "in_beoordeling", "goedgekeurd", "afgekeurd"]))
                    .count())
-    if ingediend:
-        raise HTTPException(
-            status_code=409,
-            detail=(f"Deze keuring heeft {ingediend} ingediende registratie(s) en hoort bij "
-                    "het dossier. Zet hem op gearchiveerd in plaats van verwijderen."))
+    eis_verwijderen(current_user, afgerond=bool(ingediend), bevestigd=bevestig,
+                    wat=f"Deze keuring (met {ingediend} ingediende registratie(s))")
 
     naam = k.naam
     db.delete(k)
     db.commit()
     log_action(db, request, current_user, action=ACTION.KWALITEIT_KEURING_DELETE,
                entity_type="quality_inspection", entity_id=keuring_id,
-               before={"naam": naam})
+               before={"naam": naam, "ingediend": ingediend})
     return {"verwijderd": True}
 
 

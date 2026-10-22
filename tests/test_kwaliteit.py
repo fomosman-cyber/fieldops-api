@@ -615,7 +615,9 @@ def test_eigen_concept_mag_wel_weg(client, admin_user):
     assert r.status_code == 200
 
 
-def test_keuring_met_ingediende_registratie_kan_niet_weg(client, admin_user):
+def test_keuring_met_ingediende_registratie_vraagt_een_tweede_bevestiging(client, admin_user):
+    """Een ingediende registratie hoort bij het dossier. Een beheerder kan de
+    keuring toch weghalen, maar pas na een uitdrukkelijke tweede bevestiging."""
     k = _maak_keuring(client, admin_user)
     _veld(client, admin_user, k["id"])
     reg = _start(client, admin_user, k["id"])
@@ -623,7 +625,10 @@ def test_keuring_met_ingediende_registratie_kan_niet_weg(client, admin_user):
 
     r = client.delete(f"/api/kwaliteit/keuringen/{k['id']}", headers=auth(admin_user))
     assert r.status_code == 409
-    assert "gearchiveerd" in r.json()["detail"]
+    assert r.json()["detail"].startswith("Bevestiging nodig")
+    r = client.delete(f"/api/kwaliteit/keuringen/{k['id']}?bevestig=true", headers=auth(admin_user))
+    assert r.status_code == 200
+    assert client.get(f"/api/kwaliteit/keuringen/{k['id']}", headers=auth(admin_user)).status_code == 404
 
 
 def test_veld_verwijderen_kan_niet_na_indienen(client, admin_user):
