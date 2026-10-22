@@ -198,3 +198,32 @@ Voor Pingdom/UptimeRobot: HTTP-check op deze endpoint. Als `last_success_at` oud
 - **Geen multi-region replication** — alleen eu-central-1. Voor ISO 27001 Tier 4 is multi-region wenselijk.
 - **Geen automated restore-test** — handmatig 1×/kwartaal aanbevolen om backups bruikbaar te houden.
 - **Geen klant-specifieke export** — dit is een full-DB-dump. Per-org export = GDPR Art. 20 (data portability), apart endpoint.
+
+## Wekelijkse kopie in Google Drive
+
+De nachtelijke back-up staat in dezelfde wolk als de server. Een kopie in de
+Drive van de eigenaar helpt bij wat die bucket niet opvangt: een verkeerd
+verwijderd account, een verlopen betaalkaart, een fout in ons eigen beheer.
+
+De cron-job `fieldops-backup-drive` draait elke zondag om 02:00 UTC en zet
+dezelfde dump ook in Google Drive. Hij bewaart de laatste acht kopieën en
+ruimt oudere op. Zonder instellingen doet hij niets en meldt hij dat.
+
+**Eenmalig instellen:**
+
+1. Maak in Google Cloud een serviceaccount (IAM & Beheer → Serviceaccounts).
+   Een rol is niet nodig: hij krijgt alleen toegang tot de map die je deelt.
+2. Maak bij dat serviceaccount een sleutel van het type JSON en download die.
+3. Deel in Google Drive de map **FieldOps → Back-ups** met het e-mailadres van
+   het serviceaccount (`...@...iam.gserviceaccount.com`), met rechten
+   *Bewerker*.
+4. Zet in Render bij de job `fieldops-backup-drive`:
+   - `GOOGLE_DRIVE_SA_JSON` — de volledige inhoud van het JSON-sleutelbestand;
+   - `GOOGLE_DRIVE_MAP_ID` — het id uit de map-URL
+     (`https://drive.google.com/drive/folders/<dit stuk>`).
+5. Draai de job één keer handmatig ("Trigger run") en kijk of het bestand in
+   de map verschijnt.
+
+**Wat er in de kopie zit:** de database. De foto's staan in de objectopslag en
+gaan niet mee -- die zijn te groot voor een wekelijkse kopie en staan al op een
+tweede plek. Wil je die ook in Drive, dan is dat een aparte afspraak.

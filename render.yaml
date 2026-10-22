@@ -217,6 +217,46 @@ services:
       - key: AWS_SECRET_ACCESS_KEY
         sync: false
 
+  # ── Wekelijkse kopie in Google Drive ─────────────────────────────────
+  # Dezelfde back-up, maar ook in een map van de eigenaar zelf. Een kopie die
+  # alleen in dezelfde wolk staat als de server, helpt niet bij een fout
+  # account of een verlopen betaalkaart. Zonder GOOGLE_DRIVE_SA_JSON doet deze
+  # job niets en zegt hij dat ook.
+  # Zondag 02:00 UTC, na de nachtelijke back-up.
+  - type: cron
+    name: fieldops-backup-drive
+    runtime: python
+    region: frankfurt
+    plan: starter
+    schedule: "0 2 * * 0"
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m backup_service --drive
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: fieldops-db-eu
+          property: connectionString
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_REGION
+        value: eu-central-1
+      - key: S3_ENDPOINT_URL
+        sync: false
+      - key: S3_BACKUP_PREFIX
+        value: backups/fieldops
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      # De sleutel van het serviceaccount (de hele JSON) en de map die met dat
+      # serviceaccount is gedeeld. Zie CRON-BACKUP-SETUP.md.
+      - key: GOOGLE_DRIVE_SA_JSON
+        sync: false
+      - key: GOOGLE_DRIVE_MAP_ID
+        sync: false
+      - key: GOOGLE_DRIVE_BEWAAR
+        value: "8"
+
 # Weggelaten omdat de code ze nooit leest: SMTP_HOST, SMTP_PORT, FROM_NAME,
 # SHOPIFY_STORE en SHOPIFY_API_KEY. Ze stonden wel in de oude blueprint en
 # wekten de indruk dat er iets geconfigureerd was.

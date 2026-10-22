@@ -30,6 +30,7 @@ from __future__ import annotations
 import os
 import gzip
 import io
+import json
 import subprocess
 import shutil
 from datetime import datetime, timezone
@@ -44,6 +45,17 @@ DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # Backup-prefix in bucket
 BACKUP_PREFIX = os.getenv("S3_BACKUP_PREFIX", "backups/fieldops")
+
+# Wekelijks ook een kopie in Google Drive, in een map die de eigenaar zelf
+# kan openen. Een back-up die alleen in dezelfde wolk staat als de server, is
+# geen back-up tegen een fout account of een verlopen kaart.
+#   GOOGLE_DRIVE_SA_JSON   de sleutel van een serviceaccount (de hele JSON)
+#   GOOGLE_DRIVE_MAP_ID    de map waarin hij mag schrijven (gedeeld met dat
+#                          serviceaccount-e-mailadres)
+#   GOOGLE_DRIVE_BEWAAR    hoeveel wekelijkse kopieën blijven staan
+DRIVE_SA_JSON = os.getenv("GOOGLE_DRIVE_SA_JSON", "")
+DRIVE_MAP_ID = os.getenv("GOOGLE_DRIVE_MAP_ID", "")
+DRIVE_BEWAAR = int(os.getenv("GOOGLE_DRIVE_BEWAAR", "8"))
 
 # Globale status voor /status endpoint (in-memory, niet persistent)
 _LAST_BACKUP_STATUS: dict = {
@@ -133,7 +145,92 @@ def _sqlite_backup_to_bytes(sqlite_path: str = "fieldops.db") -> bytes:
     return buf.getvalue()
 
 
-def run_backup() -> dict:
+def drive_is_configured() -> bool:
+    """Alleen met een serviceaccount én een map waarin hij mag schrijven."""
+    return bool(DRIVE_SA_JSON and DRIVE_MAP_ID)
+
+
+def _drive_token() -> str:
+    """Een toegangstoken voor het serviceaccount. Geen Google-bibliotheek
+    nodig: een ondertekende claim is genoeg."""
+    import time
+
+    import httpx
+    from jose import jwt
+
+    sa = json.loads(DRIVE_SA_JSON)
+    nu = int(time.time())
+    claim = {
+        "iss": sa["client_email"],
+        "scope": "https://www.googleapis.com/auth/drive.file",
+        "aud": "https://oauth2.googleapis.com/token",
+        "iat": nu,
+        "exp": nu + 3600,
+    }
+    assertie = jwt.encode(claim, sa["private_key"], algorithm="RS256")
+    antwoord = httpx.post("https://oauth2.googleapis.com/token", timeout=30, data={
+        "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+        "assertion": assertie,
+    })
+    antwoord.raise_for_status()
+    return antwoord.json()["access_token"]
+
+
+def naar_drive(inhoud: bytes, naam: str) -> dict:
+    """Eén bestand in de Drive-map zetten, en oude kopieën opruimen."""
+    import uuid
+
+    import httpx
+
+    if not drive_is_configured():
+        return {"success": False, "skipped": True,
+                "reason": "GOOGLE_DRIVE_SA_JSON en GOOGLE_DRIVE_MAP_ID moeten gezet zijn"}
+    try:
+        token = _drive_token()
+        grens = "fieldops-" + uuid.uuid4().hex
+        meta = json.dumps({"name": naam, "parents": [DRIVE_MAP_ID]})
+        lichaam = (
+            f"--{grens}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{meta}\r\n"
+            f"--{grens}\r\nContent-Type: application/gzip\r\n\r\n"
+        ).encode("utf-8") + inhoud + f"\r\n--{grens}--\r\n".encode("utf-8")
+        antwoord = httpx.post(
+            "https://www.googleapis.com/upload/drive/v3/files"
+            "?uploadType=multipart&supportsAllDrives=true&fields=id,name",
+            headers={"Authorization": f"Bearer {token}",
+                     "Content-Type": f"multipart/related; boundary={grens}"},
+            content=lichaam, timeout=900)
+        antwoord.raise_for_status()
+        bestand = antwoord.json()
+        opgeruimd = _drive_opruimen(token)
+        return {"success": True, "id": bestand.get("id"), "naam": bestand.get("name"),
+                "size_bytes": len(inhoud), "opgeruimd": opgeruimd}
+    except Exception as e:  # noqa: BLE001 — een back-up die faalt, moet het zeggen
+        return {"success": False, "error": f"{type(e).__name__}: {str(e)[:300]}"}
+
+
+def _drive_opruimen(token: str) -> int:
+    """Meer dan DRIVE_BEWAAR kopieën: de oudste weg. Anders groeit de Drive
+    van de eigenaar ongemerkt vol."""
+    import httpx
+
+    kop = {"Authorization": f"Bearer {token}"}
+    lijst = httpx.get("https://www.googleapis.com/drive/v3/files", headers=kop, timeout=60, params={
+        "q": f"'{DRIVE_MAP_ID}' in parents and trashed = false and name contains 'fieldops-'",
+        "orderBy": "createdTime desc", "fields": "files(id,name,createdTime)", "pageSize": 100,
+        "supportsAllDrives": "true", "includeItemsFromAllDrives": "true",
+    })
+    lijst.raise_for_status()
+    bestanden = lijst.json().get("files", [])
+    weg = 0
+    for bestand in bestanden[DRIVE_BEWAAR:]:
+        verwijderd = httpx.delete(f"https://www.googleapis.com/drive/v3/files/{bestand['id']}",
+                                  headers=kop, timeout=60, params={"supportsAllDrives": "true"})
+        if verwijderd.status_code in (200, 204):
+            weg += 1
+    return weg
+
+
+def run_backup(ook_naar_drive: bool = False) -> dict:
     """Voer een backup uit. Returns status-dict.
 
     Atomair: bij elke fout krijg je 'success': False + error-bericht.
@@ -200,13 +297,21 @@ def run_backup() -> dict:
             "last_filename": key,
             "running": False,
         })
-        return {
+        uit = {
             "success": True,
             "bucket": S3_BUCKET,
             "key": key,
             "size_bytes": size,
             "size_mb": round(size / 1024 / 1024, 2),
         }
+        if ook_naar_drive:
+            uit["drive"] = naar_drive(blob, f"fieldops-{ts}.{ext}")
+            if not uit["drive"].get("success") and not uit["drive"].get("skipped"):
+                # De kopie in de bucket staat er; dat de tweede plek faalde,
+                # mag niet stilletjes goed lijken.
+                uit["success"] = False
+                uit["error"] = "kopie naar Drive mislukt: " + str(uit["drive"].get("error"))
+        return uit
     except Exception as e:
         err_msg = f"{type(e).__name__}: {str(e)[:300]}"
         _LAST_BACKUP_STATUS["last_error"] = err_msg
@@ -244,9 +349,12 @@ def list_recent_backups(limit: int = 30) -> list:
 
 if __name__ == "__main__":
     # CLI-modus voor Render Cron Job:
-    #   python -m backup_service
+    #   python -m backup_service           nachtelijk, naar de bucket
+    #   python -m backup_service --drive   wekelijks, ook naar Google Drive
+    import sys
     import json as _json
-    print("[backup_service] Start backup...")
-    result = run_backup()
+    naar_drive_ook = "--drive" in sys.argv
+    print("[backup_service] Start backup..." + (" (ook naar Drive)" if naar_drive_ook else ""))
+    result = run_backup(ook_naar_drive=naar_drive_ook)
     print(_json.dumps(result, indent=2))
     raise SystemExit(0 if result.get("success") else 1)
