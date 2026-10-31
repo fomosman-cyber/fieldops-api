@@ -30,7 +30,7 @@ import csv
 import io
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -48,7 +48,7 @@ from schemas import (
 )
 from auth import get_current_user
 from audit import log_action, ACTION
-from permissions import can_create_meldingen, require_module
+from permissions import can_create_meldingen, eis_verwijderen, require_module
 
 import kunstwerken_taxonomy as kt
 import nen2767_scoring as scoring
@@ -869,20 +869,28 @@ def update_inspection(
 def delete_inspection(
     inspection_id: str,
     request: Request,
+    bevestig: bool = Query(False, description="Ook als hij afgerond of ondertekend is (beheerder)"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Zie permissions.eis_verwijderen: een beheerder mag ook een afgeronde of
+    ondertekende inspectie verwijderen, na bevestiging; de inspecteur zelf
+    alleen zolang hij niet af is."""
     insp = _get_inspection_or_404(db, inspection_id, current_user)
-    if insp.status in ("signed", "delivered"):
-        raise HTTPException(status_code=409,
-                            detail="Ondertekende inspectie kan niet worden verwijderd")
+    eis_verwijderen(current_user, maker_id=insp.inspecteur_id,
+                    afgerond=insp.status in ("completed", "signed", "delivered"),
+                    bevestigd=bevestig, wat="Deze inspectie")
     title = insp.title
+    # Een afgeronde inspectie staat als "laatste inspectie" op het kunstwerk.
+    # Die verwijzing moet eraf, anders weigert Postgres de DELETE.
+    (db.query(Asset).filter(Asset.last_inspection_id == insp.id)
+       .update({Asset.last_inspection_id: None}, synchronize_session=False))
     db.delete(insp)
     db.commit()
     log_action(db, request, current_user,
                action=ACTION.INSPECTION_DELETE,
                entity_type="inspection", entity_id=inspection_id,
-               extra={"title": title})
+               extra={"title": title, "status": insp.status})
     return {"message": "Inspectie verwijderd"}
 
 

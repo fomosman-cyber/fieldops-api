@@ -88,6 +88,7 @@ class ACTION:
     AI_ANALYSIS_RUN     = "ai.analysis.run"
     AI_ANALYSIS_ACCEPT  = "ai.analysis.accept"
     AI_ANALYSIS_REJECT  = "ai.analysis.reject"
+    AI_ANALYSIS_DELETE  = "ai.analysis.delete"
 
     # Kunstwerken-inspecties (NEN 2767-2 + CROW 134)
     INSPECTION_CREATE        = "inspection.create"
@@ -132,6 +133,19 @@ class ACTION:
     MATERIEEL_INZET_UPDATE  = "materieel.inzet.update"
     MATERIEEL_INZET_DELETE  = "materieel.inzet.delete"
     MATERIEEL_BEGROTING     = "materieel.begroting.overgenomen"
+
+    # Projectdagrapport
+    DAGRAPPORT_DAG          = "dagrapport.dag"
+    DAGRAPPORT_PERSONEEL_CREATE = "dagrapport.personeel.create"
+    DAGRAPPORT_PERSONEEL_UPDATE = "dagrapport.personeel.update"
+    DAGRAPPORT_PERSONEEL_DELETE = "dagrapport.personeel.delete"
+    DAGRAPPORT_PERSONEEL_KOPIEER = "dagrapport.personeel.kopieer"
+    DAGRAPPORT_MATERIAAL_CREATE = "dagrapport.materiaal.create"
+    DAGRAPPORT_MATERIAAL_UPDATE = "dagrapport.materiaal.update"
+    DAGRAPPORT_MATERIAAL_DELETE = "dagrapport.materiaal.delete"
+    DAGRAPPORT_AFWIJKING_CREATE = "dagrapport.afwijking.create"
+    DAGRAPPORT_AFWIJKING_UPDATE = "dagrapport.afwijking.update"
+    DAGRAPPORT_AFWIJKING_DELETE = "dagrapport.afwijking.delete"
 
     # Compliance / GDPR
     AUDIT_EXPORT        = "audit.export.csv"       # admin downloadt audit-log

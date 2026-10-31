@@ -421,7 +421,15 @@ def delete_entry(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Soft-delete eigen entry. Auto-entries blijven bewaard (audit)."""
+    """Een regel uit je eigen dagboek halen (soft-delete).
+
+    Ook automatische regels: die zijn een spiegel van iets wat elders is
+    gebeurd (melding aangemaakt, inspectie afgerond). De regel verdwijnt uit
+    de tijdlijn; wat hij spiegelt blijft bestaan, met zijn eigen auditspoor.
+    Uitzondering is materieel: die spiegelregel hoort bij een CO2-regel, en
+    die gaat mee -- anders telt de CO2 van een machine die je hebt weggehaald
+    gewoon door.
+    """
     entry = db.query(DaybookEntry).filter(
         DaybookEntry.id == entry_id,
         DaybookEntry.organization_id == current_user.organization_id,
@@ -431,10 +439,18 @@ def delete_entry(
         raise HTTPException(404, "Entry niet gevonden")
     if entry.user_id != current_user.id:
         raise HTTPException(403, "Je kunt alleen je eigen entries verwijderen")
-    if entry.source == "auto":
-        raise HTTPException(400, "Auto-entries kunnen niet verwijderd worden")
 
-    entry.deleted_at = datetime.now(timezone.utc)
+    nu = datetime.now(timezone.utc)
+    entry.deleted_at = nu
+    if entry.source_type == "materieel" and entry.source_id:
+        from models import MaterieelInzet
+        inzet = db.query(MaterieelInzet).filter(
+            MaterieelInzet.id == entry.source_id,
+            MaterieelInzet.organization_id == current_user.organization_id,
+            MaterieelInzet.user_id == current_user.id,
+            MaterieelInzet.deleted_at.is_(None)).first()
+        if inzet:
+            inzet.deleted_at = nu
     db.commit()
     return {"deleted": True, "entry_id": entry_id}
 

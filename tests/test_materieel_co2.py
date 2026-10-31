@@ -7,7 +7,7 @@ er een bewering in die niemand heeft gedaan.
 """
 
 import json
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pytest
 
@@ -15,6 +15,15 @@ import materieel as mt
 from database import SessionLocal
 from models import Materieel, Organization, Project
 from tests.conftest import auth
+
+
+def _vandaag():
+    """De Nederlandse dag, zoals de server hem rekent voor een regel zonder
+    datum. `date.today()` is op de CI-machine de UTC-dag: tussen middernacht
+    en 02:00 Nederlandse tijd een dag te vroeg."""
+    from datetime import datetime, timezone
+    from export_huisstijl import naar_nl
+    return naar_nl(datetime.now(timezone.utc)).date()
 
 
 # ── De factorenlijst ─────────────────────────────────────────────────
@@ -216,7 +225,7 @@ def test_import_slaat_niets_op_zonder_bevestiging(client, admin_user):
 
 def test_inzet_verschijnt_in_het_werkdagboek(client, admin_user):
     stuk = _maak_stuk(client, admin_user)
-    vandaag = date.today().isoformat()
+    vandaag = _vandaag().isoformat()
     r = client.post("/api/materieel/inzet", headers=auth(admin_user), json={
         "datum": vandaag, "materieel_id": stuk["id"], "draaiuren": 6,
         "brandstof_hoeveelheid": 70})
@@ -237,7 +246,7 @@ def test_draaiuren_tellen_niet_als_gewerkte_uren(client, admin_user):
     """Een kraan stuurt geen factuur voor zichzelf. Zes draaiuren mogen niet
     als zes uur in de urenregistratie belanden."""
     stuk = _maak_stuk(client, admin_user)
-    vandaag = date.today().isoformat()
+    vandaag = _vandaag().isoformat()
     client.post("/api/materieel/inzet", headers=auth(admin_user),
                 json={"datum": vandaag, "materieel_id": stuk["id"], "draaiuren": 6})
 
@@ -273,7 +282,7 @@ def test_inzet_zonder_verbruik_levert_geen_kilogrammen(client, admin_user):
 
 def test_wijzigen_werkt_co2_en_dagboekregel_bij(client, admin_user):
     stuk = _maak_stuk(client, admin_user)
-    vandaag = date.today().isoformat()
+    vandaag = _vandaag().isoformat()
     regel = client.post("/api/materieel/inzet", headers=auth(admin_user), json={
         "datum": vandaag, "materieel_id": stuk["id"], "brandstof_hoeveelheid": 10}).json()
     eerste = regel["co2_kg"]
@@ -290,7 +299,7 @@ def test_wijzigen_werkt_co2_en_dagboekregel_bij(client, admin_user):
 
 def test_verwijderen_haalt_ook_de_dagboekregel_weg(client, admin_user):
     stuk = _maak_stuk(client, admin_user)
-    vandaag = date.today().isoformat()
+    vandaag = _vandaag().isoformat()
     regel = client.post("/api/materieel/inzet", headers=auth(admin_user), json={
         "datum": vandaag, "materieel_id": stuk["id"], "brandstof_hoeveelheid": 10}).json()
 
@@ -339,7 +348,7 @@ def test_rapport_splitst_gemeten_geschat_en_leeg(client, admin_user):
     gemeten = _maak_stuk(client, admin_user, naam="Kraan gemeten")
     geschat = _maak_stuk(client, admin_user, naam="Kraan geschat", verbruik_per_uur=10)
     leeg = _maak_stuk(client, admin_user, naam="Kraan leeg", verbruik_per_uur=None)
-    vandaag = date.today().isoformat()
+    vandaag = _vandaag().isoformat()
 
     client.post("/api/materieel/inzet", headers=auth(admin_user), json={
         "datum": vandaag, "materieel_id": gemeten["id"], "brandstof_hoeveelheid": 10,
@@ -370,7 +379,7 @@ def test_rapport_splitst_gemeten_geschat_en_leeg(client, admin_user):
 def test_rapport_groepeert_per_leverancier(client, admin_user):
     _maak_stuk(client, admin_user, naam="Kraan A", leverancier="Boels")
     _maak_stuk(client, admin_user, naam="Kraan B", leverancier="Riwal")
-    vandaag = date.today().isoformat()
+    vandaag = _vandaag().isoformat()
     for naam in ("Kraan A", "Kraan B"):
         stuk = [m for m in client.get("/api/materieel", headers=auth(admin_user)).json()["materieel"]
                 if m["naam"] == naam][0]
@@ -386,7 +395,7 @@ def test_uitkomst_bevriest_als_de_factor_later_verandert(client, admin_user):
     """Een rapport over vorig jaar hoort niet te wijzigen omdat de lijst is
     bijgewerkt. Daarom staat de uitkomst in de regel, niet in een formule."""
     stuk = _maak_stuk(client, admin_user)
-    vandaag = date.today().isoformat()
+    vandaag = _vandaag().isoformat()
     regel = client.post("/api/materieel/inzet", headers=auth(admin_user), json={
         "datum": vandaag, "materieel_id": stuk["id"], "brandstof_hoeveelheid": 10}).json()
     oorspronkelijk = regel["co2_kg"]
@@ -412,8 +421,8 @@ def test_eigen_factor_moet_een_bestaande_drager_zijn(client, admin_user):
 
 
 def test_te_lange_periode_wordt_geweigerd(client, admin_user):
-    vroeg = (date.today() - timedelta(days=500)).isoformat()
-    r = client.get(f"/api/materieel/co2?from={vroeg}&to={date.today().isoformat()}",
+    vroeg = (_vandaag() - timedelta(days=500)).isoformat()
+    r = client.get(f"/api/materieel/co2?from={vroeg}&to={_vandaag().isoformat()}",
                    headers=auth(admin_user))
     assert r.status_code == 400
 
@@ -430,7 +439,7 @@ def test_leveranciers_worden_voorgesteld(client, admin_user):
 @pytest.mark.parametrize("formaat", ["xlsx", "pdf"])
 def test_export_levert_een_bestand(client, admin_user, formaat):
     stuk = _maak_stuk(client, admin_user)
-    vandaag = date.today().isoformat()
+    vandaag = _vandaag().isoformat()
     client.post("/api/materieel/inzet", headers=auth(admin_user), json={
         "datum": vandaag, "materieel_id": stuk["id"], "brandstof_hoeveelheid": 10})
 
@@ -502,7 +511,7 @@ def _twee_regels(client, admin_user, technician_user):
     client.post("/api/materieel/inzet", headers=auth(admin_user), json={
         "materieel_naam": "Kraan van de beheerder", "energiedrager": "diesel",
         "brandstof_hoeveelheid": 10})
-    return date.today().isoformat()
+    return _vandaag().isoformat()
 
 
 def test_het_werkdagboek_toont_je_eigen_regels(client, admin_user, technician_user):

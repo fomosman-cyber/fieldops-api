@@ -1,0 +1,349 @@
+{
+  "toelichting": "Indicatieve kengetallen voor veelgebruikt materieel in de GWW. Verbruik per draaiuur = vermogen (kW) x gemiddelde belasting x 0,24 liter per kWh (specifiek verbruik van een moderne dieselmotor). Een regel die hiermee rekent heet 'geschat'; wie de getankte liters invult, krijgt 'gemeten'. Vervang het kengetal door het eigen verbruik zodra dat bekend is.",
+  "specifiek_verbruik_l_per_kwh": 0.24,
+  "versie": "2026-09",
+  "materieel": [
+    {
+      "code": "minigraver_2t",
+      "naam": "Minigraver 1,5–3 t",
+      "soort": "graafmachine",
+      "vermogen_kw": 15,
+      "belasting": 0.35,
+      "verbruik_per_uur": 1.3,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "midigraver_6t",
+      "naam": "Midigraver 5–8 t",
+      "soort": "graafmachine",
+      "vermogen_kw": 40,
+      "belasting": 0.35,
+      "verbruik_per_uur": 3.4,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "mobiele_kraan_15t",
+      "naam": "Mobiele kraan 14–18 t (banden)",
+      "soort": "graafmachine",
+      "vermogen_kw": 105,
+      "belasting": 0.35,
+      "verbruik_per_uur": 8.8,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "mobiele_kraan_20t",
+      "naam": "Mobiele kraan 20–23 t (banden)",
+      "soort": "graafmachine",
+      "vermogen_kw": 125,
+      "belasting": 0.35,
+      "verbruik_per_uur": 10.5,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "rupskraan_22t",
+      "naam": "Rupskraan 20–25 t",
+      "soort": "graafmachine",
+      "vermogen_kw": 120,
+      "belasting": 0.35,
+      "verbruik_per_uur": 10.1,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "rupskraan_35t",
+      "naam": "Rupskraan 30–40 t",
+      "soort": "graafmachine",
+      "vermogen_kw": 200,
+      "belasting": 0.35,
+      "verbruik_per_uur": 16.8,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "shovel_klein",
+      "naam": "Shovel / wiellader compact (tot 6 t)",
+      "soort": "shovel",
+      "vermogen_kw": 50,
+      "belasting": 0.35,
+      "verbruik_per_uur": 4.2,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "shovel_groot",
+      "naam": "Shovel / wiellader 15–20 t",
+      "soort": "shovel",
+      "vermogen_kw": 150,
+      "belasting": 0.35,
+      "verbruik_per_uur": 12.6,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "rupsdumper",
+      "naam": "Mini- / rupsdumper",
+      "soort": "dumper",
+      "vermogen_kw": 20,
+      "belasting": 0.3,
+      "verbruik_per_uur": 1.4,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "knikdumper",
+      "naam": "Knikdumper 25–30 t",
+      "soort": "dumper",
+      "vermogen_kw": 250,
+      "belasting": 0.3,
+      "verbruik_per_uur": 18.0,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "kipper_4as",
+      "naam": "Vrachtwagen kipper 8x4 (4-asser)",
+      "soort": "vrachtwagen",
+      "vermogen_kw": 315,
+      "belasting": 0.2,
+      "verbruik_per_uur": 15.1,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "vrachtwagen_6x6",
+      "naam": "Vrachtwagen 6x6 met of zonder kraan",
+      "soort": "vrachtwagen",
+      "vermogen_kw": 315,
+      "belasting": 0.2,
+      "verbruik_per_uur": 15.1,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "knijperauto",
+      "naam": "Vrachtwagen met knijper / kraan",
+      "soort": "vrachtwagen",
+      "vermogen_kw": 290,
+      "belasting": 0.2,
+      "verbruik_per_uur": 13.9,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "trekker_oplegger",
+      "naam": "Trekker met oplegger / dieplader",
+      "soort": "vrachtwagen",
+      "vermogen_kw": 330,
+      "belasting": 0.2,
+      "verbruik_per_uur": 15.8,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "veegwagen",
+      "naam": "Veegwagen / zuigveegmachine",
+      "soort": "veegmachine",
+      "vermogen_kw": 100,
+      "belasting": 0.3,
+      "verbruik_per_uur": 7.2,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "kolkenzuiger",
+      "naam": "Kolkenzuiger / zuigwagen",
+      "soort": "vrachtwagen",
+      "vermogen_kw": 300,
+      "belasting": 0.2,
+      "verbruik_per_uur": 14.4,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "bedrijfsbus",
+      "naam": "Bedrijfsbus / pickup",
+      "soort": "bedrijfsbus",
+      "vermogen_kw": 100,
+      "belasting": 0.15,
+      "verbruik_per_uur": 3.6,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "pijlwagen",
+      "naam": "Pijlwagen / actiewagen",
+      "soort": "bedrijfsbus",
+      "vermogen_kw": 100,
+      "belasting": 0.15,
+      "verbruik_per_uur": 3.6,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "asfaltfrees_05",
+      "naam": "Asfaltfrees 0,5 m (W50-klasse)",
+      "soort": "freesmachine",
+      "vermogen_kw": 105,
+      "belasting": 0.5,
+      "verbruik_per_uur": 12.6,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "asfaltfrees_1",
+      "naam": "Asfaltfrees 1,0 m (W100-klasse)",
+      "soort": "freesmachine",
+      "vermogen_kw": 230,
+      "belasting": 0.5,
+      "verbruik_per_uur": 27.6,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "asfaltfrees_2",
+      "naam": "Asfaltfrees 2,0 m (W200-klasse)",
+      "soort": "freesmachine",
+      "vermogen_kw": 450,
+      "belasting": 0.5,
+      "verbruik_per_uur": 54.0,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "spreidmachine",
+      "naam": "Asfaltspreidmachine",
+      "soort": "asfaltmachine",
+      "vermogen_kw": 130,
+      "belasting": 0.4,
+      "verbruik_per_uur": 12.5,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "spreidmachine_klein",
+      "naam": "Asfaltspreidmachine compact (fiets-/voetpad)",
+      "soort": "asfaltmachine",
+      "vermogen_kw": 55,
+      "belasting": 0.4,
+      "verbruik_per_uur": 5.3,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "tandemwals_klein",
+      "naam": "Tandemwals 2–4 t",
+      "soort": "walsen",
+      "vermogen_kw": 25,
+      "belasting": 0.35,
+      "verbruik_per_uur": 2.1,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "tandemwals",
+      "naam": "Tandemwals 7–10 t",
+      "soort": "walsen",
+      "vermogen_kw": 75,
+      "belasting": 0.35,
+      "verbruik_per_uur": 6.3,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "bandenwals",
+      "naam": "Bandenwals",
+      "soort": "walsen",
+      "vermogen_kw": 75,
+      "belasting": 0.35,
+      "verbruik_per_uur": 6.3,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "grondwals",
+      "naam": "Grondwals / trilwals 10–12 t",
+      "soort": "walsen",
+      "vermogen_kw": 100,
+      "belasting": 0.35,
+      "verbruik_per_uur": 8.4,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "trilplaat",
+      "naam": "Trilplaat (diesel)",
+      "soort": "trilplaat",
+      "vermogen_kw": 7,
+      "belasting": 0.5,
+      "verbruik_per_uur": 0.8,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "trilplaat_zwaar",
+      "naam": "Trilplaat zwaar / omkeerbaar (diesel)",
+      "soort": "trilplaat",
+      "vermogen_kw": 15,
+      "belasting": 0.5,
+      "verbruik_per_uur": 1.8,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "stamper",
+      "naam": "Stamper (benzine)",
+      "soort": "trilplaat",
+      "vermogen_kw": 3,
+      "belasting": 0.5,
+      "verbruik_per_uur": 0.4,
+      "energiedrager": "benzine"
+    },
+    {
+      "code": "straatmachine",
+      "naam": "Straatmachine / klinkerlegmachine",
+      "soort": "overig",
+      "vermogen_kw": 25,
+      "belasting": 0.35,
+      "verbruik_per_uur": 2.1,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "verreiker",
+      "naam": "Verreiker",
+      "soort": "verreiker",
+      "vermogen_kw": 75,
+      "belasting": 0.3,
+      "verbruik_per_uur": 5.4,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "hoogwerker",
+      "naam": "Hoogwerker (diesel)",
+      "soort": "hoogwerker",
+      "vermogen_kw": 30,
+      "belasting": 0.25,
+      "verbruik_per_uur": 1.8,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "aggregaat_20",
+      "naam": "Aggregaat 20 kVA",
+      "soort": "aggregaat",
+      "vermogen_kw": 17,
+      "belasting": 0.5,
+      "verbruik_per_uur": 2.0,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "aggregaat_60",
+      "naam": "Aggregaat 60 kVA",
+      "soort": "aggregaat",
+      "vermogen_kw": 50,
+      "belasting": 0.5,
+      "verbruik_per_uur": 6.0,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "pomp_bemaling",
+      "naam": "Bemalingspomp (diesel)",
+      "soort": "pomp",
+      "vermogen_kw": 15,
+      "belasting": 0.5,
+      "verbruik_per_uur": 1.8,
+      "energiedrager": "diesel"
+    },
+    {
+      "code": "zaagmachine",
+      "naam": "Vloer- / asfaltzaag (benzine)",
+      "soort": "handgereedschap",
+      "vermogen_kw": 10,
+      "belasting": 0.5,
+      "verbruik_per_uur": 1.2,
+      "energiedrager": "benzine"
+    },
+    {
+      "code": "maaimachine",
+      "naam": "Maaimachine / klepelmaaier",
+      "soort": "maaimachine",
+      "vermogen_kw": 60,
+      "belasting": 0.4,
+      "verbruik_per_uur": 5.8,
+      "energiedrager": "diesel"
+    }
+  ]
+}
