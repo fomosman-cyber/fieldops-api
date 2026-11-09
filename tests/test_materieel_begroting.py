@@ -11,7 +11,7 @@ import pytest
 
 import materieel_begroting as mb
 from database import SessionLocal
-from models import Materieel, MaterieelInzet, Project
+from models import MaterieelInzet, Project
 from tests.conftest import auth
 
 
