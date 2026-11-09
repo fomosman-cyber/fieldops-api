@@ -527,6 +527,13 @@ def begroting_overnemen(body: OvernemenIn, request: Request,
     Daarna is het gewone inzet: zichtbaar in de tijdlijn, te wijzigen, en het
     telt mee in de CO2-rapportage. Regels zonder draaiuren worden overgeslagen
     -- die zeggen niets en zouden alleen het overzicht vervuilen.
+
+    **Alles of niets.** Het materieel wordt eerst in één keer opgezocht, en pas
+    als alle regels kloppen gaat er iets naar de database. Eerder liep dit per
+    regel: een onbekend id in de derde regel gaf een 404 terwijl de eerste twee
+    al waren weggeschreven. Wie dan opnieuw op overnemen drukt -- en dat doet
+    iedereen na een foutmelding -- had die regels dubbel in het werkdagboek, en
+    dubbel in de CO2-rapportage.
     """
     if not body.regels:
         raise HTTPException(400, "Er is niets om over te nemen")
@@ -539,19 +546,26 @@ def begroting_overnemen(body: OvernemenIn, request: Request,
 
     datum = body.datum or _vandaag()
     eigen = _eigen_factoren(current_user.organization)
-    gemaakt, overgeslagen = [], 0
+    overgeslagen = sum(1 for r in body.regels if not r.draaiuren)
+    te_doen = [r for r in body.regels if r.draaiuren]
+    if not te_doen:
+        raise HTTPException(400, "Geen enkele regel had draaiuren ingevuld")
 
-    for regel in body.regels:
-        if not regel.draaiuren:
-            overgeslagen += 1
-            continue
-        stuk = None
-        if regel.materieel_id:
-            stuk = db.query(Materieel).filter(
-                Materieel.id == regel.materieel_id,
-                Materieel.organization_id == current_user.organization_id).first()
-            if not stuk:
+    # Eerst alles opzoeken, dan pas schrijven. Eén query voor alle ids, zodat
+    # een onbekend of andermans id eruit komt voordat er iets is aangemaakt.
+    gevraagd = {r.materieel_id for r in te_doen if r.materieel_id}
+    stukken: dict[str, Materieel] = {}
+    if gevraagd:
+        stukken = {m.id: m for m in db.query(Materieel).filter(
+            Materieel.id.in_(gevraagd),
+            Materieel.organization_id == current_user.organization_id).all()}
+        for regel in te_doen:
+            if regel.materieel_id and regel.materieel_id not in stukken:
                 raise HTTPException(404, f"Materieel niet gevonden: {regel.naam}")
+
+    gemaakt = []
+    for regel in te_doen:
+        stuk = stukken.get(regel.materieel_id) if regel.materieel_id else None
 
         inzet = MaterieelInzet(
             organization_id=current_user.organization_id,
@@ -570,9 +584,17 @@ def begroting_overnemen(body: OvernemenIn, request: Request,
         )
         _schrijf_berekening(inzet, eigen)
         db.add(inzet)
-        db.commit()
-        db.refresh(inzet)
+        gemaakt.append(inzet)
 
+    # Eén keer, voor alle regels samen.
+    db.commit()
+
+    # De dagboekregels zijn de spiegel in de tijdlijn en blijven best-effort:
+    # `log_daybook` rolt bij een fout zijn eigen werk terug en geeft None. Dat
+    # mag pas ná de commit hierboven gebeuren, anders neemt die rollback de
+    # inzet zelf mee.
+    for inzet in gemaakt:
+        db.refresh(inzet)
         titel, tekst = _dagboektekst(inzet)
         entry = log_daybook(
             db, user_id=current_user.id, organization_id=current_user.organization_id,
@@ -583,10 +605,6 @@ def begroting_overnemen(body: OvernemenIn, request: Request,
         if entry is not None:
             inzet.daybook_entry_id = entry.id
             db.commit()
-        gemaakt.append(inzet)
-
-    if not gemaakt:
-        raise HTTPException(400, "Geen enkele regel had draaiuren ingevuld")
 
     log_action(db, request, current_user, action=ACTION.MATERIEEL_BEGROTING,
                entity_type="materieel_inzet",

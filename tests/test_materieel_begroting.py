@@ -200,6 +200,40 @@ def test_overnemen_kent_geen_materieel_van_een_ander(client, admin_user):
     assert r.status_code == 404
 
 
+def test_een_onbekend_id_schrijft_ook_de_goede_regels_niet_weg(client, admin_user):
+    """Alles of niets, want na een foutmelding drukt iedereen opnieuw.
+
+    Dit liep per regel: de eerste regel stond al in de database toen de tweede
+    een 404 gaf. De tweede poging maakte daar een dubbele dagregel van, en in
+    de CO2-rapportage telde die dubbel mee.
+    """
+    goed = _stuk(client, admin_user, "Rupskraan 8t")
+
+    r = client.post("/api/materieel/begroting/overnemen", headers=auth(admin_user), json={
+        "regels": [
+            {"materieel_id": goed["id"], "naam": "Rupskraan 8t", "draaiuren": 4},
+            {"materieel_id": "bestaat-niet", "naam": "Spookkraan", "draaiuren": 2},
+            {"materieel_id": None, "naam": "Huurwals", "draaiuren": 3},
+        ]})
+    assert r.status_code == 404
+    assert "Spookkraan" in r.json()["detail"]
+
+    db = SessionLocal()
+    try:
+        assert db.query(MaterieelInzet).count() == 0, "halve begroting weggeschreven"
+    finally:
+        db.close()
+
+    # En na het herstellen van die ene regel gaat alles in één keer mee.
+    r = client.post("/api/materieel/begroting/overnemen", headers=auth(admin_user), json={
+        "regels": [
+            {"materieel_id": goed["id"], "naam": "Rupskraan 8t", "draaiuren": 4},
+            {"materieel_id": None, "naam": "Huurwals", "draaiuren": 3},
+        ]})
+    assert r.status_code == 201, r.text
+    assert r.json()["aangemaakt"] == 2
+
+
 def test_eenheden_worden_aangeboden(client, admin_user):
     codes = {e["code"] for e in client.get("/api/materieel/eenheden",
                                            headers=auth(admin_user)).json()["eenheden"]}
