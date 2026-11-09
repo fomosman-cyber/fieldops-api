@@ -52,10 +52,30 @@ BACKUP_PREFIX = os.getenv("S3_BACKUP_PREFIX", "backups/fieldops")
 #   GOOGLE_DRIVE_SA_JSON   de sleutel van een serviceaccount (de hele JSON)
 #   GOOGLE_DRIVE_MAP_ID    de map waarin hij mag schrijven (gedeeld met dat
 #                          serviceaccount-e-mailadres)
-#   GOOGLE_DRIVE_BEWAAR    hoeveel wekelijkse kopieën blijven staan
+#   GOOGLE_DRIVE_BEWAAR    hoeveel wekelijkse kopieën blijven staan (minimaal 1)
 DRIVE_SA_JSON = os.getenv("GOOGLE_DRIVE_SA_JSON", "")
 DRIVE_MAP_ID = os.getenv("GOOGLE_DRIVE_MAP_ID", "")
-DRIVE_BEWAAR = int(os.getenv("GOOGLE_DRIVE_BEWAAR", "8"))
+
+
+def _bewaar_uit_omgeving(rauw: str | None, standaard: int = 8) -> int:
+    """GOOGLE_DRIVE_BEWAAR lezen zonder de module te laten omvallen.
+
+    Dit wordt op moduleniveau gelezen, en `backup_service` wordt ook
+    geïmporteerd door endpoints die niets met Drive te maken hebben
+    (`admin_router`, `compliance_router`). Een typefout in één
+    omgevingsvariabele mag daar geen 500 van maken.
+    """
+    if rauw is None or not rauw.strip():
+        return standaard
+    try:
+        return int(rauw.strip())
+    except ValueError:
+        print(f"[backup_service] GOOGLE_DRIVE_BEWAAR={rauw!r} is geen getal; "
+              f"ik houd {standaard} aan")
+        return standaard
+
+
+DRIVE_BEWAAR = _bewaar_uit_omgeving(os.getenv("GOOGLE_DRIVE_BEWAAR"))
 
 # Globale status voor /status endpoint (in-memory, niet persistent)
 _LAST_BACKUP_STATUS: dict = {
@@ -201,18 +221,40 @@ def naar_drive(inhoud: bytes, naam: str) -> dict:
             content=lichaam, timeout=900)
         antwoord.raise_for_status()
         bestand = antwoord.json()
-        opgeruimd = _drive_opruimen(token)
-        return {"success": True, "id": bestand.get("id"), "naam": bestand.get("name"),
-                "size_bytes": len(inhoud), "opgeruimd": opgeruimd}
+        opgeruimd, opruimen_mislukt = _drive_opruimen(token)
+        uit = {"success": True, "id": bestand.get("id"), "naam": bestand.get("name"),
+               "size_bytes": len(inhoud), "opgeruimd": opgeruimd}
+        if opruimen_mislukt:
+            # De kopie staat er, dus de back-up is gelukt. Maar dat het
+            # opruimen niet mocht is een eigen probleem: onopgemerkt loopt de
+            # Drive van de eigenaar alsnog vol.
+            uit["opruimen_mislukt"] = opruimen_mislukt
+            uit["waarschuwing"] = (
+                f"{opruimen_mislukt} oude kopie(en) kon ik niet verwijderen; "
+                "controleer de rechten op de Drive-map")
+        return uit
     except Exception as e:  # noqa: BLE001 — een back-up die faalt, moet het zeggen
         return {"success": False, "error": f"{type(e).__name__}: {str(e)[:300]}"}
 
 
-def _drive_opruimen(token: str) -> int:
+def _drive_opruimen(token: str) -> tuple[int, int]:
     """Meer dan DRIVE_BEWAAR kopieën: de oudste weg. Anders groeit de Drive
-    van de eigenaar ongemerkt vol."""
+    van de eigenaar ongemerkt vol. Geeft terug: (verwijderd, mislukt).
+
+    Twee dingen staan hier bewust zo:
+
+    **Nooit minder dan één bewaren.** Bij nul is `bestanden[0:]` de hele map,
+    inclusief de kopie die hierboven net is geüpload — de opruiming zou dan je
+    laatste back-up weggooien en dat nog succesvol noemen. Een map die vol
+    loopt is het kleinere probleem.
+
+    **Een geweigerd verwijderen wordt geteld, niet ingeslikt.** Als de rechten
+    op de map wijzigen, mislukt het opruimen stil en loopt de Drive alsnog vol.
+    De aanroeper geeft het aantal door, zodat het ergens te zien is.
+    """
     import httpx
 
+    bewaar = max(1, DRIVE_BEWAAR)
     kop = {"Authorization": f"Bearer {token}"}
     lijst = httpx.get("https://www.googleapis.com/drive/v3/files", headers=kop, timeout=60, params={
         "q": f"'{DRIVE_MAP_ID}' in parents and trashed = false and name contains 'fieldops-'",
@@ -221,13 +263,17 @@ def _drive_opruimen(token: str) -> int:
     })
     lijst.raise_for_status()
     bestanden = lijst.json().get("files", [])
-    weg = 0
-    for bestand in bestanden[DRIVE_BEWAAR:]:
+    weg, mislukt = 0, 0
+    for bestand in bestanden[bewaar:]:
         verwijderd = httpx.delete(f"https://www.googleapis.com/drive/v3/files/{bestand['id']}",
                                   headers=kop, timeout=60, params={"supportsAllDrives": "true"})
         if verwijderd.status_code in (200, 204):
             weg += 1
-    return weg
+        else:
+            mislukt += 1
+            print(f"[backup_service] kon oude kopie {bestand.get('name')} niet "
+                  f"verwijderen: HTTP {verwijderd.status_code}")
+    return weg, mislukt
 
 
 def run_backup(ook_naar_drive: bool = False) -> dict:

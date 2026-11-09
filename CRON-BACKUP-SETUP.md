@@ -221,6 +221,9 @@ ruimt oudere op. Zonder instellingen doet hij niets en meldt hij dat.
    - `GOOGLE_DRIVE_SA_JSON` — de volledige inhoud van het JSON-sleutelbestand;
    - `GOOGLE_DRIVE_MAP_ID` — het id uit de map-URL
      (`https://drive.google.com/drive/folders/<dit stuk>`).
+   - `GOOGLE_DRIVE_BEWAAR` — hoeveel kopieën blijven staan; laat hem leeg of op
+     `8` staan. Lager betekent minder historie: bij `1` heb je alleen de kopie
+     van afgelopen zondag. Nul bestaat niet — er blijft altijd één staan.
 5. Draai de job één keer handmatig ("Trigger run") en kijk of het bestand in
    de map verschijnt.
 

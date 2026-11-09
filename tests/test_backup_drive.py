@@ -105,3 +105,57 @@ def test_mislukte_kopie_maakt_de_backup_niet_geslaagd(monkeypatch, drive):
     uit = bs.run_backup(ook_naar_drive=True)
     assert uit["success"] is False and "Drive" in uit["error"]
     assert uit["drive"]["success"] is False
+
+
+def test_bewaar_nul_gooit_de_laatste_kopie_niet_weg(drive, monkeypatch):
+    """GOOGLE_DRIVE_BEWAAR=0 betekende: alles weg, inclusief de kopie van nu.
+
+    De lijst wordt ná de upload opgehaald, dus bij nul liep de opruiming over
+    de hele map. Er blijft altijd minstens één kopie staan.
+    """
+    monkeypatch.setattr(bs, "DRIVE_BEWAAR", 0)
+    uit = bs.naar_drive(b"dump", "fieldops-nieuw.sql.gz")
+    assert uit["success"] is True
+    # Vier bestaande kopieën, nieuwste eerst: drie weg, de nieuwste blijft.
+    assert uit["opgeruimd"] == 3
+    assert drive["verwijderd"] == ["b", "c", "d"]
+    assert "a" not in drive["verwijderd"]
+
+
+def test_een_geweigerd_verwijderen_wordt_gemeld(drive, monkeypatch):
+    """Een 403 op het opruimen werd stil ingeslikt: `opgeruimd: 0` en verder
+    niets, terwijl de Drive ongemerkt volloopt."""
+    import httpx
+
+    class _Geweigerd:
+        status_code = 403
+
+        def json(self):
+            return {}
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr(httpx, "delete", lambda url, **kw: _Geweigerd())
+    uit = bs.naar_drive(b"dump", "fieldops-nieuw.sql.gz")
+    # De kopie staat er, dus de back-up is gelukt...
+    assert uit["success"] is True
+    assert uit["opgeruimd"] == 0
+    # ...maar het mislukte opruimen is zichtbaar.
+    assert uit["opruimen_mislukt"] == 2
+    assert "rechten" in uit["waarschuwing"]
+
+
+@pytest.mark.parametrize("rauw, verwacht", [
+    ("3", 3),
+    ("  5  ", 5),
+    ("", 8),
+    (None, 8),
+    ("acht", 8),
+    ("8,5", 8),
+])
+def test_onleesbare_bewaarwaarde_laat_de_module_staan(rauw, verwacht):
+    """`int(os.getenv(...))` op moduleniveau liet bij een typefout de hele
+    import klappen — en `backup_service` wordt ook geïmporteerd door
+    endpoints die niets met Drive te maken hebben."""
+    assert bs._bewaar_uit_omgeving(rauw) == verwacht
