@@ -1,0 +1,15 @@
+{
+  "toelichting": "Startlijst met bedrijfsnamen voor de keuzelijst bij 'leverancier'. Dit zijn alleen namen als invulhulp -- geen geverifieerde bedrijfsgegevens, geen samenwerkingsverband en geen volledige lijst. Wat een organisatie zelf invult wordt onthouden en komt bovenaan; deze lijst staat eronder als suggestie. Aanvullen of vervangen mag: het is data, geen code.",
+  "bedrijven": [
+    {"naam": "P.C. van der Wiel", "soort": "onderaannemer"},
+    {"naam": "Aduco", "soort": "onderaannemer"},
+    {"naam": "Vrijbloed", "soort": "onderaannemer"},
+    {"naam": "Boels", "soort": "verhuurder"},
+    {"naam": "Riwal", "soort": "verhuurder"},
+    {"naam": "Loxam", "soort": "verhuurder"},
+    {"naam": "Bo-rent", "soort": "verhuurder"},
+    {"naam": "Collé", "soort": "verhuurder"},
+    {"naam": "Van der Spek", "soort": "verhuurder"},
+    {"naam": "Kuiken", "soort": "verhuurder"}
+  ]
+}

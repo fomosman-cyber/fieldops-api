@@ -132,6 +132,7 @@ class ACTION:
     MATERIEEL_INZET_CREATE  = "materieel.inzet.create"
     MATERIEEL_INZET_UPDATE  = "materieel.inzet.update"
     MATERIEEL_INZET_DELETE  = "materieel.inzet.delete"
+    MATERIEEL_BEGROTING     = "materieel.begroting.overgenomen"
 
     # Projectdagrapport
     DAGRAPPORT_DAG          = "dagrapport.dag"
