@@ -288,3 +288,35 @@ def test_het_scherm_heeft_een_begrotingsknop():
     assert "/api/materieel/begroting" in portaal
     # De herkomst hoort zichtbaar te zijn: uitgerekend leest anders dan zelf invullen.
     assert "uitgerekend" in portaal and "zelf invullen" in portaal
+
+
+def test_een_kapotte_dagboekregel_maakt_het_werk_niet_ongedaan(client, admin_user, monkeypatch):
+    """Na de commit staan de regels er; een fout daarna mag geen 500 geven.
+
+    Anders ziet de gebruiker een foutmelding bij werk dat wel is opgeschreven,
+    drukt opnieuw, en staat het er dubbel. Dat is dezelfde storing als de
+    halve begroting hierboven, alleen een stap later.
+    """
+    import routers.materieel_router as mr
+
+    eigen = _stuk(client, admin_user, "Rupskraan 8t")
+
+    def _kapot(_inzet):
+        raise RuntimeError("dagboektekst stuk")
+
+    monkeypatch.setattr(mr, "_dagboektekst", _kapot)
+    r = client.post("/api/materieel/begroting/overnemen", headers=auth(admin_user), json={
+        "regels": [
+            {"materieel_id": eigen["id"], "naam": "Rupskraan 8t", "draaiuren": 4},
+            {"materieel_id": None, "naam": "Huurwals", "draaiuren": 3},
+        ]})
+    assert r.status_code == 201, r.text
+    assert r.json()["aangemaakt"] == 2
+    db = SessionLocal()
+    try:
+        regels = db.query(MaterieelInzet).all()
+        assert len(regels) == 2, "de regels horen er te staan, de commit was al geweest"
+        # Zonder dagboekregel, maar het werk zelf is bewaard.
+        assert all(i.daybook_entry_id is None for i in regels)
+    finally:
+        db.close()

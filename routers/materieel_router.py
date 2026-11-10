@@ -593,18 +593,32 @@ def begroting_overnemen(body: OvernemenIn, request: Request,
     # `log_daybook` rolt bij een fout zijn eigen werk terug en geeft None. Dat
     # mag pas ná de commit hierboven gebeuren, anders neemt die rollback de
     # inzet zelf mee.
+    #
+    # En vanaf die commit mag hier niets meer een 500 worden. De regels staan
+    # dan in de database; een foutmelding erover laat de gebruiker opnieuw
+    # drukken en dan staat het er dubbel -- precies wat de commit hierboven
+    # moest voorkomen. `log_daybook` vangt zijn eigen fouten al op, maar
+    # `db.refresh`, het opmaken van de tekst en de commit die het entry-id
+    # vastlegt deden dat niet; vandaar deze try.
     for inzet in gemaakt:
-        db.refresh(inzet)
-        titel, tekst = _dagboektekst(inzet)
-        entry = log_daybook(
-            db, user_id=current_user.id, organization_id=current_user.organization_id,
-            entry_type="materieel_inzet", title=titel, description=tekst,
-            source_type="materieel", source_id=inzet.id,
-            occurred_at=datetime.combine(inzet.datum, time(12, 0), tzinfo=timezone.utc),
-            project_id=inzet.project_id)
-        if entry is not None:
-            inzet.daybook_entry_id = entry.id
-            db.commit()
+        try:
+            db.refresh(inzet)
+            titel, tekst = _dagboektekst(inzet)
+            entry = log_daybook(
+                db, user_id=current_user.id, organization_id=current_user.organization_id,
+                entry_type="materieel_inzet", title=titel, description=tekst,
+                source_type="materieel", source_id=inzet.id,
+                occurred_at=datetime.combine(inzet.datum, time(12, 0), tzinfo=timezone.utc),
+                project_id=inzet.project_id)
+            if entry is not None:
+                inzet.daybook_entry_id = entry.id
+                db.commit()
+        except Exception as e:  # noqa: BLE001 - het dagboek is de spiegel, niet het werk
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            print(f"[materieel] dagboekregel bij begroting overnemen mislukt: {type(e).__name__}: {e}")
 
     log_action(db, request, current_user, action=ACTION.MATERIEEL_BEGROTING,
                entity_type="materieel_inzet",
