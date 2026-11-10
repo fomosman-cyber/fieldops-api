@@ -222,9 +222,14 @@ def naar_drive(inhoud: bytes, naam: str) -> dict:
             content=lichaam, timeout=900)
         antwoord.raise_for_status()
         bestand = antwoord.json()
-        opgeruimd, opruimen_mislukt = _drive_opruimen(token)
         uit = {"success": True, "id": bestand.get("id"), "naam": bestand.get("name"),
-               "size_bytes": len(inhoud), "opgeruimd": opgeruimd}
+               "size_bytes": len(inhoud), "opgeruimd": 0}
+        try:
+            uit["opgeruimd"], opruimen_mislukt = _drive_opruimen(token)
+        except (httpx.HTTPError, ValueError) as fout:
+            print(f"[backup_service] kon Drive-retentie niet afronden: {type(fout).__name__}")
+            uit["waarschuwing"] = "Drive-kopie opgeslagen, maar opruimen van oude kopieën kon niet worden afgerond."
+            return uit
         if opruimen_mislukt:
             # De kopie staat er, dus de back-up is gelukt. Maar dat het
             # opruimen niet mocht is een eigen probleem: onopgemerkt loopt de

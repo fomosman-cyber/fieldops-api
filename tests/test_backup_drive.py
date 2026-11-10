@@ -129,6 +129,19 @@ def test_mislukte_kopie_maakt_de_backup_niet_geslaagd(monkeypatch, drive):
     assert uit["drive"]["success"] is False
 
 
+def test_mislukte_retentielijst_verbergt_de_upload_niet(drive, monkeypatch):
+    import httpx
+
+    def lijst(url, **_):
+        return httpx.Response(403, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", lijst)
+    uit = bs.naar_drive(b"dump", "fieldops-2026-09-27.sql.gz")
+    assert uit["success"] is True and uit["id"] == "nieuw"
+    assert "opruimen" in uit["waarschuwing"]
+    assert drive["verwijderd"] == []
+
+
 def test_bewaar_nul_gooit_de_laatste_kopie_niet_weg(drive, monkeypatch):
     """GOOGLE_DRIVE_BEWAAR=0 betekende: alles weg, inclusief de kopie van nu.
 

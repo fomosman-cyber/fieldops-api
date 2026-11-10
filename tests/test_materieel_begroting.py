@@ -199,6 +199,27 @@ def test_overnemen_zonder_enige_uren_wordt_geweigerd(client, admin_user):
     assert r.status_code == 400
 
 
+def test_een_dagboekfout_verbergt_opgeslagen_inzet_niet(client, admin_user, monkeypatch):
+    def dagboek_stuk(*args, **kwargs):
+        raise RuntimeError("dagboek tijdelijk niet beschikbaar")
+
+    monkeypatch.setattr("routers.materieel_router.log_daybook", dagboek_stuk)
+    r = client.post("/api/materieel/begroting/overnemen", headers=auth(admin_user), json={
+        "regels": [{"naam": "Huurwals", "draaiuren": 2}],
+    })
+    assert r.status_code == 201, r.text
+    assert r.json()["aangemaakt"] == 1
+    assert r.json()["dagboekregels_mislukt"] == 1
+
+    db = SessionLocal()
+    try:
+        inzet = db.query(MaterieelInzet).one()
+        assert inzet.materieel_naam == "Huurwals"
+        assert inzet.daybook_entry_id is None
+    finally:
+        db.close()
+
+
 def test_overnemen_kent_geen_materieel_van_een_ander(client, admin_user):
     r = client.post("/api/materieel/begroting/overnemen", headers=auth(admin_user), json={
         "regels": [{"materieel_id": "niet-van-mij", "naam": "Kraan", "draaiuren": 3}]})
