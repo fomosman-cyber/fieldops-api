@@ -14,7 +14,12 @@ if DATABASE_URL.startswith("postgres://"):
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+    # SQLAlchemy 2.1 gebruikt standaard psycopg 3; wij installeren psycopg2.
+    # Houd de gewone PostgreSQL-URL beschikbaar voor andere gebruikers van DATABASE_URL.
+    engine_url = DATABASE_URL
+    if engine_url.startswith("postgresql://"):
+        engine_url = engine_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+    engine = create_engine(engine_url, pool_pre_ping=True)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
