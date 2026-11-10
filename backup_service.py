@@ -31,6 +31,7 @@ import os
 import gzip
 import io
 import json
+import re
 import subprocess
 import shutil
 from datetime import datetime, timezone
@@ -256,15 +257,28 @@ def _drive_opruimen(token: str) -> tuple[int, int]:
 
     bewaar = max(1, DRIVE_BEWAAR)
     kop = {"Authorization": f"Bearer {token}"}
-    lijst = httpx.get("https://www.googleapis.com/drive/v3/files", headers=kop, timeout=60, params={
+    params = {
         "q": f"'{DRIVE_MAP_ID}' in parents and trashed = false and name contains 'fieldops-'",
-        "orderBy": "createdTime desc", "fields": "files(id,name,createdTime)", "pageSize": 100,
+        "orderBy": "createdTime desc", "fields": "nextPageToken,files(id,name,createdTime)", "pageSize": 100,
         "supportsAllDrives": "true", "includeItemsFromAllDrives": "true",
-    })
-    lijst.raise_for_status()
-    bestanden = lijst.json().get("files", [])
+    }
+    bestanden = {}
+    while True:
+        lijst = httpx.get("https://www.googleapis.com/drive/v3/files", headers=kop, timeout=60, params=params)
+        lijst.raise_for_status()
+        pagina = lijst.json()
+        for bestand in pagina.get("files", []):
+            if bestand.get("id") and re.fullmatch(
+                r"fieldops-\d{4}-\d{2}-\d{2}(?:-\d{6})?\.(?:sql|db)\.gz",
+                bestand.get("name") or "",
+            ):
+                bestanden.setdefault(bestand["id"], bestand)
+        volgende = pagina.get("nextPageToken")
+        if not volgende:
+            break
+        params["pageToken"] = volgende
     weg, mislukt = 0, 0
-    for bestand in bestanden[bewaar:]:
+    for bestand in list(bestanden.values())[bewaar:]:
         verwijderd = httpx.delete(f"https://www.googleapis.com/drive/v3/files/{bestand['id']}",
                                   headers=kop, timeout=60, params={"supportsAllDrives": "true"})
         if verwijderd.status_code in (200, 204):

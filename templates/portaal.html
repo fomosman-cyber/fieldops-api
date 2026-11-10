@@ -24375,7 +24375,7 @@
               + escapeHtml(r.toelichting) + '</div>' : '') +
             (r.materieel_id ? '' : '<div style="font-size:10px;color:var(--text-dim);">niet in het register — wordt een losse regel</div>') +
           '</td>' +
-          '<td style="width:88px;"><input type="number" class="bg-uren" min="0" max="500" step="0.5" ' +
+          '<td style="width:88px;"><input type="number" class="bg-uren" min="0" max="500" step="any" ' +
             'value="' + (r.draaiuren === null || r.draaiuren === undefined ? '' : r.draaiuren) + '" ' +
             'oninput="bgUrenGewijzigd(' + i + ', this.value)" style="width:100%;"></td>' +
           '<td style="width:96px;font-size:12px;">' + liters + '</td>' +
@@ -24430,6 +24430,7 @@
     }
 
     function _bgHerrekenen() {
+      if (document.querySelector('.bg-uren:invalid')) return;
       var regels = _bgVoorstel.regels.map(function (r) {
         return {materieel_id: r.materieel_id, naam: r.naam, draaiuren: r.draaiuren};
       });
@@ -24466,6 +24467,11 @@
 
     function bgOvernemen() {
       if (!_bgVoorstel) return;
+      var ongeldigUur = document.querySelector('.bg-uren:invalid');
+      if (ongeldigUur) {
+        ongeldigUur.reportValidity();
+        return;
+      }
       var bruikbaar = _bgVoorstel.regels.filter(function (r) { return r.draaiuren; });
       if (!bruikbaar.length) {
         showToast('Vul eerst bij minstens één regel de draaiuren in', 'error');

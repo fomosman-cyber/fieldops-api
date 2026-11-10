@@ -17,6 +17,7 @@ from scripts.deploy_drift import (
     Onbereikbaar,
     beoordeel,
     haal_versie,
+    main,
     respijt_uit_omgeving,
     zelfde_commit,
 )
@@ -91,11 +92,33 @@ def test_productie_kan_ook_iets_heel_anders_draaien():
     ("", 2.0),
     (None, 2.0),
     ("twee", 2.0),
+    ("inf", 2.0),
+    ("nan", 2.0),
     ("-1", 0.0),
 ])
 def test_respijt_uit_de_omgeving_houdt_stand(rauw, verwacht):
     """Een typefout in de variabele mag de controle niet uitschakelen."""
     assert respijt_uit_omgeving(rauw) == verwacht
+
+
+@pytest.mark.parametrize("gemeld", [123, {"hash": OUD}, "--help", "abcd"])
+def test_een_ongeldig_versieveld_is_niet_vast_te_stellen(monkeypatch, gemeld):
+    monkeypatch.setattr("scripts.deploy_drift.haal_versie", lambda _: {"commit": gemeld})
+    monkeypatch.setattr("scripts.deploy_drift._git", lambda *_: None)
+    assert main(["--commit", VERWACHT]) == 2
+
+
+def test_ongeldige_metadata_maskeert_geen_geldige_korte_commit(monkeypatch):
+    antwoord = {"commit_volledig": 123, "commit": VERWACHT[:12], "gestart_op": {}}
+    monkeypatch.setattr("scripts.deploy_drift.haal_versie", lambda _: antwoord)
+    monkeypatch.setattr("scripts.deploy_drift._git", lambda *_: None)
+    assert main(["--commit", VERWACHT]) == 0
+
+
+def test_oneindig_respijt_via_cli_is_ongeldig():
+    with pytest.raises(SystemExit) as fout:
+        main(["--commit", VERWACHT, "--respijt", "inf"])
+    assert fout.value.code == 2
 
 
 class _Antwoord:

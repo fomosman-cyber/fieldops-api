@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
+import re
 import subprocess
 import sys
 import time
@@ -37,6 +39,7 @@ from datetime import datetime, timezone
 BASIS_STANDAARD = "https://portaal.fieldopsapp.nl"
 RESPIJT_STANDAARD = 2.0
 TIJDSLIMIET = 15.0
+COMMIT_HASH = re.compile(r"[0-9a-fA-F]{7,64}")
 
 
 class Onbereikbaar(RuntimeError):
@@ -51,6 +54,12 @@ class Uitkomst:
     regels: list[str] = field(default_factory=list)
 
 
+def _commit_hash(waarde: object) -> str | None:
+    if isinstance(waarde, str) and COMMIT_HASH.fullmatch(waarde.strip()):
+        return waarde.strip().lower()
+    return None
+
+
 def zelfde_commit(een: str | None, ander: str | None) -> bool:
     """Vergelijkt hashes van verschillende lengte.
 
@@ -59,12 +68,18 @@ def zelfde_commit(een: str | None, ander: str | None) -> bool:
     korter dan dat accepteert git zelf een afkorting ook niet, en dan vergelijk
     je niets meer.
     """
+    een, ander = _commit_hash(een), _commit_hash(ander)
     if not een or not ander:
         return False
     kort = min(len(een), len(ander))
-    if kort < 7:
-        return False
-    return een[:kort].lower() == ander[:kort].lower()
+    return een[:kort] == ander[:kort]
+
+
+def _respijt_waarde(rauw: str) -> float:
+    waarde = float(rauw.strip().replace(",", "."))
+    if not math.isfinite(waarde):
+        raise ValueError("het aantal uren moet eindig zijn")
+    return max(0.0, waarde)
 
 
 def respijt_uit_omgeving(rauw: str | None, standaard: float = RESPIJT_STANDAARD) -> float:
@@ -76,11 +91,10 @@ def respijt_uit_omgeving(rauw: str | None, standaard: float = RESPIJT_STANDAARD)
     if rauw is None or not rauw.strip():
         return standaard
     try:
-        waarde = float(rauw.strip().replace(",", "."))
+        return _respijt_waarde(rauw)
     except ValueError:
-        print(f"[drift] DRIFT_RESPIJT_UUR={rauw!r} is geen getal; ik houd {standaard:g} uur aan")
+        print(f"[drift] DRIFT_RESPIJT_UUR is geen geldig aantal uren; ik houd {standaard:g} uur aan")
         return standaard
-    return max(0.0, waarde)
 
 
 def beoordeel(
@@ -94,10 +108,10 @@ def beoordeel(
     gestart_op: str | None = None,
 ) -> Uitkomst:
     """Weegt de gemelde commit tegen de verwachte. Geen netwerk, geen git: puur rekenen."""
-    if not gemeld:
+    if not _commit_hash(gemeld):
         return Uitkomst(2, [
-            "Productie meldt geen commit.",
-            "RENDER_GIT_COMMIT staat niet op de service; zonder die variabele is een deploy niet te controleren.",
+            "Productie meldt geen geldige commit.",
+            "Controleer het versieantwoord en RENDER_GIT_COMMIT op de service.",
         ])
 
     if zelfde_commit(verwacht, gemeld):
@@ -203,11 +217,11 @@ def main(argv: list[str] | None = None) -> int:
                           help=f"basis-URL van de live omgeving (standaard {BASIS_STANDAARD})")
     ontleder.add_argument("--commit", default=os.getenv("DRIFT_VERWACHTE_COMMIT") or None,
                           help="welke commit zou moeten draaien (standaard: HEAD van deze checkout)")
-    ontleder.add_argument("--respijt", type=float, default=respijt_uit_omgeving(os.getenv("DRIFT_RESPIJT_UUR")),
+    ontleder.add_argument("--respijt", type=_respijt_waarde, default=respijt_uit_omgeving(os.getenv("DRIFT_RESPIJT_UUR")),
                           help="hoeveel uur een verse commit mag uitrollen voordat dit achterstand heet")
     argumenten = ontleder.parse_args(argv)
 
-    verwacht = argumenten.commit or _git("rev-parse", "HEAD")
+    verwacht = _commit_hash(argumenten.commit or _git("rev-parse", "HEAD"))
     if not verwacht:
         print("Geen commit om tegen te vergelijken: geef --commit mee of draai dit in een git-checkout.")
         return 2
@@ -220,7 +234,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Niet vast te stellen: {fout}")
         return 2
 
-    draait = (gemeld.get("commit_volledig") or gemeld.get("commit") or "").strip() or None
+    draait = _commit_hash(gemeld.get("commit_volledig")) or _commit_hash(gemeld.get("commit"))
+    gestart_op = gemeld.get("gestart_op")
     uitkomst = beoordeel(
         verwacht,
         draait,
@@ -228,7 +243,7 @@ def main(argv: list[str] | None = None) -> int:
         respijt_uur=argumenten.respijt,
         achterstand=_achterstand(draait, verwacht) if draait else None,
         gemeld_datum=_git("log", "-1", "--format=%cs", draait) if draait else None,
-        gestart_op=(gemeld.get("gestart_op") or "").strip() or None,
+        gestart_op=gestart_op.strip() if isinstance(gestart_op, str) else None,
     )
     for regel in uitkomst.regels:
         print(regel)

@@ -449,7 +449,7 @@ class BegrotingIn(BaseModel):
 class OvernemenRegel(BaseModel):
     materieel_id: Optional[str] = None
     naam: str = Field(..., min_length=1, max_length=160)
-    draaiuren: Optional[float] = Field(default=None, ge=0, le=500)
+    draaiuren: Optional[float] = Field(default=None, ge=0, le=mb.MAX_DRAAIUREN)
     leverancier: Optional[str] = Field(default=None, max_length=160)
 
 
@@ -577,7 +577,7 @@ def begroting_overnemen(body: OvernemenIn, request: Request,
             soort=stuk.soort if stuk else None,
             leverancier=((regel.leverancier or (stuk.leverancier if stuk else None) or "")
                          .strip()[:160] or None),
-            energiedrager=stuk.energiedrager if stuk else "diesel",
+            energiedrager=(stuk.energiedrager if stuk else None) or "onbekend",
             draaiuren=regel.draaiuren,
             verbruik_per_uur=stuk.verbruik_per_uur if stuk else None,
             opmerking=body.opmerking,

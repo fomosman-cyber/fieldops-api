@@ -27,6 +27,7 @@ bruikbaar (leeg) voorstel terug en zegt `bron` eerlijk wat er is gebeurd.
 from __future__ import annotations
 
 import json
+import math
 import os
 from typing import Optional
 
@@ -176,6 +177,9 @@ def _lees_json(tekst: str) -> Optional[dict]:
         return None
 
 
+MAX_DRAAIUREN = 500
+
+
 def _normaliseer(data: dict, register: list[dict]) -> Optional[dict]:
     """Haal eruit wat bruikbaar is; weiger de rest.
 
@@ -201,17 +205,19 @@ def _normaliseer(data: dict, register: list[dict]) -> Optional[dict]:
         if mid not in bekend:
             mid = None
         uren = r.get("draaiuren")
-        if isinstance(uren, bool) or not isinstance(uren, (int, float)) or uren < 0:
+        toelichting = (r.get("toelichting") or "").strip()[:300]
+        if uren is not None and (
+            isinstance(uren, bool) or not isinstance(uren, (int, float))
+            or not 0 <= uren <= MAX_DRAAIUREN or not math.isfinite(uren)
+        ):
             uren = None
-        elif uren > 500:
-            # Een begroting van meer dan 500 draaiuren voor één machine is geen
-            # dagwerk meer; dan is er iets misgelezen in de aantallen.
-            uren = None
+            melding = f"Controleer de schatting en vul 0 tot {MAX_DRAAIUREN} draaiuren in."
+            toelichting = f"{melding} {toelichting}".strip()[:300]
         regels.append({
             "materieel_id": mid,
             "naam": (bekend[mid]["naam"] if mid else naam)[:160],
             "draaiuren": round(float(uren), 2) if uren is not None else None,
-            "toelichting": (r.get("toelichting") or "").strip()[:300],
+            "toelichting": toelichting,
         })
 
     if not regels:
@@ -296,7 +302,7 @@ def reken_door(voorstel: dict, register: list[dict],
     berekeningen = []
     for r in voorstel.get("regels", []):
         stuk = bekend.get(r.get("materieel_id")) or {}
-        drager = stuk.get("energiedrager") or "diesel"
+        drager = stuk.get("energiedrager") or "onbekend"
         per_uur = stuk.get("verbruik_per_uur")
         som = mt.bereken(energiedrager=drager, draaiuren=r.get("draaiuren"),
                          verbruik_per_uur=per_uur, eigen_factoren=eigen_factoren)
