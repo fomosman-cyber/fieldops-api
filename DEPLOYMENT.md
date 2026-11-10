@@ -132,6 +132,56 @@ Zie `capacitor/README.md` (als je dit later wilt opzetten).
 
 ---
 
+## 7. Controleren dat productie ook echt uitrolt
+
+Een groene merge is geen uitgerolde merge. Op 9 november 2026 stond de live
+service nog op de commit van 24 september -- elf commits en zeven weken achter,
+terwijl CI al die tijd groen was. Er was niets kapot; er keek alleen niemand.
+
+`/api/version` meldt welke commit er draait. Met de hand:
+
+```bash
+curl https://portaal.fieldopsapp.nl/api/version
+```
+
+Automatisch doet de workflow `.github/workflows/deploy-drift.yml` dit twee keer
+per dag (07:00 en 16:00 UTC) en bij een rode run stuurt GitHub een e-mail. Na
+een merge zelf controleren: Actions -> Deploy-drift -> Run workflow.
+
+Hetzelfde lokaal, tegen de commit die je net hebt gemerged:
+
+```bash
+python scripts/deploy_drift.py
+```
+
+Afloopcodes: `0` productie is bij (of de commit is nog jong genoeg om uit te
+rollen), `1` productie loopt achter, `2` niet vast te stellen -- endpoint
+onbereikbaar, of de service meldt geen commit. Die laatste twee zijn bewust
+verschillend: "ik kon het niet zien" is geen "het klopt niet".
+
+Instelbaar via omgevingsvariabelen (of `--url` / `--respijt`):
+
+- `DRIFT_BASIS_URL` -- welke omgeving je controleert; standaard
+  `https://portaal.fieldopsapp.nl`.
+- `DRIFT_RESPIJT_UUR` -- hoeveel uur een verse commit mag uitrollen voordat het
+  achterstand heet; standaard `2`. Lager betekent eerder melden, maar ook meer
+  valse meldingen vlak na een merge.
+
+Meldt het script achterstand, dan zit de oorzaak in Render, niet in de code:
+
+1. De service -> Settings -> **Auto-Deploy**. Staat die uit, dan heb je je
+   antwoord.
+2. Het tabblad **Events**: is de laatste deploy mislukt, of nooit gestart?
+3. Staat de service die het domein bedient wel in `render.yaml`? Is dat niet zo,
+   dan is de blueprint nooit toegepast en gelden de cronjobs en env-vars
+   daaruit niet voor de draaiende omgeving. Zie `MIGRATIE-FRANKFURT.md`.
+
+Let op het verschil tussen herstarten en uitrollen. Een herstart haalt geen
+nieuwe code binnen: op 9 november herstartte de service om 20:23 UTC en kwam
+terug op dezelfde commit van september.
+
+---
+
 ## Snelle troubleshooting
 
 | Probleem | Oplossing |
@@ -141,6 +191,7 @@ Zie `capacitor/README.md` (als je dit later wilt opzetten).
 | `503` na database aanmaken | Service moet redeployen na DATABASE_URL wijziging — wacht 2 min |
 | Email komt niet aan | Check spam-folder; verifieer SMTP_USER/SMTP_PASS in Render logs |
 | `400 Disallowed CORS` | Voeg domein toe aan `CORS_ORIGINS` env var (komma-gescheiden) |
+| Nieuwe code niet zichtbaar na merge | `python scripts/deploy_drift.py` -- staat Auto-Deploy aan op de service die het domein bedient? Zie sectie 7 |
 | Login werkt niet na deploy | Database is leeg → zet `BOOTSTRAP_OWNER=true` + `OWNER_PASSWORD` tijdelijk |
 
 ---
