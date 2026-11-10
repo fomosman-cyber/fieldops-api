@@ -1,0 +1,79 @@
+name: Deploy-drift
+
+# Draait productie wel wat er in main staat?
+#
+# Op 9 november 2026 bleek de live service nog op de commit van 24 september te
+# staan: elf commits achter, zeven weken lang, zonder dat iemand het merkte. CI
+# was groen, de merges waren klaar, en toch stond er oude code. Deze controle
+# vraagt productie zelf welke commit er draait en vergelijkt die met main.
+#
+# Bewust geen push-trigger: vlak na een merge is achterlopen normaal, dus die
+# run zou altijd groen zijn en nooit iets zeggen. Twee keer per dag plus een
+# knop om het met de hand te doen geeft wel signaal -- de storing hierboven zou
+# de eerstvolgende ochtend zijn opgevallen in plaats van na zeven weken.
+#
+# Een rode run stuurt GitHub als e-mail naar de eigenaar van de repository.
+
+on:
+  schedule:
+    - cron: '0 7 * * *'   # 08:00 of 09:00 Nederlandse tijd
+    - cron: '0 16 * * *'  # 17:00 of 18:00 Nederlandse tijd
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'Basis-URL van de live omgeving'
+        required: false
+        default: 'https://portaal.fieldopsapp.nl'
+      respijt:
+        description: 'Uren respijt voor een verse commit'
+        required: false
+        default: '2'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-drift
+  cancel-in-progress: false
+
+jobs:
+  drift:
+    name: Draait productie wat main zegt?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # Volledige historie: zonder dat kent git de draaiende commit niet en
+          # kan het script niet tellen hoeveel commits productie achterloopt.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Geen pip install: het script gebruikt alleen de standaardbibliotheek,
+      # zodat deze controle blijft werken als requirements.txt stuk is -- juist
+      # dan wil je weten wat er draait.
+      - name: Drift-controle
+        env:
+          # Via env en niet rechtstreeks in het commando: een waarde met
+          # aanhalingstekens erin zou anders shell-code kunnen worden.
+          DRIFT_BASIS_URL: ${{ inputs.url || 'https://portaal.fieldopsapp.nl' }}
+          DRIFT_RESPIJT_UUR: ${{ inputs.respijt || '2' }}
+        run: |
+          set -o pipefail
+          python scripts/deploy_drift.py | tee uitkomst.txt
+
+      - name: Samenvatting
+        if: always()
+        run: |
+          {
+            echo "## Deploy-drift"
+            echo
+            echo '```'
+            cat uitkomst.txt 2>/dev/null || echo "geen uitvoer"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
