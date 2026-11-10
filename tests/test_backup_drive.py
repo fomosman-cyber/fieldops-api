@@ -90,6 +90,28 @@ def test_oude_kopieen_gaan_weg(drive):
     assert "map-123" in drive["query"] and "trashed = false" in drive["query"]
 
 
+def test_retentie_telt_door_over_meerdere_drive_paginas(drive, monkeypatch):
+    import httpx
+
+    def pagina(url, *, params, **kw):
+        assert "nextPageToken" in params["fields"]
+        if params.get("pageToken") == "volgende":
+            assert drive["verwijderd"] == []
+            return httpx.Response(200, request=httpx.Request("GET", url),
+                                  json={"files": [
+                                      {"id": "ander", "name": "fieldops-handleiding.pdf"},
+                                      *drive["bestanden"][1:],
+                                      drive["bestanden"][0],
+                                  ]})
+        return httpx.Response(200, request=httpx.Request("GET", url), json={
+            "files": drive["bestanden"][:1], "nextPageToken": "volgende",
+        })
+
+    monkeypatch.setattr(httpx, "get", pagina)
+    assert bs._drive_opruimen("test-token") == (2, 0)
+    assert drive["verwijderd"] == ["c", "d"]
+
+
 def test_mislukte_kopie_maakt_de_backup_niet_geslaagd(monkeypatch, drive):
     monkeypatch.setattr(bs, "_drive_token", lambda: (_ for _ in ()).throw(RuntimeError("geen toegang")))
     monkeypatch.setattr(bs, "is_configured", lambda: True)
@@ -105,6 +127,19 @@ def test_mislukte_kopie_maakt_de_backup_niet_geslaagd(monkeypatch, drive):
     uit = bs.run_backup(ook_naar_drive=True)
     assert uit["success"] is False and "Drive" in uit["error"]
     assert uit["drive"]["success"] is False
+
+
+def test_mislukte_retentielijst_verbergt_de_upload_niet(drive, monkeypatch):
+    import httpx
+
+    def lijst(url, **_):
+        return httpx.Response(403, request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx, "get", lijst)
+    uit = bs.naar_drive(b"dump", "fieldops-2026-09-27.sql.gz")
+    assert uit["success"] is True and uit["id"] == "nieuw"
+    assert "opruimen" in uit["waarschuwing"]
+    assert drive["verwijderd"] == []
 
 
 def test_bewaar_nul_gooit_de_laatste_kopie_niet_weg(drive, monkeypatch):

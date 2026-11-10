@@ -3010,7 +3010,7 @@
           </div>
           <div class="form-actions">
             <button type="button" class="btn-secondary" onclick="closeBegrotingModal()">Sluiten</button>
-            <button type="button" class="btn-primary" onclick="bgOvernemen()">Overnemen in het dagboek</button>
+            <button id="bgOvernemenKnop" type="button" class="btn-primary" onclick="bgOvernemen()">Overnemen in het dagboek</button>
           </div>
         </div>
       </div>
@@ -24375,7 +24375,7 @@
               + escapeHtml(r.toelichting) + '</div>' : '') +
             (r.materieel_id ? '' : '<div style="font-size:10px;color:var(--text-dim);">niet in het register — wordt een losse regel</div>') +
           '</td>' +
-          '<td style="width:88px;"><input type="number" class="bg-uren" min="0" max="500" step="0.5" ' +
+          '<td style="width:88px;"><input type="number" class="bg-uren" min="0" max="500" step="any" ' +
             'value="' + (r.draaiuren === null || r.draaiuren === undefined ? '' : r.draaiuren) + '" ' +
             'oninput="bgUrenGewijzigd(' + i + ', this.value)" style="width:100%;"></td>' +
           '<td style="width:96px;font-size:12px;">' + liters + '</td>' +
@@ -24430,6 +24430,7 @@
     }
 
     function _bgHerrekenen() {
+      if (document.querySelector('.bg-uren:invalid')) return;
       var regels = _bgVoorstel.regels.map(function (r) {
         return {materieel_id: r.materieel_id, naam: r.naam, draaiuren: r.draaiuren};
       });
@@ -24465,12 +24466,19 @@
     }
 
     function bgOvernemen() {
-      if (!_bgVoorstel) return;
+      var knop = document.getElementById('bgOvernemenKnop');
+      if (!_bgVoorstel || knop.disabled) return;
+      var ongeldigUur = document.querySelector('.bg-uren:invalid');
+      if (ongeldigUur) {
+        ongeldigUur.reportValidity();
+        return;
+      }
       var bruikbaar = _bgVoorstel.regels.filter(function (r) { return r.draaiuren; });
       if (!bruikbaar.length) {
         showToast('Vul eerst bij minstens één regel de draaiuren in', 'error');
         return;
       }
+      knop.disabled = true;
       api('POST', '/api/materieel/begroting/overnemen', {
         datum: document.getElementById('bgDatum').value || null,
         project_id: document.getElementById('bgProject').value || null,
@@ -24478,12 +24486,22 @@
           return {materieel_id: r.materieel_id, naam: r.naam, draaiuren: r.draaiuren};
         })
       }).then(function (d) {
-        showToast(d.aangemaakt + ' regel(s) in het dagboek gezet', 'success');
+        if (d.dagboekregels_mislukt) {
+          showToast(d.aangemaakt + ' inzetregel(s) opgeslagen. ' + d.dagboekregels_mislukt +
+            ' regel(s) ontbreken in het dagboek. Neem de begroting niet opnieuw over.', 'warning');
+        } else {
+          showToast(d.aangemaakt + ' regel(s) in het dagboek gezet', 'success');
+        }
         closeBegrotingModal();
         var datum = document.getElementById('bgDatum').value;
         if (datum) { document.getElementById('dbDate').value = datum; }
         loadDaybook();
-      }).catch(function (err) { showToast(err.message || 'Overnemen mislukt', 'error'); });    }
+      }).catch(function (err) {
+        showToast(err.message || 'Overnemen mislukt', 'error');
+      }).finally(function () {
+        knop.disabled = false;
+      });
+    }
 
     // ── Het CO₂-rapport ────────────────────────────────────────
 

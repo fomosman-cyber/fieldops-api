@@ -31,6 +31,7 @@ import os
 import gzip
 import io
 import json
+import re
 import subprocess
 import shutil
 from datetime import datetime, timezone
@@ -221,9 +222,14 @@ def naar_drive(inhoud: bytes, naam: str) -> dict:
             content=lichaam, timeout=900)
         antwoord.raise_for_status()
         bestand = antwoord.json()
-        opgeruimd, opruimen_mislukt = _drive_opruimen(token)
         uit = {"success": True, "id": bestand.get("id"), "naam": bestand.get("name"),
-               "size_bytes": len(inhoud), "opgeruimd": opgeruimd}
+               "size_bytes": len(inhoud), "opgeruimd": 0}
+        try:
+            uit["opgeruimd"], opruimen_mislukt = _drive_opruimen(token)
+        except (httpx.HTTPError, ValueError) as fout:
+            print(f"[backup_service] kon Drive-retentie niet afronden: {type(fout).__name__}")
+            uit["waarschuwing"] = "Drive-kopie opgeslagen, maar opruimen van oude kopieën kon niet worden afgerond."
+            return uit
         if opruimen_mislukt:
             # De kopie staat er, dus de back-up is gelukt. Maar dat het
             # opruimen niet mocht is een eigen probleem: onopgemerkt loopt de
@@ -256,15 +262,28 @@ def _drive_opruimen(token: str) -> tuple[int, int]:
 
     bewaar = max(1, DRIVE_BEWAAR)
     kop = {"Authorization": f"Bearer {token}"}
-    lijst = httpx.get("https://www.googleapis.com/drive/v3/files", headers=kop, timeout=60, params={
+    params = {
         "q": f"'{DRIVE_MAP_ID}' in parents and trashed = false and name contains 'fieldops-'",
-        "orderBy": "createdTime desc", "fields": "files(id,name,createdTime)", "pageSize": 100,
+        "orderBy": "createdTime desc", "fields": "nextPageToken,files(id,name,createdTime)", "pageSize": 100,
         "supportsAllDrives": "true", "includeItemsFromAllDrives": "true",
-    })
-    lijst.raise_for_status()
-    bestanden = lijst.json().get("files", [])
+    }
+    bestanden = {}
+    while True:
+        lijst = httpx.get("https://www.googleapis.com/drive/v3/files", headers=kop, timeout=60, params=params)
+        lijst.raise_for_status()
+        pagina = lijst.json()
+        for bestand in pagina.get("files", []):
+            if bestand.get("id") and re.fullmatch(
+                r"fieldops-\d{4}-\d{2}-\d{2}(?:-\d{6})?\.(?:sql|db)\.gz",
+                bestand.get("name") or "",
+            ):
+                bestanden.setdefault(bestand["id"], bestand)
+        volgende = pagina.get("nextPageToken")
+        if not volgende:
+            break
+        params["pageToken"] = volgende
     weg, mislukt = 0, 0
-    for bestand in bestanden[bewaar:]:
+    for bestand in list(bestanden.values())[bewaar:]:
         verwijderd = httpx.delete(f"https://www.googleapis.com/drive/v3/files/{bestand['id']}",
                                   headers=kop, timeout=60, params={"supportsAllDrives": "true"})
         if verwijderd.status_code in (200, 204):

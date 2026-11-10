@@ -85,6 +85,7 @@ ENERGIEDRAGERS: dict[str, dict[str, Any]] = {
     "elektrisch":  {"naam": "Elektrisch (netstroom)",  "eenheid": "kWh",   "factor_code": "elektrisch_net"},
     "elektrisch_groen": {"naam": "Elektrisch (groene stroom)", "eenheid": "kWh", "factor_code": "elektrisch_groen"},
     "geen":        {"naam": "Geen (niet aangedreven)", "eenheid": "",      "factor_code": None},
+    "onbekend":    {"naam": "Onbekend",                 "eenheid": "",      "factor_code": None},
 }
 
 # Hybride materieel bestaat, maar een hybride kraan die je een dag draait
@@ -234,6 +235,8 @@ def bereken(
     ook draaiuren en een standaardverbruik zijn. De tank liegt niet, het
     kengetal wel eens.
     """
+    if energiedrager == "onbekend":
+        return Berekening(kg=None, methode="onbekend", reden="Kies de energiedrager om CO2 te berekenen")
     if energiedrager == "geen" or not energiedrager:
         return Berekening(kg=None, methode="onbekend",
                           reden="Dit materieel heeft geen eigen aandrijving")

@@ -111,6 +111,8 @@ def test_een_machine_die_niet_bestaat_verliest_zijn_id(monkeypatch):
     uit = mb.begroot(omschrijving="x", werkregels=[], register=[])
     assert uit["regels"][0]["materieel_id"] is None
     assert uit["regels"][0]["naam"] == "Shovel"
+    assert uit["regels"][0]["energiedrager"] == "onbekend"
+    assert uit["regels"][0]["co2_kg"] is None
 
 
 def test_onzinnige_uren_worden_geweigerd(monkeypatch):
@@ -120,6 +122,7 @@ def test_onzinnige_uren_worden_geweigerd(monkeypatch):
         {"materieel_id": None, "naam": "Shovel", "draaiuren": -3, "toelichting": ""}]))
     uit = mb.begroot(omschrijving="x", werkregels=[], register=[])
     assert all(r["draaiuren"] is None for r in uit["regels"])
+    assert all("0 tot 500 draaiuren" in r["toelichting"] for r in uit["regels"])
 
 
 def test_een_storing_blokkeert_niemand(monkeypatch):
@@ -182,6 +185,8 @@ def test_overnemen_maakt_dagregels_met_een_dagboekregel(client, admin_user):
     namen = {x["materieel_naam"]: x for x in uit["regels"]}
     assert namen["Rupskraan 8t"]["co2_methode"] == "geschat"
     assert namen["Gehuurde trilplaat"]["leverancier"] == "Aduco"
+    assert namen["Gehuurde trilplaat"]["energiedrager"] == "onbekend"
+    assert namen["Gehuurde trilplaat"]["co2_methode"] == "onbekend"
     assert namen["Gehuurde trilplaat"]["co2_kg"] is None, "geen verbruik bekend"
 
     dag = client.get(f"/api/daybook/day?date={vandaag}", headers=auth(admin_user)).json()
@@ -192,6 +197,27 @@ def test_overnemen_zonder_enige_uren_wordt_geweigerd(client, admin_user):
     r = client.post("/api/materieel/begroting/overnemen", headers=auth(admin_user), json={
         "regels": [{"materieel_id": None, "naam": "Kraan", "draaiuren": None}]})
     assert r.status_code == 400
+
+
+def test_een_dagboekfout_verbergt_opgeslagen_inzet_niet(client, admin_user, monkeypatch):
+    def dagboek_stuk(*args, **kwargs):
+        raise RuntimeError("dagboek tijdelijk niet beschikbaar")
+
+    monkeypatch.setattr("routers.materieel_router.log_daybook", dagboek_stuk)
+    r = client.post("/api/materieel/begroting/overnemen", headers=auth(admin_user), json={
+        "regels": [{"naam": "Huurwals", "draaiuren": 2}],
+    })
+    assert r.status_code == 201, r.text
+    assert r.json()["aangemaakt"] == 1
+    assert r.json()["dagboekregels_mislukt"] == 1
+
+    db = SessionLocal()
+    try:
+        inzet = db.query(MaterieelInzet).one()
+        assert inzet.materieel_naam == "Huurwals"
+        assert inzet.daybook_entry_id is None
+    finally:
+        db.close()
 
 
 def test_overnemen_kent_geen_materieel_van_een_ander(client, admin_user):

@@ -41,6 +41,7 @@ from pathlib import Path
 from typing import Optional
 
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
@@ -56,6 +57,7 @@ from daybook_logger import log_daybook
 from models import DaybookEntry, Materieel, MaterieelInzet, Project, User
 from permissions import can_manage_assets, is_org_admin, require_module, require_org_admin
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/materieel", tags=["Materieel & CO2"],
                    dependencies=[Depends(require_module("dagboek"))])
 
@@ -449,7 +451,7 @@ class BegrotingIn(BaseModel):
 class OvernemenRegel(BaseModel):
     materieel_id: Optional[str] = None
     naam: str = Field(..., min_length=1, max_length=160)
-    draaiuren: Optional[float] = Field(default=None, ge=0, le=500)
+    draaiuren: Optional[float] = Field(default=None, ge=0, le=mb.MAX_DRAAIUREN)
     leverancier: Optional[str] = Field(default=None, max_length=160)
 
 
@@ -577,7 +579,7 @@ def begroting_overnemen(body: OvernemenIn, request: Request,
             soort=stuk.soort if stuk else None,
             leverancier=((regel.leverancier or (stuk.leverancier if stuk else None) or "")
                          .strip()[:160] or None),
-            energiedrager=stuk.energiedrager if stuk else "diesel",
+            energiedrager=(stuk.energiedrager if stuk else None) or "onbekend",
             draaiuren=regel.draaiuren,
             verbruik_per_uur=stuk.verbruik_per_uur if stuk else None,
             opmerking=body.opmerking,
@@ -593,18 +595,26 @@ def begroting_overnemen(body: OvernemenIn, request: Request,
     # `log_daybook` rolt bij een fout zijn eigen werk terug en geeft None. Dat
     # mag pas ná de commit hierboven gebeuren, anders neemt die rollback de
     # inzet zelf mee.
+    dagboekregels_mislukt = 0
     for inzet in gemaakt:
-        db.refresh(inzet)
-        titel, tekst = _dagboektekst(inzet)
-        entry = log_daybook(
-            db, user_id=current_user.id, organization_id=current_user.organization_id,
-            entry_type="materieel_inzet", title=titel, description=tekst,
-            source_type="materieel", source_id=inzet.id,
-            occurred_at=datetime.combine(inzet.datum, time(12, 0), tzinfo=timezone.utc),
-            project_id=inzet.project_id)
-        if entry is not None:
+        try:
+            titel, tekst = _dagboektekst(inzet)
+            entry = log_daybook(
+                db, user_id=current_user.id, organization_id=current_user.organization_id,
+                entry_type="materieel_inzet", title=titel, description=tekst,
+                source_type="materieel", source_id=inzet.id,
+                occurred_at=datetime.combine(inzet.datum, time(12, 0), tzinfo=timezone.utc),
+                project_id=inzet.project_id, commit=False)
+            if entry is None:
+                dagboekregels_mislukt += 1
+                continue
+            db.flush()
             inzet.daybook_entry_id = entry.id
             db.commit()
+        except Exception:
+            db.rollback()
+            dagboekregels_mislukt += 1
+            logger.exception("Kon opgeslagen materieelinzet niet spiegelen naar het dagboek")
 
     log_action(db, request, current_user, action=ACTION.MATERIEEL_BEGROTING,
                entity_type="materieel_inzet",
@@ -614,6 +624,7 @@ def begroting_overnemen(body: OvernemenIn, request: Request,
     return {
         "aangemaakt": len(gemaakt),
         "overgeslagen_zonder_uren": overgeslagen,
+        "dagboekregels_mislukt": dagboekregels_mislukt,
         "regels": [_toon(i, users, projecten) for i in gemaakt],
     }
 
