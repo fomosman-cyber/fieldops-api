@@ -221,17 +221,30 @@ def naar_drive(inhoud: bytes, naam: str) -> dict:
             content=lichaam, timeout=900)
         antwoord.raise_for_status()
         bestand = antwoord.json()
-        opgeruimd, opruimen_mislukt = _drive_opruimen(token)
+        # Vanaf hier staat de kopie op Drive. Opruimen is daarna bijzaak en
+        # mag de back-up niet ongedaan maken. Zonder deze eigen try komt een
+        # mislukte files.list-aanroep in de except hieronder terecht en meldt
+        # deze functie `success: False` over een back-up die er wel staat: de
+        # beheerder gaat zoeken naar wat er is, en de volgende run zet er een
+        # tweede naast.
         uit = {"success": True, "id": bestand.get("id"), "naam": bestand.get("name"),
-               "size_bytes": len(inhoud), "opgeruimd": opgeruimd}
-        if opruimen_mislukt:
-            # De kopie staat er, dus de back-up is gelukt. Maar dat het
-            # opruimen niet mocht is een eigen probleem: onopgemerkt loopt de
-            # Drive van de eigenaar alsnog vol.
-            uit["opruimen_mislukt"] = opruimen_mislukt
-            uit["waarschuwing"] = (
-                f"{opruimen_mislukt} oude kopie(en) kon ik niet verwijderen; "
-                "controleer de rechten op de Drive-map")
+               "size_bytes": len(inhoud), "opgeruimd": 0}
+        try:
+            opgeruimd, opruimen_mislukt = _drive_opruimen(token)
+        except Exception as e:  # noqa: BLE001 - de kopie is hoofdzaak, opruimen niet
+            uit["opruimen_fout"] = f"{type(e).__name__}: {str(e)[:200]}"
+            uit["waarschuwing"] = ("de kopie staat er, maar de oude kopieen opruimen is mislukt; "
+                                   "controleer de rechten op de Drive-map")
+        else:
+            uit["opgeruimd"] = opgeruimd
+            if opruimen_mislukt:
+                # De kopie staat er, dus de back-up is gelukt. Maar dat het
+                # opruimen niet mocht is een eigen probleem: onopgemerkt loopt de
+                # Drive van de eigenaar alsnog vol.
+                uit["opruimen_mislukt"] = opruimen_mislukt
+                uit["waarschuwing"] = (
+                    f"{opruimen_mislukt} oude kopie(en) kon ik niet verwijderen; "
+                    "controleer de rechten op de Drive-map")
         return uit
     except Exception as e:  # noqa: BLE001 — een back-up die faalt, moet het zeggen
         return {"success": False, "error": f"{type(e).__name__}: {str(e)[:300]}"}

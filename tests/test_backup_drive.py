@@ -159,3 +159,66 @@ def test_onleesbare_bewaarwaarde_laat_de_module_staan(rauw, verwacht):
     import klappen — en `backup_service` wordt ook geïmporteerd door
     endpoints die niets met Drive te maken hebben."""
     assert bs._bewaar_uit_omgeving(rauw) == verwacht
+
+
+def test_een_mislukte_lijst_maakt_de_kopie_niet_mislukt(drive, monkeypatch):
+    """De upload is al klaar wanneer het opruimen stukloopt.
+
+    Meldde deze functie dan `success: False`, dan gaat de beheerder zoeken naar
+    een back-up die er wel staat -- en de volgende run zet er een tweede naast.
+    """
+    import httpx
+
+    class _Stuk:
+        status_code = 500
+
+        def json(self):
+            return {}
+
+        def raise_for_status(self):
+            raise RuntimeError("HTTP 500")
+
+    monkeypatch.setattr(httpx, "get", lambda url, **kw: _Stuk())
+    uit = bs.naar_drive(b"dump", "fieldops-nu.sql.gz")
+    assert uit["success"] is True, uit
+    assert uit["id"] == "nieuw"
+    assert uit["opgeruimd"] == 0
+    assert "RuntimeError" in uit["opruimen_fout"]
+    assert uit["waarschuwing"]
+    assert drive["verwijderd"] == []
+
+
+def test_een_netwerkfout_bij_opruimen_laat_de_kopie_ook_staan(drive, monkeypatch):
+    """Dezelfde grens, andere fout: httpx komt niet eens tot een antwoord."""
+    import httpx
+
+    def _weg(url, **kw):
+        raise OSError("verbinding weg")
+
+    monkeypatch.setattr(httpx, "get", _weg)
+    uit = bs.naar_drive(b"dump", "fieldops-nu.sql.gz")
+    assert uit["success"] is True, uit
+    assert "OSError" in uit["opruimen_fout"]
+
+
+def test_een_mislukte_upload_blijft_mislukt(drive, monkeypatch):
+    """De andere kant van die grens: hier hoort niets te worden ingeslikt.
+
+    Zonder deze test is de fix hierboven een vrijbrief om straks ook echte
+    mislukkingen als geslaagd te melden.
+    """
+    import httpx
+
+    class _Stuk:
+        status_code = 503
+
+        def json(self):
+            return {}
+
+        def raise_for_status(self):
+            raise RuntimeError("HTTP 503")
+
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: _Stuk())
+    uit = bs.naar_drive(b"dump", "fieldops-nu.sql.gz")
+    assert uit["success"] is False
+    assert "RuntimeError" in uit["error"]
