@@ -43,7 +43,7 @@ SUB_PROCESSORS = [
         "hosts": ["render.com", "onrender.com", "portaal.fieldopsapp.nl"],
         "category": "Hosting (application + database)",
         "hq": "San Francisco, US",
-        "data_location": "Frankfurt EU (eu-central-1)",
+        "data_location": "Virginia, US",
         "purpose": "Application + database hosting",
         "data_categories": ["all"],
         "dpa_signed": True,
@@ -271,7 +271,7 @@ def compliance_status(current_user: User = Depends(get_current_user)):
     """Compliance-overzicht voor klanten + auditeurs."""
     return {
         "organization": "FieldOps B.V.",
-        "data_location": "EU only (Frankfurt eu-central-1)",
+        "data_location": "Render application and database: Virginia, US",
         "avg_compliance": {
             "status": "Conform",
             "controller_processor_relationship": "FieldOps acts as Processor (AVG art. 28)",
@@ -431,7 +431,7 @@ def iso_readiness(current_user: User = Depends(get_current_user)):
             "Penetration Test results (when available, Q3 2026)",
         ],
         "sectoral_compliance": {
-            "AVG_GDPR": "Conform — DPA + SCC + EU-hosting",
+            "AVG_GDPR": "DPA template available; Render application and database in Virginia, US",
             "BIO": "Inherent via ISO 27001 alignment",
             "NEN_7510": "Not applicable (no health data)",
             "NIS2": "Scope-check Q3 2026 — likely 'important entity' classification",
@@ -487,9 +487,9 @@ def security_posture(current_user: User = Depends(get_current_user)):
     return {
         "organization": os.getenv("FIELDOPS_BEDRIJFSNAAM") or "FieldOps",        "scope": "FieldOps Platform — SaaS voor publieke ruimte beheer",
         "data_residency": {
-            "primary_region": "Frankfurt EU (eu-central-1)",
-            "backup_region": "EU west (Ireland) — cross-region replication",
-            "outside_eer": "None for production data; SCCs in place for US sub-processors",
+            "primary_region": "Virginia, US (Render application and database)",
+            "backup_region": "Not verified",
+            "outside_eer": "Yes: the production application and database are hosted in the US",
         },
         "encryption": {
             "tls_version_minimum": "1.3",
