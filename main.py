@@ -746,7 +746,7 @@ mens-acceptatie-state. Onveranderlijke audit-trail per organisatie.
 
 ## 🔒 Compliance & data-soevereiniteit
 
-- EU-region hosting (Render Frankfurt)
+- Production application and database hosted by Render in Virginia, US
 - AVG/GDPR-compliant audit-log per organisatie + per persoon
 - Append-only audit-events met IP + actor + before/after
 - Encryption at rest + in transit (TLS 1.3)
@@ -1141,7 +1141,7 @@ def root(request: Request):
         "category": "Compliance-Native Infrastructure OS",
         "version": "3.3.0",
         "status": "online",
-        "region": "EU-Frankfurt",
+        "region": "Virginia, US",
         "documentation": {
             "swagger_ui": "/docs",
             "redoc": "/redoc",
@@ -1152,7 +1152,7 @@ def root(request: Request):
         "compliance": {
             "norms_live": ["CROW 146a", "CROW 146b", "NEN 2767-2"],
             "norms_roadmap": ["NEN 3399", "NEN 2767-4", "VTA", "EN 1176", "ROVL"],
-            "data_residency": "EU only",
+            "data_residency": "Render application and database: Virginia, US",
             "audit_log": "append-only with IP + actor + before/after",
             "ai_governance": "Audit-Bound AI™ — prompt-version + model-id per record",
         },
@@ -1380,8 +1380,8 @@ curl https://portaal.fieldopsapp.nl/api/meldingen/ \\
     <p>Per-event <code>request_id</code>, IP, actor, before/after-snapshot. Procurement-grade onderbouwing voor Rekenkamer.</p>
   </div>
   <div class="card">
-    <h3>🇪🇺 EU data-soevereiniteit</h3>
-    <p>Alle data EU-Frankfurt hosting. Sub-processors gepubliceerd. AVG/GDPR-DPA template beschikbaar.</p>
+    <h3>Hostinglocatie</h3>
+    <p>Webservice en database draaien bij Render in Virginia (Verenigde Staten). De subverwerkerslijst en het sjabloon voor de verwerkersovereenkomst zijn beschikbaar.</p>
   </div>
 </div>
 
